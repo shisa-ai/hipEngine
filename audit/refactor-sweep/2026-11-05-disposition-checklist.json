@@ -1038,10 +1038,13 @@
       "title": "R0220 — Dense gfx1151 source-F16 scratch reuse",
       "ledger_line": 683,
       "owner": "`hipengine/kernels/hip_gfx1100/__init__.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_prefill_plan.py:71,746-749 prices source-F16 activation and weight fields independently.",
+        "worklog/entries/20260816T152449.196381Z-lhl-qwen38-gfx1151-memory-parity-d82d61.md:55-65 records real alias corruption, not a proved root cause."
+      ],
+      "next_action": "Reproduce the dedicated-versus-alias mismatch on gfx1151 and identify overlapping producers before constructing a dense lifetime plan; preserve dedicated storage until repaired.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -1051,16 +1054,19 @@
           "worklog/entries/20260816T152449.196381Z-lhl-qwen38-gfx1151-memory-parity-d82d61.md (final-logit changes under dense owner-slot and single-arena aliases)",
           "tests/test_unit_qwen35_gguf_prefill_scratch_liveness.py, tests/test_unit_qwen35_gguf_prefill_plan.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0223 — Q6 prefill selector normalization",
       "ledger_line": 705,
       "owner": "`hipengine/kernels/hip_gfx1151/__init__.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/kernels/hip_gfx1151/__init__.py:731-897 contains distinct standard and planar shared4 bands with shape overrides."
+      ],
+      "next_action": "Map ordered rules and capture selected function identities at each boundary, then normalize only if that representation reduces duplication without changing precedence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1069,16 +1075,19 @@
           "hipengine/kernels/hip_gfx1151/__init__.py:80-88 (planar shared4 and shared4r3/r6/r9 variants), :720, :760-765 (shape/row branch selection)",
           "tests/test_unit_gfx1151_backend.py, tests/test_unit_loading_qwen35_gguf_policy.py, tests/test_unit_gguf_linear_dispatch.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0231 — Maple CUDA resident fixed-batch owner",
       "ledger_line": 723,
       "owner": "`hipengine/generation/maple.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/maple.py:30,300 constructs HIP MapleBatchRunner; line 683 disables the resident batch factory for CUDA."
+      ],
+      "next_action": "Implement a CUDA-native resident batch owner with independent per-request spans and CUDA allocation/library plumbing; CUDA device validation is a separate unavailable-hardware dependency, not a reason implementation cannot start.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -1088,16 +1097,20 @@
           "hipengine/runtime/maple_cuda.py (native prefill complete; serial chain remains the state/logit oracle)",
           "hipengine/runtime/maple.py (MapleBatchRunner constructs Device('hip', 0) and HIP libraries)"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0239 — Host-token embedding placement control",
       "ledger_line": 742,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:3509-3557 implements mapped host embedding with storage ownership.",
+        "worklog/entries/20260816T152449.196381Z-lhl-qwen38-gfx1151-memory-parity-d82d61.md records anonymous copy safe and direct file registration divergent."
+      ],
+      "next_action": "Inventory placement consumers and record supported resource-policy ownership; do not delete a functioning placement choice as duplicate storage or conflate it with scratch reuse.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -1107,16 +1120,19 @@
           "scripts/qwen35_08b_cumulative_semantic.py, scripts/qwen35_08b_threshold_sweep.py, scripts/qwen35_08b_three_way.py, scripts/qwen35_08b_graph_rerank.py (callers)",
           "tests/test_gpu_qwen35_gguf_host_token_embedding.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0258 — Laguna grouped-IQ diagnostic chain and policy normalization",
       "ledger_line": 763,
       "owner": "`hipengine/kernels/hip_gfx1100/__init__.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "tests/test_unit_laguna_h6t_source_default.py:28-61,106-116 preserves variant-specific active-expert interfaces."
+      ],
+      "next_action": "Inventory exact diagnostic consumers and normalize only redundant stable maps or record intentionally retained owners; preserve ABI distinctions. Public validation later requires Laguna weights and gfx1100.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1126,16 +1142,21 @@
           "tests/test_unit_laguna_h6t_source_default.py, tests/test_unit_laguna_h6l_source_default.py, tests/test_unit_laguna_h6c_source_default.py",
           "scripts/laguna_public_correctness.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0259 — Laguna exact SWA and preappend policy normalization",
       "ledger_line": 785,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "tests/test_unit_laguna_h6a_runtime_policy.py:17-25,109-157 exercises preappend roles and scratch Boolean.",
+        "docs/REFACTOR.md R0259 explicitly retains bounded role maps and limits remaining work to public runner validation.",
+        "No Laguna checkpoint exists in documented local model directories."
+      ],
+      "next_action": "Run the public start/wrap/partial/continuation matrix with a Laguna checkpoint on applicable hardware; no selector rewrite remains to justify before that run.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1144,16 +1165,19 @@
           "hipengine/runtime/laguna_gguf_runner.py (exact SWA and preappend role maps)",
           "tests/test_unit_laguna_h5r_runtime_policy.py, tests/test_unit_laguna_h6a_runtime_policy.py, tests/test_unit_laguna_h6a_source_default.py, tests/test_unit_laguna_h6w_source_default.py, tests/test_unit_laguna_h6z_source_default.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0264 — Laguna full-score long-attention diagnostic retirement",
       "ledger_line": 801,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/laguna_gguf_runner.py:2959,3483-3490 uses long-attention control for bounded selection too."
+      ],
+      "next_action": "Separate diagnostic full-score ownership from production bounded-route policy before any retirement; inventory both long-context and ceiling callers. Missing weights only defer final public checks.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1163,16 +1187,19 @@
           "hipengine/kernels/hip_gfx1151/__init__.py:1079, :4059 (constant default True)",
           "tests/test_unit_laguna_long_context_profile.py, tests/test_gpu_laguna_kv_attention.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0265/R0266/R0267 — Laguna attention geometry and layout controls",
       "ledger_line": 821,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/laguna_long_context_profile.py:169,1069-1073 exposes attention rows and mutates SWA/cache controls."
+      ],
+      "next_action": "Record these as supported geometry/comparison policy or migrate redundant mutations to scoped test owners with restoration tests; preserve matrix-capacity and independent span fallbacks.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1182,16 +1209,19 @@
           "scripts/laguna_long_context_profile.py (harness arms and --attention-rows)",
           "tests/test_unit_laguna_gguf_runner.py, tests/test_unit_laguna_long_context_profile.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0269 — Laguna MoE scheduling diagnostic controls",
       "ledger_line": 840,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/laguna_long_context_profile.py:249-269,734-736,811-815 retains branch concurrency/low-priority comparisons."
+      ],
+      "next_action": "Inspect stream/event owners and callers, choose retained diagnostics or scoped migration, and validate restoration/queue behavior with unit tests before checkpoint-dependent public validation.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1201,16 +1231,20 @@
           "hipengine/runtime/laguna_gguf_runner.py (MoE scheduling overrides, stream/event and queue-capacity fallback)",
           "tests/test_unit_laguna_gguf_runner.py, tests/test_unit_laguna_long_context_profile.py, tests/test_live_laguna_moe_gpu.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0270 — Laguna selected-MMQ diagnostic modes",
       "ledger_line": 856,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/laguna_grouped_down_category_bench.py:174-175,398-425 actively selects comparison down modes.",
+        "hipengine/runtime/laguna_gguf_runner.py retains selected-down mode setters."
+      ],
+      "next_action": "Inventory individual mode callers and explicitly retain needed comparisons; migrate only redundant interfaces with tests and no arithmetic/fallback collapse.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1220,16 +1254,20 @@
           "scripts/laguna_grouped_down_category_bench.py, scripts/laguna_prefill_production_publication.py, tests/test_live_laguna_moe_gpu.py (callers)",
           "tests/test_unit_laguna_selected_mmq_modes.py, tests/test_unit_laguna_grouped_down_category_bench.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0277 — GGUF capture-inclusive graph policy and diagnostic interfaces",
       "ledger_line": 877,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:580,884 still supports explicit eager/graph control.",
+        "scripts/gguf_decode_graph_g5.py remains the named capture-inclusive comparison harness."
+      ],
+      "next_action": "Read harness options and run the current local model state-parity/capture-inclusive comparison; identify retained diagnostic callers before retiring control surfaces.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1239,16 +1277,19 @@
           "hipengine/kernels/hip_gfx1100/__init__.py:173 (HIPENGINE_GGUF_DECODE_GRAPH=0 as the explicit eager rollback)",
           "scripts/gguf_mtp_bench.py (mode consumers), tests/test_unit_qwen35_gguf_decode_graph.py, tests/test_unit_qwen35_gguf_decode_graph_kv_floor.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0278 — Offline DMS capture API ownership",
       "ledger_line": 897,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:4966-4987 accepts offline sink and 19079-19107 separately wires device collector."
+      ],
+      "next_action": "Map capture consumers and expose offline export through model-owned API while preserving serving collector; add API ownership and actual manifest/shard validation.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -1257,16 +1298,19 @@
           "hipengine/runtime/qwen35_gguf_runner.py (_ExternalDMSDevicePrefillCollector, capture_device_chunk, prefill(dms_capture=...))",
           "scripts/qwen38_dms_capture.py, tests/test_live_dms_capture_gguf_hip.py, tests/test_unit_dms_capture.py, tests/test_unit_qwen38_dms_capture_script.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0279 — General compact-DMS undo beyond append-only cycles",
       "ledger_line": 916,
       "owner": "`hipengine/runtime/qwen35_gguf_mtp.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_mtp.py:1111 defines _DMSStoreJournal; current module still imports device-to-host copying."
+      ],
+      "next_action": "Design and implement a bounded reversible mutation journal with priced resources and exact accepted-prefix metadata/payload restore, retaining the existing fallback until covered.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -1276,16 +1320,19 @@
           "hipengine/kvcache/dms.py, hipengine/kvcache/dms_device.py",
           "tests/test_gpu_dms_external_runtime.py, tests/test_gpu_dms_int8_device_payloads.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0280 — DMS device ranking and decode control ownership",
       "ledger_line": 935,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:13021-13055 finalizes layers with host build_dms_exact_budget_eviction."
+      ],
+      "next_action": "Add deterministic CPU-oracle mask tests and bounded device ranking/finalization primitive, then integrate collector/decode ownership and journal rollback.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -1295,16 +1342,20 @@
           "hipengine/kvcache/dms.py:765 (build_dms_exact_budget_eviction)",
           "tests/test_unit_dms_layer_collector.py:301, :321 (CPU oracle and oldest-position tie-break)"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0281-ATTN — Laguna prefill/decode variant interfaces",
       "ledger_line": 955,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/laguna_dflash_category_bench.py:137-147,680-704 still reports separate global/SWA prefill variants.",
+        "hipengine/runtime/laguna_gguf_runner.py:2951,3081-3083 keeps independent decode choice."
+      ],
+      "next_action": "Inventory distinct exact comparisons, name retained diagnostic owners or migrate redundant positive-selection callers with scoped restoration; public gate waits on checkpoint.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1314,16 +1365,20 @@
           "scripts/laguna_grouped_down_category_bench.py, scripts/laguna_target_ar_bench.py, scripts/laguna_dflash_category_bench.py",
           "tests/test_unit_laguna_gguf_runner.py, tests/test_gpu_laguna_kv_attention.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0281-PARO-WIDTH — PARO batch policy and diagnostic controls",
       "ledger_line": 974,
       "owner": "`hipengine/generation/qwen35_paro.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_paro.py:4227-4242 keeps separate retained/default and native-decode inputs.",
+        "scripts/qwen35_batch_retained_bench.py:153,4428 uses both policies."
+      ],
+      "next_action": "Separate two owner-bound policies and migrate real callers without merging semantics; verify native/serial, sparse and refill behavior on available compatible model.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -1333,16 +1388,20 @@
           "hipengine/runtime/qwen35_paro_batch_width.py:82 ('full-identity-matched PARO native width profile')",
           "scripts/qwen35_batch_retained_bench.py, hipengine/runtime/qwen35_paro_decode_groups.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0281-D12 — Q5 constructor retirement public validation",
       "ledger_line": 994,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/laguna_gguf_runner.py no longer exposes the retired wave32x2 constructor fields listed in this section.",
+        "No Laguna weights are present in documented local directories; only tokenizer exists."
+      ],
+      "next_action": "Exercise Q5 selected public one-row/multi-row continuation on gfx1151 when weights are supplied, then repeat gfx1100 half on its host.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -1352,16 +1411,20 @@
           "worklog/entries/20261027T204500.188426Z-cleanup-refactor-r0281-d12-b08a36.md (unused constructor controls removed; backend defaults resolved directly)",
           "benchmarks/results/2026-07-24-gfx1100-laguna-q2-xl-d12-q5-wave32x2-correctness.json"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0281-Q5META — Q5 metadata comparison interface",
       "ledger_line": 1005,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/laguna_target_ar_bench.py:259-264,721-724,861-862 passes and reports fixed-meta choices at both construction sites.",
+        "hipengine/runtime/laguna_gguf_runner.py:2987-2988,3131-3141 retains these independent controls."
+      ],
+      "next_action": "Preserve intentional comparisons under a scoped projection owner and migrate both target-AR sites/result fields together; test each fallback independently.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1371,16 +1434,20 @@
           "scripts/laguna_target_ar_bench.py:259, :721 (both construction sites)",
           "tests/test_unit_laguna_q5_control_retirement.py, tests/test_unit_laguna_gguf_runner.py, tests/test_unit_laguna_target_ar_bench.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0281-MIXED — Mixed-projection comparison levels",
       "ledger_line": 1024,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/laguna_target_ar_bench.py:274,730,864 uses mixed projection choice in both construction/result paths.",
+        "hipengine/runtime/laguna_gguf_runner.py:2995,3154-3157 consumes mixed projection control."
+      ],
+      "next_action": "Migrate three distinct comparison levels without collapsing local32/fixed-Q6/generic miss order; maintain both construction sites and result schema.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1390,16 +1457,20 @@
           "scripts/laguna_target_ar_bench.py (both construction sites and result fields)",
           "tests/test_unit_laguna_mixed_pair_reuse_runtime.py, tests/test_unit_laguna_q5_swar_pair_runtime.py"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0281-Q4HEAD — Scalar Q4 head comparison control",
       "ledger_line": 1044,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/laguna_target_ar_bench.py:293,739,871-872 passes and reports Q4 head comparison.",
+        "hipengine/runtime/laguna_gguf_runner.py:2998,3172-3180 selects scalar Q4 owner independently."
+      ],
+      "next_action": "Name retained Q4 scalar diagnostic owner or scope its comparison policy; test true Q4 full logits and missing-key fallback, not unrelated Q6 top1.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1410,16 +1481,20 @@
           "tests/test_unit_laguna_gguf_runner.py, tests/test_unit_laguna_target_ar_bench.py",
           "hipengine/runtime/laguna_gguf_runner.py:5843,5913,6435 (all three scoped methods are defined)"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0281-IQ3 — c1 IQ3 schedule comparison interface",
       "ledger_line": 1059,
       "owner": "`hipengine/runtime/laguna_moe.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/laguna_target_ar_bench.py:255,719,851 has IQ3 schedule inputs/report.",
+        "hipengine/runtime/laguna_gguf_runner.py:3000,3184-3186 resolves the schedule."
+      ],
+      "next_action": "Inventory wave10/wave4/serial consumers, keep independent oracle comparisons under explicit ownership and migrate redundant selectors with unit restoration checks.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1429,16 +1504,20 @@
           "scripts/laguna_target_ar_bench.py",
           "tests/test_live_laguna_moe_gpu.py (three test_laguna_iq3_* schedule/removed-signbit nodes)"
         ]
-      }
+      },
+      "inspection_limits": "Static owning-source and current caller inspection. No implementation change or new device gate yet; Laguna checkpoint and CUDA/gfx1100 hardware limitations apply only to dependent runtime validation."
     },
     {
       "title": "R0281-SPLIT / R0339 — Split-attention and tile16 comparison controls",
       "ledger_line": 1073,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/laguna_target_ar_bench.py:120-122,302-306 keeps independent crossover controls.",
+        "hipengine/runtime/laguna_gguf_runner.py:2980-2981,3937-3971 forwards split workspace policy."
+      ],
+      "next_action": "Inventory crossover comparisons and retain them as resource policy or migrate both harnesses/session allocator coherently; preserve bounded workspace and invalid-combination errors.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1448,16 +1527,20 @@
           "tests/test_gpu_laguna_kv_attention.py (fake-runtime bounded-workspace node)",
           "audit/refactor-sweep/2026-10-30-coverage-map.json (R0339 disposition resolved-consolidated-r0281-split-fusion)"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-FUSION / R0338 — Attention fusion and reducer comparison controls",
       "ledger_line": 1088,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/laguna_gguf_runner.py:2983-2984,3973-3987 binds split-gate and wave-local reduction independently.",
+        "scripts/laguna_target_ar_bench.py:318-320 forwards wave-local opt-out."
+      ],
+      "next_action": "Migrate redundant comparison inputs to a scoped attention owner or record supported diagnostics; keep named dependency errors and exact unfused/shared-statistics fallback.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1467,16 +1550,20 @@
           "tests/test_unit_laguna_global_head_wave0_tree_runtime.py, tests/test_gpu_laguna_kv_attention.py",
           "audit/refactor-sweep/2026-10-30-coverage-map.json (R0338 disposition resolved-consolidated-r0281-fusion)"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-IQ2 — c1 IQ2 grid comparison control",
       "ledger_line": 1107,
       "owner": "`hipengine/runtime/laguna_moe.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/laguna_target_ar_bench.py:81,256-257,720 exposes grid comparison.",
+        "hipengine/runtime/laguna_gguf_runner.py:3001,3188-3190 resolves IQ2 grid independently."
+      ],
+      "next_action": "Inventory compact-grid comparison caller and migrate or explicitly retain it with host route tests; do not remove grouped-prefill consumers.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1486,16 +1573,20 @@
           "hipengine/runtime/laguna_gguf_runner.py:3001, :3188-3190 (resolve_laguna_iq2_grid64)",
           "tests/test_live_laguna_moe_gpu.py (host-only grid-route node), tests/test_unit_laguna_iq2_local64_reduction_runtime.py"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-DFLASH — Verifier tiles and shared true-AR mismatch",
       "ledger_line": 1122,
       "owner": "`hipengine/runtime/laguna_moe.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "benchmarks/results/2026-08-20-gfx1151-laguna-dflash-iq3-tile4-rejected.json:181-186 records identical tile trajectories and tile1 binding mismatch.",
+        "No Laguna target weights exist in documented local directories; the category run additionally needs a DFlash drafter."
+      ],
+      "next_action": "Inspect/migrate tile diagnostic interface and caller independently of unavailable target/drafter; defer current-stack reproduction and first-divergence trace until those checkpoints are available.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -1505,16 +1596,19 @@
           "hipengine/runtime/laguna_moe.py:923-931 (iq3_selected_down_tile), hipengine/runtime/laguna_gguf_runner.py:2999, :3183",
           "scripts/laguna_dflash_category_bench.py"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-PARO-ARGRAPH — gfx1151 greedy graph mismatch",
       "ledger_line": 1144,
       "owner": "`hipengine/runtime/qwen35_paro_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_paro_runner.py:2241 describes observed gfx1151 graph issue and line 3346 retains capture."
+      ],
+      "next_action": "Trace eager/graph/eager with per-transition persistent-state comparison on gfx1151 and implement the first differing owner/arithmetic repair; existing eager containment is not a reason to skip localization.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -1524,16 +1618,19 @@
           "worklog/entries/20261027T224932.969200Z-cleanup-refactor-r0281-paro-argraph-1d12bf.md (eager IDs equal across seeds; graph IDs diverge at index 2; allocations return to zero)",
           "scripts/qwen35_decode_graph_fixture_gate.py (compares generated IDs and final logits only, and labels its backend statically)"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-PARO-RAGGED — Ragged packed prefill and diagnostic ownership",
       "ledger_line": 1163,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_paro_runner.py:5555-5591 retains per-segment diagnostic flags and ragged exact selection."
+      ],
+      "next_action": "Run current fallback then add test-only packed ragged bypass to localize first unequal hidden/state/KV transition; preserve supported ragged fallback and equal-length paths.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -1543,16 +1640,19 @@
           "hipengine/generation/qwen35_gguf.py (_GGUF_AR_PACKED_PREFILL_ENV and per-segment force controls)",
           "worklog/entries/20261027T225807.809651Z-cleanup-refactor-r0281-paro-ragged-4633ca.md (working per-segment fallback preserved; original packed candidate not re-tested)"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-GGUF-REPACK — Decode layout control and comparison callers",
       "ledger_line": 1187,
       "owner": "`hipengine/loading/qwen35_gguf_policy.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/loading/qwen35_gguf_policy.py:124-140 implements one explicit decode-repack resolver."
+      ],
+      "next_action": "Inventory raw/default callers and retain layout resource policy or migrate to explicit load owner; test admission/materialization agreement and absence of duplicate payloads.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -1562,16 +1662,19 @@
           "hipengine/generation/qwen35_gguf.py:333 (default '1'), :4787 (temporary env use)",
           "tests/test_unit_qwen35_gguf_decode_repack_semantics.py, test_unit_qwen35_gguf_decode_repack_dispatch.py, test_unit_qwen35_gguf_fastpath_safety.py"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-SILU-FLOOR — Bulk-prefill and verifier fused-FFN policy",
       "ledger_line": 1208,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py:1121 keeps row33 fused floor; launch-time paired resolution still selects row bands at 3438-3480."
+      ],
+      "next_action": "Add RED nested/error/thread/cache-isolation tests and bind one explicit execution-local bulk-prefill policy across ordinary/packed/resumable entries, without changing thresholds or verification siblings.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -1580,16 +1683,19 @@
           "hipengine/runtime/gguf_linear.py:7186 (launch_gguf_linear_pair_silu), :4156 (_PAIR_DISPATCH_RESOLVE_CACHE), :1113 (_Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 33)",
           "tests/test_unit_gguf_linear_dispatch.py, tests/test_unit_gguf_linear_dispatch_cache.py, tests/test_unit_q4_row48_control_retirement.py"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-AR-LOOP — Direct GGUF compatibility loop and shared flush helpers",
       "ledger_line": 1232,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:4368 retains direct serving-slots compatibility loop."
+      ],
+      "next_action": "Map actual direct callers and shared flush dependencies, then extract diagnostic adapter or retire migrated loops while preserving resident bypass sentinel and error cleanup.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -1599,16 +1705,19 @@
           "tests/test_live_generation_qwen35_gguf_sampling.py:2910 (test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions; the sentinel exists)",
           "hipengine/generation/qwen35_gguf.py (native_batch_decode=True resident bypass)"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-CONV — Convolution schedule selector and isolation profiles",
       "ledger_line": 1251,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:9237-9238,9512-9523 resolves convolution environment schedule."
+      ],
+      "next_action": "Migrate live isolation profiles to explicit construction schedule before reader removal or name retained diagnostic ownership; preserve backend auto and all strict captured-state fallbacks.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1618,16 +1727,19 @@
           "tests/test_unit_qwen35_gguf_conv_prefill_policy.py, tests/test_unit_qwen35_linear_attn_conv_plan.py, tests/test_unit_qwen35_prefill_kernel_profile.py",
           "scripts/qwen38_gfx1151_prefill_kernel_profile.py (sweep profiles)"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-SELECTED-PAIR — Selected-MoE pair-reuse control retirement",
       "ledger_line": 1269,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:9193-9195,10793-10889 retains three independent selected-pair controls."
+      ],
+      "next_action": "Bind on/off comparisons to explicit scoped pair policy and migrate gate metadata/readers together; preserve request-local small-row scope and backend defaults.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1637,16 +1749,19 @@
           "tests/test_unit_qwen35_gguf_compact_moe_gemv_routing.py, tests/test_unit_execution_profile_gguf_batch_route_gate.py",
           "docs/ENVS.md (documented controls)"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-ROUTER — Cooperative router profile and diagnostic controls",
       "ledger_line": 1286,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:9220-9221,11036-11040 reads cooperative router and persistent counter independently."
+      ],
+      "next_action": "Publish actual router variant/counter ownership in construction plan, migrate profile/gate metadata, then remove process readers without changing variant math.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -1656,16 +1771,19 @@
           "hipengine/generation/qwen35_moe_gfx1151_profiles.py:54 (ROUTER_COOP_ENV)",
           "tests/test_unit_qwen35_moe_gfx1151_profiles.py, tests/test_unit_execution_profile_gguf_c1_route_gate.py"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-MTP-CAP — Packed MTP batch policy and caller separation",
       "ledger_line": 1306,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:344,2076-2077,5430,5519-5520 shares bounded four-slot policy across callers."
+      ],
+      "next_action": "Separate prefill/warmup/verifier ownership first and record bounded chunks as supported default unless a measured tuning objective selects a changed width; do not delete live shared constant.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -1675,16 +1793,19 @@
           "tests/test_unit_gguf_mtp_serving_chunk_policy.py",
           "tests/test_live_generation_qwen35_gguf_sampling.py (batch-verifier, packed-prefill and MTP-warmup nodes)"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-LAUNCH-BOUNDS — Selected-WMMA compiler tuning surface",
       "ledger_line": 1323,
       "owner": "`hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.py:38,92-98 exposes validated explicit compiler launch-bound setting."
+      ],
+      "next_action": "Inventory build-plan consumers and name supported build-control ownership or migrate into shared build config with plan/cache-key tests; no compiler/default retuning is authorized as incidental cleanup.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -1695,16 +1816,19 @@
           "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py:68, gguf_q4_k_t16_selected_prefill.py:45",
           "tests/test_unit_gguf_selected_wmma_launch_bounds.py"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-AR-DECODE / R0308 — Packed decode controls and scalar baseline callers",
       "ledger_line": 1342,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:572,799 still reads packed decode env in resident and compatibility paths."
+      ],
+      "next_action": "Introduce resolved serial/packed diagnostic control, migrate real benchmark writers/effective metadata and tests, then remove process reader while preserving default packed execution.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1714,16 +1838,19 @@
           "scripts/gguf_concurrency_baseline.py, scripts/server_f1_concurrency_bench.py, scripts/gguf_live_server_bench.py",
           "tests/test_unit_gguf_ar_decode_control.py, test_unit_gguf_concurrency_baseline.py, test_unit_server_f1_concurrency_bench.py, test_unit_gguf_live_server_bench.py"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-AR-PREFILL / R0309 — Packed prefill diagnostic control migration",
       "ledger_line": 1362,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:573,867 still reads packed-prefill environment."
+      ],
+      "next_action": "Introduce explicit serial-prefill diagnostic control and migrate warmup/compatibility/resident consumers together, preserving hidden seeds, masks and prompt accounting.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1733,16 +1860,19 @@
           "scripts/gguf_concurrency_baseline.py",
           "tests/test_unit_gguf_packed_verify_layout.py, tests/test_unit_gguf_concurrency_baseline.py, tests/test_live_generation_qwen35_gguf_sampling.py"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-NATIVE-CYCLE / R0384 — Native diagnostic interfaces and graph composition",
       "ledger_line": 1379,
       "owner": "`scripts/gguf_mtp_bench.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/gguf_mtp_bench.py:893-923 exposes distinct target/complete/proposal stages and 1725-1734 validates dependencies."
+      ],
+      "next_action": "Inventory stage consumers and explicitly retain four diagnostic stages or migrate to one stage enum without combining graph composition; test route metadata and unsupported-shape behavior.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1752,16 +1882,19 @@
           "scripts/gguf_mtp_bench.py:2294-2322 runs the complete-cycle path with native_proposal_graph as an independent argument",
           "worklog/entries/20261028T024831.513171Z-cleanup-refactor-r0281-native-cycle-170386.md: 'Preserve native-cycle diagnostic interfaces and move their remaining retirement and graph-composition decision to the bottom'"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-PARO-NATIVE — Provider graph and selected-commit control migration",
       "ledger_line": 1405,
       "owner": "`hipengine/runtime/qwen35_paro_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_paro_runner.py:11260,11297 still reads separate target graph/commit controls."
+      ],
+      "next_action": "Move submission/commit selection into owned variants plus explicit diagnostics, migrate provider metadata/bindings and preserve live post-submission rollback tests.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1771,16 +1904,19 @@
           "hipengine/runtime/qwen35_paro_runner.py:11253 reads HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT",
           "hipengine/runtime/qwen35_paro_runner.py:11216-11253 are per-call environment reads rather than session/profile fields"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-AR-STREAM — Stream decode control and serial diagnostic migration",
       "ledger_line": 1432,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:574,880 still reads stream-decode environment separately from packed decode."
+      ],
+      "next_action": "Implement resolved serial/stream/packed comparison control with caller/metadata migration and no retry-after-progress; preserve launch-before-read and stream cleanup.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -1790,16 +1926,19 @@
           "hipengine/generation/qwen35_gguf.py:879 reads it as a boolean default-on control",
           "scripts/gguf_concurrency_baseline.py, scripts/gguf_live_server_bench.py, scripts/gguf_production_load_gate.py and tests still read the same env name"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-MTP-DRAFT-EXECUTOR — Compatibility draft/verifier worker lifetime",
       "ledger_line": 1453,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:4743,5940,6185 constructs worker executors inside compatibility paths."
+      ],
+      "next_action": "Map compatibility pool ownership and choose adapter retirement or bounded request lifetime; add future-draining/cancellation/error cleanup before changing reuse.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -1809,16 +1948,19 @@
           "hipengine/generation/qwen35_gguf.py:6049 _close_mtp_serving_slots owns slot teardown",
           "The two compatibility env readers were removed; HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT/VERIFY now appear only in docs/ENVS.md and tests"
         ]
-      }
+      },
+      "inspection_limits": "Static source/caller review only; checkpoints and device-specific public checks remain separate dependencies. No performance claim or arithmetic/default change in this classification."
     },
     {
       "title": "R0281-TAIL-RMS — Chained norms and MoE graph diagnostic migration",
       "ledger_line": 1477,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:9190,9459 retains tail norm control; 25741 documents per-layer graph route."
+      ],
+      "next_action": "Give unchained graph comparisons explicit owner policy and migrate callers, preserving default production chaining.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -1828,16 +1970,19 @@
           "hipengine/runtime/qwen35_gguf_runner.py:9753 _gguf_moe_tail_next_rms_enabled defaults True",
           "hipengine/runtime/qwen35_gguf_runner.py:4270 gates chain_next_rms on is_moe and the tail control"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0281-INT8-POLICY — Legacy context and layout diagnostic controls",
       "ledger_line": 1495,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:577-578 and hipengine/runtime/qwen35_gguf_runner.py:8854 retain legacy INT8 overrides."
+      ],
+      "next_action": "Separate failure override from layout resource policy in resolved owner, migrate allocation/soak callers and metadata before removing readers.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -1847,16 +1992,19 @@
           "hipengine/runtime/qwen35_gguf_runner.py:9149 defines the same env; :10922 handles tail4_hadamard_group32",
           "scripts/gguf_server_allocation_probe.py and scripts/qwen38_int8_server_context_soak.py still read the override"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0281-Q8-EXPERIMENTS — Standalone raw-Q4/Q8_1 comparison retention",
       "ledger_line": 1516,
       "owner": "`scripts/gguf_q4_k_t16_selected_prefill_microbench.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/gguf_q4_k_t16_selected_prefill_microbench.py:168-169,294-314 exposes independent pack/WMMA modes and says it does not test model quality."
+      ],
+      "next_action": "Inventory every mode wrapper/symbol/registry/test consumer and name retained primitive diagnostic ownership before archiving any executable comparison.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1866,16 +2014,19 @@
           "tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py exercises the modes",
           "worklog/entries/20261028T045156.566782Z-cleanup-refactor-r0281-q8-experiments-febc49.md keeps this as a live microbench/numerical decision"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0281-PARO-INT8-PREFILL — Oracle/streaming resource-policy ownership",
       "ledger_line": 1533,
       "owner": "`hipengine/runtime/qwen35_paro_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_paro_runner.py:151-157 retains oracle/streaming resource thresholds."
+      ],
+      "next_action": "Move resource choices into resolved prefill plan with ordinary/packed metadata migration, preserving malformed-value errors and fallback.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -1884,16 +2035,19 @@
           "hipengine/runtime/qwen35_paro_runner.py:150-155 defines HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION, _STREAMING_MIN_TOKENS, _LOW_MEMORY_TOTAL_GIB and _ORACLE_RESERVE_MIB",
           "hipengine/runtime/qwen35_paro_runner.py reads these as ambient environment values during prefill planning"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0281-SAMPLER / R0508 — Native placement rollback and algorithm controls",
       "ledger_line": 1552,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:14210 still reads native sampler placement flag."
+      ],
+      "next_action": "Inventory profiler/generator/capabilities consumers and migrate placement comparison into owned sampler policy or document supported diagnostics without changing RNG algorithm.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1903,16 +2057,19 @@
           "hipengine/generation/qwen35_paro.py, hipengine/server/api.py and scripts/gguf_native_sampler_gate.py also read it",
           "tests/test_unit_gguf_native_sampler_default.py and tests/test_unit_gguf_sampled_prefill_owner.py pin current behavior"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0281-MOE-GRAPH — Scalar per-layer graph diagnostic ownership",
       "ledger_line": 1571,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:9231,11509,14107,25741 retains scalar graph session lifecycle."
+      ],
+      "next_action": "Coordinate unchained policy with R0281-TAIL-RMS, retain or retire actual GGUF comparison wiring only after callers migrate; leave standalone cache primitives intact.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1922,16 +2079,19 @@
           "hipengine/runtime/qwen35_gguf_runner.py:11704 _env_flag default False; :14158 keeps the per-layer graph handle",
           "tests/test_live_qwen35_gguf_moe_graph_parity.py and tests/test_unit_qwen35_gguf_moe_tail_next_rms_routing.py pin routing"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0281-DENSE-Q8 — Verifier sidecar placement and compatibility controls",
       "ledger_line": 1588,
       "owner": "`hipengine/loading/qwen35_gguf_materialize.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/loading/qwen35_gguf_materialize.py:103-104,1211-1220 still reads raw-sidecar and all-projection placement controls."
+      ],
+      "next_action": "Create explicit load/route comparison policy and migrate normal verifier versus resident-draft callers separately, preserving requested arithmetic comparisons.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1941,16 +2101,19 @@
           "hipengine/loading/qwen35_gguf_materialize.py:1206-1220 parses the sidecar/all policy",
           "hipengine/runtime/qwen35_gguf_runner.py:9496/9506 and :11193 read DENSE_Q8_DP4A_ALL and VERIFY_F32_LINEAR_PROJECTIONS"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0281-DRAFT-DENSE-Q8 / R0303 — Resident draft stage-policy migration",
       "ledger_line": 1607,
       "owner": "`hipengine/speculative/mtp_resident_draft.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/speculative/mtp_resident_draft.py:128,276-296 parses stage-specific dense-Q8 choices and validates domains."
+      ],
+      "next_action": "Move stage policy into draft constructor/cache identity and migrate bench/profiler/suite metadata without turning comparisons into default float reruns.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1960,16 +2123,19 @@
           "hipengine/speculative/mtp_resident_draft.py:276-296 parses stage names and raises on unknown stages",
           "scripts/gguf_mtp_bench.py and scripts/gguf_mtp_draft_rocprof.py still write the env"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0281-DRAFT-X8 / R0294–R0298 — Resident Q6 top-1 arithmetic, layout and sidecar ownership",
       "ledger_line": 1626,
       "owner": "`hipengine/speculative/mtp_resident_draft.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/speculative/mtp_resident_draft.py:628-635 distinguishes top1 layout/scheduler and pack16 divisibility; 711-717 owns x8 storage."
+      ],
+      "next_action": "Unify draft layout/activation/scheduler/sidecar ownership in local plan and migrate all named comparisons, keeping NextN and target uploads separate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1979,16 +2145,19 @@
           "hipengine/speculative/mtp_resident_draft.py:632 enumerates pack8/pack16/pack8_llama/pack8_scalehoist/row/x8/x8_dscale",
           "hipengine/loading/qwen35_gguf_materialize.py:105 defines HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0313 / R0314 / R0315 / R0316 / R0318 / R0320 — Laguna legacy MMQ selector migration",
       "ledger_line": 1650,
       "owner": "`hipengine/runtime/laguna_moe.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/laguna_moe.py:184-206,249-259 still lists legacy rowvec/doublebuf modes."
+      ],
+      "next_action": "Migrate numerical comparison harnesses to explicit primitives and update resolver/fusion/config tables; missing Laguna weights only block final model/public validation.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -1998,16 +2167,19 @@
           "hipengine/runtime/laguna_moe.py:4076/4195/4198/4206 still map the legacy names to kernels",
           "scripts/laguna_prefill_production_publication.py:64/128-139 still references the legacy publication names"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0319 — Laguna serial compaction comparison ownership",
       "ledger_line": 1673,
       "owner": "`hipengine/runtime/laguna_moe.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/laguna_group_compact_parallel_ab.py:28 still names serial_rollback; hipengine/runtime/laguna_moe.py:219-220 keeps serial and parallel modes."
+      ],
+      "next_action": "Migrate serial comparison to explicit primitive ownership before selector removal; preserve distinct historical result parsing and strict oracle.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -2016,16 +2188,19 @@
           "scripts/laguna_group_compact_parallel_ab.py:28 maps serial_rollback -> serial and :66 calls child.set_group_compact_mode",
           "hipengine/runtime/laguna_moe.py:397 resolve_laguna_group_compact_mode still accepts serial/parallel"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0375/R0376 — gfx1151 pack8 comparison-control ownership",
       "ledger_line": 1689,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/qwen35_08b_cumulative_semantic.py:35-80 still writes pack8 controls; current gguf_linear dispatch retains the bulk controls alongside X6/X8."
+      ],
+      "next_action": "Merge this migration unit with R0214/R0215 to introduce scoped pack8/bulk/paired policies, move threshold/probe consumers and test role restoration before public checks.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -2035,16 +2210,19 @@
           "scripts/qwen35_08b_cumulative_semantic.py and scripts/qwen35_08b_threshold_sweep.py still drive the controls",
           "tests/test_unit_qwen35_08b_threshold_environment.py and tests/test_unit_qwen35_08b_cumulative_semantic.py pin them"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0373/R0374 — Maple fused decode efficiency and selector retirement",
       "ledger_line": 1707,
       "owner": "`hipengine/runtime/maple.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/maple.py:100-109 retains separate opt-in MoE and QK-attention fusion selectors."
+      ],
+      "next_action": "Profile each fusion independently before repair or explicitly retire experimental runtime wiring while preserving strict unfused primitives; do not combine two decisions.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -2053,16 +2231,19 @@
           "hipengine/runtime/maple.py:100-109 gates HIPENGINE_MAPLE_FUSE_MOE and HIPENGINE_MAPLE_FUSE_QKATTN, both opt-in",
           "tests/test_gpu_maple_runtime.py and scripts/maple_c1_bench.py exercise both selectors"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0368 — LC-D3 global geometry diagnostics and unused repair separation",
       "ledger_line": 1726,
       "owner": "`scripts/laguna_global_issue_diagnostic.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/laguna_global_issue_diagnostic.py is the current geometry comparison owner."
+      ],
+      "next_action": "Inventory geometry symbol consumers, separate dead repair/mask reporting from shared production merge and preserve exact partial storage/arithmetic.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -2072,16 +2253,19 @@
           "tests/test_unit_laguna_global_geometry_references.py and tests/test_unit_laguna_global_issue_comparison.py pin the references",
           "tests/test_gpu_laguna_kv_attention.py covers the GPU leaf"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0367 — Selected gate/up halfdot and exact-teacher ownership",
       "ledger_line": 1745,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/laguna_gguf_runner.py:3006,3228-3235 retains selected halfdot rollback."
+      ],
+      "next_action": "Move exact-teacher candidate/repeat selectors into owned diagnostic kernel plan and migrate correctness harness together; keep default halfdot and wider-row exact fallback.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -2091,16 +2275,19 @@
           "hipengine/runtime/laguna_gguf_runner.py:6360 forwards it to the selected projection",
           "tests/test_unit_laguna_halfdot_reference.py and tests/test_unit_laguna_scalar_q_retirement.py pin the reference"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0354 — Paired expert cache and ordinary-layout migration",
       "ledger_line": 1765,
       "owner": "`hipengine/loading/laguna_gguf_materialize.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/loading/laguna_gguf_materialize.py:60 still writes laguna-repacked-v1; 1044-1138 interleaves tiles_dual at load time."
+      ],
+      "next_action": "Add versioned paired cache payload/writer/open/reload tests with no duplicate matrices, migrate direct manifest readers and preserve raw/partial/ordinary comparison loading.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -2110,16 +2297,19 @@
           "hipengine/loading/laguna_gguf_materialize.py:1079-1109 reads gate/up 'tiles' and interleaves them at load time",
           "scripts/laguna_q4_k_mmq_leaf_bench.py:301-304 and scripts/laguna_q4_t16_dense_dual_decode_leaf.py:124 still read manifest entries/ordinary tiles"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0353 — SWA value-tail reference ownership",
       "ledger_line": 1786,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/laguna_gguf_runner.py still owns the SWA decode session and explicit variants; docs/REFACTOR.md R0353 names reference-only build separation."
+      ],
+      "next_action": "Inspect template instantiations and generalized leaf consumers; move only diagnostic wrappers out of production build while keeping shared templates and predecessor oracles.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -2128,16 +2318,19 @@
           "hipengine/runtime/laguna_gguf_runner.py:4265-4310 exposes set_decode_swa_assume_exp, set_decode_swa_mixed32 and the mixed32_exp4/exp8/exp16/exp32 setters",
           "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py:456-515 registers value-tail and dual-tail SWA variants"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0349–R0351 — Global exp/mixed32 diagnostic migration",
       "ledger_line": 1802,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/laguna_gguf_runner.py:4265-4283 exposes attention reference setters."
+      ],
+      "next_action": "Move global exp/mixed32 public mutation and profiler/result readers to diagnostic owner; eliminate temporary field-policy mutation only after reference selectors migrate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -2146,16 +2339,19 @@
           "hipengine/runtime/laguna_gguf_runner.py:4319-4337 set_decode_global_assume_exp/exp32/mixed32",
           "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py:232-281 registers global mixed32/exp32 variants"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0343–R0348 — SWA issue-schedule diagnostic migration",
       "ledger_line": 1819,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/laguna_gguf_runner.py:4265-4283 retains SWA issue comparison setters."
+      ],
+      "next_action": "Consolidate six SWA reference selectors and profiler readers under diagnostic owner with restoration tests, preserving generic and peer-backend routes.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -2164,16 +2360,19 @@
           "hipengine/runtime/laguna_gguf_runner.py:4274-4310 set_decode_swa_mixed32/exp4/exp8/exp16/exp32",
           "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py:387-435 registers SWA mixed32/exp variants"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0341 — Laguna natural tile8 diagnostic ownership",
       "ledger_line": 1837,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/laguna_gguf_runner.py:3003-3005,3201-3226 retains natural tile8 control independently of interleaved layout."
+      ],
+      "next_action": "Migrate constructor/setter and profiler comparison to scoped owner while keeping ordinary residents distinct from dual-layout production comparison.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -2182,16 +2381,19 @@
           "hipengine/runtime/laguna_gguf_runner.py:4260 set_selected_natural_tile8_decode",
           "tests/test_unit_laguna_tile8_comparison.py and scripts/laguna_selected_natural_decode_leaf.py:192 exercise the comparison"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0340 — Source-F16 decode comparison migration and shape validation",
       "ledger_line": 1854,
       "owner": "`hipengine/runtime/f16_weight_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/f16_weight_linear.py:23,108-114 reads source-F16 decode mode and backend capability."
+      ],
+      "next_action": "Replace ambient comparison selection with scoped F16 owner and migrate profiler restore/result parsing; GPU leaf tests can run locally, full Laguna public waits for weights.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -2201,16 +2403,19 @@
           "tests/test_unit_f16_decode_shape_policy.py and tests/test_gpu_laguna_f16_projection.py cover the shape policy and projection",
           "worklog/entries/20261029... coverage map says shape repaired, comparison migration deferred"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0336 — Laguna packed-output comparison migration",
       "ledger_line": 1871,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/laguna_gguf_runner.py:2958,3474-3481 retains packed-output gate comparison."
+      ],
+      "next_action": "Move dedicated packed/generic output comparison into explicit diagnostic owner, migrate script/result consumers and preserve generic unpack/gate primitives.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -2219,7 +2424,8 @@
           "hipengine/runtime/laguna_gguf_runner.py:2958/3474 store prefill_attention_hipblaslt_packed_output_gate",
           "tests/test_unit_laguna_packed_output_comparison.py and scripts/laguna_attention_packed_output_gate_ab.py exercise the comparison"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation/caller inspection, no fresh numerical/public run. Laguna actual-weight validation depends on absent checkpoint; ownership/schema/test work can proceed independently."
     },
     {
       "title": "R0333–R0335 — Laguna Q4 P8 and sum comparison ownership",
