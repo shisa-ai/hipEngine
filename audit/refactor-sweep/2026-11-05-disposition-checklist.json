@@ -15,10 +15,13 @@
       "title": "R0023 — Preserve recovery precedence and decide held-off family repairs",
       "ledger_line": 47,
       "owner": "`hipengine/runtime/qwen4_exp_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen4_exp_profiles.py:1149-1323 now publishes owner-bound GDN, QSA and GR policy; old transport leads are stale.",
+        "docs/REFACTOR.md R0023 names independent observed arithmetic/task failures."
+      ],
+      "next_action": "Localize Q8 MMQ operand-role failure and preserve each independent family repair contract; do not repeat completed colwarp transport migration.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -29,7 +32,8 @@
           "hipengine/runtime/qwen4_exp_runner.py:5056-5073 (_qwen4_exp_gr_wide_enabled capability checks)",
           "worklog/entries/20261025T211431.150088Z-cleanup-refactor-r0023-disposition-4ea5e1.md (MoE reopen condition = fix divergent task outputs, not performance)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0030 — Decide router-selection semantics before reopening warp arithmetic",
@@ -130,10 +134,13 @@
       "title": "R0039 — Separate multi-column GDN capability from composition task review",
       "ledger_line": 139,
       "owner": "`hipengine/runtime/qwen4_exp_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "benchmarks/results/2026-09-15-journey-gdn-multi-restoration/task-review.json:6-28 separates passing numerics from misleading native-INT8 task output.",
+        "hipengine/generation/qwen4_exp_profiles.py:1815-1840 publishes the owned tile16 variant."
+      ],
+      "next_action": "Inspect complete task outputs and choose a concrete revised-composition repair or record rejection; preserve the working multi-column primitive. No owner migration remains merely because old audit says so.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -143,16 +150,21 @@
           "hipengine/runtime/qwen4_exp_runner.py:8565 (tile16 variant env read)",
           "hipengine/generation/qwen4_exp_profiles.py:1368, :1565 (binder publishes the tile16 variant)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0060 — Bind historical dense serving evidence when its artifact is available",
       "ledger_line": 159,
       "owner": "`hipengine/models/qwen35.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/models/qwen35.py:86-115 still names historical qwen36-dense serving evidence.",
+        "worklog/entries/20261026T070317.847391Z-cleanup-refactor-r0060-61ff7b.md says historical identity requires artifact verification.",
+        "Local model directory contains Qwen3.8-27B artifacts but no named Qwen3.6 dense checkpoint."
+      ],
+      "next_action": "Inspect historical artifact paths and recorded digests to establish whether the original bytes remain accessible; only after verifying absence classify as artifact blocked. Never substitute the current Qwen3.8 artifact.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "evidence_binding",
@@ -162,7 +174,8 @@
           "scripts/gguf_execution_identity.py (exists)",
           "worklog/entries/20261026T070317.847391Z-cleanup-refactor-r0060-61ff7b.md (identity reconstruction contingent on verifying the actual historical artifact)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0058 — Decide dormant ordered-pair redesign and Q3/Q3 capability",
@@ -192,10 +205,14 @@
       "title": "R0057 — Repair gfx1151 compact attention wave producer",
       "ledger_line": 197,
       "owner": "`hipengine/kernels/hip_gfx1100/attention/dms_compact.hip`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/kernels/hip_gfx1100/attention/dms_compact.py:45-59 enables group6 only on gfx1100, keeping generic on gfx1151.",
+        "worklog/entries/20260926T140616.347941Z-main-dms-producer-control-183661.md records wave failure and dense-injection localization, not a proved race.",
+        "Local KFD topology reports gfx_target_version 110501."
+      ],
+      "next_action": "Trace matched wave/generic arithmetic and operands on gfx1151 before making a targeted repair; keep the passing generic default during evaluation.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -205,16 +222,20 @@
           "docs/testing/dms-gfx1151-no-evict-control.json (wave, dense-injection, shipping arms)",
           "hipengine/kernels/hip_gfx1151/ (wave-group6 build define and compact attention producer)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0051 — Review backend decode and strict attention scope ownership",
       "ledger_line": 209,
       "owner": "`hipengine/generation/gemma4_profiles.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/gemma4_profiles.py:21-77 describes distinct decode/exact-prefill/prefill scopes and strict unbound prefill.",
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:1635-1687 declares distinct registry layers."
+      ],
+      "next_action": "Inventory selector precedence across all four phases on both backends and choose a coherent scope contract before implementation; do not assume the heading requires human product input.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -224,16 +245,20 @@
           "hipengine/generation/gemma4_gguf_profiles.py:44 (PREFILL_ATTENTION_PLAIN = gemma4_plain)",
           "hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.py:1600-1635 (plain kernel and per-layer capability routing)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0041 — PLE mapping-advice diagnostic retirement",
       "ledger_line": 221,
       "owner": "`hipengine/generation/qwen4_exp_profiles.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen4_exp_profiles.py:1374-1383 selects random mapping for production and preserves explicit normal rollback.",
+        "hipengine/loading/qwen4_exp_materialize.py:485 defines the table mapping-advice API."
+      ],
+      "next_action": "Verify remap/warming/cold-unique behavior, then retire only redundant diagnostic transport while preserving explicit table API and normal fallback.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -243,16 +268,21 @@
           "tests/test_unit_qwen4exp_ple_mapping_policy.py:85-121 (normal/default/delenv cases)",
           "benchmarks/results/2026-09-14-journey-ple/ (mapping-advice evidence)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0080 — Candidate-budget compatibility alias deprecation",
       "ledger_line": 232,
       "owner": "`hipengine/speculative/candidate_budget.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "human_decision_required",
+      "evidence": [
+        "hipengine/speculative/candidate_budget.py:1-65 implements exact-depth legacy resolution and FutureWarning, with conflict checks.",
+        "docs/ENVS.md:194,335 documents the transition.",
+        "worklog/entries/20261031T202425.449059Z-cleanup-refactor-r0080-deprecation-ab53a8.md records implemented deprecation; current scripts contain no legacy writer."
+      ],
+      "next_action": "Specify the release or compatibility interval after which the documented alias may be removed. Until then preserve warning and exact requested depth; mere elapsed local commits do not prove users received the transition.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -262,16 +292,20 @@
           "hipengine/server/__main__.py:412-413 (legacy alias accepted with a warning)",
           "tests/test_integration_server_speculative_provider.py:375-428 (alias/conflict cases)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0196 — gfx1100 dense SPECDEC2 C8 physical-width rollback",
       "ledger_line": 248,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "Local KFD topology has one GPU, gfx_target_version 110501, not gfx1100.",
+        "hipengine/generation/qwen35_gguf.py:534-561 retains explicit physical-width resolution."
+      ],
+      "next_action": "Run the R0196 public C5/C8 D1/D24 matrix on a gfx1100 host; local gfx1151 execution cannot establish the requested physical owner.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -280,16 +314,20 @@
           "worklog/entries/20261027T155317.132024Z-cleanup-refactor-r0196-f93861.md (override removed from admission and adapter construction)",
           "worklog/entries/20261027T163913.377040Z-cleanup-refactor-r0198-public-matrix-723a3e.md (the same host is gfx1151, so C5/C8 gfx1100 evidence is still absent)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0199 — gfx1100 fused Q4-T16 prefill row-retile bisection",
       "ledger_line": 259,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py:3438-3480 keeps capability-selected row48/64/128 and parent fallback.",
+        "Local KFD topology has only gfx1151."
+      ],
+      "next_action": "Run defaults-only gfx1100 C1-C3 public row-band engagement/state/lifecycle matrix; preserve current registered route.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -298,16 +336,20 @@
           "worklog/entries/20261027T160304.614159Z-cleanup-refactor-r0199-6b7f73.md (env/cache removed, bounded backend selection preserved)",
           "hipengine/runtime/gguf_linear.py (_Q4_T16_DUAL_WMMA_SILU_MIN_ROWS and row-band selection)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0200 — gfx1100 Q4-T16 row64 down-projection bisection",
       "ledger_line": 270,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py retains backend-owned rowtile policy; no row64 environment selector found in the current rowtile chain.",
+        "Local KFD topology has only gfx1151."
+      ],
+      "next_action": "Run R0200 public same-protocol (17408,5120), rows33-192 repeat on gfx1100 with launch trace and full output/state/teardown checks.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -316,16 +358,20 @@
           "worklog/entries/20261027T160757.885029Z-cleanup-refactor-r0200-422bb0.md (redundant row64 env cap removed; backend shape/range policy authoritative)",
           "hipengine/runtime/gguf_linear.py (Q4-T16 down row-band selection)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0202 — SPECDEC2 dense NextN host/device proposal duplication",
       "ledger_line": 280,
       "owner": "`hipengine/runtime/qwen35_gguf_nextn.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_nextn.py:1236 implements one hidden transition; adapters call it at 1400 and 1605.",
+        "Local Qwen dense GGUF artifacts exist and gfx1151 is available; the ledger does not restrict this validation to gfx1100."
+      ],
+      "next_action": "Inspect current public NextN tests and run the missing device accept/commit, eager/graph and cancellation coverage without duplicating already passing ownership tests.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -335,16 +381,20 @@
           "tests/test_unit_nextn_batch_transition.py",
           "worklog/entries/20261027T161809.092938Z-cleanup-refactor-r0202-12f6f8.md (one physical batched NextN transition for host and device adapters)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0067 — Dense prefix retention budget",
       "ledger_line": 290,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "human_decision_required",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:403-434 documents max(1,capacity), state-byte limits and pinned KV exclusion.",
+        "worklog/entries/20261026T074503.428776Z-cleanup-refactor-prefix-storage-e52cff.md records eviction repair complete and remaining default as a lead memory/reuse choice."
+      ],
+      "next_action": "Should dense prefix retention remain capacity-sized or use a wider default working set? If wider, specify snapshot count and state-byte ceiling, accounting separately for retained KV pages.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -354,16 +404,21 @@
           "hipengine/generation/qwen35_gguf.py:415-416 (snapshot and state-byte envs)",
           "hipengine/runtime/qwen4_exp_prefix_cache.py:48 (state-byte limit consumer)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0249/R0250 — Laguna public cache-owner validation",
       "ledger_line": 303,
       "owner": "`scripts/laguna_public_correctness.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "scripts/laguna_public_correctness.py:17-28 names the checkpoint and selectable backend.",
+        "Current inventory: no Laguna weight file in ~/models/gguf or ~/models/hf; only ~/models/hf/laguna-s-2.1-tokenizer exists; LAGUNA_MODEL is unset.",
+        "hipengine/kernels/hip_gfx1151/policy_laguna.py:175-185 enables packed queries, direct producer and wave softmax; line 316 selects range-direct."
+      ],
+      "next_action": "Provide an accessible Laguna checkpoint and run this section’s public gate with route attribution, parity and cleanup. R0249/R0250 and R0248 additionally require a gfx1100 host; gfx1151 checks can run here once weights exist.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -373,16 +428,21 @@
           "worklog/entries/20261027T074253.906360Z-cleanup-refactor-r0249-r0250-7c9bde.md (opt-outs removed; public owner verification blocked by the unavailable checkpoint)",
           "local inventory: ~/models/gguf has no laguna file; only ~/models/hf/laguna-s-2.1-tokenizer exists"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0273 — Laguna public packed-query validation",
       "ledger_line": 317,
       "owner": "`scripts/laguna_public_correctness.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "scripts/laguna_public_correctness.py:17-28 names the checkpoint and selectable backend.",
+        "Current inventory: no Laguna weight file in ~/models/gguf or ~/models/hf; only ~/models/hf/laguna-s-2.1-tokenizer exists; LAGUNA_MODEL is unset.",
+        "hipengine/kernels/hip_gfx1151/policy_laguna.py:175-185 enables packed queries, direct producer and wave softmax; line 316 selects range-direct."
+      ],
+      "next_action": "Provide an accessible Laguna checkpoint and run this section’s public gate with route attribution, parity and cleanup. R0249/R0250 and R0248 additionally require a gfx1100 host; gfx1151 checks can run here once weights exist.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -391,16 +451,21 @@
           "scripts/laguna_public_correctness.py (backend flag; gfx1151 default)",
           "worklog/entries/20261027T075235.718078Z-cleanup-refactor-r0273-09b19c.md ('implementation is complete; public Laguna verification remains deferred')"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0275 — Laguna public softmax-owner validation",
       "ledger_line": 330,
       "owner": "`hipengine/kernels/hip_gfx1151/`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "scripts/laguna_public_correctness.py:17-28 names the checkpoint and selectable backend.",
+        "Current inventory: no Laguna weight file in ~/models/gguf or ~/models/hf; only ~/models/hf/laguna-s-2.1-tokenizer exists; LAGUNA_MODEL is unset.",
+        "hipengine/kernels/hip_gfx1151/policy_laguna.py:175-185 enables packed queries, direct producer and wave softmax; line 316 selects range-direct."
+      ],
+      "next_action": "Provide an accessible Laguna checkpoint and run this section’s public gate with route attribution, parity and cleanup. R0249/R0250 and R0248 additionally require a gfx1100 host; gfx1151 checks can run here once weights exist.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -409,16 +474,21 @@
           "worklog/entries/20261027T075909.952556Z-cleanup-refactor-r0275-567ba2.md (retirement condition implemented; public owner engagement deferred for the checkpoint)",
           "hipengine/kernels/hip_gfx1151/ (wave-per-row softmax selection)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0274 — Laguna public packed-query producer validation",
       "ledger_line": 341,
       "owner": "`scripts/laguna_public_correctness.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "scripts/laguna_public_correctness.py:17-28 names the checkpoint and selectable backend.",
+        "Current inventory: no Laguna weight file in ~/models/gguf or ~/models/hf; only ~/models/hf/laguna-s-2.1-tokenizer exists; LAGUNA_MODEL is unset.",
+        "hipengine/kernels/hip_gfx1151/policy_laguna.py:175-185 enables packed queries, direct producer and wave softmax; line 316 selects range-direct."
+      ],
+      "next_action": "Provide an accessible Laguna checkpoint and run this section’s public gate with route attribution, parity and cleanup. R0249/R0250 and R0248 additionally require a gfx1100 host; gfx1151 checks can run here once weights exist.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -427,16 +497,21 @@
           "worklog/entries/20261027T080553.662334Z-cleanup-refactor-r0274-158dd3.md (production producer override removed; separate output-gate diagnostic kept)",
           "scripts/laguna_public_correctness.py"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0248 — Laguna public cache regression after H7Y retirement",
       "ledger_line": 352,
       "owner": "`scripts/laguna_public_correctness.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "scripts/laguna_public_correctness.py:17-28 names the checkpoint and selectable backend.",
+        "Current inventory: no Laguna weight file in ~/models/gguf or ~/models/hf; only ~/models/hf/laguna-s-2.1-tokenizer exists; LAGUNA_MODEL is unset.",
+        "hipengine/kernels/hip_gfx1151/policy_laguna.py:175-185 enables packed queries, direct producer and wave softmax; line 316 selects range-direct."
+      ],
+      "next_action": "Provide an accessible Laguna checkpoint and run this section’s public gate with route attribution, parity and cleanup. R0249/R0250 and R0248 additionally require a gfx1100 host; gfx1151 checks can run here once weights exist.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -445,16 +520,21 @@
           "worklog/entries/20261027T081802.910778Z-cleanup-refactor-r0248-ff4cba.md (rejected H7Y candidate removed; promoted H6Z/H6W kept)",
           "scripts/laguna_public_correctness.py"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0276 — Public Q4/Q6 tile-policy validation",
       "ledger_line": 363,
       "owner": "`tests/test_unit_q6_wmma_tile_retirement.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "scripts/laguna_public_correctness.py:17-28 names the checkpoint and selectable backend.",
+        "Current inventory: no Laguna weight file in ~/models/gguf or ~/models/hf; only ~/models/hf/laguna-s-2.1-tokenizer exists; LAGUNA_MODEL is unset.",
+        "hipengine/kernels/hip_gfx1151/policy_laguna.py:175-185 enables packed queries, direct producer and wave softmax; line 316 selects range-direct."
+      ],
+      "next_action": "Provide an accessible Laguna checkpoint and run this section’s public gate with route attribution, parity and cleanup. R0249/R0250 and R0248 additionally require a gfx1100 host; gfx1151 checks can run here once weights exist.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -464,16 +544,21 @@
           "worklog/entries/20261027T082533.919957Z-cleanup-refactor-r0276-q6-26aa27.md, worklog/entries/20261027T083234.102496Z-cleanup-refactor-r0276-q4-10c6c0.md, worklog/entries/20261027T083855.670345Z-cleanup-refactor-r0276-session-d37b24.md (Q6 env, Q4 env and dense-Q4 setter removed)",
           "hipengine/kernels/hip_gfx1100/quant/ (Q6/Q4 WMMA tile selection)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0271 — Scaled F16 comparison retention and public validation",
       "ledger_line": 376,
       "owner": "`scripts/laguna_grouped_down_category_bench.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "scripts/laguna_public_correctness.py:17-28 names the checkpoint and selectable backend.",
+        "Current inventory: no Laguna weight file in ~/models/gguf or ~/models/hf; only ~/models/hf/laguna-s-2.1-tokenizer exists; LAGUNA_MODEL is unset.",
+        "hipengine/kernels/hip_gfx1151/policy_laguna.py:175-185 enables packed queries, direct producer and wave softmax; line 316 selects range-direct."
+      ],
+      "next_action": "Provide an accessible Laguna checkpoint and run this section’s public gate with route attribution, parity and cleanup. R0249/R0250 and R0248 additionally require a gfx1100 host; gfx1151 checks can run here once weights exist.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -483,16 +568,21 @@
           "worklog/entries/20261027T084538.963153Z-cleanup-refactor-r0271-validation-54bd0b.md (range-direct layout/range validation defect repaired)",
           "worklog/entries/20261027T085524.959572Z-cleanup-refactor-r0271-setter-e47c31.md, worklog/entries/20261027T090221.199576Z-cleanup-refactor-r0271-norm-f6930c.md (runtime setter and norm-direct execution removed)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing evidence inspection. Device topology and immediate documented model directories checked; no remote inventory, recursive model search, new kernel run or performance measurement."
     },
     {
       "title": "R0001 — PARO verifier graph regression",
       "ledger_line": 391,
       "owner": "`tests/test_live_paro_mtp_graph.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "benchmarks/results/2026-10-24-gfx1151-paro-graphs/NOTES.md documents a repeated regression and reproduction, not an external dependency.",
+        "tests/test_live_paro_mtp_graph.py:48-110 checks explicit replay, output and state against the eager default.",
+        "hipengine/generation/qwen35_paro.py:2573 retains graph availability policy."
+      ],
+      "next_action": "Inspect graph-binding/replay overhead against the archived profile and implement a concrete changed candidate before repeating the registered comparison. A not-yet-written repair is work, not a blocker.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -502,16 +592,20 @@
           "benchmarks/results/2026-10-24-gfx1151-paro-graphs/reproduce_graph_candidate.py, validate_graph.py",
           "tests/test_live_paro_mtp_graph.py"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0165 — Public physical GDN wave-reduction validation",
       "ledger_line": 405,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0165 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -520,16 +614,20 @@
           "tests/test_gpu_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_segments_state_rows_wave_reduce_is_parent_bit_exact (existing numerical gate)",
           "hipengine/runtime/qwen35_gguf_runner.py (physical GDN state-row wave-reduce selection)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0166 — Public physical Q4 rowtile validation",
       "ledger_line": 418,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0166 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -538,16 +636,20 @@
           "tests/test_gpu_gguf_q4_k_t16_dense.py::test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain_at_production_shape (independent numerical gate)",
           "hipengine/runtime/gguf_linear.py (row48 fused pair selection)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0168 — Public grouped Q4 active-slot validation",
       "ledger_line": 431,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0168 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -556,16 +658,20 @@
           "tests/test_gpu_gguf_t16_selected_gemv_decode.py::test_q4_t16_dense_rowtile16_w2_grouped_rows8_matches_grouped_rows6_bits (separate numerical gate)",
           "hipengine/runtime/gguf_linear.py (grouped R8/R6 decode selection)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0169 — Public exact C7 target-row validation",
       "ledger_line": 444,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0169 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -573,16 +679,20 @@
         "evidence": [
           "hipengine/runtime/qwen35_gguf_runner.py (exact-target-row policy and R28/R30 selection)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0170 — Public source-Q5 MMQ validation",
       "ledger_line": 455,
       "owner": "`tests/test_gpu_gguf_q5_k_mmq_wmma_prefill.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "tests/test_gpu_gguf_q5_k_mmq_wmma_prefill.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0170 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -591,16 +701,20 @@
           "tests/test_gpu_gguf_q5_k_mmq_wmma_prefill.py::test_c8_q5_i64_j32_source_mmq_passes_production_outer_floor (separate numerical gate)",
           "hipengine/kernels/hip_gfx1100/quant/ (source-Q5 MMQ owner)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0171 — Public raw-Q5 sidecar and route validation",
       "ledger_line": 468,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0171 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -608,16 +722,20 @@
         "evidence": [
           "hipengine/runtime/qwen35_gguf_runner.py (raw-Q5 sidecar ownership and workspace admission)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0172 — Public grouped Q5 C8 validation",
       "ledger_line": 479,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0172 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -626,16 +744,20 @@
           "tests/test_gpu_gguf_t16_selected_gemv_decode.py::test_q5_t16_grouped_rows8_matches_repeated_rows8_bits (direct numerical gate)",
           "hipengine/runtime/gguf_linear.py (grouped Q5 R8 decode selection)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0174 — Public exact C8 target-row validation",
       "ledger_line": 492,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0174 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -643,16 +765,20 @@
         "evidence": [
           "hipengine/runtime/qwen35_gguf_runner.py (exact-target-row C8 policy and fused row32 owner)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0176 / R0394 — Public direct resident verifier validation",
       "ledger_line": 503,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0176 / R0394 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -662,16 +788,20 @@
           "tests/test_unit_gguf_packed_verify_layout.py (layout state-index coverage)",
           "worklog/entries/20261029T114932.236223Z-cleanup-refactor-r0394-direct-state-0c77b2.md (borrowed-singleton initial-state binding repaired for the captured/deferred route; legacy guard unchanged; public singleton binding not exercised)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0177 / R0292 — Public planar-Q6 chunk-policy validation",
       "ledger_line": 518,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "docs/REFACTOR.md R0177/R0292 requires both backends; local gfx1151 is available.",
+        "hipengine/runtime/gguf_linear.py still implements chunked planar-Q6 dispatch; current Qwen3.8-27B local artifacts exist."
+      ],
+      "next_action": "Locate and run the missing defaults-only gfx1151 direct/server chunk-policy refresh first. Record gfx1100 half separately as hardware-blocked; do not block the independently startable local half.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -681,16 +811,20 @@
           "tests/test_live_gguf_q6_k_t16_rowtile_gemv.py",
           "audit/refactor-sweep/2026-10-30-coverage-map.json (R0292 disposition resolved-removed: HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0178 — Public grouped Q6 mixed-row validation",
       "ledger_line": 529,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0178 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -698,16 +832,20 @@
         "evidence": [
           "hipengine/runtime/gguf_linear.py (grouped Q6 mixed-row prefix/tail selection)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0179 — Public grouped Q5 R6 validation",
       "ledger_line": 541,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0179 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -715,16 +853,20 @@
         "evidence": [
           "hipengine/runtime/gguf_linear.py (grouped Q5 R6 selection)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0180 — Public grouped Q4 R6 pair validation",
       "ledger_line": 553,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0180 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -732,16 +874,20 @@
         "evidence": [
           "hipengine/runtime/gguf_linear.py (grouped Q4 R6 pair composition)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0181 — Public grouped Q4 R6 single-owner validation",
       "ledger_line": 564,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0181 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -749,16 +895,20 @@
         "evidence": [
           "hipengine/runtime/gguf_linear.py (grouped Q4 R6 single-owner wrapper)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0182 — Public fused packed-state transfer validation",
       "ledger_line": 575,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py remains present; current runner retains wave-reduction import/selector (295,11198), layout state-index ownership (2428,20481), and source-Q5 selection (18957-18994); current linear dispatch retains grouped-row6 pair owner (3377,7787).",
+        "Local KFD topology exposes only gfx1151 (gfx_target_version 110501); this section explicitly requires gfx1100 physical execution."
+      ],
+      "next_action": "Run the exact public physical-route matrix and parent comparison in R0182 on gfx1100, recording actual launches, acceptance/state ownership and cancellation/teardown. Do not substitute gfx1151 or c1 evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -766,16 +916,20 @@
         "evidence": [
           "hipengine/runtime/qwen35_gguf_runner.py (fused packed-state transfer and per-layer parent path)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0211/R0212 — Scheduling policy and generic-default decisions",
       "ledger_line": 587,
       "owner": "`hipengine/kernels/hip_gfx1100/__init__.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "human_decision_required",
+      "evidence": [
+        "hipengine/kernels/hip_gfx1100/__init__.py:151-155 keeps fair as scoped policy and explicit protect_decode pin.",
+        "docs/REFACTOR.md R0211/R0212 names competing intended defaults, not one obvious redundant implementation."
+      ],
+      "next_action": "Choose whether scheduling policy remains supported configuration or standardizes on token_budget; separately choose generic fair versus protect_decode. Preserve backend-specific burst defaults.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -785,16 +939,20 @@
           "hipengine/generation/engine_loop.py (policy branches and CLI/env)",
           "worklog/entries/20261027T173300.955410Z-cleanup-refactor-r0211-r0212-128ecc.md"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0213 — Mirrored INT8 fallback migration and validation",
       "ledger_line": 609,
       "owner": "`hipengine/kvcache/dense.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:2989 still handles bf16_mirror plans and lines 7891-7892 report persistent mirror ownership.",
+        "hipengine/kvcache/dense.py:51-66 distinguishes no-mirror capability explicitly."
+      ],
+      "next_action": "Inventory live mirrored consumers and run the local gfx1151 direct/mirrored lifecycle matrix using current planner accounting; migrate genuine consumers before deleting anything. Track gfx1100 validation separately.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -804,16 +962,20 @@
           "hipengine/runtime/gguf_native_spec_cycle.py:839-840 (full_bf16_mirror_key/value_caches)",
           "worklog/entries/20261027T173803.625903Z-cleanup-refactor-r0213-f079e8.md (mirrored allocation, copies, dispatch and registered single-row fallbacks remain intact)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0214/R0215 / R0378 — Cumulative-semantic rollback-control migration",
       "ledger_line": 625,
       "owner": "`hipengine/kernels/hip_gfx1100/__init__.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/qwen35_08b_cumulative_semantic.py:30-80 still defines bulk/X6/X8 environment arms.",
+        "hipengine/runtime/gguf_linear.py:5740,6633-6646,9350,9625 still reads production env controls/cache dimension."
+      ],
+      "next_action": "Implement scoped diagnostic overrides with exception-safe restore and migrate harness/threshold tests now; missing 0.8B checkpoints defer public numerical engagement only, not this control migration.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -823,16 +985,20 @@
           "hipengine/kernels/hip_gfx1100/__init__.py (HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL, HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL, HIPENGINE_GGUF_DENSE_WMMA_BULK readers)",
           "worklog/entries/20261029T063009.044590Z-cleanup-refactor-r0378-dense-wmma-35a284.md"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0217 — PM4 diagnostic controls and transport rollback",
       "ledger_line": 646,
       "owner": "`scripts/pm4_graph_bench.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/pm4_graph_bench.py:43-53,373-387 retains distinct timestamp and stateful modes.",
+        "docs/REFACTOR.md R0217 permits naming retained diagnostic ownership instead of removing functioning comparisons."
+      ],
+      "next_action": "Inspect active lifecycle/graph callers and record retained diagnostic ownership or remove only demonstrably unused options. Keep the gfx1100 lifecycle investigation separate from locally possible interface disposition.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -842,16 +1008,20 @@
           "tests/test_unit_pm4_graph_bench.py, tests/test_unit_pm4_transport.py, tests/test_unit_pm4_lifecycle_repro.py (all exist)",
           "hipengine/ (HIPENGINE_SUBMISSION_TRANSPORT reader)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0219 — Source-F16 packed-prefill integration and rollback decision",
       "ledger_line": 664,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "worklog/entries/20261031T190151.817522Z-lhl-r0219-k16-accumulation-eecd1d.md records completed incremental parent and public gfx1151 checks, explicitly not strict certification.",
+        "docs/REFACTOR.md R0219 still requires named-strict/task gates and separate gfx1100 public matrix."
+      ],
+      "next_action": "Identify missing named-strict/task checks on gfx1151 and run those without repeating K16 localization. Track gfx1100 shape matrix as hardware dependency rather than blocking the local profile work.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -861,7 +1031,8 @@
           "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.py:504-586 (q6_f16 owners)",
           "hipengine/runtime/qwen35_gguf_prefill_plan.py (q6_f16_* plan entries)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and archived-evidence inspection with local device/model inventory; no fresh device/public validation. Hardware-specific entries are not claims of broken runtime capability."
     },
     {
       "title": "R0220 — Dense gfx1151 source-F16 scratch reuse",
