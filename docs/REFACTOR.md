@@ -998,8 +998,10 @@ tests cover each independent opt-out and backend-default preservation.
 and the shared pair independently at runtime; preserve coefficient-publication and
 pack8 routes, multi-row/shape/key fallbacks and backend defaults. Run the corresponding
 primitive GPU comparisons and R0249/R0250's public generation/lifecycle gate.
-Host Q5 control, runner, target-AR, SWAR-pair and mixed-pair unit tests pass, but
-constructor forwarding is not primitive arithmetic or actual-weight route evidence.
+Host Q5 control, runner, target-AR, SWAR-pair and mixed-pair unit tests pass.
+The gfx1151 fixed-metadata singleton and BF16/F32 shared-pair primitive comparisons
+also pass against independent references. Actual-weight route engagement still
+requires the Laguna checkpoint; gfx1100 checks require that hardware.
 
 ### R0281-MIXED — Mixed-projection comparison levels
 

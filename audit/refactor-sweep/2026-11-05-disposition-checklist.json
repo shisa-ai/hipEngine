@@ -1425,12 +1425,12 @@
       "ledger_line": 1005,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "scripts/laguna_target_ar_bench.py:259-264,721-724,861-862 passes and reports fixed-meta choices at both construction sites.",
         "hipengine/runtime/laguna_gguf_runner.py:2987-2988,3131-3141 retains these independent controls."
       ],
-      "next_action": "Constructor-owned Q5 diagnostics retained; both target-AR sites share forwarding helper with independent controls and unchanged effective result fields. Host tests cover metadata on/off query-gate pair binding and independent opt-outs. Remaining primitive GPU comparisons are locally startable; actual-weight public gate requires Laguna checkpoint. See worklog/entries/20261105T200030.523793Z-lhl-q5-metadata-ownership-010996.md.",
+      "next_action": "Constructor-owned Q5 diagnostics retained; shared target-AR forwarding and independent host bindings pass. gfx1151 fixed-metadata singleton and BF16/F32 shared-pair primitive comparisons pass. Actual-weight public query-gate/shared-pair engagement requires Laguna checkpoint; gfx1100 validation requires hardware. See worklog/entries/20261105T200324.954343Z-lhl-q5-metadata-device-00463d.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -5037,8 +5037,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 171,
-    "concrete_dependency_blocker": 50,
+    "locally_actionable": 170,
+    "concrete_dependency_blocker": 51,
     "human_decision_required": 6,
     "completed": 5,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."
