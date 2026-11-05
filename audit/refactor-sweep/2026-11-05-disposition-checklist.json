@@ -2758,11 +2758,12 @@
       "ledger_line": 2149,
       "owner": "`scripts/gguf_mtp_bench.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "scripts/gguf_mtp_bench.py:637-706 has separate root/sibling acceptance algorithms and errors."
+        "Retain explicit benchmark linear/tree and vocabulary-recovery comparisons, separate from public provider. No policy/runtime/default change.",
+        "704 acceptance/recovery/parser/suite/workbench/category contracts pass; worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md."
       ],
-      "next_action": "Move proposal/recovery policy to explicit experiment owner with suite/workbench provenance, keeping standalone defaults and exact branch repair semantics.",
+      "next_action": "None; preserve standalone defaults and explicit proposal/recovery artifact provenance.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

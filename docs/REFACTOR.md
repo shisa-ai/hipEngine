@@ -1891,28 +1891,8 @@ tree primitives or changing public admission. A migration must cover reload/pers
 selection, confidence and active budget boundaries, sibling acceptance/selected hidden and KV
 repair, graph bindings and tail padding. Keep the shared compiler/mask/acceptance oracles and
 confirm public chain routing stays unchanged. The corresponding GGUF root/sibling acceptance policy
-is separately owned by R0281-TOPK below.
-
-### R0281-TOPK — GGUF benchmark proposal-policy ownership
-
-Owner: `scripts/gguf_mtp_bench.py`.
-
-Scope: `scripts/gguf_mtp_bench.py`.
-
-**Decision needed:** keep explicit linear/tree and vocabulary-recovery comparison policies or move
-those policies into a dedicated experiment harness with coordinated suite and parity-workbench
-callers. Do not change the standalone root default as a side effect of deleting controls or use a
-historical speed-negative tree row as a reason to disable an implemented request.
-
-Done when: migrate root/sibling limits, branch redraft and tail gates, vocabulary-recovery
-runner lifetime and AR-fallback suppression, route aliases, category forwarding and artifact
-candidate/acceptance fields together. Retain linear/mismatch/out-of-set and corrective-token
-boundary tests, branch reseed/commit and candidate counting, plus parser/suite/workbench contracts.
-Cover empty/full/partial drafts, capped miss then recovery success/failure, accepted-count threshold
-boundaries and full-width/no-recovery-runner controls. A runtime migration needs real
-linear/root/sibling/redraft and vocabulary-recovery cycles, hidden/KV/cursor, reset and close
-checks; confirm public generation is unchanged. Any new performance claim needs its own matched
-protocol, not the retired ledger row's numbers.
+is separately owned by `scripts/gguf_mtp_bench.py`; its supported-comparison disposition is recorded
+in `worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md`.
 
 ### R0281-CONTEXT — GGUF benchmark prompt priming and draft KV policy
 
