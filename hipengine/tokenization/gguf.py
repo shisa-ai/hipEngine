@@ -20,6 +20,16 @@ _QWEN35_SPLIT = (
     r"\s*[\r\n]+|\s+(?!\S)|\s+"
 )
 _LAGUNA_NEWLINE_SPLIT = r"(?:\r?\n)+(?!\r?\n)"
+# llama.cpp maps tokenizer.ggml.pre="llama4" to LLAMA_VOCAB_PRE_TYPE_GPT4O
+# (llama-vocab.cpp). This is the exact split expression that build uses, with
+# clean_spaces=false and no normalizer.
+_MUSE_GLIMMER_GPT4O_SPLIT = (
+    r"[^\r\n\p{L}\p{N}]?((?=[\p{L}\p{M}])([^a-z]))*((?=[\p{L}\p{M}])([^A-Z]))+"
+    r"(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|"
+    r"[^\r\n\p{L}\p{N}]?((?=[\p{L}\p{M}])([^a-z]))+((?=[\p{L}\p{M}])([^A-Z]))*"
+    r"(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|"
+    r"\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+"
+)
 # Gemma 4 GGUF tokens are SPM-style: the normalizer turns spaces into U+2581 and
 # the merges run on raw UTF-8 with no GPT-2 byte encoding. llama.cpp only splits
 # on newlines, because its BPE merge lookup asserts that no token spans one.
@@ -295,6 +305,60 @@ class LagunaGGUFTokenizer(Qwen35GGUFTokenizer):
 
 
 @dataclass
+class MuseGlimmerGGUFTokenizer(Qwen35GGUFTokenizer):
+    """GPT-2 byte-BPE with the GPT4O/llama4 split, from Muse Glimmer GGUF metadata.
+
+    The base vocabulary is a contiguous normal-token prefix followed by control
+    tokens, like qwen35, but the pre-tokenizer is llama.cpp's GPT4O expression
+    and no normalizer runs (clean_spaces=false).
+    """
+
+    _encoder_recipe: ClassVar[str] = "muse_glimmer"
+
+    bos_token_id: int | None = None
+    eot_token_id: int | None = None
+    add_bos_token: bool = False
+    chat_template: str = ""
+
+    @classmethod
+    def from_gguf_info(cls, info: GGUFModelInfo) -> "MuseGlimmerGGUFTokenizer":
+        metadata = info.metadata
+        model = metadata.get("tokenizer.ggml.model")
+        pre = metadata.get("tokenizer.ggml.pre")
+        if model != "gpt2" or pre != "llama4":
+            raise ValueError(
+                "Muse Glimmer GGUF tokenizer expected 'gpt2'/'llama4', "
+                f"got {model!r}/{pre!r}"
+            )
+        return cls(
+            tokens=tuple(str(token) for token in metadata["tokenizer.ggml.tokens"]),
+            merges=tuple(str(merge) for merge in metadata["tokenizer.ggml.merges"]),
+            token_types=tuple(int(kind) for kind in metadata["tokenizer.ggml.token_type"]),
+            bos_token_id=_optional_int(metadata.get("tokenizer.ggml.bos_token_id")),
+            eos_token_id=_optional_int(metadata.get("tokenizer.ggml.eos_token_id")),
+            eot_token_id=_optional_int(metadata.get("tokenizer.ggml.eot_token_id")),
+            padding_token_id=_optional_int(metadata.get("tokenizer.ggml.padding_token_id")),
+            add_bos_token=bool(metadata.get("tokenizer.ggml.add_bos_token", False)),
+            chat_template=str(metadata.get("tokenizer.chat_template", "")),
+        )
+
+    @property
+    def stop_token_ids(self) -> tuple[int, ...]:
+        values = (self.eos_token_id, self.eot_token_id)
+        return tuple(dict.fromkeys(int(value) for value in values if value is not None))
+
+    def encode(self, text: str, *, add_special_tokens: bool = False) -> list[int]:
+        ids = super().encode(text)
+        if add_special_tokens and self.add_bos_token:
+            if self.bos_token_id is None:
+                raise ValueError(
+                    "Muse Glimmer tokenizer requests BOS insertion but has no BOS token ID"
+                )
+            ids.insert(0, self.bos_token_id)
+        return ids
+
+
+@dataclass
 class Gemma4GGUFTokenizer(Qwen35GGUFTokenizer):
     """Gemma 4 SPM-style BPE reconstructed from GGUF metadata.
 
@@ -445,7 +509,7 @@ def _build_hf_encoder(
 ) -> Tokenizer:
     token_values = tuple(str(token) for token in tokens)
     type_values = tuple(int(kind) for kind in token_types)
-    if recipe == "qwen35":
+    if recipe in ("qwen35", "muse_glimmer"):
         vocabulary = {
             token: token_id
             for token_id, (token, kind) in enumerate(
@@ -485,6 +549,27 @@ def _build_hf_encoder(
             [
                 hf_pre_tokenizers.Split(
                     Regex(_QWEN35_SPLIT),
+                    behavior="isolated",
+                    invert=False,
+                ),
+                hf_pre_tokenizers.ByteLevel(
+                    add_prefix_space=False,
+                    trim_offsets=False,
+                    use_regex=False,
+                ),
+            ]
+        )
+        encoder.decoder = decoders.ByteLevel(
+            add_prefix_space=False,
+            trim_offsets=False,
+            use_regex=False,
+        )
+    elif recipe == "muse_glimmer":
+        # GPT4O split on raw text, then GPT-2 byte encoding; no normalizer.
+        encoder.pre_tokenizer = hf_pre_tokenizers.Sequence(
+            [
+                hf_pre_tokenizers.Split(
+                    Regex(_MUSE_GLIMMER_GPT4O_SPLIT),
                     behavior="isolated",
                     invert=False,
                 ),
@@ -620,6 +705,7 @@ def _optional_int(value) -> int | None:
 __all__ = [
     "LagunaGGUFTokenizer",
     "Gemma4GGUFTokenizer",
+    "MuseGlimmerGGUFTokenizer",
     "Qwen35GGUFTokenizer",
     "Qwen4ExpGGUFTokenizer",
     "bytes_to_unicode",
