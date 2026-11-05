@@ -860,10 +860,10 @@ choices, including any active diagnostic scope.
 | `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL` / `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS` | retired | No longer read. Superseded Q5_1 ds4-MMQ selection and workspace plumbing are removed; active Q8 MMQ and strict fallback paths are unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q5_1_WAVE64` | retired | No longer read. Q5_1 selected GEMV uses the logical256 t64 owner; the wave64 variant remains registered for direct diagnostics. |
 | `HIPENGINE_QWEN4_EXP_Q5_K_IU8_EXACT` | retired | Ignored. Profiles publish `q5k_iu8_exact_enabled` on generator/runner owners (production on, strict off). Unbound calls keep the grouped parent. Use the restoring `q5k_iu8_exact_enabled(owner, enabled)` scope or diagnostic `--override` for explicit comparisons. |
-| `HIPENGINE_QWEN4_EXP_Q5_K_IU8_RISK_MULT` | `16.0` | Risk multiplier for the Q5_K iu8 route; 16.0 keeps the route bit-identical to the strict parent in practice. |
+| `HIPENGINE_QWEN4_EXP_Q5_K_IU8_RISK_MULT` | retired; ignored | Use the explicit `q5k_iu8_risk_mult(owner, multiplier)` diagnostic scope or layer argument. Unbound calls use 16.0. |
 | `HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE` | retired | No longer read. The owning runner carries the register-cache fallback decision, with rows>=512, K640 and folded-pair parent guards unchanged. |
 | `HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH` | retired | No longer read. The owning runner carries the profile's row-publication decision; the register-cache parent and shape guards remain. |
-| `HIPENGINE_QWEN4_EXP_Q51_IU8_RISK_MULT` | `16.0` | Risk multiplier for the Q5_1 iu8 route. |
+| `HIPENGINE_QWEN4_EXP_Q51_IU8_RISK_MULT` | retired; ignored | Use the explicit `q51_iu8_risk_mult(owner, multiplier)` diagnostic scope or layer argument. Unbound calls use 16.0. |
 | `HIPENGINE_QWEN4_EXP_Q4_TILE_M` / `HIPENGINE_QWEN4_EXP_Q4_TILE_N` | retired | No longer read. The binder publishes 16/16 on the runner for the compact F16 Q4 fallback; an unbound runner keeps M=64 at rows>=512, otherwise 16, and N=16. |
 | `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED` / `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA` | retired | No longer read. Removed the legacy fixed-grid and host-loop expert-down dispatch branches; registered diagnostic kernels and the strict selected fallback remain. |
 | `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` | retired | No longer read. The owning runner carries the mapped-down decision; admission still requires a map built by the current invocation and rows>=512. |

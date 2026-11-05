@@ -415,6 +415,8 @@ class Qwen4ExpMixedTargetPass:
                     q4_iu8_prefill_enabled=getattr(batch, 'q4_iu8_prefill_enabled', None),
                     q4_iu8_layers=getattr(batch, 'q4_iu8_layers', None),
                     q4_iu8_risk_mult=getattr(batch, 'q4_iu8_risk_mult', None),
+                    q5k_iu8_risk_mult=getattr(batch, 'q5k_iu8_risk_mult', None),
+                    q51_iu8_risk_mult=getattr(batch, 'q51_iu8_risk_mult', None),
                     q4_iu8_exact_enabled=getattr(batch, 'q4_iu8_exact_enabled', None),
                     q51_iu8_exact_enabled=getattr(batch, 'q51_iu8_exact_enabled', None),
                 )

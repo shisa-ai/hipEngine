@@ -177,7 +177,7 @@ def test_step_keys_each_capture_on_the_expert_down_policy(monkeypatch):
              resolve_q4_iu8_layers(runner),
              resolve_q4_iu8_planes(runner), resolve_q4_iu8_risk_mult(runner),
              resolve_q4_iu8_exact(runner), resolve_q51_iu8_exact(runner),
-             resolve_q5k_iu8_exact(runner))
+             resolve_q5k_iu8_exact(runner), 16.0, 16.0)
             + runner._q4_tile_policy() + runner._q8_tile_policy()
             + (runner._q4_dp4a_policy(width),)
             + (runner._production_moe_policy(width),))
@@ -234,7 +234,7 @@ def test_an_unbound_runner_forwards_every_parent():
     # or dropping to the output1 base.
     runner = object.__new__(Qwen4ExpGGUFBatchRunner)
     assert runner._expert_down_policy() == _capture_decisions(tuple(
-        UNBOUND_DEFAULTS[field] for field in POLICY_FIELDS)) + (frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
+        UNBOUND_DEFAULTS[field] for field in POLICY_FIELDS)) + (frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False, 16.0, 16.0)
     assert runner._expert_down_policy()[POLICY_FIELDS.index(CHAIN_GATE_FIELD)]
 
 
@@ -256,12 +256,12 @@ def test_the_policy_tuple_is_boolean_normalized():
     assert runner._expert_down_policy() == (
         True, False, True, False, False, True, False, True, True, False, False,
         resolve_expert_grid_policy(None), False, False,
-        False, True, False, False, frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
+        False, True, False, False, frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False, 16.0, 16.0)
     # The tuple is the capture key's tail, so its length is the contract a
     # reader of a recorded segment relies on.
     assert runner._expert_down_policy() == _capture_decisions(tuple(
         bool(getattr(runner, field)) for field in POLICY_FIELDS)) + (
-            frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
+            frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False, 16.0, 16.0)
 
 
 # --- target/draft sharing: one publication, every owner reads it -------------

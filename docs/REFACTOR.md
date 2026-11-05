@@ -3618,9 +3618,12 @@ checks pass; absence of profile writes alone is not that inventory.
 
 Inventory of the remaining direct reads in `qwen4_exp_runner.py`:
 
-- Execution policy still using per-call process input: Q5_K/Q5_1 IU8 risk
-  multipliers and fused grouped-prefill combine. R0410 owns the combine decision;
-  preserve its explicit comparison arm.
+- Execution policy still using per-call process input: fused grouped-prefill
+  combine. R0410 owns the combine decision; preserve its explicit comparison arm.
+- Q5_K/Q5_1 IU8 risk multipliers use explicit invocation arguments and owner
+  scopes, with unchanged 16.0 defaults. Single, batch, mixed-target and serving
+  clones forward them; batch capture keys distinguish the values. The retired
+  process keys are ignored.
 - Runner construction: bounded KV reset, batched position updates, PLE page-cache
   warming and layer-graph enablement. Bounded reset is frozen on the runner,
   with an explicit `bounded_kv_reset` constructor override; subsequent process

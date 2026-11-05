@@ -262,13 +262,13 @@ def test_the_batch_capture_key_carries_the_gate() -> None:
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, False, True, False, False, True, True, True, True,
         runner_module.resolve_expert_grid_policy(None), False, False,
-        False, False, False, False, frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
+        False, False, False, False, frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False, 16.0, 16.0)
 
     owner.q51_exact_grouped_down = False
     assert batch_module.Qwen4ExpGGUFBatchRunner._expert_down_policy(owner) == (
         False, False, False, False, False, False, False, True, True, True, True,
         runner_module.resolve_expert_grid_policy(None), False, False,
-        False, False, False, False, frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False)
+        False, False, False, False, frozenset(), None, None, False, False, '35-47', 3, 4.0, False, False, False, 16.0, 16.0)
 
 
 def test_the_generator_default_keeps_the_chain_on() -> None:
