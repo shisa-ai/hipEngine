@@ -283,7 +283,7 @@ when an adapter/parser calls `add_engine_loop_config_args(...)`.
 | `HIPENGINE_SESSION_MIN_TOKENS` | `4096` | none | PARO resident-session context floor when the caller does not require more. |
 | `HIPENGINE_SESSION_BUCKET_TOKENS` | `1024` | none | PARO resident-session context rounding bucket; capacity rounds up to a multiple of this. |
 | `HIPENGINE_KV_CAPACITY_RESERVE_MIB` | `512` | none | Safety reserve subtracted from free HIP memory when the PARO runner estimates KV capacity. |
-| `HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS` | `0` | none | Default-off experiment that lets the speculative planner split refused speculative groups. Reopened by the serving ladder via explicit opt-in; removal condition tracked in `docs/REFACTOR.md`. |
+| `HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS` | `0` | none | Supported default-off diagnostic reproducing one singleton provider cycle per capable row of a refused group, distinct from production peer partitioning. |
 
 The table lists generic engine defaults. For each unset scheduler knob, the
 registered gfx1151 Qwen GGUF `gguf_q4_k_m` generator refines the policy/chunk

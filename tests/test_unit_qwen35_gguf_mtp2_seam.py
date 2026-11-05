@@ -6365,6 +6365,36 @@ def test_capability_no_longer_declines_a_compact_dms_row_for_its_transaction() -
     )
 
 
+@pytest.mark.parametrize("reason", [
+    "packed_prefill_unsupported_k0",
+    "incremental_streaming_unsupported_k0",
+    "target_context_k0",
+])
+def test_terminal_zero_budget_cannot_reopen_prompt_sink_but_peer_can(reason):
+    rows = [
+        SimpleNamespace(request_id=7, mtp2_candidate_budget=0,
+                        prefix_reused_tokens=0, mtp2_prompt_fallback_reason=reason),
+        SimpleNamespace(request_id=8, mtp2_candidate_budget=3,
+                        prefix_reused_tokens=0, mtp2_prompt_fallback_reason=None,
+                        request=SimpleNamespace()),
+    ]
+    calls = []
+    sink = object()
+    adapter = SimpleNamespace(begin_prompt_streaming=lambda ids, **kwargs: (
+        calls.append(ids) or (sink,)
+    ))
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._resolved_mtp2_adapter = lambda: adapter
+    runner._restorable_prefix_rows = lambda selected: ()
+
+    for _ in range(2):
+        assert runner._begin_mtp2_prompt_streaming(rows) == (None, sink)
+    assert calls == [(8,), (8,)]
+    assert rows[0].mtp2_candidate_budget == 0
+    assert rows[0].mtp2_prompt_fallback_reason == reason
+    assert rows[1].mtp2_candidate_budget == 3
+
+
 def test_prompt_activation_contention_preserves_speculative_intent() -> None:
     # Temporary contention is not a property of the row: the refusal is about the
     # activation claim, and whether this row can speculate is decided by its

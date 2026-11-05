@@ -3849,7 +3849,7 @@
       "evidence": [
         "hipengine/generation/engine_loop.py:2241,3472,3542 retains split-refused reproduction choice."
       ],
-      "next_action": "Separate failed-stream lifecycle from speculative intent or document terminal zero-budget ownership; retire only reproduced obsolete singleton-split comparison, preserving eligible peers.",
+      "next_action": "Retain terminal request-local zero budget and supported singleton-split diagnostic; 191 seam/planner/peer tests pass, including new terminal-row/eligible-peer sink filtering coverage. Remaining public fault/fallback/cancellation/restored-checkpoint validation; see worklog/entries/20261105T214430.660128Z-lhl-r0505-state-f3c317.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
