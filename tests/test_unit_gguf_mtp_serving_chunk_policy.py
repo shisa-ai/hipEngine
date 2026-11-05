@@ -23,6 +23,37 @@ def test_verifier_width_does_not_inherit_prefill_or_warmup_limit(monkeypatch):
     assert calls == [4, 3]
 
 
+@pytest.mark.parametrize("failure_index", [0, 1, 2])
+def test_stream_draft_failure_frees_successful_sibling_snapshots(monkeypatch, failure_index):
+    generator = _generator()
+    slots = [SimpleNamespace(
+        request_id=index, draft_stream=0, generated_ids=[1], timing={},
+        resident_context=SimpleNamespace(pending_seed=object()),
+        session=SimpleNamespace(runtime=SimpleNamespace(
+            stream_create=lambda **kwargs: 700,
+            stream_synchronize=lambda stream: None,
+            stream_destroy=lambda stream: None,
+        )),
+    ) for index in range(3)]
+    completed = []
+    freed = []
+
+    def draft(slot, *args, **kwargs):
+        completed.append(slot.request_id)
+        if slot.request_id == failure_index:
+            raise RuntimeError("draft failed")
+        return SimpleNamespace(slot=slot, snapshot=object())
+
+    monkeypatch.setattr(generator, "_draft_mtp_serving_slot", draft)
+    monkeypatch.setattr(generator, "_free_mtp_serving_cycle_snapshot", lambda result: freed.append(result.slot.request_id))
+    with pytest.raises(RuntimeError, match="draft failed"):
+        generator._try_draft_mtp_serving_slots_streams(
+            slots, object(), SimpleNamespace(max_tokens=4, deadline_at=None), base_env={},
+        )
+    assert sorted(completed) == [0, 1, 2]
+    assert sorted(freed) == [index for index in range(3) if index != failure_index]
+
+
 def _generator():
     return object.__new__(qwen35_gguf.Qwen35GGUFBringupGenerator)
 

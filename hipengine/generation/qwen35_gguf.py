@@ -5941,13 +5941,30 @@ class Qwen35GGUFBringupGenerator:
             )
 
         batch_start = time.perf_counter()
+        drafted: list[_GGUFMTPDraftedCycle] = []
+        failure: BaseException | None = None
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(live_slots)) as pool:
-            futures = [(slot, pool.submit(_draft, slot)) for slot in live_slots]
-            drafted: list[_GGUFMTPDraftedCycle] = []
-            for _slot, future in futures:
-                result = future.result()
-                if result is not None:
-                    drafted.append(result)
+            futures = []
+            try:
+                for slot in live_slots:
+                    futures.append(pool.submit(_draft, slot))
+            except BaseException as exc:
+                failure = exc
+            for future in futures:
+                try:
+                    result = future.result()
+                    if result is not None:
+                        drafted.append(result)
+                except BaseException as exc:
+                    if failure is None:
+                        failure = exc
+        if failure is not None:
+            for result in drafted:
+                try:
+                    self._free_mtp_serving_cycle_snapshot(result)
+                except BaseException as exc:
+                    failure.add_note(f"draft snapshot cleanup failed: {exc}")
+            raise failure
         batch_ms = _timing_ms_since(batch_start)
         for slot in live_slots:
             _timing_add_ms(slot.timing, "draft_stream_batch_ms", batch_ms)

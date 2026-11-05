@@ -1428,7 +1428,7 @@ groups, selected route, repeat output and teardown.
 
 Owner: `hipengine/generation/qwen35_gguf.py`.
 
-Scope: `_try_draft_mtp_serving_slots_streams`, `_try_verify_mtp_serving_cycle_chunks_streams`,;
+Scope: `_try_draft_mtp_serving_slots_streams`, `_try_verify_mtp_serving_cycle_chunks_streams`;
 `HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT`, `HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY`;
 `_close_mtp_serving_slots`.
 
@@ -1436,7 +1436,10 @@ Scope: `_try_draft_mtp_serving_slots_streams`, `_try_verify_mtp_serving_cycle_ch
 extraction or give its worker pool a bounded request/owner lifetime. Do not add another global
 switch. A persistent pool must retain per-slot seed/KV ownership, ordered results,
 deadline/cancellation handling, complete future draining, failure cleanup and shutdown before its
-device resources are released. Profile this path first if claiming pool reuse improves complete
+device resources are released. The current per-call draft pool now collects every
+submitted future on failure and frees successful sibling snapshots before raising;
+submission failure also drains already launched work. It does not reuse workers.
+Profile this path first if claiming pool reuse improves complete
 wall; old server throughput comparisons do not establish current worker overhead or a resident MTP2
 benefit.
 
