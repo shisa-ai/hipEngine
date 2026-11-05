@@ -1063,11 +1063,13 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `tests/test_gpu_laguna_kv_attention.py`.
 
-Done when: Decision needed: retain explicit crossover/disable controls as supported resource and profiling
-policy, or migrate callers to a scoped KV policy owner before retiring constructor/allocator/CLI
-arguments. **Clearing action:** migrate both harnesses and their result fields with the
-session/allocator, preserving workspace lifetime, invalid-combination errors, package defaults and
-registered score/token4 fallbacks. Run the fake-runtime bounded-workspace node in
+**Interface decision:** retain explicit crossover/disable constructor and CLI controls as
+supported resource and profiling policy. They are already owner-bound inputs shared with the
+session allocator, not ambient environment transport. Preserve both harnesses/result fields,
+workspace lifetime, invalid-combination errors, package defaults and registered score/token4
+fallbacks. See `worklog/entries/20261105T221358.471073Z-lhl-laguna-attention-interface-7e6394.md`.
+
+Done when: run the fake-runtime bounded-workspace node in
 `tests/test_gpu_laguna_kv_attention.py`, runner, target-AR and long-context-profile units. Exercise
 actual global/SWA lengths below, above and unrelated to each crossover, wrap/continuation and
 multi-row fallback, then R0249/R0250's public generation and allocation-cleanup gate.
@@ -1078,10 +1080,13 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `tests/test_gpu_laguna_kv_attention.py`; `tests/test_unit_laguna_global_head_wave0_tree_runtime.py`.
 
-**Decision needed:** keep each constructor/CLI comparison as a supported diagnostic, or migrate its
-callers to scoped head/KV and attention-policy owners before retiring it. **Clearing action:**
-migrate target-AR construction sites/result fields and long-context profile controls together,
-preserving fusion dependency errors, resolved-variant reporting and unfused chains. Run the
+**Interface decision:** retain each explicit constructor/CLI comparison as a supported
+diagnostic. Preserve target-AR construction sites/result fields and long-context profile controls,
+fusion dependency errors, resolved-variant reporting and unfused chains. These inputs are already
+owner-bound, so no environment migration is needed. See
+`worklog/entries/20261105T221358.471073Z-lhl-laguna-attention-interface-7e6394.md`.
+
+**Validation remaining:** run the
 fake-runtime bounded-workspace node in `tests/test_gpu_laguna_kv_attention.py`,
 `tests/test_unit_laguna_global_head_wave0_tree_runtime.py`, runner, target-AR and
 long-context-profile units. Compare the head/KV and split-gate primitive chains and
