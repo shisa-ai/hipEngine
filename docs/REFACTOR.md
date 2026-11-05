@@ -988,17 +988,18 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 Scope: `laguna_target_ar_bench.py`, `use_q5_fixed_meta_output`, `use_q5_fixed_meta_query_gate`,
 `use_q5_shared_fixed_meta`.
 
-Done when: Decision needed: keep these constructor/CLI comparisons as supported diagnostics, or migrate
-them to a scoped diagnostic owner before removing the public arguments. **Clearing action:** migrate
-both target-AR construction sites and result fields with resolver/binding tests. Exercise the
-query/gate comparison with the mixed quad disabled or unavailable and the shared pair independently;
-preserve registered coefficient-publication and pack8 routes, multi-row/shape/key fallbacks and
-backend defaults. Run `tests/test_unit_laguna_q5_control_retirement.py`,
-`tests/test_unit_laguna_gguf_runner.py` and `tests/test_unit_laguna_target_ar_bench.py`, the
-corresponding primitive GPU comparisons and R0249/R0250's public generation/lifecycle gate.
+Done when: complete primitive and actual-weight binding checks below. Retain these
+constructor/CLI diagnostics: output, query/gate and shared-pair metadata comparisons
+select independent roles, not aliases. Both target-AR construction sites now use
+one forwarding helper; effective result fields remain separate. Resolver and harness
+tests cover each independent opt-out and backend-default preservation.
 
-Migrate `use_q5_fixed_meta_output`, `use_q5_fixed_meta_query_gate` and
-`use_q5_shared_fixed_meta` in `scripts/laguna_target_ar_bench.py` independently.
+**Clearing action:** exercise query/gate with mixed quad disabled or unavailable
+and the shared pair independently at runtime; preserve coefficient-publication and
+pack8 routes, multi-row/shape/key fallbacks and backend defaults. Run the corresponding
+primitive GPU comparisons and R0249/R0250's public generation/lifecycle gate.
+Host Q5 control, runner, target-AR, SWAR-pair and mixed-pair unit tests pass, but
+constructor forwarding is not primitive arithmetic or actual-weight route evidence.
 
 ### R0281-MIXED — Mixed-projection comparison levels
 

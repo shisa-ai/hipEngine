@@ -234,6 +234,19 @@ def _progress(completed: int, total: int, spec) -> None:
         )
 
 
+def _q5_metadata_session_options(args: argparse.Namespace) -> dict[str, bool | None]:
+    """Keep each constructor-owned metadata comparison independent."""
+
+    return {
+        name: False if getattr(args, f"disable_{name.removeprefix('use_')}", False) else None
+        for name in (
+            "use_q5_fixed_meta_output",
+            "use_q5_fixed_meta_query_gate",
+            "use_q5_shared_fixed_meta",
+        )
+    }
+
+
 def _session(
     owner: LagunaGGUFResidentSession,
     args: argparse.Namespace,
@@ -256,21 +269,7 @@ def _session(
         use_iq2_grid64=(
             False if getattr(args, "disable_iq2_grid64", False) else None
         ),
-        use_q5_fixed_meta_output=(
-            False
-            if getattr(args, "disable_q5_fixed_meta_output", False)
-            else None
-        ),
-        use_q5_fixed_meta_query_gate=(
-            False
-            if getattr(args, "disable_q5_fixed_meta_query_gate", False)
-            else None
-        ),
-        use_q5_shared_fixed_meta=(
-            False
-            if getattr(args, "disable_q5_shared_fixed_meta", False)
-            else None
-        ),
+        **_q5_metadata_session_options(args),
         use_mixed_q5_q6_attention=(
             False
             if getattr(args, "disable_mixed_q5_q6_attention", False)
@@ -718,15 +717,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
             prefill_chunk_size=args.chunk_size,
             iq3_c1_down_schedule=args.iq3_c1_down_schedule,
             use_iq2_grid64=False if args.disable_iq2_grid64 else None,
-            use_q5_fixed_meta_output=(
-                False if args.disable_q5_fixed_meta_output else None
-            ),
-            use_q5_fixed_meta_query_gate=(
-                False if args.disable_q5_fixed_meta_query_gate else None
-            ),
-            use_q5_shared_fixed_meta=(
-                False if args.disable_q5_shared_fixed_meta else None
-            ),
+            **_q5_metadata_session_options(args),
             use_mixed_q5_q6_attention=(
                 False if args.disable_mixed_q5_q6_attention else None
             ),

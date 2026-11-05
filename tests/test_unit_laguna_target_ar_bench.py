@@ -164,6 +164,33 @@ def test_session_forwards_explicit_swa_prefill_variant(monkeypatch) -> None:
     assert captured["runtime"] is owner.runtime
 
 
+@pytest.mark.parametrize(
+    "disabled",
+    (None, "q5_fixed_meta_output", "q5_fixed_meta_query_gate", "q5_shared_fixed_meta"),
+)
+def test_q5_metadata_comparisons_forward_independently(monkeypatch, disabled) -> None:
+    captured = {}
+    monkeypatch.setattr(
+        benchmark, "LagunaGGUFResidentSession", lambda **kwargs: captured.update(kwargs)
+    )
+    args = SimpleNamespace(
+        context_length=4096,
+        backend="hip_gfx1100",
+        compiler_version_file=None,
+        require_cached_build=True,
+        chunk_size=128,
+    )
+    if disabled is not None:
+        setattr(args, f"disable_{disabled}", True)
+    expected = {
+        f"use_{name}": False if name == disabled else None
+        for name in ("q5_fixed_meta_output", "q5_fixed_meta_query_gate", "q5_shared_fixed_meta")
+    }
+    assert benchmark._q5_metadata_session_options(args) == expected
+    benchmark._session(SimpleNamespace(weights=object(), runtime=object()), args)
+    assert {name: captured[name] for name in expected} == expected
+
+
 def test_f16_prefill_configuration_records_requested_and_resolved_strategy(
     monkeypatch,
 ) -> None:

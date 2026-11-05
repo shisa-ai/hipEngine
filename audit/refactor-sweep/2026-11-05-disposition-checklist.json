@@ -1430,7 +1430,7 @@
         "scripts/laguna_target_ar_bench.py:259-264,721-724,861-862 passes and reports fixed-meta choices at both construction sites.",
         "hipengine/runtime/laguna_gguf_runner.py:2987-2988,3131-3141 retains these independent controls."
       ],
-      "next_action": "Preserve intentional comparisons under a scoped projection owner and migrate both target-AR sites/result fields together; test each fallback independently.",
+      "next_action": "Constructor-owned Q5 diagnostics retained; both target-AR sites share forwarding helper with independent controls and unchanged effective result fields. Host tests cover metadata on/off query-gate pair binding and independent opt-outs. Remaining primitive GPU comparisons are locally startable; actual-weight public gate requires Laguna checkpoint. See worklog/entries/20261105T200030.523793Z-lhl-q5-metadata-ownership-010996.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

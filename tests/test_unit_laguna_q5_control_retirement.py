@@ -34,6 +34,12 @@ def test_q5_resolver_keeps_backend_defaults_and_independent_exact_controls() -> 
         "hip_gfx1100", query_gate=False
     ) == (fixed[0], None)
     assert resolve_laguna_q5_wave32x2_variants(
+        "hip_gfx1100", fixed_meta_output=False
+    ) == ("wave32x2_gemv_decode_bf16_bf16_out", fixed[1])
+    assert resolve_laguna_q5_wave32x2_variants(
+        "hip_gfx1100", fixed_meta_query_gate=False
+    ) == (fixed[0], "wave32x2_gemv_decode_bf16_f32_out")
+    assert resolve_laguna_q5_wave32x2_variants(
         "hip_gfx1100", fixed_meta_output=False, fixed_meta_query_gate=False
     ) == (
         "wave32x2_gemv_decode_bf16_bf16_out",

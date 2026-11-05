@@ -939,8 +939,15 @@ def test_laguna_projection_dispatches_by_resident_layout(monkeypatch) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "query_gate_variant",
+    (
+        "wave32x2_gemv_decode_bf16_f32_out",
+        "wave32x2_fixed_meta_gemv_decode_bf16_f32_out",
+    ),
+)
 def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
-    monkeypatch,
+    monkeypatch, query_gate_variant,
 ) -> None:
     calls: list[tuple[str, object]] = []
     libraries = SimpleNamespace(linear={"gguf_q5_k": object(), "gguf_q6_k": object()})
@@ -986,7 +993,7 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
         stream=7,
         libraries=libraries,
         runtime="runtime-sentinel",
-        query_gate_decode_variant="wave32x2_gemv_decode_bf16_f32_out",
+        query_gate_decode_variant=query_gate_variant,
     )
     assert [name for name, _ in calls] == ["pair", "pair"]
     qg_args, qg_kwargs = calls[0][1]
@@ -994,9 +1001,7 @@ def test_laguna_attention_projection_pairs_are_decode_only_and_fail_closed(
     assert qg_kwargs["out_features_b"] == 72
     assert qg_kwargs["output_dtype"] == "f32"
     assert qg_kwargs["registered_decode_only"] is True
-    assert qg_kwargs["registered_decode_variant"] == (
-        "wave32x2_gemv_decode_bf16_f32_out"
-    )
+    assert qg_kwargs["registered_decode_variant"] == query_gate_variant
     assert qg_kwargs["libraries"] is libraries.linear
     kv_args, kv_kwargs = calls[1][1]
     assert kv_args == (k_weight, v_weight, 10, 30, 40, 1, 3072, 1024)
