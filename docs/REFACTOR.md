@@ -2638,18 +2638,24 @@ Owner: `hipengine/speculative/mtp_budget.py`.
 
 Scope: `scripts/mtp_budget_diagnostics.py`, `hipengine/speculative/mtp_budget.py`.
 
-**Decision needed:** retain the dense-session policy seam and CLI diagnostics as supported
-comparison interfaces, or replace them with a test/benchmark-owned cycle driver. Public
-candidate-depth selection is a separate shared-planner contract.
+**Ownership decision:** retain the typed request-owned policy seam and CLI
+controllers as supported diagnostics. The runtime exports only observations and
+the protocol; sequence/adaptive controllers live in `scripts/mtp_budget_diagnostics.py`.
+The maintained dense suite creates a fresh policy per request and reports choices
+and post-commit observations. Public candidate-depth selection remains a separate
+shared-planner contract. No extraction is needed merely to move this protocol.
 
-Done when: migrate callers, request-start/choice/post-commit observations, output-tail
-clipping, cancellation ordering and summary metadata together if replacing the seam. Run
-`tests/test_unit_mtp_budget_policy.py`, `tests/test_unit_qwen36_dense_gguf_suite.py` and session
-cancellation/bucket checks, then exercise the suite with a complete B1/B2/B3 transition schedule,
-every acceptance prefix, reset/failure/cleanup and a public fixed-budget request. A new
-timing-adaptive default needs its own declared policy and comparison against fixed budgets; this
-extraction does not change or promote one. Keep the named diagnostic controls until their owner is
-decided.
+**Validation:** host policy/suite/session tests pass, including cancellation before
+budget choice. A local gfx1151 dense suite run exercises all nine B1/B2/B3 ordered
+transitions, matches true-AR tokens for fixed and sequence arms, agrees with CPU
+acceptance and drains allocations. See
+`worklog/entries/20261105T205050.722023Z-lhl-r0388-diagnostic-owner-95d970.md`.
+
+**Remaining:** complete forced acceptance-prefix, reset/failure/cleanup diagnostic
+coverage and confirm post-commit observation ordering through each case. Keep
+output-tail clipping and cancellation ordering distinct. A new timing-adaptive
+default needs its own declared policy and comparison against fixed budgets; this
+ownership decision does not change or promote one.
 
 ### R0393-Q6 — Grouped-Q6 rollback interface and gfx1100 public engagement
 
