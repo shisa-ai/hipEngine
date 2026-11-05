@@ -3867,11 +3867,11 @@
       "ledger_line": 3167,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
         "hipengine/runtime/qwen35_gguf_runner.py:8830 keeps gather rollback; resource and fallback branches are independent."
       ],
-      "next_action": "Inventory rollback users and retain explicit diagnostic or migrate scoped resource policy; preserve gapped algorithm, demand sizing and slow fallback guard.",
+      "next_action": "None. Retain existing default-on environment input as supported diagnostic comparison interface; definition and ENVS document native-paged rollback semantics. Gapped mechanisms and resource guards unchanged; dedicated rollback/resource tests pass. No retirement A/B required because no behavior/interface retired. See worklog/entries/20261105T210633.525671Z-lhl-r0506-interface-3379ba.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

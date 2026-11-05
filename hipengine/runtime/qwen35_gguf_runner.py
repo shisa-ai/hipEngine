@@ -12575,8 +12575,10 @@ def _gguf_gapped_gather_prefill_enabled() -> bool:
     swaps its identity spans for spans carrying the session's real
     chunk-local block table, so the paged KV write, the native fallback and
     the head-major gather all address the pool pages and AOTriton reads the
-    same dense head-major buffers the contiguous route uses. The env is the
-    rollback path to the packed fallback (see docs/REFACTOR.md).
+    same dense head-major buffers the contiguous route uses. The default-on
+    environment input is a supported diagnostic comparison interface: setting
+    it to 0 selects the native paged fallback without disabling gapped layouts,
+    demand-sized buffers, resource guards or missing-kernel fallbacks.
     """
 
     return _env_flag(_GGUF_GAPPED_GATHER_ENV, True)

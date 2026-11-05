@@ -3148,19 +3148,6 @@ autoregressive batch for a refused group. Remove it when the cross-host/protocol
 complete or a replacement wide-group route makes it unnecessary; preserve historical evidence in the
 worklog, not as an admission rule. `docs/ENVS.md` documents the switch.
 
-### R0506 — Decide whether to retire the gapped-gather rollback switch
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_GAPPED_GATHER`.
-
-Done when: Deferred decision: retain the diagnostic rollback or remove only its env lookup and
-switch-specific tests/documentation. The original retirement plan calls for `uv run pytest --suite
-all -v` and served multi-turn A/B on gfx1151 and W7900. If retiring the switch, keep the
-gapped-layout branch, demand-sized buffers, forced AOTriton handling, missing-kernel/allocation
-fallbacks, and suffix guard when the fast route is unavailable. Removing those mechanisms requires a
-working replacement, not just successful switch retirement.
-
 ### R0507 — Consolidate the raw greedy MTP compatibility entry point
 
 Owner: `hipengine/generation/qwen35_gguf.py`.
