@@ -3339,11 +3339,12 @@
       "ledger_line": 2718,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:30664-30718 retains separate DMS/INT8 hidden-plane alias inputs."
+        "Independent DMS/non-DMS INT8 controls retained as supported interfaces; shared plane-count owner and proof callers preserved.",
+        "Named 132-test bundle passed; worklog/entries/20261105T220300.035644Z-lhl-r0403-interface-03f55b.md records decision and unchanged runtime."
       ],
-      "next_action": "Create explicit workspace comparison policy or record supported rollbacks, migrating proof callers and allocation estimator together; preserve independent two-plane oracle.",
+      "next_action": "None. Completed interface decision; no reader, allocator, estimator, arithmetic or proof configuration changes.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

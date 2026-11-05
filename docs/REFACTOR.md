@@ -2655,29 +2655,6 @@ Done when: Hardware follow-up: run a real public packed-C8 request on gfx1100 an
 variant, grouped-kernel engagement, repeatability and allocation drain. gfx1151 normal public
 requests keep their existing BF16 selection. This is a validation follow-up, not a runnability gate.
 
-### R0403 — DMS and INT8 hidden-plane alias rollback interfaces
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `layer_outer`, `layer_outer_shared_oracle`, `_gguf_bulk_prefill_hidden_plane_count`;
-`HIPENGINE_LAYER_OUTER_HIDDEN_ALIAS`, `HIPENGINE_INT8_LAYER_OUTER_HIDDEN_ALIAS`.
-
-**Decision needed:** retain both rollback interfaces, replace them with an explicit workspace
-policy, or retire them together. The INT8 control is also the two-plane comparison arm in
-`scripts/gguf_resumable_prefill_gpu_proof.py` and `scripts/qwen38_int8_alias_realprompt_ab.py`;
-preserve an explicit comparison interface if removing the environment readers. Missing operator-use
-records do not establish that either interface is unused.
-
-Done when: record the supported interface. If replacing or retiring, update
-allocator/estimator agreement, capacity and growth tests, DMS/non-DMS isolation, proof configuration
-and `docs/ENVS.md` together. Run `uv run pytest -o addopts='' -q
-tests/test_unit_int8_layer_outer_hidden_alias.py tests/test_unit_dms_layer_outer_prefill.py
-tests/test_unit_qwen35_gguf_capacity_route_terms.py
-tests/test_unit_gguf_bulk_prefill_workspace_release.py
-tests/test_unit_gguf_bulk_prefill_deferred_hidden_capacity.py
-tests/test_unit_gguf_resumable_prefill_gpu_proof.py`, then public generation through both affected
-routes confirming actual plane ownership, output agreement and complete teardown.
-
 ### R0404 — Direct INT8 prefill evaluation after dtype repair
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
