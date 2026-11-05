@@ -19,6 +19,17 @@ def test_prefill_cancellation_restores_transport_owners_and_continues(monkeypatc
     from hipengine.generation.deadline import GenerationCancellationToken, GenerationCancelled
     from hipengine.runtime import qwen4_exp_runner as runtime
     from hipengine.runtime import gguf_linear as linear
+    from hipengine.runtime.moe_graph import MoeGraphCache
+
+    graph_runs = []
+    real_graph_run = MoeGraphCache.run
+
+    def record_graph_run(cache, *args, **kwargs):
+        result = real_graph_run(cache, *args, **kwargs)
+        graph_runs.append(result)
+        return result
+
+    monkeypatch.setattr(MoeGraphCache, 'run', record_graph_run)
 
     hip = get_hip_runtime()
     hip.device_synchronize()
@@ -65,8 +76,10 @@ def test_prefill_cancellation_restores_transport_owners_and_continues(monkeypatc
         assert linear._q8_dpp_reduction_raw() == '1'
         params = SamplingParams(max_tokens=3, temperature=0, ignore_eos=True,
                                 speculative_mtp=False)
+        graph_runs.clear()
         first = llm.generate_detailed([[1] * length], params)
         second = llm.generate_detailed([[1] * length], params)
+        assert 'replay' in graph_runs, graph_runs
         assert len(first[0].generated_token_ids) == 3
         assert first[0].generated_token_ids == second[0].generated_token_ids
     finally:
