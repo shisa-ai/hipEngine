@@ -58,8 +58,8 @@ def test_clones_and_batch_capture_keys_preserve_multiplier_ownership():
     owner.q51_iu8_risk_mult = 32.0
     second = Qwen4ExpGGUFBatchRunner._expert_down_policy(owner)
     assert baseline != first != second
-    assert baseline[-2:] == (16.0, 16.0)
-    assert second[-2:] == (24.0, 32.0)
+    assert baseline[-3:-1] == (16.0, 16.0)
+    assert second[-3:-1] == (24.0, 32.0)
 
 
 def test_all_layer_surfaces_forward_explicit_q5_controls():

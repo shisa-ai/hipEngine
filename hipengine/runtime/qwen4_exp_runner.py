@@ -353,6 +353,29 @@ def q4_iu8_risk_mult(owner: Any, multiplier: float | None):
                 target.q4_iu8_risk_mult = value
 
 
+def resolve_fused_combine(owner: Any) -> bool:
+    """Return the explicit grouped-prefill comparison choice."""
+    return bool(getattr(owner, 'fused_combine_enabled', False))
+
+
+@contextlib.contextmanager
+def fused_combine_enabled(owner: Any, enabled: bool):
+    """Bind the owner and runner, restoring distinct or missing values."""
+    missing = object()
+    prior = [(target, getattr(target, 'fused_combine_enabled', missing))
+             for target in _q8_down_variant_targets(owner)]
+    try:
+        for target, _ in prior:
+            target.fused_combine_enabled = bool(enabled)
+        yield resolve_fused_combine(owner)
+    finally:
+        for target, value in prior:
+            if value is missing:
+                delattr(target, 'fused_combine_enabled')
+            else:
+                target.fused_combine_enabled = value
+
+
 def resolve_q5k_iu8_risk_mult(owner: Any) -> float:
     """Resolve the owner's Q5_K multiplier, defaulting to 16.0."""
     return _qwen4_exp_q5_k_iu8_risk_multiplier(getattr(owner, 'q5k_iu8_risk_mult', None))
@@ -7212,6 +7235,7 @@ def run_qwen4_exp_moe(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
     *,
+    fused_combine_enabled: bool = False,
     expert_grid_policy: ExpertGridPolicy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
@@ -7434,6 +7458,7 @@ def run_qwen4_exp_moe(
                 q4_iu8_planes=q4_iu8_planes,
                 q4_iu8_risk_mult=q4_iu8_risk_mult,
                 q5k_iu8_risk_mult=q5k_iu8_risk_mult,
+                fused_combine_enabled=fused_combine_enabled,
                 q51_iu8_risk_mult=q51_iu8_risk_mult,
                 q4_iu8_exact_enabled=q4_iu8_exact_enabled,
                 q51_iu8_exact_enabled=q51_iu8_exact_enabled,
@@ -8365,7 +8390,7 @@ def run_qwen4_exp_moe(
                 hidden,
                 selected_ptr=scratch.group_sorted_experts.ptr,
             )
-        if rows == 1 or os.environ.get("HIPENGINE_QWEN4_EXP_FUSED_COMBINE", "") != "1":
+        if rows == 1 or not fused_combine_enabled:
             # Grouped rows==1, or fused PF-4 lever-2 combine disabled:
             # keep the unfused sum. The process-separated timing diagnostic
             # did not establish a binding whole-model rejection.
@@ -8381,7 +8406,7 @@ def run_qwen4_exp_moe(
                 stream=stream,
                 runtime=active_runtime,
             )
-        # rows > 1 with HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1: the fused
+        # rows > 1 with the explicit fused-combine choice: the fused
         # PF-4 lever-2 candidate replaces this sum and the
         # shared_gate_combine_batch tail in one kernel (see combine site
         # below). The unfused chain stays registered as the strict
@@ -8664,9 +8689,7 @@ def run_qwen4_exp_moe(
         output_dtype=GGUF_OUTPUT_F32,
         stream=stream, runtime=active_runtime,
     )
-    fused_lane_combine = grouped_prefill and os.environ.get(
-        "HIPENGINE_QWEN4_EXP_FUSED_COMBINE", ""
-    ) == "1"
+    fused_lane_combine = grouped_prefill and bool(fused_combine_enabled)
     if not fused_lane_combine:
         # The combine rounds the FP32 shared output to BF16 itself, which is
         # bit-identical to the separate cast followed by the BF16 combine.
@@ -8715,6 +8738,7 @@ def run_qwen4_exp_dense_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    fused_combine_enabled: bool = False,
     expert_grid_policy: ExpertGridPolicy | None = None,
     gr_iu8_policy: GRIU8Policy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
@@ -8926,6 +8950,7 @@ def run_qwen4_exp_dense_qsa_layer(
         q4_iu8_planes=q4_iu8_planes,
         q4_iu8_risk_mult=q4_iu8_risk_mult,
         q5k_iu8_risk_mult=q5k_iu8_risk_mult,
+        fused_combine_enabled=fused_combine_enabled,
         q51_iu8_risk_mult=q51_iu8_risk_mult,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
         q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
@@ -8943,6 +8968,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
+    fused_combine_enabled: bool = False,
     expert_grid_policy: ExpertGridPolicy | None = None,
     gr_iu8_policy: GRIU8Policy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
@@ -9212,6 +9238,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         q4_iu8_planes=q4_iu8_planes,
         q4_iu8_risk_mult=q4_iu8_risk_mult,
         q5k_iu8_risk_mult=q5k_iu8_risk_mult,
+        fused_combine_enabled=fused_combine_enabled,
         q51_iu8_risk_mult=q51_iu8_risk_mult,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
         q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
@@ -9238,6 +9265,7 @@ def run_qwen4_exp_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
+    fused_combine_enabled: bool = False,
     expert_grid_policy: ExpertGridPolicy | None = None,
     gr_iu8_policy: GRIU8Policy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
@@ -9579,6 +9607,7 @@ def run_qwen4_exp_gdn_layer(
         q4_iu8_planes=q4_iu8_planes,
         q4_iu8_risk_mult=q4_iu8_risk_mult,
         q5k_iu8_risk_mult=q5k_iu8_risk_mult,
+        fused_combine_enabled=fused_combine_enabled,
         q51_iu8_risk_mult=q51_iu8_risk_mult,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
         q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
@@ -10715,6 +10744,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     q51_iu8_exact_enabled: bool | None = None
     q5k_iu8_exact_enabled: bool | None = None
     bounded_kv_reset: bool = True
+    fused_combine_enabled: bool = False
 
     def __init__(
         self,
@@ -10726,6 +10756,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         runtime: HipRuntime | None = None,
         moe_graph_enabled: bool | None = None,
         bounded_kv_reset: bool | None = None,
+        fused_combine_enabled: bool = False,
         q4_dp4a_decode_enabled: bool | None = None,
         q4_dp4a_decode_layers: frozenset[int] | None = None,
         production_moe_prefill_enabled: bool | None = None,
@@ -10775,6 +10806,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.q4_iu8_planes = q4_iu8_planes
         self.q4_iu8_risk_mult = q4_iu8_risk_mult
         self.q5k_iu8_risk_mult = q5k_iu8_risk_mult
+        self.fused_combine_enabled = bool(fused_combine_enabled)
         self.q51_iu8_risk_mult = q51_iu8_risk_mult
         self.q4_iu8_exact_enabled = q4_iu8_exact_enabled
         self.q51_iu8_exact_enabled = q51_iu8_exact_enabled
@@ -12108,6 +12140,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_iu8_planes=self.q4_iu8_planes,
                     q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q5k_iu8_risk_mult=self.q5k_iu8_risk_mult,
+                    fused_combine_enabled=self.fused_combine_enabled,
                     q51_iu8_risk_mult=self.q51_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                     q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
@@ -12185,6 +12218,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_iu8_planes=self.q4_iu8_planes,
                     q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q5k_iu8_risk_mult=self.q5k_iu8_risk_mult,
+                    fused_combine_enabled=self.fused_combine_enabled,
                     q51_iu8_risk_mult=self.q51_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                     q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
@@ -12541,6 +12575,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_iu8_planes=self.q4_iu8_planes,
                     q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q5k_iu8_risk_mult=self.q5k_iu8_risk_mult,
+                    fused_combine_enabled=self.fused_combine_enabled,
                     q51_iu8_risk_mult=self.q51_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                     q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
@@ -12615,6 +12650,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     q4_iu8_planes=self.q4_iu8_planes,
                     q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q5k_iu8_risk_mult=self.q5k_iu8_risk_mult,
+                    fused_combine_enabled=self.fused_combine_enabled,
                     q51_iu8_risk_mult=self.q51_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                     q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
