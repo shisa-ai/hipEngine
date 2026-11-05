@@ -292,17 +292,6 @@ def _qwen4_exp_layer_scope_contains(slot_path: str, scope: str | None) -> bool:
     return False
 
 
-def _qwen4_exp_layer_allowed(
-    weight: GGUFDeviceWeight,
-    *,
-    env_name: str,
-    default: str,
-) -> bool:
-    return _qwen4_exp_layer_scope_contains(
-        weight.spec.slot_path, os.environ.get(env_name, default)
-    )
-
-
 def _qwen4_exp_q4_iu8_layer_allowed(
     weights: Mapping[str, GGUFDeviceWeight], layers: str | None = None,
 ) -> bool:

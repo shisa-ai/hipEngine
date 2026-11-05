@@ -3616,6 +3616,19 @@ repair. Remove a fallback only after every in-tree direct consumer
 supplies its explicit owner choice and targeted public route/repeat/teardown
 checks pass; absence of profile writes alone is not that inventory.
 
+Inventory of the remaining direct reads in `qwen4_exp_runner.py`:
+
+- Execution policy still using process input: bounded KV reset, batched position
+  updates, Q5_K/Q5_1 IU8 risk multipliers and fused grouped-prefill combine.
+  R0410 owns the combine decision; preserve its explicit comparison arm.
+- Runner initialization: PLE page-cache warming and layer-graph enablement.
+  These are constructor-time resource choices, not per-prefill selector input.
+- Diagnostics: risk telemetry enablement. It does not select arithmetic.
+
+The unused generic environment-backed layer-scope helper was removed; explicit
+layer-scope parsing and owner-bound selectors remain. Do not treat the remaining
+reads as one homogeneous transport change.
+
 ```bash
 python3 scripts/qwen4exp_layer2_profile_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --decode-steps 32 --prefill-chunk-size 1024 --output /tmp/q4-decode-short.json
 python3 scripts/qwen4exp_long_context_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --numeric-prompts "$LONG_PROMPTS" --max-sequence-length 20000 --prefill-chunk-size 1024 --candidate-repeats 3 --output /tmp/q4-decode-long.json
