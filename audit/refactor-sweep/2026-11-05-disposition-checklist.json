@@ -2124,11 +2124,12 @@
       "ledger_line": 1607,
       "owner": "`hipengine/speculative/mtp_resident_draft.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/speculative/mtp_resident_draft.py:128,276-296 parses stage-specific dense-Q8 choices and validates domains."
+        "Retain explicit stage comparisons. Construction freezes stages before library/workspace setup; bench cache identity includes enablement/stages and result provenance preserves selection.",
+        "679 parser/routing/ownership/bench/suite tests pass; worklog/entries/20261105T231534.771775Z-lhl-r0281-draft-dense-q8-93a725.md. No runtime/arithmetic change."
       ],
-      "next_action": "Move stage policy into draft constructor/cache identity and migrate bench/profiler/suite metadata without turning comparisons into default float reruns.",
+      "next_action": "None; keep supported init/draft/all/individual stage comparisons separate from verifier policy.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

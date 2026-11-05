@@ -1458,25 +1458,6 @@ public uniform and mixed requests with oracle/direct selection, short/long/ragge
 rejection, reset/cancellation and cleanup. Verify actual attention sources and transient oracle
 owners.
 
-### R0281-DRAFT-DENSE-Q8 / R0303 — Resident draft stage-policy migration
-
-Owner: `hipengine/speculative/mtp_resident_draft.py`.
-
-Scope: `HIPENGINE_RESIDENT_MTP_DRAFT_DENSE_Q8_DP4A_STAGES`.
-
-**Decision needed:** keep explicit numerical comparison modes or migrate the ambient controls to a
-constructor-owned stage policy, with bench/profiler and named suite callers updated together. Do not
-silently turn a stage-specific comparison into the default float path, or combine draft and verifier
-controls.
-
-Done when: migrate parsing, JIT/workspace construction, initialization and proposal
-callers, cache identity and result provenance together. Run parser precedence/domain,
-single/dual/triple routing, upload ownership, CLI and suite contracts; exercise changed stages
-through the live compatibility caller with initial catch-up, proposal, reject/commit,
-reset/cancellation and cleanup. Keep a normal public MTP request as a separate provider-preservation
-check. Any changed-arithmetic default still needs its execution-profile numerical/task gates;
-historical throughput is not that evidence.
-
 ### R0281-DRAFT-X8 / R0294–R0298 — Resident Q6 top-1 arithmetic, layout and sidecar ownership
 
 Owner: `hipengine/speculative/mtp_resident_draft.py`.
