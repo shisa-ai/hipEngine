@@ -3701,7 +3701,9 @@ The three checked full-row diagnostic scripts bind and report DPP owner state
 for their diagnostic lifetime, including setup-error restoration. Generic AR
 and profile-gap overrides also bind and report owner state without process
 writes, preserving the legacy rule that only exactly `0` disables DPP.
-The runtime environment fallback remains until profiles publish this axis.
+Every profile now publishes enabled DPP owner state, preserving the former
+unbound default. The runtime no longer reads the process key; an explicit
+owner/session choice controls both family selection and dispatch-cache identity.
 Audit each geometry's
 actual registry and dispatch consumers before removing wrappers; the old phrase
 “losing geometry ladder” is not evidence that every non-default rung is dead.

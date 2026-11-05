@@ -45,10 +45,10 @@ def test_pipelined_upgrade_is_registry_checked_and_leaf_only(monkeypatch):
         "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
     )
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", "0")
-    assert upgrade(wave, **shape).key.variant == (
-        "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
-    )
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", raising=False)
+    with linear.q8_dpp_reduction_session(False):
+        assert upgrade(wave, **shape).key.variant == (
+            "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
+        )
     monkeypatch.setattr(linear, "is_registered", lambda key: "_dpp_" not in key.variant)
     assert upgrade(wave, **shape).key.variant == (
         "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
@@ -71,7 +71,7 @@ def test_pipelined_upgrade_is_registry_checked_and_leaf_only(monkeypatch):
     assert upgrade(wave, **shape) is wave
 
 
-def test_checked_full_rows_upgrade_is_shape_gated_and_env_opt_out(monkeypatch):
+def test_checked_full_rows_upgrade_is_shape_gated_and_owner_opt_out(monkeypatch):
     wave = linear.GGUFLinearDispatch(
         KernelKey(
             "hip_gfx1151", "linear", "gguf_q8_0",
@@ -99,10 +99,10 @@ def test_checked_full_rows_upgrade_is_shape_gated_and_env_opt_out(monkeypatch):
     # The DPP family opt-out skips the checked sibling too: it is downstream of
     # the DPP leaf in the degradation chain.
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", "0")
-    assert upgrade(wave, **qualified).key.variant == (
-        "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
-    )
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION", raising=False)
+    with linear.q8_dpp_reduction_session(False):
+        assert upgrade(wave, **qualified).key.variant == (
+            "coltile8_rowbatch4_wave_scale_pipelined_f32_f32_out"
+        )
 
     # Unqualified shapes keep the plain DPP leaf: decode rows, sub-512 rows and
     # geometry outside the declared dense Q8_0 set.

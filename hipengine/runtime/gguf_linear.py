@@ -4248,8 +4248,8 @@ def _raw_k_coltile_pipelined_dispatch(
     the registered strict fallback chain intact.
 
     ``coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out`` is preferred over
-    the shuffle-tree pipelined leaf while ``HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION``
-    is not ``0`` (default on). It replaces the five ``__shfl_down`` levels of the
+    the shuffle-tree pipelined leaf unless the execution owner explicitly disables
+    ``q8_dpp_reduction_enabled`` (default on). It replaces the five ``__shfl_down`` levels of the
     wave reduction with the VALU-only DPP sequence the q6_k prefill kernels use
     (``v_permlanex16``, then ``v_mov_dpp`` row shifts 8/4/2 and
     ``v_add_f32_dpp row_shl:1``). Those DPP steps pair lanes in exactly the same
@@ -4298,7 +4298,7 @@ def _raw_k_coltile_pipelined_dispatch(
 
 _Q8_STAGED_F32_LAYERS_ENV = "HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS"
 
-# Read here so the dispatch memoization key can see it; see the cache key note.
+# Historical diagnostic spelling; not read from the process environment.
 _Q8_DPP_REDUCTION_ENV = "HIPENGINE_QWEN4_EXP_Q8_DPP_REDUCTION"
 
 
@@ -4319,16 +4319,9 @@ def q8_dpp_reduction_session(enabled: bool | None):
 
 
 def _q8_dpp_reduction_raw() -> str:
-    """The effective DPP comparison input shared by selector and cache identity.
+    """Canonical owner/session choice shared by selector and cache identity."""
 
-    Explicit execution sessions use canonical strings; unbound diagnostics keep
-    the legacy raw-string input and its shared memoization.
-    """
-
-    enabled = _q8_dpp_reduction_execution.get()
-    if enabled is not None:
-        return '1' if enabled else '0'
-    return _raw_env_value(_Q8_DPP_REDUCTION_ENV, "1")
+    return '0' if _q8_dpp_reduction_execution.get() is False else '1'
 
 
 def _q4_pack8_wmma_bulk_raw() -> str:

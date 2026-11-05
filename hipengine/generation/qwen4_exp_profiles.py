@@ -1694,6 +1694,7 @@ def _bind(
     from hipengine.runtime.qwen4_exp_runner import ExpertGridPolicy, RawPrefillPolicy
     generator.raw_prefill_policy = RawPrefillPolicy()
     generator.expert_grid_policy = ExpertGridPolicy()
+    generator.q8_dpp_reduction_enabled = True
     generator.q8_wave_scale_prefill = production
     generator.gr_wave_scale = production
     # The compact F16 Q4_K dual gate/up tile pair: every plan publishes 16/16,
@@ -1749,6 +1750,7 @@ def _bind(
         runner.q4_pair_prefill = production
         runner.raw_prefill_policy = generator.raw_prefill_policy
         runner.expert_grid_policy = generator.expert_grid_policy
+        runner.q8_dpp_reduction_enabled = generator.q8_dpp_reduction_enabled
         runner.q8_wave_scale_prefill = production
         runner.gr_wave_scale = production
         runner.q4_tile_m = 16

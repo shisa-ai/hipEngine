@@ -84,10 +84,8 @@ def _final_variant(
         monkeypatch.setenv(gguf_linear._Q8_STAGED_F32_LAYERS_ENV, staged)
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "0")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE_LAYERS", "")
-    if dpp:
-        monkeypatch.delenv(DPP_ENV, raising=False)
-    else:
-        monkeypatch.setenv(DPP_ENV, "0")
+    # Opposing retired input must not override the explicit execution session.
+    monkeypatch.setenv(DPP_ENV, "0" if dpp else "1")
     cache.clear()
     recorded: list[str] = []
 
@@ -100,6 +98,7 @@ def _final_variant(
         gguf_linear.raw_k_prefill_rowbatch_session(32),
         gguf_linear.raw_k_prefill_variant_session("coltile8_wave_scale"),
         gguf_linear.q4k_rowtile_session(rowtile),
+        gguf_linear.q8_dpp_reduction_session(dpp),
     ):
         try:
             gguf_linear.launch_gguf_linear(

@@ -131,8 +131,10 @@ def test_raw_env_memo_returns_the_current_value(monkeypatch: pytest.MonkeyPatch)
     assert gguf_linear._raw_env_value(name, "fallback") == "beta"
     monkeypatch.delenv(name)
     assert gguf_linear._raw_env_value(name, "fallback") == "fallback"
-    # The two launch-key flags must go through it rather than re-reading inline.
+    # The retired DPP input no longer participates in the raw environment memo.
     monkeypatch.setenv(gguf_linear._Q8_DPP_REDUCTION_ENV, "0")
-    assert gguf_linear._q8_dpp_reduction_raw() == "0"
+    assert gguf_linear._q8_dpp_reduction_raw() == "1"
+    with gguf_linear.q8_dpp_reduction_session(False):
+        assert gguf_linear._q8_dpp_reduction_raw() == "0"
     monkeypatch.setenv(gguf_linear._Q8_DPP_REDUCTION_ENV, "1")
     assert gguf_linear._q8_dpp_reduction_raw() == "1"

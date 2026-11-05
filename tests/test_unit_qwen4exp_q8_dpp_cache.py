@@ -1,4 +1,4 @@
-"""The DPP comparison control is a live raw-string dispatch memo dimension."""
+"""DPP owner/session choice partitions dispatch memoization, not process input."""
 from contextlib import nullcontext
 from types import SimpleNamespace
 import pytest
@@ -51,8 +51,8 @@ def test_dpp_comparison_partitions_and_reuses_dispatch_cache(monkeypatch, owner_
                     activation_dtype='f32', output_dtype='f32',
                     backend='hip_gfx1151', use_wmma_prefill=False,
                     use_gemv_decode=False, runtime=object())
-        assert launched == [parent, dpp, dpp, parent, dpp]
-        assert resolutions == ['0', '1'], 'cached arms must not rerun selection'
+        assert launched == ([parent, dpp, dpp, parent, dpp] if owner_bound else [dpp] * 5)
+        assert resolutions == (['0', '1'] if owner_bound else ['1']), 'cached arms must not rerun selection'
     finally:
         for key, value in saved.items():
             if value is None:

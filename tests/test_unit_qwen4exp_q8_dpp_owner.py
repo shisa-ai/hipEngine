@@ -24,15 +24,42 @@ def test_owner_scope_overrides_ambient_and_restores(monkeypatch, enabled):
     assert owner.runner.q8_dpp_reduction_enabled is (not enabled)
 
 
-def test_nested_session_restores_and_keeps_legacy_fallback(monkeypatch):
+def test_nested_session_restores_enabled_default_without_process_fallback(monkeypatch):
     monkeypatch.setenv(linear._Q8_DPP_REDUCTION_ENV, 'custom')
-    assert linear._q8_dpp_reduction_raw() == 'custom'
+    assert linear._q8_dpp_reduction_raw() == '1'
     with linear.q8_dpp_reduction_session(False):
         assert linear._q8_dpp_reduction_raw() == '0'
         with linear.q8_dpp_reduction_session(True):
             assert linear._q8_dpp_reduction_raw() == '1'
         assert linear._q8_dpp_reduction_raw() == '0'
-    assert linear._q8_dpp_reduction_raw() == 'custom'
+    assert linear._q8_dpp_reduction_raw() == '1'
+
+
+@pytest.mark.parametrize('raw', ['0', '1', '', 'custom'])
+def test_unbound_default_ignores_retired_dpp_input(monkeypatch, raw):
+    monkeypatch.setenv(linear._Q8_DPP_REDUCTION_ENV, raw)
+    assert linear._q8_dpp_reduction_raw() == '1'
+    assert '_raw_env_value' not in inspect.getsource(linear._q8_dpp_reduction_raw)
+
+
+@pytest.mark.parametrize('profile', ['strict', 'production', 'batch_invariant'])
+def test_profiles_publish_enabled_dpp_without_process_writes(monkeypatch, profile):
+    import os
+    from hipengine.execution_profiles import resolve_runtime_profile
+    from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    register_gfx1151_kernels(replace=True)
+    register_qwen4_exp_gfx1151_profiles()
+    monkeypatch.setenv(linear._Q8_DPP_REDUCTION_ENV, '0')
+    owner = SimpleNamespace(runner=SimpleNamespace())
+    before = dict(os.environ)
+    resolved = resolve_runtime_profile(model='qwen4_exp_gguf', backend='hip_gfx1151',
+        quant='gguf_ud_q4_k_xl', profile=profile)
+    resolved.construct_generator(lambda: owner)
+    assert owner.q8_dpp_reduction_enabled is True
+    assert owner.runner.q8_dpp_reduction_enabled is True
+    assert _inherit_lane_decisions(owner, SimpleNamespace()).q8_dpp_reduction_enabled is True
+    assert dict(os.environ) == before
 
 
 @pytest.mark.parametrize('enabled', [False, True])
