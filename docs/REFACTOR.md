@@ -1231,17 +1231,18 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 
 Scope: `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE`.
 
-Done when: Decision needed: retain the selector as a supported diagnostic or replace its live
-isolation-profile callers with an explicit construction-time schedule before removing the
-environment reader. Preserve backend auto choices, exact baseline/segmented/state-capture fallbacks
-and the tiled implementation used by gfx1151. **Clearing action:** run
-`tests/test_unit_qwen35_gguf_conv_prefill_policy.py`,
-`tests/test_unit_qwen35_linear_attn_conv_plan.py` and
-`tests/test_unit_qwen35_prefill_kernel_profile.py`; migrate the sweep profiles without changing
-their other selectors. Then run the guarded primitive test
-`tests/test_gpu_qwen35_linear_attn_conv_tiled_prefill.py` and public generation with route
-engagement and cleanup recorded on each intended backend. Do not turn this cleanup into automatic
-gfx1100 promotion or delete kernels based on old schedule names.
+Done when: finish gfx1100 primitive/public generation validation with route engagement
+and cleanup on each intended backend. Keep the schedule selector as a supported diagnostic: the full-stack
+runner caches its resolved registered callable, and the maintained sweep's baseline
+isolation profile sets it before use. Host policy/registry/profile tests, gfx1151
+primitive output/final-state checks and public lifecycle checks with `baseline` pass.
+Temporary instrumentation established that the short packed NextN request does not
+call this selector; it is not a convolution-engagement gate. Add a public ordinary
+prefill request that reaches this owner before claiming that validation.
+Preserve backend auto choices, exact baseline/segmented/state-capture fallbacks and
+the tiled gfx1151 implementation. No environment-reader retirement is required while
+this comparison remains supported. Do not turn cleanup into gfx1100 promotion or
+remove kernels based on old schedule names.
 
 ### R0281-SELECTED-PAIR — Selected-MoE pair-reuse control retirement
 
