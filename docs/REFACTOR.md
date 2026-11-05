@@ -1197,30 +1197,6 @@ allocation pair on one weight, matching short greedy output and clean tracked
 allocation teardown. This is local lifecycle evidence, not a full model-quality
 or cross-backend parity claim.
 
-### R0281-SILU-FLOOR — Bulk-prefill and verifier fused-FFN policy
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `launch_gguf_linear_pair_silu()`; `_DISPATCH_RESOLVE_CACHE`; `_PAIR_DISPATCH_RESOLVE_CACHE`.
-
-**Remaining work:** replace the generic row-count proxy with explicit bulk-prefill versus verifier
-policy, shared by all production prefill entries. Do not lower the prefill floor as a cleanup side
-effect or treat this item as permission to remove current physical-target siblings. The fused
-dispatch is resolved directly by `launch_gguf_linear_pair_silu()`; its final choice is not stored in
-`_DISPATCH_RESOLVE_CACHE` or `_PAIR_DISPATCH_RESOLVE_CACHE`. Any new scope must participate in
-whichever cached decisions actually consume it, rather than adding unrelated cache-key fields from
-the old prescription.
-
-Done when: add nested/error/thread isolation and populated-cache control/candidate/control
-tests before introducing an execution-local prefill policy. Bind ordinary, packed and resumable
-prompt entries to the same owner; keep verification outside that scope. Exercise
-below/above/unrelated row counts, physical row28/32/36 schedules, quant/shape misses and
-registered-key fallback. Run `tests/test_unit_gguf_linear_dispatch.py`,
-`tests/test_unit_gguf_linear_dispatch_cache.py`, `tests/test_unit_q4_row48_control_retirement.py`
-and the host-only physical/floor nodes in `tests/test_gpu_gguf_q4_k_t16_dense.py`. Before changing a
-threshold, run its fused/unfused primitive oracle and same-host public prefill/verification
-comparison with selected variants, output/state, capture-inclusive wall and cleanup recorded.
-
 ### R0281-AR-LOOP — Direct GGUF compatibility loop and shared flush helpers
 
 Owner: `hipengine/generation/qwen35_gguf.py`.

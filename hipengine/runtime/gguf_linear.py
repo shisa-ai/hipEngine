@@ -1117,10 +1117,27 @@ _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
 # Target verification runs the same shared FFN stage inside captured physical
 # groups of 16/32 rows (C4-C8 at K3), where the fused owner measured 8.2% slower
 # per cycle across three replications even though the identical-shape prefill A/B
-# is faster; rows<=32 therefore keep the unfused chain until a prefill-context
-# selector exists (docs/REFACTOR.md). The floor also stays clear of the
-# dedicated small-B rowtile/GEMV domain (rows<=8).
+# is faster. Bulk-prefill and verifier roles now resolve separate floors (both
+# remain 33); this ownership split does not retune either path. The floors stay
+# clear of the dedicated small-B rowtile/GEMV domain (rows<=8).
 _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 33
+_Q4_T16_VERIFY_DUAL_WMMA_SILU_MIN_ROWS = 33
+_bulk_prefill_ffn_enabled: ContextVar[bool] = ContextVar(
+    "gguf_bulk_prefill_ffn_enabled", default=False,
+)
+
+
+@contextlib.contextmanager
+def bulk_prefill_ffn_session(enabled: bool = True):
+    """Bind bulk prompt FFN policy without changing verifier policy."""
+
+    token = _bulk_prefill_ffn_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _bulk_prefill_ffn_enabled.reset(token)
+
+
 _rowtile_variant_policy_env_cache: dict[tuple[str, bool], bool] = {}
 _Q4_QMICRO_T16_EXPANDED_META_MIN_ROWS = 4_096
 _Q4_T16_DENSE_QUANTS = frozenset(
@@ -3465,8 +3482,13 @@ def _q4_t16_dual_wmma_silu_dispatch(
             layer_id=layer_id,
             r28_enabled=r28_enabled,
         )
+    min_rows = (
+        _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS
+        if _bulk_prefill_ffn_enabled.get()
+        else _Q4_T16_VERIFY_DUAL_WMMA_SILU_MIN_ROWS
+    )
     if (
-        (rows < _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS and physical_variant is None)
+        (rows < min_rows and physical_variant is None)
         or in_features != _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES
         or out_features != _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES
         or dispatch_a.abi != "t16"
@@ -13249,6 +13271,7 @@ __all__ = [
     "launch_gguf_linear_residual",
     "launch_gguf_linear_moe_tail_host_batch",
     "launch_gguf_linear_pair",
+    "bulk_prefill_ffn_session",
     "launch_gguf_linear_pair_silu",
     "launch_gguf_linear_pair_concat",
     "launch_gguf_linear_raw_ptr",

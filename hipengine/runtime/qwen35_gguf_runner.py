@@ -471,6 +471,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_q4_t16_sidecar_decode,
     launch_gguf_linear_pair,
     launch_gguf_linear_pair_concat,
+    bulk_prefill_ffn_session,
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
@@ -18919,6 +18920,7 @@ class Qwen35GGUFResidentSession:
         """
 
         with (
+            bulk_prefill_ffn_session(),
             q4_t16_unequal_pair_prefill_session(
                 _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
             ),
@@ -22569,11 +22571,12 @@ class Qwen35GGUFResidentSession:
                     " decode state before reusing the packed workspace slots"
                 )
         try:
-            return self._prefill_batch_native_layer_outer_segment_guarded(
-                state,
-                layer_budget=layer_budget,
-                stream=stream,
-            )
+            with bulk_prefill_ffn_session():
+                return self._prefill_batch_native_layer_outer_segment_guarded(
+                    state,
+                    layer_budget=layer_budget,
+                    stream=stream,
+                )
         finally:
             self._release_int8_prefill_oracles_after_call(tuple(state.sessions))
 

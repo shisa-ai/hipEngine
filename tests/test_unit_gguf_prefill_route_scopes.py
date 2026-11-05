@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.runtime import qwen35_gguf_runner as runner
+from hipengine.runtime import gguf_linear as linear
 
 
 @pytest.mark.parametrize("fail_at", (None, "q4", "f16", "wide", "q6", "iq", "body"))
@@ -45,6 +46,7 @@ def test_common_prefill_scopes_enter_in_order_and_unwind(monkeypatch, fail_at):
 
     def execute():
         with session._prefill_route_sessions():
+            assert linear._bulk_prefill_ffn_enabled.get() is True
             assert entered == ["q4", "f16", "wide", "q6", "iq"]
             events.append(("body", "body"))
             if fail_at == "body":
@@ -55,6 +57,7 @@ def test_common_prefill_scopes_enter_in_order_and_unwind(monkeypatch, fail_at):
     else:
         with pytest.raises(RuntimeError, match="injected"):
             execute()
+    assert linear._bulk_prefill_ffn_enabled.get() is False
     assert [name for action, name in events if action == "exit"] == list(reversed(entered))
     assert [name for action, name in events if action == "enter"] == (
         ["q4", "f16", "wide", "q6", "iq"]

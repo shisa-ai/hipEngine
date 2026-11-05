@@ -1676,11 +1676,13 @@
       "ledger_line": 1208,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/gguf_linear.py:1121 keeps row33 fused floor; launch-time paired resolution still selects row bands at 3438-3480."
+        "Execution-local bulk FFN role bound to ordinary/packed common scope and resumable segments; independent bulk/verifier floors remain 33.",
+        "392 focused host tests, 10 fallback tests and 9 physical/floor nodes pass; public gfx1151 repeated MTP attributes prompt versus verifier roles and drains allocations.",
+        "worklog/entries/20261105T220858.308090Z-lhl-silu-floor-839f2c.md"
       ],
-      "next_action": "Add RED nested/error/thread/cache-isolation tests and bind one explicit execution-local bulk-prefill policy across ordinary/packed/resumable entries, without changing thresholds or verification siblings.",
+      "next_action": "None. Thresholds, arithmetic and physical-target siblings unchanged; completed ledger section removed.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
