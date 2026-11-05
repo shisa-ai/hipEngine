@@ -35,10 +35,13 @@
       "title": "R0030 — Decide router-selection semantics before reopening warp arithmetic",
       "ledger_line": 70,
       "owner": "`hipengine/runtime/qwen4_exp_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "human_decision_required",
+      "evidence": [
+        "hipengine/runtime/qwen4_exp_runner.py:5871-5915 retains warp producer as an explicit diagnostic with exact tile4 default.",
+        "worklog/entries/20260927T165141.855589Z-lhl-qwen4exp-router-warp-reduce-gate-rejection-7d65b8.md:104-110 explicitly requires ranking/reference semantic change before reopening."
+      ],
+      "next_action": "Decide whether strict expert ranking may use quantized logits plus deterministic ties, including a new reference; otherwise retain strict tile4 and the diagnostic without retrying unchanged warp arithmetic.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -49,16 +52,21 @@
           "hipengine/runtime/qwen4_exp_runner.py:5252-5265 (env reader retained for the named rollback and gate arms)",
           "worklog/entries/20260927T165141.855589Z-lhl-qwen4exp-router-warp-reduce-gate-rejection-7d65b8.md:108-109 (quantized ranking and reference re-baseline proposal)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing artifact inspection; no new numerical evaluation in this disposition step."
     },
     {
       "title": "R0028 — GR-wide profile handoff and engagement checks",
       "ledger_line": 86,
       "owner": "`hipengine/runtime/qwen4_exp_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen4_exp_runner.py:3909-3961 selects the wide projection under owner and geometry guards.",
+        "audit/refactor-sweep/2026-11-01-r0028-isolation.json records four-arm numerical isolation; the strict wide-off control passes.",
+        "docs/REFACTOR.md R0028 requires a precision-preserving projection screen, not another unchanged composition run."
+      ],
+      "next_action": "Inspect wide projection operands and build a precision-preserving primitive candidate, then run the stated primitive oracles before full composition gates. No human decision or missing-evidence gate prevents starting.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -68,16 +76,20 @@
           "hipengine/generation/qwen4_exp_profiles.py:1540-1545 (binder sets GR_WIDE)",
           "worklog/entries/20261025T211932.843745Z-cleanup-cleanup-refactor-r0026-r0028-gr-routes-6c34af.md (GR_WIDE=1 in the gguf_ud_q4_k_xl production composition)"
         ]
-      }
+      },
+      "inspection_limits": "Static current-source and existing artifact inspection; no new numerical evaluation in this disposition step."
     },
     {
       "title": "R0027 — Repair isolated GR-down IU8 drift independently",
       "ledger_line": 117,
       "owner": "`hipengine/generation/qwen4_exp_profiles.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/qwen4exp_gr_iu8_logits_probe.py:47-76 supports the down axis independently of up.",
+        "hipengine/generation/qwen4_exp_profiles.py:1259-1261 publishes separate up/down owner values."
+      ],
+      "next_action": "Localize the down projection independently and screen a changed arithmetic candidate before the full depth gate; do not retry rejected compensated correction unchanged.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -88,16 +100,20 @@
           "benchmarks/results/2026-09-22-gr-drift-localization/README.md (projection-boundary localization, gfx1151)",
           "scripts/qwen4exp_gr_iu8_logits_probe.py"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and existing ledger contract inspected; no new numerical or device gate executed."
     },
     {
       "title": "R0026 — Repair isolated GR-up IU8 projection drift",
       "ledger_line": 128,
       "owner": "`hipengine/generation/qwen4_exp_profiles.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/qwen4exp_gr_iu8_logits_probe.py:47-76 has maintained independent owner up/down comparison arms.",
+        "docs/REFACTOR.md R0026 requires projection repair before depth-gate restoration."
+      ],
+      "next_action": "Localize GR-up operand/projection drift and screen a changed candidate with the existing independent up arm; retain the exact epilogue.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -107,7 +123,8 @@
           "benchmarks/results/2026-09-15-journey-gr-up/README.md (mean KL 0.00140243, p95 0.00740151, top-1 772/780, 6912 calls at K320/N10240, gfx1151)",
           "benchmarks/results/2026-09-22-gr-drift-localization/README.md"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and existing ledger contract inspected; no new numerical or device gate executed."
     },
     {
       "title": "R0039 — Separate multi-column GDN capability from composition task review",
@@ -151,10 +168,14 @@
       "title": "R0058 — Decide dormant ordered-pair redesign and Q3/Q3 capability",
       "ledger_line": 172,
       "owner": "`hipengine/kernels/hip_gfx1100/fused/gguf_iq4_q4_pair.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/kernels/hip_gfx1100/fused/gguf_iq4_q4_pair.py:313-362 implements the Q3/IQ4 ordered owner.",
+        "Current pair module and backend registration have no gguf_q3_k+gguf_q3_k owner.",
+        "docs/REFACTOR.md R0058 explicitly requires missing strict side-A Q3/Q3 implementation unless the family is retired by a separate decision."
+      ],
+      "next_action": "Implement the missing strict Q3/Q3 owner and registry key with CPU/strict leaf oracle first; inspect gfx1100 resources before device checks. Lack of that GPU does not block starting implementation.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -164,7 +185,8 @@
           "tests/test_gpu_gguf_iq4_q4_pair.py, tests/test_unit_gguf_linear_dispatch.py (ordered keys)",
           "~/ud-e1-census/e6b5_screen.py, e6b7_screen.py, e6_closeout_screen.py (external screen scripts named by the entry)"
         ]
-      }
+      },
+      "inspection_limits": "Static implementation and existing ledger contract inspected; no new numerical or device gate executed."
     },
     {
       "title": "R0057 — Repair gfx1151 compact attention wave producer",
