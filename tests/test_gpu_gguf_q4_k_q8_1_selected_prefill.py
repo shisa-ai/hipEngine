@@ -1678,6 +1678,8 @@ def test_q4_k_q8_1_ds4_mmq32_selected_prefill_bf16_matches_ds4_cpu_reference(
             id="empty-first-multi-block-source-remap",
         ),
         pytest.param([6, 3], 768, 64, 32, False, id="six-128-groups-uneven"),
+        pytest.param([32, 0, 17], 2816, 1408, 1408, True,
+                     id="gemma-production-geometry-remapped"),
     ],
 )
 def test_q4_k_q8_1_ds4_mmq32x128_selected_prefill_matches_mmq32(

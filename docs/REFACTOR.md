@@ -3072,26 +3072,6 @@ HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1 .venv/bin/python scripts/gemma4_generated_histor
 Keep the down-MMQ rollback until continuation and full-profile repair gates pass; a teacher-forced
 screen alone does not clear generated-history failure.
 
-### R0518 — Choose production-geometry evaluation or removal of wide-K MMQ
-
-Owner: `hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py`.
-
-Scope: `mmq32x128` selected-dual export and wrapper.
-
-**Deferred candidate decision:** run the narrow/wide comparison at production geometry, or remove
-the unused wide export, wrapper and wide-only test cases. The current benchmark accepts the intended
-geometry:
-
-```bash
-.venv/bin/python scripts/gemma4_mmq_k_width_leaf_bench.py \
-  --in-features 2816 --out-features-a 1408 --out-features-b 1408
-```
-
-Done when: If selecting the wide route, preserve its input-width capability restriction, verify numerical
-parity and demonstrate the selected route through public prefill with the applicable gates. A leaf
-result alone does not establish end-to-end gain. If deleting it, preserve the shared `KSUB`
-machinery and narrow implementation.
-
 ### R0519 — Decide the compensated Gemma WMMA candidate independently of selectors
 
 Owner: `hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`.

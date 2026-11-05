@@ -4058,11 +4058,13 @@
       "ledger_line": 3300,
       "owner": "`hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py retains shared selected dual exports."
+        "Wide export consumed by maintained leaf comparator and primitive tests, not production dispatch; retained as explicit diagnostic.",
+        "Four primitive oracle cases pass including Gemma 2816 -> 1408/1408 remapped uneven geometry; comparator run on gfx1151 finds no leaf benefit.",
+        "worklog/entries/20261105T223308.463955Z-lhl-r0518-width-f126a1.md"
       ],
-      "next_action": "Inventory wide-only consumers, run implemented production-geometry leaf comparator or retire truly unused wide export; preserve narrow and KSUB shared machinery.",
+      "next_action": "None. No wide production selection; narrow default and shared KSUB preserved. Candidate evaluation/retention decision complete.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
