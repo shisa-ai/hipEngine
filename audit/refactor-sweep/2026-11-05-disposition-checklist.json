@@ -1495,12 +1495,12 @@
       "ledger_line": 1059,
       "owner": "`hipengine/runtime/laguna_moe.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "scripts/laguna_target_ar_bench.py:255,719,851 has IQ3 schedule inputs/report.",
         "hipengine/runtime/laguna_gguf_runner.py:3000,3184-3186 resolves the schedule."
       ],
-      "next_action": "Inventory wave10/wave4/serial consumers, keep independent oracle comparisons under explicit ownership and migrate redundant selectors with unit restoration checks.",
+      "next_action": "Constructor/kernel-plan ownership and both target-AR callers/metadata inspected; host and configured ROCm schedule nodes pass. Retain wave10/wave4/serial diagnostics. Actual model gate needs Laguna checkpoint at R0249/R0250; see worklog/entries/20261105T192333.475439Z-lhl-laguna-iq3-disposition-8eafa0.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -5037,8 +5037,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 179,
-    "concrete_dependency_blocker": 42,
+    "locally_actionable": 178,
+    "concrete_dependency_blocker": 43,
     "human_decision_required": 6,
     "completed": 5,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."

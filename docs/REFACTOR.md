@@ -1035,13 +1035,16 @@ Owner: `hipengine/runtime/laguna_moe.py`.
 
 Scope: `wave10_fused`, `wave4_reduce`, `serial_weighted`, `iq3_c1_down_schedule`.
 
-Done when: Decision needed: retain the constructor/CLI modes as supported diagnostics, or migrate schedule
-comparisons to a scoped owner before retiring the public selector. **Clearing action:** migrate both
-target-AR construction sites and result fields, preserving the wave10-miss fallback, wave4
-producer/reducer and serial chain. Run the three `test_laguna_iq3_*` schedule/removed-signbit nodes
-in `tests/test_live_laguna_moe_gpu.py`, runner and target-AR units; then exact primitive comparisons
-and R0249/R0250's public c1/multi-row continuation and cleanup gate. Keep unsupported/backend
-fallbacks, grouped-prefill consumers and independent verifier tiles.
+Done when: complete exact primitive and public c1/multi-row continuation/cleanup
+checks with the R0249/R0250 checkpoint. The constructor and kernel plan own the
+resolved schedule; target-AR passes its explicit CLI comparison at both construction
+sites and records the effective mode. Keep `wave10_fused`, `wave4_reduce` and
+`serial_weighted` as supported independent diagnostics, including the wave10-miss
+serial fallback and wave4 producer/reducer. Runner/target-AR host tests cover
+selection and invalid/removed modes, not actual-weight arithmetic. Run the guarded
+`test_laguna_iq3_*` schedule nodes in `tests/test_live_laguna_moe_gpu.py` in the ROCm
+environment. Preserve unsupported/backend fallbacks, grouped-prefill consumers and
+independent verifier tiles.
 
 ### R0281-SPLIT / R0339 — Split-attention and tile16 comparison controls
 
