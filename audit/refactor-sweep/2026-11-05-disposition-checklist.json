@@ -3254,7 +3254,7 @@
       "evidence": [
         "hipengine/speculative/mtp_budget.py:1,37-51 defines typed request-start/choose/post-cycle/summary diagnostics."
       ],
-      "next_action": "Retain typed request-owned protocol and benchmark-only controllers. Host tests and local gfx1151 fixed/sequence suite exercise all nine ordered transitions with true-AR token equality, CPU accept agreement and clean teardown. Complete forced-prefix/reset/failure observation ordering before closure. See worklog/entries/20261105T205050.722023Z-lhl-r0388-diagnostic-owner-95d970.md.",
+      "next_action": "Retain typed request-owned protocol and benchmark-only controllers. Host tests and local gfx1151 fixed/sequence suite exercise all nine ordered transitions with true-AR token equality, CPU accept agreement and clean teardown. CPU generate-loop tests now cover all forced prefixes, reset/reuse, tail clipping and failure/cancellation observation ordering. Complete forced-prefix GPU state repair and device fault cleanup before closure. See worklog/entries/20261105T205846.018145Z-lhl-r0388-cycle-order-10ca0c.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

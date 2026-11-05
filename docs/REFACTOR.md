@@ -2651,11 +2651,16 @@ transitions, matches true-AR tokens for fixed and sequence arms, agrees with CPU
 acceptance and drains allocations. See
 `worklog/entries/20261105T205050.722023Z-lhl-r0388-diagnostic-owner-95d970.md`.
 
-**Remaining:** complete forced acceptance-prefix, reset/failure/cleanup diagnostic
-coverage and confirm post-commit observation ordering through each case. Keep
-output-tail clipping and cancellation ordering distinct. A new timing-adaptive
-default needs its own declared policy and comparison against fixed budgets; this
-ownership decision does not change or promote one.
+Done when: complete live forced-prefix state-repair and device fault-cleanup
+checks before closure. Forced acceptance-prefix and failure-order observations have
+CPU control-flow coverage in `tests/test_unit_mtp_budget_session_lifecycle.py`,
+including request reset/reuse, tail clipping and cancellation after draft repair.
+The scheduler and resource boundaries are doubled: these tests do not prove
+forced-prefix GPU state repair or actual-device fault cleanup. Complete those
+live checks before closure. See
+`worklog/entries/20261105T205846.018145Z-lhl-r0388-cycle-order-10ca0c.md`.
+A new timing-adaptive default needs its own declared policy and comparison against
+fixed budgets; this ownership decision does not change or promote one.
 
 ### R0393-Q6 — Grouped-Q6 rollback interface and gfx1100 public engagement
 
