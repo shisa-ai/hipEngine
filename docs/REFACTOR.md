@@ -2896,10 +2896,12 @@ Owner: `hipengine/generation/registry.py`.
 
 Scope: `GenerationOutput.prompt_tokens`; `_usage` in `hipengine/server/api.py`.
 
-Done when: Complete real-checkpoint prompt-count validation for Gemma 4 image and Surya OCR on
-each supported backend through `LLM.generate()` or `hipengine serve`. The matching Gemma vision
-projector and Surya checkpoint are absent from the checked local model directories; provide those
-inputs, then compare HTTP usage with the generation output and actual expanded prefill length.
+Done when: complete remaining real-checkpoint prompt-count validation for Gemma 4 image on
+gfx1100 and Surya OCR on supported backends. The local Gemma model and matching
+`mmproj-F16.gguf` ran through gfx1151 HTTP image chat: usage, generation output and actual
+expanded prefill all report 284 prompt tokens, with clean teardown. See
+`worklog/entries/20261105T222851.099261Z-lhl-r0494-gemma-bbe09d.md`.
+Surya checkpoint is absent locally; gfx1100 hardware is unavailable on this host.
 Qwen4Exp gfx1151 HTTP image validation passes; see
 `worklog/entries/20261031T201027.069818Z-lhl-r0494-qwen4exp-real-http-usage-c3cbd6.md`.
 Preserve the implemented contract: `GenerationOutput.prompt_tokens` owns the count, `None`

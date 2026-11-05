@@ -3734,12 +3734,12 @@
       "ledger_line": 3057,
       "owner": "`hipengine/generation/registry.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "hipengine/generation/registry.py owns prompt token count and server/api.py consumes generation usage.",
-        "Local ~/models/gguf/gemma-4-26B-A4B-it-GGUF now includes mmproj-F16.gguf beside model GGUF; Surya HF cache is absent."
+        "Gemma local gfx1151 HTTP image request: HTTP usage/output/actual expanded prefill all 284; zero tracked allocations after close.",
+        "20 host/server contracts pass; worklog/entries/20261105T222851.099261Z-lhl-r0494-gemma-bbe09d.md."
       ],
-      "next_action": "Verify the local Gemma projector matches architecture and run image prompt-count validation through public surface. Keep Surya half checkpoint-blocked; do not preserve stale claim that both inputs are absent.",
+      "next_action": "Supply gfx1100 device for Gemma backend half and Surya checkpoint for OCR public usage checks. Locally available Gemma validation complete.",
       "inspection_limits": "Static code and bounded model inventory. No new numerical/performance/public test; architecture design work is startable without treating absent implementation as external permission dependency."
     },
     {
