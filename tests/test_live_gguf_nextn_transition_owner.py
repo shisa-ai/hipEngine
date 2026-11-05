@@ -25,7 +25,17 @@ def test_public_dense_nextn_transition_commit_repeat_and_cancel(monkeypatch):
     from hipengine.core.hip import get_hip_runtime
     from hipengine.generation.deadline import GenerationCancellationToken
     from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNExecutor
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 
+    accepts = []
+    accept_original = Qwen35GGUFMTP2Adapter._enqueue_target_batch_accept
+
+    def accept(self, *args, **kwargs):
+        result = accept_original(self, *args, **kwargs)
+        accepts.append(True)
+        return result
+
+    monkeypatch.setattr(Qwen35GGUFMTP2Adapter, '_enqueue_target_batch_accept', accept)
     calls = []
     original = Qwen35GGUFNextNExecutor._enqueue_batch_hidden_transition
     cancellation = None
@@ -46,7 +56,10 @@ def test_public_dense_nextn_transition_commit_repeat_and_cancel(monkeypatch):
         outputs = []
         for _ in range(2):
             calls.clear()
+            accepts.clear()
             output = llm.generate_detailed([[9707] * 17, [9707] * 23], params)[0]
+            assert accepts, 'public batch did not enqueue device accept'
+            assert any(options.get('synchronize') is False for options in calls)
             assert calls, 'public NextN request did not execute the shared transition'
             assert len(output.generated_token_ids) == 12
             outputs.append(tuple(output.generated_token_ids))
