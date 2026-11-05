@@ -249,6 +249,21 @@ def test_production_requests_wmma_prefill_attention_and_strict_requests_none(
     assert generator.prefill_attention_variants is None
 
 
+def test_rebinding_strict_clears_prior_production_prefill_request(monkeypatch):
+    from types import SimpleNamespace
+
+    _registered()
+    generator = SimpleNamespace(prefill_attention_variants=None)
+    for profile in (ExecutionProfile.PRODUCTION, ExecutionProfile.STRICT):
+        resolved = resolve_runtime_profile(
+            model=GEMMA4_GGUF_MODEL, backend=GEMMA4_GGUF_BACKEND,
+            quant=GEMMA4_GGUF_QUANT, profile=profile)
+        resolved.binder(generator, resolved)
+        if profile is ExecutionProfile.PRODUCTION:
+            assert generator.prefill_attention_variants
+    assert generator.prefill_attention_variants is None
+
+
 def test_batch_invariant_is_not_registered_and_falls_back_to_strict() -> None:
     _registered()
     resolved = resolve_runtime_profile(

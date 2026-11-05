@@ -498,12 +498,11 @@ def _binder(route: str):
             and selection["scope"] == scope
             and selection["selected_variant"] != PREFILL_ATTENTION_PLAIN
         )
-        if prefill_variants:
-            try:
-                generator.prefill_attention_variants = prefill_variants
-            except AttributeError:
-                # A construction stub that only carries environment bindings.
-                pass
+        try:
+            generator.prefill_attention_variants = prefill_variants or None
+        except AttributeError:
+            # A construction stub that only carries environment bindings.
+            pass
 
     return bind
 
