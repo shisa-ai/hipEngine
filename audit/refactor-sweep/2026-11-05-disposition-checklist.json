@@ -2956,9 +2956,11 @@
       "review_status": "reviewed",
       "disposition": "locally_actionable",
       "evidence": [
-        "hipengine/runtime/gguf_linear.py:1087,2893-2913 still uses module-global rowtile session state, not ContextVar."
+        "hipengine/runtime/gguf_linear.py:1087,2892-2916 now stores rowtile selection in ContextVar after e28cc6700.",
+        "tests/test_unit_runtime_gguf_linear_q4k_rowtile_knob.py adds deterministic independent-thread/context regressions, RED then GREEN.",
+        "worklog/entries/20261105T171958.836222Z-lhl-rowtile-context-owner-c7b785.md records full CPU and public scope checks."
       ],
-      "next_action": "Add concurrent owner isolation RED test and migrate scoped rowtile state to execution-local ownership with nesting/error restore and populated-cache parity.",
+      "next_action": "Complete remaining pair/fused/raw-K/pack8 and backend-specific public route matrix before closing the ledger row; do not repeat completed module-global-to-context-local repair.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -3815,10 +3817,12 @@
       "title": "R0504 — Evaluate overlapping chunked prompt activations",
       "ledger_line": 3135,
       "owner": "`hipengine/generation/engine_loop.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/engine_loop.py:2684-2688,2863 checks activation readiness before admission."
+      ],
+      "next_action": "Implement co-activation with provider slot claims and partial-failure isolation, then compare public unequal-length batches against single-request baselines.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -3826,16 +3830,19 @@
         "evidence": [
           "worklog/entries/20261030T051533.852365Z-cleanup-cleanup-r0504-1a0a4a.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0505 — Separate prefill failure state from speculative intent",
       "ledger_line": 3148,
       "owner": "`hipengine/generation/engine_loop.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/engine_loop.py:2241,3472,3542 retains split-refused reproduction choice."
+      ],
+      "next_action": "Separate failed-stream lifecycle from speculative intent or document terminal zero-budget ownership; retire only reproduced obsolete singleton-split comparison, preserving eligible peers.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -3846,16 +3853,19 @@
           "hipengine/generation/qwen35_gguf_mtp2.py:2134 (current source inspected)",
           "hipengine/generation/engine_loop.py:2238 (current source inspected)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0506 — Decide whether to retire the gapped-gather rollback switch",
       "ledger_line": 3167,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:8830 keeps gather rollback; resource and fallback branches are independent."
+      ],
+      "next_action": "Inventory rollback users and retain explicit diagnostic or migrate scoped resource policy; preserve gapped algorithm, demand sizing and slow fallback guard.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -3863,16 +3873,19 @@
         "evidence": [
           "worklog/entries/20261030T052435.456434Z-cleanup-cleanup-r0506-2266da.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0507 — Consolidate the raw greedy MTP compatibility entry point",
       "ledger_line": 3180,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py retains raw compatibility route alongside resident submit/poll owner."
+      ],
+      "next_action": "Map raw-entry callers and consolidate through shared service ownership without recursion; cover staged sampled and non-staged greedy fallbacks before removal.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -3880,16 +3893,19 @@
         "evidence": [
           "worklog/entries/20261030T052802.377239Z-cleanup-cleanup-r0507-9a0a9a.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0509 — Choose shared target/provider checkpoint memory accounting",
       "ledger_line": 3194,
       "owner": "`scripts/int8_mtp_prefix_gate.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf_mtp2.py:6814 exposes provider checkpoint discard independent of target cache."
+      ],
+      "next_action": "Define shared allocation-aware checkpoint budget and coordinated eviction with failed-capture/replacement tests, then replace entry count without losing restore.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -3898,16 +3914,19 @@
           "worklog/entries/20261030T053120.997595Z-cleanup-cleanup-r0509-ac7268.md (prior scoped implementation review and validation record; read during this audit)",
           "scripts/int8_mtp_prefix_gate.py (current declared implementation/diagnostic source)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0510 — Define bounded-context startup warmup ownership and coverage",
       "ledger_line": 3212,
       "owner": "`hipengine/server/api.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/server/api.py:5637,11626 retains startup width reduction."
+      ],
+      "next_action": "Implement temporary bounded-context probe sessions sharing immutable weights with priced bucket coverage and release before full request use.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -3915,16 +3934,19 @@
         "evidence": [
           "worklog/entries/20261030T053417.246066Z-cleanup-cleanup-r0510-f005d0.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0512 — Revisit Q5 decode-dual dispatch separately from working prefill",
       "ledger_line": 3226,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py retains independent dense-pair dispatch and production prefill."
+      ],
+      "next_action": "Re-screen Q5-specific decode dual against current two-leaf SiLU chain on gfx1151; preserve working prefill and report selected registered owner.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -3932,16 +3954,19 @@
         "evidence": [
           "worklog/entries/20261030T054131.120473Z-cleanup-cleanup-r0512-fc0317.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0513 — Define captured-accept logprob outputs for every published token",
       "ledger_line": 3237,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf_mtp2.py:2468-2473 explicitly declines captured accept logprobs because no host rows are available."
+      ],
+      "next_action": "Implement per-published-token processed logprob/top-logprob output buffers with row binding and truncation, then run zero-delta AR parity with actual captured accept.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -3949,16 +3974,19 @@
         "evidence": [
           "worklog/entries/20261030T054428.090722Z-cleanup-cleanup-r0513-d4c6af.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0514 — Define device forced-token inputs and queue commit semantics",
       "ledger_line": 3251,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf_mtp2.py:2465-2466 explicitly declines forced-token captured accept."
+      ],
+      "next_action": "Add per-row forced-token device inputs and request-local committed queue positions with replay/rollback/truncation tests before removing decline.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -3966,16 +3994,19 @@
         "evidence": [
           "worklog/entries/20261030T054704.775988Z-cleanup-cleanup-r0514-dd42dd.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0515 — Decide retirement of the Gemma 4 gate/up MMQ rollback",
       "ledger_line": 3268,
       "owner": "`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:257-302 retains default-on gate/up MMQ and exact off arm."
+      ],
+      "next_action": "Run frozen same-artifact teacher comparison at short/long/natural/low-margin inputs with distinct launch attribution before retiring rollback.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -3983,16 +4014,19 @@
         "evidence": [
           "worklog/entries/20261030T055013.430897Z-cleanup-cleanup-r0515-0a2771.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0516 — Repair Gemma 4 down-MMQ continuation before retiring its lever",
       "ledger_line": 3282,
       "owner": "`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:262,275-286 preserves observed down-MMQ failure containment and explicit diagnostic."
+      ],
+      "next_action": "Localize generated-history divergence and repair before unchanged continuation/full profile gates; keep working default and diagnostic available.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4000,16 +4034,19 @@
         "evidence": [
           "worklog/entries/20261030T055331.626666Z-cleanup-cleanup-r0516-efe8c6.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0518 — Choose production-geometry evaluation or removal of wide-K MMQ",
       "ledger_line": 3300,
       "owner": "`hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_q8_1_selected_prefill.py retains shared selected dual exports."
+      ],
+      "next_action": "Inventory wide-only consumers, run implemented production-geometry leaf comparator or retire truly unused wide export; preserve narrow and KSUB shared machinery.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -4017,16 +4054,19 @@
         "evidence": [
           "worklog/entries/20261030T060018.967169Z-cleanup-cleanup-r0518-650f6d.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0519 — Decide the compensated Gemma WMMA candidate independently of selectors",
       "ledger_line": 3320,
       "owner": "`hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py:1222-1267 exposes compensated and wmma_plain diagnostics."
+      ],
+      "next_action": "Evaluate current compensated candidate under current profile contract and then repair/retain/retire only Gemma wiring after consumer inventory.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -4034,16 +4074,19 @@
         "evidence": [
           "worklog/entries/20261030T060330.593271Z-cleanup-cleanup-r0519-9919bb.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0521 — Revisit backend-specific decode graph engagement separately from telemetry",
       "ledger_line": 3333,
       "owner": "`hipengine/runtime/gemma4_decode_graph.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/gemma4_decode_graph.py:117-133 resolves backend-specific capture ceiling and 249-348 tracks launched fallback."
+      ],
+      "next_action": "Measure capture-inclusive current local graph crossover or reduce replay overhead before policy changes; keep fallback telemetry until consumers actually disappear.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -4054,16 +4097,19 @@
           "hipengine/kernels/hip_gfx1100/__init__.py:207 (current source inspected)",
           "hipengine/kernels/hip_gfx1100/__init__.py:207 (current source inspected)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0003 — Choose a DMS layout that preserves interior-expiry semantics",
       "ledger_line": 3349,
       "owner": "`hipengine/kvcache/dms.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/kvcache/dms.py:819,1447,1548 applies live-mask semantics including interior history."
+      ],
+      "next_action": "Design prefix advance plus interior compaction or split history/window layout with explicit bounds and full snapshot/rollback integration; cover wrap/expiry against host oracle.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4071,16 +4117,19 @@
         "evidence": [
           "worklog/entries/20261030T061329.839123Z-cleanup-cleanup-r0003-fe93ea.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0011 — Define bounded generic-provider child ownership",
       "ledger_line": 3368,
       "owner": "`hipengine/generation/engine_service.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/engine_service.py:664-746 has generic-child spelling but compatibility admission gate still wraps lifecycle."
+      ],
+      "next_action": "Implement bounded generic-only child driver contract and actual generic adapter tests before replacing compatibility rejection; preserve sole model-work driver.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4088,16 +4137,19 @@
         "evidence": [
           "worklog/entries/20261030T061714.750608Z-cleanup-cleanup-r0011-6f9c51.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0071 — Resolve split-prefill arithmetic before retiring its divergence pin",
       "ledger_line": 3387,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "tests/test_live_qwen35_gguf_chunked_prefill.py remains the split-precondition regression file."
+      ],
+      "next_action": "Reproduce one-row/full-attention differences against current profile oracle, then replace inequality pin with positive contract coverage after actual repair.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4105,16 +4157,19 @@
         "evidence": [
           "worklog/entries/20261030T062131.365447Z-cleanup-cleanup-r0071-5d5789.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0074 — Decide when to remove the slow-route gapped-prefix cost guard",
       "ledger_line": 3410,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:439 onward retains slow-route gapped suffix cost guard independent of fast gather."
+      ],
+      "next_action": "Inventory reachable slow populations and retain supported guard or measure cost replacement; public fragmentation/continuation parity required for removal.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -4123,16 +4178,19 @@
           "worklog/entries/20261030T062458.861841Z-cleanup-cleanup-r0074-f8bd1a.md (prior scoped implementation review and validation record; read during this audit)",
           "hipengine/generation/qwen35_gguf.py (current declared implementation/diagnostic source)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0127 — Choose whether to replace host grammar selection",
       "ledger_line": 3429,
       "owner": "`hipengine/generation/grammar.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/grammar.py:164-169 owns matcher advance and host logits selection."
+      ],
+      "next_action": "Profile controlled host route and implement registered device mask/selection only if concrete optimization chosen; preserve request-local grammar and speculative commit semantics.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -4141,16 +4199,19 @@
           "worklog/entries/20261030T062801.065927Z-cleanup-cleanup-r0127-390d94.md (prior scoped implementation review and validation record; read during this audit)",
           "hipengine/generation/grammar.py (current declared implementation/diagnostic source)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0128 — Compose optional resource accounting and implement sparse device-position selection",
       "ledger_line": 3451,
       "owner": "`hipengine/loading/qwen4_exp_context.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/loading/qwen4_exp_context.py:19-50 reserves mandatory scratch/staging/QSA but optional composition needs inventory."
+      ],
+      "next_action": "Compose optional-resource lifetime accounting without double count and implement device-position sparse selection with graph ownership before removing dense bound.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4158,16 +4219,19 @@
         "evidence": [
           "worklog/entries/20261030T063106.056374Z-cleanup-cleanup-r0128-3c41be.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0129 — Decide when to retire Q8 MMQ prepack rollback",
       "ledger_line": 3474,
       "owner": "`hipengine/runtime/qwen4_exp_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen4_exp_runner.py:6024-6048 already uses owned prepack scope, no ambient fallback."
+      ],
+      "next_action": "Inventory remaining explicit rollback callers and run sidecar/public on-off refresh before performance-driven retirement; do not repeat completed environment removal.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -4176,16 +4240,19 @@
           "worklog/entries/20261030T063541.745116Z-cleanup-cleanup-r0129-c07699.md (prior scoped implementation review and validation record; read during this audit)",
           "hipengine/runtime/qwen4_exp_runner.py:9456 (current source inspected)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0131 — Coordinate live-derived Surya split planning with launch bounds",
       "ledger_line": 3495,
       "owner": "`hipengine/runtime/surya.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/surya.py retains capacity-derived span decode launch and partial scratch; R0131 names capacity5000/live4096 mismatch."
+      ],
+      "next_action": "Add host launch/allocation RED tests and coordinate live bound/split count/all three partial buffers; Surya checkpoint only blocks later model validation.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4193,16 +4260,20 @@
         "evidence": [
           "worklog/entries/20261030T063922.264585Z-cleanup-cleanup-r0131-cfafe2.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0132 — Consolidate native context bounds without restoring evidence admission",
       "ledger_line": 3516,
       "owner": "`hipengine/runtime/gguf_native_spec_cycle.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/runtime/gguf_native_spec_cycle.py:449-524 has structural context resolver; gfx1151 public checks already recorded.",
+        "Only remaining numerical discrepancy named by R0132 is gfx1100 MoE; local KFD has gfx1151 only."
+      ],
+      "next_action": "Diagnose recorded gfx1100 MoE full-logit discrepancy on actual host before removing numeric fallback; do not restore stale cap.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4210,16 +4281,19 @@
         "evidence": [
           "worklog/entries/20261030T064255.501699Z-cleanup-cleanup-r0132-71c930.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Current source and local hardware/model inventory, no new public check."
     },
     {
       "title": "R0138 — Complete native adapter ownership without blanket embedding refusal",
       "ledger_line": 3538,
       "owner": "`hipengine/runtime/gguf_native_spec_cycle.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/gguf_native_spec_cycle.py:1122 retains device embedding fallback and shared physical operand plan."
+      ],
+      "next_action": "Represent missing embedding/expert adapter allocation/dtype/lifetime/capture in actual call plan with integration tests, then remove only the corresponding refusal.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4227,16 +4301,19 @@
         "evidence": [
           "worklog/entries/20261030T065251.618480Z-cleanup-cleanup-r0138-e87e5e.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0139 — Replace file-type policy predicates with actual operand contracts",
       "ledger_line": 3554,
       "owner": "`hipengine/loading/qwen35_gguf_policy.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/loading/qwen35_gguf_policy.py:186-193,252 still keys sensitive arithmetic defaults from file stamps."
+      ],
+      "next_action": "Inventory role-level stamp consumers and bind actual dtype/layout/shape/profile contracts with exchanged-role regression fixtures; preserve arithmetic defaults until profile gate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4244,16 +4321,19 @@
         "evidence": [
           "worklog/entries/20261030T065630.210949Z-cleanup-cleanup-r0139-51d179.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0147 — Consolidate the Q8 MMQ attention-gate candidate selector",
       "ledger_line": 3575,
       "owner": "`hipengine/runtime/qwen4_exp_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen4_exp_runner.py:5810-5828 already exposes owner attention-gate scope."
+      ],
+      "next_action": "Inventory whether operation-complete GR/dense policy can subsume comparison without losing resource semantics; run actual public enabled route rather than repeating fallback removal.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -4262,16 +4342,20 @@
           "worklog/entries/20261030T070320.872724Z-cleanup-cleanup-r0147-9a0b4e.md (prior scoped implementation review and validation record; read during this audit)",
           "hipengine/runtime/qwen4_exp_runner.py:5216 (current source inspected)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0149 — Replace remaining Qwen4Exp profile environment transport",
       "ledger_line": 3592,
       "owner": "`hipengine/runtime/qwen4_exp_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen4_exp_runner.py:1057,1070 reads reset/position policy; 6571,6935 risk multipliers; 8316,8615 fused combine.",
+        "Initialization/telemetry reads remain at 6988,10737,10780; prepack/attn-gate owner migration is done."
+      ],
+      "next_action": "Migrate remaining reset/position/risk policies to explicit owners with caller and public isolation tests; leave constructor/diagnostic choices distinct and R0410 combine decision independent.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4281,16 +4365,19 @@
           "hipengine/runtime/qwen4_exp_runner.py:5285 (current source inspected)",
           "hipengine/runtime/qwen4_exp_runner.py:11021 (current source inspected)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0151 — Separate prefill staging ownership from implemented AR batching",
       "ledger_line": 3644,
       "owner": "`hipengine/generation/qwen4_exp_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen4_exp_gguf.py:1188,1634 implements AR prepare/step; batch implementation is already live."
+      ],
+      "next_action": "Inventory reserve/import/demotion/reclaim and reduce staging only under complete live-range plan, preserving shared weights and independent KV/state.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4298,16 +4385,19 @@
         "evidence": [
           "worklog/entries/20261030T071039.193689Z-cleanup-cleanup-r0151-177047.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0152 — Expand vision capacity and integrate typed media ownership separately",
       "ledger_line": 3660,
       "owner": "`hipengine/runtime/qwen4_exp_vision.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen4_exp_vision.py:61-69 validates bounded patch capacity."
+      ],
+      "next_action": "Implement typed media request ownership/cancellation/streaming independently of larger-grid memory/reference extension; remove only restrictions whose semantics actually work.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4315,16 +4405,19 @@
         "evidence": [
           "worklog/entries/20261030T071346.969977Z-cleanup-cleanup-r0152-9f4f58.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0163 — Decide the scope of the FP16 recurrent-storage experiment",
       "ledger_line": 3684,
       "owner": "`hipengine/generation/qwen35_dense_gfx1151_profiles.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_dense_gfx1151_profiles.py remains dense profile owner; current runtime freezes FP16 dtype at allocation."
+      ],
+      "next_action": "Design geometry/profile/horizon storage plan or retire specific failed experiment wiring after consumer inspection; never re-enable by copying old verifier evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -4333,16 +4426,19 @@
           "worklog/entries/20261030T072024.486941Z-cleanup-cleanup-r0163-c27a4c.md (prior scoped implementation review and validation record; read during this audit)",
           "hipengine/generation/qwen35_dense_gfx1151_profiles.py (current declared implementation/diagnostic source)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0164 — Separate packed-target provenance from graph-cache consolidation",
       "ledger_line": 3700,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf_mtp2.py:2175-2222 creates budget-specific sampled graph buckets and 2480 selects by depth."
+      ],
+      "next_action": "Inventory exact duplicated cache fields and consolidate only equivalent lifetimes/operands; test singleton/packed/refill/cancel attribution before field removal.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4350,25 +4446,32 @@
         "evidence": [
           "worklog/entries/20261030T072350.381050Z-cleanup-cleanup-r0164-1e1b78.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0173 — Verify owner-bound R28 dispatch on gfx1100",
       "ledger_line": 3716,
       "owner": "`hipengine/generation/qwen35_dense_gfx1100_profiles.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria."
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/generation/qwen35_dense_gfx1100_profiles.py retains R28 owner policy.",
+        "Local KFD exposes gfx1151 only."
+      ],
+      "next_action": "Run both owner orders and strict/production/rollback public R28 checks on gfx1100.",
+      "inspection_limits": "Current source and local hardware/model inventory, no new public check."
     },
     {
       "title": "RF-1 / R0187 — Finish owner-bound policy resolution using existing profile infrastructure",
       "ledger_line": 3731,
       "owner": "`hipengine/execution_profiles.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/execution_profiles.py:36-51 defines existing variant and runtime plan abstractions."
+      ],
+      "next_action": "Extend existing plugin construction plans with typed resolved settings, adapters parsing env once and request/session shape ownership; migrate concrete consumers, not just register a new type.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4377,16 +4480,19 @@
           "worklog/entries/20261030T073808.525463Z-cleanup-cleanup-r0187-rf1-67f7d5.md (prior scoped implementation review and validation record; read during this audit)",
           "hipengine/execution_profiles.py (current declared implementation/diagnostic source)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "RF-3 / R0187 — Decide source-script retention and replacement ownership",
       "ledger_line": 3752,
       "owner": "`scripts/`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "scripts/ remains active source-command catalogue; prior audit carries per-command historical pointers."
+      ],
+      "next_action": "Create path/caller/protocol/replacement/hash disposition inventory and compare schemas/errors before consolidating source drivers; preserve active reproducibility oracles.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -4394,16 +4500,20 @@
         "evidence": [
           "worklog/entries/20261030T075746.911547Z-cleanup-cleanup-r0187-rf3-1d7d0c.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "RF-5 / R0187 — Choose compact decision schema and durable capture storage",
       "ledger_line": 3769,
       "owner": "`benchmarks/schemas/`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "human_decision_required",
+      "evidence": [
+        "benchmarks/schemas/ is the versioned result contract owner.",
+        "docs/REFACTOR.md RF-5 explicitly calls 256 KiB a proposal and requires retrievable immutable payload storage before deletion."
+      ],
+      "next_action": "Choose durable capture storage/retrieval service and compact decision size policy (including whether 256 KiB is the desired ceiling). Then inventory consumers and version schema before moving accepted evidence.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -4411,25 +4521,32 @@
         "evidence": [
           "worklog/entries/20261030T080336.511934Z-cleanup-cleanup-r0187-rf5-5d66d3.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Storage policy inspection only; no payloads moved or deleted."
     },
     {
       "title": "RF-8 / R0187 — Verify Laguna dispatch after policy-owner migration",
       "ledger_line": 3792,
       "owner": "`hipengine/kernels/policy.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria."
+      "review_status": "reviewed",
+      "disposition": "concrete_dependency_blocker",
+      "evidence": [
+        "hipengine/kernels/hip_gfx1151/policy_laguna.py is declared ordered owner and package alias migration is done.",
+        "Laguna weights absent in documented local roots; only tokenizer exists."
+      ],
+      "next_action": "Supply Laguna weights and compare public prefill/decode/MoE against alias-bound control with selected symbols and cleanup.",
+      "inspection_limits": "Current source and local hardware/model inventory, no new public check."
     },
     {
       "title": "RF-9 / R0187 — Partition Laguna attention with explicit build ownership",
       "ledger_line": 3810,
       "owner": "`hipengine/kernels/hip_gfx1100/attention/laguna_kv.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py:14-29 builds one shared library and exported KV/head symbols."
+      ],
+      "next_action": "Inventory all symbols/native helpers and define separate family build ownership, then split mechanically with cache/library/graph lifetime tests and unchanged ABI.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4438,16 +4555,19 @@
           "worklog/entries/20261030T081633.553369Z-cleanup-cleanup-r0187-rf9-027c83.md (prior scoped implementation review and validation record; read during this audit)",
           "hipengine/kernels/hip_gfx1100/attention/laguna_kv.py (current declared implementation/diagnostic source)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "RF-10 / R0187 — Separate launch planning from direct-control migration",
       "ledger_line": 3828,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py:1312,6384,7388,7952 defines launch-local triple/residual/pair/SiLU plans."
+      ],
+      "next_action": "Bind pointer-free reusable decisions to resolved profile owner while preserving per-launch fallback and scratch generation checks; do not cache device operands across owners.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4456,16 +4576,19 @@
           "worklog/entries/20261030T081927.582883Z-cleanup-cleanup-r0187-rf10-ba7ee9.md (prior scoped implementation review and validation record; read during this audit)",
           "hipengine/runtime/gguf_linear.py (current declared implementation/diagnostic source)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0189 — Packed-PARO transaction storage after journal integration",
       "ledger_line": 3843,
       "owner": "`hipengine/generation/qwen35_paro_mtp2.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_paro_mtp2.py:1307-1322 retains target checkpoint spare-slot copies with kv_rows=0."
+      ],
+      "next_action": "Inventory remaining metadata/backups and choose stable claim-backed slabs without a second rollback coordinator; test accepted-prefix state on all commit/failure paths.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4474,16 +4597,19 @@
           "worklog/entries/20261030T083229.132480Z-cleanup-cleanup-r0189-9318f6.md (prior scoped implementation review and validation record; read during this audit)",
           "hipengine/generation/qwen35_paro_mtp2.py (current declared implementation/diagnostic source)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0195 — Consolidate physical-target policy without changing admission",
       "ledger_line": 3859,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf_mtp2.py:136-138,937-953 reads exact-row and mixed-Q6 physical policy."
+      ],
+      "next_action": "Represent exact rows/padding/partitions in existing profile-owned physical manifest and migrate diagnostic controls with offset/strict/fallback tests.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4491,16 +4617,19 @@
         "evidence": [
           "worklog/entries/20261030T083541.556038Z-cleanup-cleanup-r0195-50755d.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0197 — Give hot-vocabulary selection an explicit owner-bound interface",
       "ledger_line": 3882,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:581,890,2517-2531 retains automatic/off/explicit hot-vocab path choice."
+      ],
+      "next_action": "Move path choice to model/generator constructor intent, preserve validated map/token compatibility and automatic release without overriding explicit choice.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4508,16 +4637,19 @@
         "evidence": [
           "worklog/entries/20261030T083854.616070Z-cleanup-cleanup-r0197-68c84d.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static implementation and caller inspection after reviewer authentication failure. No child findings accepted; device/model-specific validation remains separate."
     },
     {
       "title": "R0006 — Remaining Flash-Next batch capacity and scheduling decisions",
       "ledger_line": 3899,
       "owner": "`hipengine/generation/qwen4_exp_ar_batch.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen4_exp_ar_batch.py:54-59 bounds slot positions at 65536."
+      ],
+      "next_action": "Page per-position storage through block table, migrate selected-down profile policy and independently evaluate interference scheduling; preserve c1 long context.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4527,16 +4659,19 @@
           "scripts/qwen38fn_prefill_interference.py (current declared implementation/diagnostic source)",
           "hipengine/generation/qwen4_exp_ar_batch.py:54 (current source inspected)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0007 — Batch import-copy and admission ownership after reset repair",
       "ledger_line": 3922,
       "owner": "`hipengine/generation/qwen4_exp_ar_batch.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen4_exp_ar_batch.py:151-316 owns leases/admission and exposes import lifecycle."
+      ],
+      "next_action": "Create explicit source/destination prefix-bounded copy and one atomic admission object across mirrors/leases; profile only before claiming import benefit.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4544,16 +4679,19 @@
         "evidence": [
           "worklog/entries/20261030T084543.560317Z-cleanup-cleanup-r0007-final-1cb75f.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0010 — Flash-Next physical MTP ownership and shared-target regression",
       "ledger_line": 3946,
       "owner": "`hipengine/generation/qwen4_exp_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen4_exp_gguf.py:55-69,1311 retains explicit shared target route with recorded slowdown containment."
+      ],
+      "next_action": "Implement snapshotable per-request frontier ownership and profile shared eager overhead independently; preserve explicit unsupported-before-work and exact peer restoration.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4561,16 +4699,19 @@
         "evidence": [
           "worklog/entries/20261030T084842.872301Z-cleanup-cleanup-r0010-final-f38986.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0083 — VibeVoice prefill orchestration and device-tail ownership",
       "ledger_line": 3968,
       "owner": "`hipengine/kernels/hip_gfx1100/vibevoice/q4.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/kernels/hip_gfx1100/vibevoice/q4.py:203-287 owns prefill orchestration and explicitly rejects unwired Q5."
+      ],
+      "next_action": "Unify explicit GEMM/staging/scratch orchestration and implement Q5 capability with strict oracle; migrate encoder device-tail storage separately with chunk/reset behavior.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4581,16 +4722,19 @@
           "hipengine/runtime/vibevoice_qwen2.py (current declared implementation/diagnostic source)",
           "hipengine/runtime/vibevoice_encoder.py (current declared implementation/diagnostic source)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0183 — Decide wide-Q6 shared-weight shape policy",
       "ledger_line": 3994,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py:2564 retains wide-Q6 owned comparison scope."
+      ],
+      "next_action": "Evaluate remaining C6/C8 profile/ownership gates or remove only unconsumed candidate policy after caller inspection; preserve distinct backend shared4 ABIs.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "measurement_first",
@@ -4598,16 +4742,19 @@
         "evidence": [
           "worklog/entries/20261030T085428.295833Z-cleanup-cleanup-r0183-final-5b577a.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0188 — SPECDEC2 whole-request compatibility seam",
       "ledger_line": 4012,
       "owner": "`hipengine/generation/engine_loop.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/engine_loop.py:697 retains whole-request speculative submission seam."
+      ],
+      "next_action": "Inventory non-staged providers and migrate to bounded staged lifecycle before removing synchronous compatibility ownership; preserve direct strict oracle and explicit errors.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4615,16 +4762,19 @@
         "evidence": [
           "worklog/entries/20261030T085705.602694Z-cleanup-cleanup-r0188-final-c9f0a0.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0190 — Retire prompt replay after provider lifecycle migration",
       "ledger_line": 4030,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf_mtp2.py:1041,2304,6956-7007 still stores prompt hidden and catch-up consumers."
+      ],
+      "next_action": "Migrate streamed prefix restore/COW/incremental transitions and actual replay consumers before deleting prompt hidden storage; verify serving streaming actually ran.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4633,16 +4783,19 @@
           "worklog/entries/20261030T085945.656659Z-cleanup-cleanup-r0190-final-819dbb.md (prior scoped implementation review and validation record; read during this audit)",
           "hipengine/generation/qwen35_gguf_mtp2.py:1041 (current source inspected)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0191 — Move live MoE pair-reuse selection into profile ownership",
       "ledger_line": 4047,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf_mtp2.py:5657-5663 binds numerics/pairreuse/exact-linear scopes separately."
+      ],
+      "next_action": "Move pairreuse into profile physical-target manifest with nested disable restoration and geometry validation; keep arithmetic decisions independent.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4650,16 +4803,19 @@
         "evidence": [
           "worklog/entries/20261030T090233.914272Z-cleanup-cleanup-r0191-final-70fc2c.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0192 — Public validation after obsolete MoE C2 prototype removal",
       "ledger_line": 4060,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf_mtp2.py retains batched MoE NextN adapter; current local Qwen3.6-35B-A3B GGUF exists."
+      ],
+      "next_action": "Inspect remaining public C2 evidence and run cancellation/reject/refill/peer-progress with actual physical provider grouping, preserving C1 legacy cycles.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -4667,16 +4823,19 @@
         "evidence": [
           "worklog/entries/20261030T090514.792951Z-cleanup-cleanup-r0192-final-05810f.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0193 — Replace MoE numerical-scope transport without changing arithmetic",
       "ledger_line": 4071,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf_mtp2.py:5657 uses numerics ContextVar scope."
+      ],
+      "next_action": "Carry numerical transport in resolved physical manifest with C1/strict nested/error/context isolation; do not retune arithmetic.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4684,16 +4843,19 @@
         "evidence": [
           "worklog/entries/20261030T090759.067669Z-cleanup-cleanup-r0193-final-4adb6f.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0194 — Preserve exact-linear ownership during profile transport migration",
       "ledger_line": 4083,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf_mtp2.py:5663 binds exact-linear scope independently."
+      ],
+      "next_action": "Move exact-linear into resolved manifest, preserving selected-state journal, C1 and rollback semantics; replacement kernel promotion is separate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4701,16 +4863,19 @@
         "evidence": [
           "worklog/entries/20261030T091031.309124Z-cleanup-cleanup-r0194-final-8de0df.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0201 — Public repeat after planar-Q6 selector cleanup",
       "ledger_line": 4096,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/gguf_linear.py retains planar-Q6 dispatch and registered strict fallback."
+      ],
+      "next_action": "Locate same-protocol defaults-only C1-C3 public repeat and execute on its intended backend with categories/heldouts and trace/cleanup; verify original protocol hardware before classifying resource blocker.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
@@ -4718,16 +4883,19 @@
         "evidence": [
           "worklog/entries/20261030T091301.986272Z-cleanup-cleanup-r0201-final-29db0e.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0203 — Extract the explicit device-chain diagnostic oracle",
       "ledger_line": 4106,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf_mtp2.py:885,997,5786 retains explicit device-chain oracle route."
+      ],
+      "next_action": "Extract oracle into maintained test adapter only after an equivalent explicit route exists, preserving GPU/CPU accept, every partial commit and no pre-accept D2H checks.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4735,16 +4903,19 @@
         "evidence": [
           "worklog/entries/20261030T091530.643089Z-cleanup-cleanup-r0203-final-ead494.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0204 — Decide the typed request-local ngram composition candidate",
       "ledger_line": 4119,
       "owner": "`hipengine/speculative/ngram_mod.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/speculative/ngram_mod.py:19-69 contains typed request config/cache; recorded strict/production failures remain separate evidence."
+      ],
+      "next_action": "Inspect wider-frontier campaign and design materially different lowering or retire runtime composition after that campaign; do not rerun unchanged rejected candidate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -4752,16 +4923,19 @@
         "evidence": [
           "worklog/entries/20261030T091812.333751Z-cleanup-cleanup-r0204-final-6dc5ad.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0205 — Finish profile-plan coverage before retiring compatibility selection",
       "ledger_line": 4135,
       "owner": "`hipengine/execution_profiles.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/execution_profiles.py:36-51 and manifest resolver retain plan registration/fallback machinery."
+      ],
+      "next_action": "Inventory shipped registry axes and register missing strict/production plans with actual arithmetic contracts, public attribution and missing-plan semantics before compatibility retirement.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4769,16 +4943,19 @@
         "evidence": [
           "worklog/entries/20261030T092102.571592Z-cleanup-cleanup-r0205-final-cceec4.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0206 — Per-primitive width planning and optional D2 promotion",
       "ledger_line": 4148,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/generation/qwen35_gguf.py:549,575,822,12360 retains per-primitive width and optional D2 artifact."
+      ],
+      "next_action": "Resolve primitive shape/layout bounds cold through plugins and migrate manual ladders with actual server width telemetry; D2 tuning is separately matched performance work.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4786,16 +4963,19 @@
         "evidence": [
           "worklog/entries/20261030T092347.731860Z-cleanup-cleanup-r0206-final-f1cf39.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0207 — Migrate remaining chunk-local KV consumers before allocator retirement",
       "ledger_line": 4164,
       "owner": "`hipengine/kvcache/`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/kvcache/ remains dense/DMS allocator owner; current runner still binds base-pointer legacy paths."
+      ],
+      "next_action": "Inventory chunk-local/base-pointer consumers, migrate to page-table leases and DMS transient owner before factory/identity retirement; preserve same-arena snapshot ownership.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4803,16 +4983,19 @@
         "evidence": [
           "worklog/entries/20261030T092658.121683Z-cleanup-cleanup-r0207-final-490bc3.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0209 — Extract packed-workspace ownership without breaking teardown",
       "ledger_line": 4184,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:26203 retains guarded idle packed workspace release."
+      ],
+      "next_action": "Extract one workspace resource owner and migrate teardown callers with graph/scatter quiescence; release charges before pool close, never per-row reclaim.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4820,16 +5003,19 @@
         "evidence": [
           "worklog/entries/20261030T093219.416520Z-cleanup-cleanup-r0209-final-d400da.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     },
     {
       "title": "R0210 — Consolidate private packed allocation after page-map repair",
       "ledger_line": 4199,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
-      "review_status": "unreviewed",
-      "disposition": null,
-      "evidence": [],
-      "next_action": "Inspect current implementation and relevant existing evidence against this section’s completion criteria.",
+      "review_status": "reviewed",
+      "disposition": "locally_actionable",
+      "evidence": [
+        "hipengine/runtime/qwen35_gguf_runner.py:2601-2656 retains packed target private allocation/copy maps."
+      ],
+      "next_action": "Inventory private producers/fallbacks and migrate to lease-backed allocation with graph invalidation and failed-capture release before deleting fallback.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4837,7 +5023,16 @@
         "evidence": [
           "worklog/entries/20261030T093459.888159Z-cleanup-cleanup-r0210-final-a79dd4.md (prior scoped implementation review and validation record; read during this audit)"
         ]
-      }
+      },
+      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
     }
-  ]
+  ],
+  "inspection_summary": {
+    "reviewed": 232,
+    "locally_actionable": 188,
+    "concrete_dependency_blocker": 38,
+    "human_decision_required": 6,
+    "completed": 0,
+    "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."
+  }
 }
