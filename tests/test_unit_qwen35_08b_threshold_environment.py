@@ -40,7 +40,7 @@ def test_threshold_child_pins_fused_pair_and_records_effective_environment(monke
     result = sweep.run_one(quant, role, 0, 0, 512)
     env = {key: launches[0][1]["env"].get(key) for key in (
         *sweep.ROLE_ENVS[quant][role], name)}
-    expected = None if role == "current" else "0"
+    assert result['diagnostics']['pack8-bulk'] == (role == 'current')
     assert env.get(name) is None
     assert result['diagnostics']['pack8-pair'] == (role == 'current')
     assert os.environ.get(name) == inherited
@@ -73,9 +73,12 @@ def test_threshold_role_keeps_each_child_effective_environment(monkeypatch):
     monkeypatch.setattr(sweep, "LENGTHS", (17, 511, 513))
     def child(quant, role, block, order_index, length):
         return {"artifact": str(length), "command": ["synthetic", str(length)],
+            "diagnostics": {"pack8-bulk": True},
             "environment": {"effective": str(length)}, "source_commit": "synthetic",
             "clean_tree": True, "row": {"length": length}}
     monkeypatch.setattr(sweep, "run_one", child)
     result = sweep.run_role("q4", "current", 0, 0)
+    assert result['diagnostics'] == {str(length): {'pack8-bulk': True}
+                                     for length in (17, 511, 513)}
     assert result["environments"] == {
         str(length): {"effective": str(length)} for length in (17, 511, 513)}

@@ -35,7 +35,8 @@ def _fast_launch(weight, x_ptr, out_ptr, rows, in_features, out_features, **kw):
     if not hot:
         return _orig(weight, x_ptr, out_ptr, rows, in_features, out_features, **kw)
     resolved_backend = gl._weight_backend(weight, backend=backend)
-    key = (id(weight), rows, in_features, out_features, resolved_backend)
+    key = (id(weight), rows, in_features, out_features, resolved_backend,
+           gl._q4_pack8_wmma_bulk_raw())
     cached = _FAST.get(key)
     if cached is None:
         # First call: run the original (full correct resolution), then capture.
@@ -53,7 +54,7 @@ def _fast_launch(weight, x_ptr, out_ptr, rows, in_features, out_features, **kw):
             rows, in_features, out_features, activation_dtype, output_dtype,
             resolved_backend, f_gemv, use_wmma, f_rowtile,
             raw_k_rowbatch, raw_k_variant, bool(use_q4_pack8_wmma),
-            os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0",
+            gl._q4_pack8_wmma_bulk_raw() != "0",
             registered_variant, bool(gl._native_batch_decode_session_enabled),
             None, None, None, raw_weight_ptr,
         )

@@ -157,6 +157,7 @@ def run_role(quant: str, role: str, block: int, order_index: int) -> dict[str, A
         'env': ROLE_ENVS[quant][role],
         'commands': [executions[str(length)]['command'] for length in LENGTHS],
         'environments': {str(length): executions[str(length)]['environment'] for length in LENGTHS},
+        'diagnostics': {str(length): executions[str(length)]['diagnostics'] for length in LENGTHS},
         'elapsed_s': time.perf_counter() - started,
         'source_commits': sorted({executions[str(length)]['source_commit'] for length in LENGTHS}),
         'all_clean_tree': all(executions[str(length)]['clean_tree'] for length in LENGTHS),
