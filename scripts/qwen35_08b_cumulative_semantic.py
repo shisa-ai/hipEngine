@@ -121,11 +121,24 @@ def git(*args: str) -> str:
 
 @contextlib.contextmanager
 def role_environment(quant: str, role: str) -> Iterator[None]:
+    from hipengine.runtime.gguf_linear import cumulative_prefill_diagnostic
+
     updates = {
         **ROLE_ENVS[quant][role],
         'HIPENGINE_GGUF_DECODE_REPACK': '1',
         'HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING': '0',
     }
+    diagnostic_names = (
+        'HIPENGINE_GGUF_DENSE_WMMA_BULK',
+        'HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL',
+        'HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL',
+    )
+    # Pin every field, including defaults, so inherited rollback state cannot
+    # contaminate a comparison. These names are artifact labels, not env writes.
+    diagnostic = dict(zip(
+        ('dense_bulk', 'dense_residual', 'q8_pair'),
+        (updates.pop(name, None) != '0' for name in diagnostic_names),
+    ))
     previous = {name: os.environ.get(name) for name in updates}
     for name, value in updates.items():
         if value is None:
@@ -133,7 +146,8 @@ def role_environment(quant: str, role: str) -> Iterator[None]:
         else:
             os.environ[name] = value
     try:
-        yield
+        with cumulative_prefill_diagnostic(**diagnostic):
+            yield
     finally:
         for name, value in previous.items():
             if value is None:

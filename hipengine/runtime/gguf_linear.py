@@ -2013,6 +2013,34 @@ _q8_t16_dual_wmma_prefill_enabled: ContextVar[bool] = ContextVar(
 )
 
 
+_cumulative_prefill_override: ContextVar[tuple[bool | None, bool | None, bool | None]] = ContextVar(
+    "cumulative_prefill_override", default=(None, None, None)
+)
+
+
+@contextlib.contextmanager
+def cumulative_prefill_diagnostic(
+    *, dense_bulk: bool | None = None, dense_residual: bool | None = None,
+    q8_pair: bool | None = None,
+) -> Iterator[None]:
+    """Replace named comparison controls for this context and restore on exit."""
+    enclosing = _cumulative_prefill_override.get()
+    token = _cumulative_prefill_override.set(tuple(
+        old if new is None else bool(new)
+        for old, new in zip(enclosing, (dense_bulk, dense_residual, q8_pair))
+    ))
+    try:
+        yield
+    finally:
+        _cumulative_prefill_override.reset(token)
+
+
+def _cumulative_prefill_enabled(index: int, legacy_environment: str) -> bool:
+    override = _cumulative_prefill_override.get()[index]
+    return (os.environ.get(legacy_environment, "1") != "0"
+            if override is None else override)
+
+
 @contextlib.contextmanager
 def q4_pack8_dual_wmma_silu_prefill_session(enabled: bool) -> Iterator[None]:
     """Admit the model-qualified operation-complete pack8 owner for one request."""
@@ -5738,7 +5766,7 @@ def _launch_gguf_linear_impl(
             out_features=out_features,
             enabled=(
                 use_wmma
-                and os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_BULK", "1") != "0"
+                and _cumulative_prefill_enabled(0, "HIPENGINE_GGUF_DENSE_WMMA_BULK")
                 and bool(
                     backend_package_capability(
                         resolved_backend,
@@ -6631,7 +6659,7 @@ def _resolve_gguf_linear_residual_plan(
             return _plan(
                 fallback_reason=_GGUF_RESIDUAL_FALLBACK_WMMA_PREFILL_DECLINED
             )
-        if os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL", "1") == "0":
+        if not _cumulative_prefill_enabled(1, "HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL"):
             return _plan(fallback_reason=_GGUF_RESIDUAL_FALLBACK_BULK_DISABLED)
         dispatch = resolve_gguf_linear_dispatch(
             weight,
@@ -6644,7 +6672,7 @@ def _resolve_gguf_linear_residual_plan(
             in_features=in_features,
             out_features=out_features,
             enabled=(
-                os.environ.get("HIPENGINE_GGUF_DENSE_WMMA_BULK", "1") != "0"
+                _cumulative_prefill_enabled(0, "HIPENGINE_GGUF_DENSE_WMMA_BULK")
                 and bool(
                     backend_package_capability(
                         resolved_backend,
@@ -9348,8 +9376,7 @@ def _resolve_gguf_linear_pair_kind(
             (),
         )
         if (
-            os.environ.get("HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL", "1")
-            != "0"
+            _cumulative_prefill_enabled(2, "HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL")
             and _q8_t16_dual_wmma_prefill_enabled.get()
             and bool(
                 backend_package_capability(
@@ -9623,7 +9650,7 @@ def _resolve_gguf_linear_pair_plan(
         resolved_backend,
         use_wmma,
         use_gemv,
-        os.environ.get("HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL", "1"),
+        _cumulative_prefill_enabled(2, "HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL"),
         _q8_t16_dual_wmma_prefill_enabled.get(),
         _q4_t16_unequal_pair_prefill_enabled.get(),
         (

@@ -33,8 +33,8 @@ def test_role_environment_restores_every_selector(monkeypatch: pytest.MonkeyPatc
         assert os.environ[
             "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL"
         ] == "0"
-        assert os.environ["HIPENGINE_GGUF_DENSE_WMMA_BULK"] == "0"
-        assert os.environ["HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL"] == "0"
+        from hipengine.runtime import gguf_linear as linear
+        assert linear._cumulative_prefill_override.get() == (False, True, False)
         assert os.environ["HIPENGINE_GGUF_GDN_PREFILL_MODE"] == "exact"
         assert os.environ["HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"] == "0"
 
@@ -50,7 +50,9 @@ def test_x6_rollback_environment_isolates_dense_residual(
 ) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL", raising=False)
     with cumulative.role_environment("q4", "current_x6_rollback"):
-        assert os.environ["HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL"] == "0"
+        from hipengine.runtime import gguf_linear as linear
+        assert linear._cumulative_prefill_override.get() == (True, False, True)
+        assert "HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL" not in os.environ
         assert "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL" not in os.environ
     assert "HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL" not in os.environ
 
@@ -62,8 +64,24 @@ def test_x8_rollback_environment_isolates_q8_t16_dual_wmma(
     monkeypatch.delenv(selector, raising=False)
     for quant in ("q4", "q8"):
         with cumulative.role_environment(quant, "current_x8_rollback"):
-            assert os.environ[selector] == "0"
+            from hipengine.runtime import gguf_linear as linear
+            assert linear._cumulative_prefill_override.get() == (True, True, False)
+            assert selector not in os.environ
         assert selector not in os.environ
+
+
+def test_role_scope_restores_on_exception_and_pins_inherited_controls(monkeypatch):
+    from hipengine.runtime import gguf_linear as linear
+
+    name = 'HIPENGINE_GGUF_DENSE_WMMA_BULK'
+    monkeypatch.setenv(name, '0')
+    with pytest.raises(RuntimeError, match='failed'):
+        with cumulative.role_environment('q4', 'current'):
+            assert linear._cumulative_prefill_override.get() == (True, True, True)
+            assert os.environ[name] == '0'
+            raise RuntimeError('failed')
+    assert linear._cumulative_prefill_override.get() == (None, None, None)
+    assert os.environ[name] == '0'
 
 
 def test_trajectory_digest_covers_tokens_and_logits() -> None:

@@ -1647,11 +1647,10 @@ def test_launch_gguf_linear_residual_routes_dense_wmma_bulk_owner(
                 backend="hip_gfx1151",
             )
             assert resolve_calls == []
-            monkeypatch.setenv("HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL", "0")
-            assert not gguf_linear_module.launch_gguf_linear_residual(
-                dense, 101, 301, 401, 512, 3_584, 1_024, backend="hip_gfx1151"
-            )
-            monkeypatch.delenv("HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL")
+            with gguf_linear_module.cumulative_prefill_diagnostic(dense_residual=False):
+                assert not gguf_linear_module.launch_gguf_linear_residual(
+                    dense, 101, 301, 401, 512, 3_584, 1_024, backend="hip_gfx1151"
+                )
             assert gguf_linear_module.launch_gguf_linear_residual(
                 dense,
                 101,
