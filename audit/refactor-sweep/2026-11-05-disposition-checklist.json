@@ -969,14 +969,15 @@
     {
       "title": "R0214/R0215 / R0378 — Cumulative-semantic rollback-control migration",
       "ledger_line": 625,
-      "owner": "`hipengine/kernels/hip_gfx1100/__init__.py`.",
+      "owner": "`hipengine/runtime/gguf_linear.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "scripts/qwen35_08b_cumulative_semantic.py:30-80 still defines bulk/X6/X8 environment arms.",
-        "hipengine/runtime/gguf_linear.py:5740,6633-6646,9350,9625 still reads production env controls/cache dimension."
+        "655262f25, b2d9fa5fd and 0c582e86d implement scoped controls, threshold child transport, and production reader retirement.",
+        "/tmp/cumulative-retired-unit.xml: zero failures/errors; focused dispatch and restoration tests pass.",
+        "Both /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf and Qwen3.5-0.8B-Q8_0.gguf are absent on follow-up inspection."
       ],
-      "next_action": "Implement scoped diagnostic overrides with exception-safe restore and migrate harness/threshold tests now; missing 0.8B checkpoints defer public numerical engagement only, not this control migration.",
+      "next_action": "Provide the two named checkpoints, then run public p512 generation and eager/graph decode with pair/residual selection traces and cleanup. Local control migration is complete; no runtime admission restriction is added.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -5032,8 +5033,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 188,
-    "concrete_dependency_blocker": 38,
+    "locally_actionable": 187,
+    "concrete_dependency_blocker": 39,
     "human_decision_required": 6,
     "completed": 0,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."
