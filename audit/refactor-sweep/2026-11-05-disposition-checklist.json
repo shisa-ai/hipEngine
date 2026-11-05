@@ -3405,11 +3405,11 @@
       "ledger_line": 2778,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
         "hipengine/runtime/qwen35_gguf_runner.py:30753-30802 retains layer-scoped slot-local rollback."
       ],
-      "next_action": "Migrate native-comparison evaluator manifests and A/B example to explicit policy or name supported rollback, preserving backend/row fallback and real route distinction.",
+      "next_action": "None. Retain supported default-on layer-scoped native comparison control and existing evaluator/A-B ownership. No interface or arithmetic migration; 54 admission/gate/example/resumable tests pass. See worklog/entries/20261105T212845.054274Z-lhl-r0407-owner-0998f1.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

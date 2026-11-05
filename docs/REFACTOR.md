@@ -2711,18 +2711,6 @@ readiness/capability/response documents, allocation ownership and teardown. Brac
 short probes, then confirm the chosen context with the full-depth workload; the example context is
 not a maximum.
 
-### R0407 — Slot-local AOTriton rollback interface
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON`.
-
-Done when: Deferred interface decision: keep this layer-scoped rollback, or replace its native-comparison
-capability before deleting the environment reader and helper. A replacement must update both
-evaluator manifests/capture and the route A/B example, preserve strict native fallback and
-backend/row constraints, and run real public generation confirming selection, repeatability and
-teardown. Changing the flag alone would erase a working comparison arm, not finish cleanup.
-
 ### R0410 — Fused grouped-prefill combine adjudication
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.

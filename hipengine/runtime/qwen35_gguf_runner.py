@@ -30785,8 +30785,10 @@ def _gguf_int8_prefill_slot_local_aotriton_enabled() -> bool:
     kernel identities in trace, and prefill 67 -> 677 tok/s at 8,192 rows
     (10.1x, flat 677-746 tok/s from 1K to 8K). Enabling it changes the
     attention reduction order; env "0" is the explicit rollback to the
-    native paged kernel. See ``docs/REFACTOR.md`` for the eventual flag
-    removal.
+    native paged kernel. This is a supported layer-scoped rollback and native
+    comparison interface, owned by this selector, the INT8 direct-prefill
+    evaluator's manifests/capture, and ``scripts/gguf_prefill_route_ab.py``.
+    Keep the comparison arm independent of the engine-wide AOTriton default.
     """
 
     return _env_flag(_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON_ENV, True)
