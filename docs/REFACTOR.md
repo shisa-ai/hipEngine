@@ -1446,7 +1446,11 @@ switch. A persistent pool must retain per-slot seed/KV ownership, ordered result
 deadline/cancellation handling, complete future draining, failure cleanup and shutdown before its
 device resources are released. The current per-call draft pool now collects every
 submitted future on failure and frees successful sibling snapshots before raising;
-submission failure also drains already launched work. It does not reuse workers.
+submission failure also drains already launched work. The chunked verifier now
+collects every submitted future after worker or submission failure, preserving the
+first error and attaching later worker failures as notes. Pool shutdown already
+waited for execution, but did not previously retrieve every result. Neither pool
+reuses workers.
 Profile this path first if claiming pool reuse improves complete
 wall; old server throughput comparisons do not establish current worker overhead or a resident MTP2
 benefit.

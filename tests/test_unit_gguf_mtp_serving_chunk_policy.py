@@ -331,6 +331,50 @@ def test_stream_verifier_drains_launched_chunks_without_serial_resubmission(monk
     assert sorted(calls) == list(range(8)), "every launched future must drain once"
 
 
+@pytest.mark.parametrize("submission_failure", [False, True])
+def test_stream_verifier_collects_every_submitted_future(monkeypatch, submission_failure):
+    generator = _generator()
+    collected = []
+    runtime = SimpleNamespace(stream_create=lambda **kwargs: 900,
+                              stream_synchronize=lambda stream: None,
+                              stream_destroy=lambda stream: None)
+    chunks = [[SimpleNamespace(slot=SimpleNamespace(
+        verify_stream=0, timing={}, session=SimpleNamespace(
+            runtime=runtime, verify_target_blocks_batch=lambda jobs: None
+        ),
+    ))] for _ in range(3)]
+
+    class Future:
+        def __init__(self, index):
+            self.index = index
+
+        def result(self):
+            collected.append(self.index)
+            raise RuntimeError(f"worker {self.index}")
+
+    class Pool:
+        def __init__(self, **kwargs):
+            self.count = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def submit(self, *args):
+            index = self.count
+            self.count += 1
+            if submission_failure and index == 2:
+                raise RuntimeError("submit failed")
+            return Future(index)
+
+    monkeypatch.setattr(qwen35_gguf.concurrent.futures, "ThreadPoolExecutor", Pool)
+    with pytest.raises(RuntimeError, match="submit failed" if submission_failure else "worker 0"):
+        generator._try_verify_mtp_serving_cycle_chunks_streams(chunks)
+    assert collected == ([0, 1] if submission_failure else [0, 1, 2])
+
+
 @pytest.mark.parametrize("count", [5, 7, 8, 13])
 def test_prefill_above_cap_declines_before_acquiring_slots(monkeypatch, count):
     generator = _generator()

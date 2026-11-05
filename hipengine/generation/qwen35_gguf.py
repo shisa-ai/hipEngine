@@ -6206,14 +6206,28 @@ class Qwen35GGUFBringupGenerator:
             )
 
         stream_start = time.perf_counter()
+        failure: BaseException | None = None
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(chunks)) as pool:
-            futures = [(chunk, pool.submit(verify_chunk, chunk)) for chunk in chunks]
+            futures = []
+            try:
+                for chunk in chunks:
+                    futures.append((chunk, pool.submit(verify_chunk, chunk)))
+            except BaseException as exc:
+                failure = exc
             chunk_results: list[tuple[list[_GGUFMTPDraftedCycle], list[Any]]] = []
             for chunk, future in futures:
-                result = future.result()
-                if result is None:
-                    raise RuntimeError("streamed packed target verifier chunk failed after launch")
-                chunk_results.append((chunk, result))
+                try:
+                    result = future.result()
+                    if result is None:
+                        raise RuntimeError("streamed packed target verifier chunk failed after launch")
+                    chunk_results.append((chunk, result))
+                except BaseException as exc:
+                    if failure is None:
+                        failure = exc
+                    else:
+                        failure.add_note(f"additional verifier worker failure: {exc}")
+        if failure is not None:
+            raise failure
         stream_ms = _timing_ms_since(stream_start)
         block_results: list[Any] = []
         for chunk, result in chunk_results:

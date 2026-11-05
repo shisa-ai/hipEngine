@@ -1944,7 +1944,7 @@
       "evidence": [
         "hipengine/generation/qwen35_gguf.py:4743,5940,6185 constructs worker executors inside compatibility paths."
       ],
-      "next_action": "Map compatibility pool ownership and choose adapter retirement or bounded request lifetime; add future-draining/cancellation/error cleanup before changing reuse.",
+      "next_action": "Draft and chunked verifier now collect every submitted future on worker/submission failure; focused RED/GREEN and chunked-verifier generation fixtures pass. Owner-lifetime versus loop extraction remains open, with public lifecycle matrix still needed. See worklog/entries/20261105T201131.034039Z-lhl-verifier-future-drain-0216c8.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
