@@ -1807,11 +1807,11 @@
       "ledger_line": 1323,
       "owner": "`hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
         "hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.py:38,92-98 exposes validated explicit compiler launch-bound setting."
       ],
-      "next_action": "Inventory build-plan consumers and name supported build-control ownership or migrate into shared build config with plan/cache-key tests; no compiler/default retuning is authorized as incidental cleanup.",
+      "next_action": "None. Retain supported build control without compiler/default changes; unit and registry/build-plan matrices pass. Decision: worklog/entries/20261105T191331.378705Z-lhl-launch-bounds-disposition-4d4978.md. Ledger row removed.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -5037,10 +5037,10 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 181,
+    "locally_actionable": 180,
     "concrete_dependency_blocker": 41,
     "human_decision_required": 6,
-    "completed": 4,
+    "completed": 5,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."
   }
 }

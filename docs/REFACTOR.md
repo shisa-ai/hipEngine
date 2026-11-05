@@ -1294,25 +1294,6 @@ requests and cleanup. Compare complete-wall and latency on the intended backend 
 policy before choosing a tuning result. Keep per-slot unsupported-shape fallback and request-local
 state isolation.
 
-### R0281-LAUNCH-BOUNDS — Selected-WMMA compiler tuning surface
-
-Owner: `hipengine/kernels/hip_gfx1100/quant/gguf_k_selected_prefill.py`.
-
-Scope: `HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS`.
-
-**Remaining decision:** keep the explicit compiler experiment as a supported build control, or
-migrate it to shared build configuration and update every plan/build caller. It is not a rejected
-runtime route to delete. The old concurrency probe does not choose one compiler occupancy setting
-for all families, architectures and current workloads. Do not promote a launch bound or remove an
-explicit build request as incidental ledger cleanup.
-
-Done when: run `tests/test_unit_gguf_selected_wmma_launch_bounds.py` plus the
-registry/build-plan nodes in the selected-WMMA GPU test modules. A build-interface migration must
-preserve invalid-value errors, plan/build parity, distinct cache keys and unchanged unset output. A
-compiler/default change additionally needs each intended family's guarded numerical/fallback tests
-and public generation with actual selected kernels, complete-wall/latency and cleanup recorded
-across neighboring and unrelated concurrency/row regimes on the intended backend.
-
 ### R0281-AR-DECODE / R0308 — Packed decode controls and scalar baseline callers
 
 Owner: `hipengine/generation/qwen35_gguf.py`.
