@@ -3618,11 +3618,14 @@ checks pass; absence of profile writes alone is not that inventory.
 
 Inventory of the remaining direct reads in `qwen4_exp_runner.py`:
 
-- Execution policy still using process input: bounded KV reset, batched position
-  updates, Q5_K/Q5_1 IU8 risk multipliers and fused grouped-prefill combine.
-  R0410 owns the combine decision; preserve its explicit comparison arm.
-- Runner initialization: PLE page-cache warming and layer-graph enablement.
-  These are constructor-time resource choices, not per-prefill selector input.
+- Execution policy still using per-call process input: Q5_K/Q5_1 IU8 risk
+  multipliers and fused grouped-prefill combine. R0410 owns the combine decision;
+  preserve its explicit comparison arm.
+- Runner construction: bounded KV reset, batched position updates, PLE page-cache
+  warming and layer-graph enablement. Bounded reset is frozen on the runner,
+  with an explicit `bounded_kv_reset` constructor override; subsequent process
+  changes cannot alter an initialized owner's reset. Batched position already
+  resolved once during construction. These are not per-prefill selector reads.
 - Diagnostics: risk telemetry enablement. It does not select arithmetic.
 
 The unused generic environment-backed layer-scope helper was removed; explicit

@@ -4352,10 +4352,10 @@
       "review_status": "reviewed",
       "disposition": "locally_actionable",
       "evidence": [
-        "hipengine/runtime/qwen4_exp_runner.py:1057,1070 reads reset/position policy; 6571,6935 risk multipliers; 8316,8615 fused combine.",
-        "Initialization/telemetry reads remain at 6988,10737,10780; prepack/attn-gate owner migration is done."
+        "hipengine/runtime/qwen4_exp_runner.py reset now consumes constructor-owned bounded_kv_reset after 5a0f051fe; batched position already resolved only during construction.",
+        "Remaining per-call process reads: Q5 risk multipliers at 6571/6935 and fused combine at 8316/8615; initialization and telemetry are separate."
       ],
-      "next_action": "Migrate remaining reset/position/risk policies to explicit owners with caller and public isolation tests; leave constructor/diagnostic choices distinct and R0410 combine decision independent.",
+      "next_action": "Migrate Q5_K/Q5_1 risk multiplier invocation ownership with explicit direct-call and diagnostic coverage; keep constructor-only reset/position controls separate and preserve R0410 combine comparison.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
