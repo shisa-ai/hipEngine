@@ -48,6 +48,11 @@ GGUF_DENSE_CAPABILITY_NAMES = (
     "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES",
 )
 
+# Supported optional resource choice: materialization owns this persistent
+# sidecar until model teardown, and admission prices its converter payload.
+# It is off by default to avoid an additional resident INT8 weight copy, not
+# because the implemented route lacks numerical evidence. Set before loading;
+# the physical-C8 runner binds the resolved choice into its target session.
 HIPENGINE_C8_Q5_PLANAR_DP4A_ENV = "HIPENGINE_C8_Q5_PLANAR_DP4A"
 
 # GGML type ids whose raw storage triggers the AR raw-IQ contract (decode-repack

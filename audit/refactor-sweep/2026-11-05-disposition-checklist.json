@@ -3294,11 +3294,11 @@
       "ledger_line": 2676,
       "owner": "`hipengine/loading/qwen35_gguf_policy.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
         "hipengine/loading/qwen35_gguf_policy.py:51,182-215 keeps optional planar-Q5 sidecar off for persistent-memory tradeoff."
       ],
-      "next_action": "Inspect placement/lifetime consumers and retain supported resource choice or implement request-owned allocation with byte/isolation tests; do not delete optional implemented route as unmeasured.",
+      "next_action": "None. Retain supported optional persistent sidecar resource choice; document load-time selection and model lifetime at policy definition. No allocation or arithmetic change. Policy/serving-width/materializer tests pass. See worklog/entries/20261105T212241.041602Z-lhl-r0393-q5-owner-19d2be.md. No new public gfx1100 engagement claim.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",

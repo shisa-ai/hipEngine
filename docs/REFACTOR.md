@@ -2651,27 +2651,6 @@ Done when: Hardware follow-up: run a real public packed-C8 request on gfx1100 an
 variant, grouped-kernel engagement, repeatability and allocation drain. gfx1151 normal public
 requests keep their existing BF16 selection. This is a validation follow-up, not a runnability gate.
 
-### R0393-Q5 — Optional planar-Q5 sidecar lifecycle
-
-Owner: `hipengine/loading/qwen35_gguf_policy.py`.
-
-Scope: `q5_raw_mmq_target_session(planar_dp4a=True, ...)`, `qmicro_planar`.
-
-**Decision needed / removal condition:** retain `HIPENGINE_C8_Q5_PLANAR_DP4A` as a supported
-optional resource choice, replace the eager persistent sidecar with a request-owned allocation
-policy, or retire the route. Normal loading leaves that additional resident allocation off; this is
-a persistent-memory tradeoff, not missing numerical evidence. Do not remove the kernel, loader
-sidecar, registry entry, session, tests or diagnostic merely because another path is automatic.
-Operator non-use has not been established, so the old campaign-cycle deletion condition is not
-satisfied.
-
-Done when: choose the supported interface and allocation lifetime. If retained, document
-it at its policy definition and remove the temporary lifecycle entry. If replacing allocation,
-validate exact planned/converter bytes, insufficient resources, session isolation, R24/R32
-selection, repeated public use and complete teardown. If retiring, remove the whole route in one
-unit and preserve the historical artifacts. A future public gfx1100 C8 request must record actual
-selected-kernel engagement rather than infer it from the sidecar's presence.
-
 ### R0403 — DMS and INT8 hidden-plane alias rollback interfaces
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
