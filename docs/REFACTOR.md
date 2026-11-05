@@ -1458,30 +1458,6 @@ public uniform and mixed requests with oracle/direct selection, short/long/ragge
 rejection, reset/cancellation and cleanup. Verify actual attention sources and transient oracle
 owners.
 
-### R0281-DRAFT-X8 / R0294–R0298 — Resident Q6 top-1 arithmetic, layout and sidecar ownership
-
-Owner: `hipengine/speculative/mtp_resident_draft.py`.
-
-Scope: `x8_dscale`; `HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR`,
-`HIPENGINE_RESIDENT_MTP_DRAFT_Q6_TOP1_DP4A`.
-
-**Decision needed:** preserve explicit draft layout comparisons or migrate shape, dp4a activation,
-scheduler selection and sidecar construction into one owner-local plan. Keep target materialization
-and the Generation-2 NextN provider separate. This item does not authorize deleting common kernels
-or numerical comparisons.
-
-Done when: migrate draft construction, upload-cache names, top-1 stage/combined callers,
-bench/profiler result fields and suite aliases together. Run capped-layout round-trip and upload
-ownership tests, exact q8_1/Q6 top-1 oracles, staged/combined gather routing, raw-head fallback and
-parser/suite contracts. Any changed route needs real compatibility proposal/commit/reset and
-teardown checks plus separate public NextN preservation; changed arithmetic needs the
-execution-profile numerical/task gate, not the old timing row.
-
-Retain explicit row, scalehoist, pack8_llama, pack16 and x8_dscale comparisons until callers
-migrate. Their reduction domains differ: vocab, vocab/8 or vocab/16; pack16 requires vocabulary
-divisible by16. Keep draft upload ownership separate from target sidecars and preserve raw BF16
-fallback when dp4a/top1 preconditions are absent.
-
 ### R0313 / R0314 / R0315 / R0316 / R0318 / R0320 — Laguna legacy MMQ selector migration
 
 Owner: `hipengine/runtime/laguna_moe.py`.

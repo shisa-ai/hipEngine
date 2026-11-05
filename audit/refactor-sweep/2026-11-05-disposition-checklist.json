@@ -2147,11 +2147,12 @@
       "ledger_line": 1626,
       "owner": "`hipengine/speculative/mtp_resident_draft.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/speculative/mtp_resident_draft.py:628-635 distinguishes top1 layout/scheduler and pack16 divisibility; 711-717 owns x8 storage."
+        "Retain explicit Q6 layout comparisons, separate vocab-scoped draft uploads from target and public NextN. No runtime/arithmetic/default change.",
+        "620 CPU layout/ownership/gather/bench/suite tests and 6 GPU top1 oracle tests pass; worklog/entries/20261105T231836.108928Z-lhl-r0281-draft-x8-6fdca5.md."
       ],
-      "next_action": "Unify draft layout/activation/scheduler/sidecar ownership in local plan and migrate all named comparisons, keeping NextN and target uploads separate.",
+      "next_action": "None; preserve named layout/reduction comparisons and raw-head fallback.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
