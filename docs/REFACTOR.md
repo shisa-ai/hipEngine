@@ -3681,52 +3681,6 @@ mixed-request lifecycle coverage for the chosen extension. Run vision reference/
 real public HTTP media requests, including cancellation and malformed inputs. Remove only
 restrictions whose replacement semantics actually run.
 
-### R0153 — Retire raw-Q8 and expert-grid transport without deleting live ladders
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `coltile8_wave_scale`; `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH`,
-`HIPENGINE_QWEN4_EXP_RAW_VARIANT`; `HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID`.
-
-**Raw-prefill transport retired; expert-grid ownership remains:**
-`RawPrefillPolicy` carries row slab and geometry through generator/current and
-late-runner construction. Profiles publish the unchanged 32/coltile8 policy;
-the independent production wave-scale choice still upgrades coltile8. Neither
-raw-prefill environment key is read. The restoring `raw_prefill_policy` scope
-and campaign, candidate-AR/profile-gap binders preserve all geometry comparisons,
-including partial overrides, without process writes. Expert-grid transport now
-has an explicit `ExpertGridPolicy(q4, q5)` and restoring owner scope, carried
-through scalar/batch helpers and batch graph identity. Campaign Q4 pair arms
-bind the family on the measured runner; PF13 requires and freezes its effective
-Q5_1 family, and both report owner policy rather than process input.
-Candidate-AR/profile-gap overrides bind and report the policy without
-process writes, preserving legacy family syntax. Q4 out4 and Q5_1 out8
-route-ablation closures bind and report typed family policy with no process
-writes. All profiles publish both families on generator/current and late
-runner owners, preserving the old `64` default; unbound calls use the same
-constant policy. The expert-grid environment fallback is removed. Q8 DPP
-reduction now has an explicit `q8_dpp_reduction_enabled` owner choice and
-prefill session; selector and cache identity consume the same effective value.
-The DPP campaign, state-gate and layer-2 checked comparison now bind and report
-owner choices without process writes. Staged-F32 layer-gate arms also close
-DPP on generator/current and late-runner owners, not through process input.
-The three checked full-row diagnostic scripts bind and report DPP owner state
-for their diagnostic lifetime, including setup-error restoration. Generic AR
-and profile-gap overrides also bind and report owner state without process
-writes, preserving the legacy rule that only exactly `0` disables DPP.
-Every profile now publishes enabled DPP owner state, preserving the former
-unbound default. The runtime no longer reads the process key; an explicit
-owner/session choice controls both family selection and dispatch-cache identity.
-Audit each geometry's
-actual registry and dispatch consumers before removing wrappers; the old phrase
-“losing geometry ladder” is not evidence that every non-default rung is dead.
-Keep registered scalar raw-Q8 and direct selected strict primitives.
-
-Done when: run raw wave-scope, Q4 out4 and Q5 out8 scope tests, covering family overrides and
-parent selection. For an implementation change, verify full-output/state parity, independent owners,
-public prefill, cancellation and graph replay with the selected route observed. Any kernel deletion
-also needs lineage/registry checks.
-
 ### R0163 — Decide the scope of the FP16 recurrent-storage experiment
 
 Owner: `hipengine/generation/qwen35_dense_gfx1151_profiles.py`.
