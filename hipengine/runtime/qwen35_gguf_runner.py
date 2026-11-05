@@ -29934,6 +29934,10 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("resident slot-view cleanup requires a batch owner")
         self._check_state_capture_released()
         self._close_prefix_snapshot_pool()
+        native_sampler = self._native_sampler_workspace
+        if native_sampler is not None:
+            native_sampler.close()
+            self._native_sampler_workspace = None
         self._release_gapped_prefill_buffers(runtime=runtime)
         self._close_verify_state_buffers(runtime=runtime)
         for buffer in reversed(self._buffers):

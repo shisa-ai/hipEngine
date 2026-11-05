@@ -664,6 +664,12 @@ def test_resident_slot_view_does_not_inherit_or_close_owner_prefix_arena_pool(
     )
 
     view = owner.resident_slot_view(1)
+    sampler_closes = []
+    owner_sampler = SimpleNamespace(close=lambda: sampler_closes.append("owner"))
+    view._native_sampler_workspace = SimpleNamespace(
+        close=lambda: sampler_closes.append("view")
+    )
+    owner._native_sampler_workspace = owner_sampler
     assert view.__dict__.get("_gguf_prefix_snapshot_arena_pool", None) is None, (
         "a resident slot view must not inherit the batch owner's"
         " prefix-snapshot arena pool"
@@ -704,4 +710,7 @@ def test_resident_slot_view_does_not_inherit_or_close_owner_prefix_arena_pool(
     assert len(allocator.released) == released_before, (
         "repeating slot-view cleanup released buffers a second time"
     )
+    assert sampler_closes == ["view"]
+    assert view._native_sampler_workspace is None
+    assert owner._native_sampler_workspace is owner_sampler
     assert pool.close_calls == 0
