@@ -3845,11 +3845,12 @@
       "ledger_line": 3148,
       "owner": "`hipengine/generation/engine_loop.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/generation/engine_loop.py:2241,3472,3542 retains split-refused reproduction choice."
+        "71fbe7dc6 retains terminal zero-budget ownership and supported singleton-split diagnostic; 191 focused tests pass.",
+        "worklog/entries/20261105T215224.862268Z-lhl-r0505-public-5a24ba.md records packed refusal, mixed terminal/eligible peer, cancellation/reuse and valid/missing prefix checkpoint public checks."
       ],
-      "next_action": "Retain terminal request-local zero budget and supported singleton-split diagnostic; 191 seam/planner/peer tests pass, including new terminal-row/eligible-peer sink filtering coverage. Remaining public fault/fallback/cancellation/restored-checkpoint validation; see worklog/entries/20261105T214430.660128Z-lhl-r0505-state-f3c317.md.",
+      "next_action": "None. Keep request-local terminal zero budget, source currency checks and supported split diagnostic. Completed section removed.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

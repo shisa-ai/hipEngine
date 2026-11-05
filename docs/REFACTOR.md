@@ -3038,28 +3038,6 @@ single-request runs through the public generation surface; check that waiting re
 provider and that all claims and sink buffers are released. The lifecycle fix alone does not enable
 overlap or establish its numerical/acceptance behavior.
 
-### R0505 — Separate prefill failure state from speculative intent
-
-Owner: `hipengine/generation/engine_loop.py`.
-
-Scope: `qwen35_gguf.py`, `qwen35_gguf_mtp2.py`; `HIPENGINE_DEBUG_SAMPLED_ROUTE`.
-
-**Ownership decision:** retain zero candidate budget as the terminal request-local representation
-for failed/unsupported prompt streaming and context exhaustion. Temporary activation contention
-preserves budget and consults `_priming_source`; failed packed/incremental paths zero it before
-serial fallback. The runner filters terminal rows before opening sinks. Mixed-row regression
-coverage confirms eligible peers still reach the adapter. See
-`worklog/entries/20261105T214430.660128Z-lhl-r0505-state-f3c317.md`.
-
-Done when: Public fault/fallback requests confirm terminal rows never reopen
-and eligible peers still speculate, including cancellation and restored-checkpoint cases.
-
-Retain `HIPENGINE_SPEC_MTP_SPLIT_REFUSED_GROUPS` and `speculative_split_refused_groups` as the
-supported default-off reproduction arm for the rejected singleton-split route. Its maintained
-peer-capability test distinguishes singleton cycles from production partitioning. No retirement
-comparison is required while this interface is retained. Historical experiment evidence stays in
-the worklog and benchmark artifacts, not in admission rules.
-
 ### R0507 — Consolidate the raw greedy MTP compatibility entry point
 
 Owner: `hipengine/generation/qwen35_gguf.py`.
