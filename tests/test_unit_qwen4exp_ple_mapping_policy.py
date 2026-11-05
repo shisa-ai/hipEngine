@@ -10,8 +10,8 @@ from hipengine.loading.qwen4_exp_materialize import Qwen4ExpPLEMMapTable
 from tests._qwen4_exp_ple_fixtures import _iq4_nl_rows, _ple_tensor
 
 
-def make_table():
-    values = _iq4_nl_rows((1., 2., 3.))
+def make_table(count=3):
+    values = _iq4_nl_rows(tuple(float(i % 3 + 1) for i in range(count)))
     mappings = []
 
     class Raw:
@@ -26,7 +26,7 @@ def make_table():
             return values[ids]
 
     table = Qwen4ExpPLEMMapTable(
-        SimpleNamespace(tensor_data=lambda _: Raw()), _ple_tensor(3), semantic_rows=3,
+        SimpleNamespace(tensor_data=lambda _: Raw()), _ple_tensor(count), semantic_rows=count,
     )
     return table, mappings
 
@@ -65,6 +65,25 @@ def test_full_cache_warm_temporarily_restores_sequential_access():
     assert mappings[0].advice == [mmap.MADV_RANDOM, mmap.MADV_SEQUENTIAL, mmap.MADV_RANDOM]
 
 
+def test_long_unique_cold_remap_and_full_warm_preserve_rows():
+    table, mappings = make_table(1025)
+    other, _ = make_table(1025)
+    indices = np.random.default_rng(41).permutation(1025)
+    expected = other.gather_rows(indices)
+    try:
+        for mode in ("random", "normal"):
+            assert table.configure_mapping_access(mode)
+            table.advise_cache("cold")
+            np.testing.assert_array_equal(table.gather_rows(indices), expected)
+            table.warm_page_cache(chunk_rows=73)
+            np.testing.assert_array_equal(table.gather_rows(indices), expected)
+            assert mappings[-1].advice[-1] == (
+                mmap.MADV_RANDOM if mode == "random" else mmap.MADV_NORMAL)
+    finally:
+        table.close()
+        other.close()
+
+
 def test_missing_mapping_capability_is_a_safe_fallback():
     values = _iq4_nl_rows((1., 2., 3.))
     table = Qwen4ExpPLEMMapTable(
@@ -74,7 +93,7 @@ def test_missing_mapping_capability_is_a_safe_fallback():
     np.testing.assert_array_equal(table.gather_rows([0]), np.full((1, 160), -127., np.float32))
 
 
-def test_production_binder_selects_random_with_strict_and_explicit_rollback(monkeypatch):
+def test_production_binder_selects_random_with_strict_and_inert_process_input(monkeypatch):
     from hipengine.execution_profiles import ExecutionProfile
     from hipengine.generation.qwen4_exp_profiles import (
         _bind, _production_selections, _f16_route_selections, _strict_selections,
@@ -118,7 +137,7 @@ def test_production_binder_selects_random_with_strict_and_explicit_rollback(monk
         for r in _f16_route_selections()
     ]
     _bind(generator, profile, production=True)
-    assert calls == ["random", "normal", "normal"]
+    assert calls == ["random", "normal", "random"]
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS")
     profile.manifest["quant"] = "gguf_q4_k_m"
     profile.manifest["selections"] = [

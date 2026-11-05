@@ -253,12 +253,12 @@
       "ledger_line": 221,
       "owner": "`hipengine/generation/qwen4_exp_profiles.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/generation/qwen4_exp_profiles.py:1374-1383 selects random mapping for production and preserves explicit normal rollback.",
-        "hipengine/loading/qwen4_exp_materialize.py:485 defines the table mapping-advice API."
+        "Profile binder selects unchanged random/normal defaults without process input; scripts retain explicit configure_mapping_access comparisons.",
+        "Deterministic remap/full-warm/1025-unique-row checks and real public cold-remap/logit/repeat/cleanup checks pass; worklog/entries/20261105T180305.825109Z-lhl-ple-mapping-owner-e2d9a3.md"
       ],
-      "next_action": "Verify remap/warming/cold-unique behavior, then retire only redundant diagnostic transport while preserving explicit table API and normal fallback.",
+      "next_action": "None. Explicit table normal rollback and missing-madvise fallback are preserved.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

@@ -1376,10 +1376,7 @@ def _bind(
         # mapping owns the hint across remaps; explicit full-table warming
         # temporarily restores sequential access.
         qualified = production and resolved.manifest.get("quant") == "gguf_ud_q4_k_xl"
-        mode = os.environ.get(
-            "HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS",
-            "random" if qualified else "normal",
-        )
+        mode = "random" if qualified else "normal"
         table.configure_mapping_access(mode)
     _publish_production_moe_prefill(generator, production)
     _publish_q8_mmq_prefill(generator, production)

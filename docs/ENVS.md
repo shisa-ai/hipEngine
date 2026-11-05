@@ -747,7 +747,7 @@ use.
 | `HIPENGINE_QWEN4_EXP_BOUNDED_KV_RESET` | `1` | Construction-time default for the runner's `bounded_kv_reset` policy: clears only the K/V a request wrote; `0` restores the full-capacity clear. An explicit constructor value takes precedence. Later environment changes do not alter an existing runner. |
 | `HIPENGINE_QWEN4_EXP_FULLATTN_CONTEXT_LEGACY` | retired | Ignored. Dense Qwen4Exp prefill uses the promoted fixed256 context route for at least two rows and the adaptive route for one row. Shared fixed256 primitives and direct microbenchmark references remain available. |
 | `HIPENGINE_QWEN4_EXP_PLE_OVERLAP` | retired; ignored | Pinned PLE staging overlaps preceding layers when the first PLE layer is not layer 0; other configurations use blocking staging. |
-| `HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS` | `random` (production UD), else `normal` | `madvise` access hint for the host-mapped PLE table; `normal` restores sequential access. |
+| `HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS` | retired; ignored | Profiles choose mapping-only `random` advice for production UD, otherwise `normal`. For an explicit rollback, call the resident PLE table's `configure_mapping_access("normal")`; the table owns the choice across remaps. |
 | `HIPENGINE_QWEN4_EXP_QSA_DIRECT_SELECT` | retired; ignored | H4/D128 batched prefill uses causal scoring and direct WMMA masks. Other geometries and per-row selection keep their fallbacks. |
 | `HIPENGINE_QWEN4_EXP_QSA_STRIDED_GATE` | retired; ignored | Prefill reads the projected gate in place and publishes an F16 mirror when workspace permits. |
 | `HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2_FUSED` | retired | Ignored. Ordered v2 uses the registered three-pass route; the fused experiment is removed. |

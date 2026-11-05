@@ -218,17 +218,6 @@ Inventory prefill, one-row prefill tails, incremental decode and verification se
 staged/plain and shape/backend fallbacks. Test profile isolation, scope precedence, graph capture
 and public selected routes on both backends before unifying them.
 
-### R0041 — PLE mapping-advice diagnostic retirement
-
-Owner: `hipengine/generation/qwen4_exp_profiles.py`.
-
-Scope: `hipengine/generation/qwen4_exp_profiles.py` — PLE mapping-advice diagnostic retirement.
-
-Done when: Instance-owned mapping-only random advice is the gfx1151 production selection; strict uses normal.
-`HIPENGINE_QWEN4_EXP_PLE_MAPPING_ACCESS=normal` remains the diagnostic rollback. **Deferred
-retirement:** verify remap, full-cache warming and long-unique cold behavior before removing the
-override, preserving the explicit table API and normal fallback.
-
 ### R0080 — Candidate-budget compatibility alias deprecation
 
 Owner: `hipengine/speculative/candidate_budget.py`.
