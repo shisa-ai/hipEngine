@@ -1084,7 +1084,9 @@ def mtp_serving_target_use_wmma_prefill(
 # Q4_K verifier continuation blocks. Every specialization preserves the
 # corresponding per-row arithmetic. Scoped overrides retain comparison access;
 # ambient environment values cannot disable the production default.
-_q4k_rowtile_session_enabled: bool | None = None
+_q4k_rowtile_session_enabled: ContextVar[bool | None] = ContextVar(
+    "gguf_q4k_rowtile_session_enabled", default=None,
+)
 _ROWTILE_MIN_ROWS = 2
 _ROWTILE_MAX_ROWS = 8
 # Decode-regime upper bound for native rowtile chunking: any native-session
@@ -2890,28 +2892,27 @@ def set_q4k_rowtile_enabled(enabled: bool | None) -> None:
     ``None`` clears the override and restores the production default, ON.
     """
 
-    global _q4k_rowtile_session_enabled
-    _q4k_rowtile_session_enabled = None if enabled is None else bool(enabled)
+    _q4k_rowtile_session_enabled.set(None if enabled is None else bool(enabled))
 
 
 @contextlib.contextmanager
 def q4k_rowtile_session(enabled: bool | None) -> Iterator[None]:
-    """Context manager wrapper around :func:`set_q4k_rowtile_enabled`."""
+    """Temporarily select the rowtile comparison for this execution context."""
 
-    previous = _q4k_rowtile_session_enabled
-    set_q4k_rowtile_enabled(enabled)
+    token = _q4k_rowtile_session_enabled.set(
+        None if enabled is None else bool(enabled),
+    )
     try:
         yield
     finally:
-        set_q4k_rowtile_enabled(previous)
+        _q4k_rowtile_session_enabled.reset(token)
 
 
 def _resolve_use_q4k_rowtile(kwarg: bool | None) -> bool:
     if kwarg is not None:
         return bool(kwarg)
-    if _q4k_rowtile_session_enabled is not None:
-        return _q4k_rowtile_session_enabled
-    return True
+    local = _q4k_rowtile_session_enabled.get()
+    return True if local is None else local
 
 
 def raw_k_prefill_rowbatch() -> int:

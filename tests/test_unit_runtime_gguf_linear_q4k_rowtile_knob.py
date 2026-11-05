@@ -120,6 +120,45 @@ def test_scoped_comparison_restores_default_after_exception(monkeypatch):
         assert module._resolve_use_q4k_rowtile(None) is True
 
 
+def test_rowtile_comparison_isolated_between_concurrent_execution_owners():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    module = _rowtile_resolver()
+    entered = Event()
+    release = Event()
+
+    def comparison():
+        with module.q4k_rowtile_session(False):
+            entered.set()
+            assert release.wait(timeout=5)
+            return module._resolve_use_q4k_rowtile(None)
+
+    with module.q4k_rowtile_session(None), ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(comparison)
+        try:
+            assert entered.wait(timeout=5)
+            assert module._resolve_use_q4k_rowtile(None) is True
+            with module.q4k_rowtile_session(True):
+                assert module._resolve_use_q4k_rowtile(None) is True
+        finally:
+            release.set()
+        assert future.result(timeout=5) is False
+    assert module._resolve_use_q4k_rowtile(None) is True
+
+
+def test_rowtile_setter_does_not_mutate_an_independent_context():
+    from contextvars import Context
+
+    module = _rowtile_resolver()
+    independent = Context()
+    with module.q4k_rowtile_session(False):
+        assert independent.run(module._resolve_use_q4k_rowtile, None) is True
+        independent.run(module.set_q4k_rowtile_enabled, True)
+        assert module._resolve_use_q4k_rowtile(None) is False
+        assert independent.run(module._resolve_use_q4k_rowtile, None) is True
+
+
 def test_explicit_kwarg_beats_the_session(monkeypatch):
     module = _rowtile_resolver()
     monkeypatch.setenv("HIPENGINE_GGUF_Q4K_ROWTILE", "1")
