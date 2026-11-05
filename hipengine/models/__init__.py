@@ -34,6 +34,7 @@ from hipengine.models.moonshine import (
     MoonshineForConditionalGenerationModel,
     MoonshineModelSpec,
 )
+from hipengine.models.muse_glimmer import MUSE_GLIMMER_GGUF, MuseGlimmerGGUFModel
 from hipengine.models.qwen35 import (
     QWEN35_GGUF,
     QWEN35_MOE_GGUF,
@@ -102,6 +103,7 @@ __all__ = [
     "MAPLE",
     "MAPLE_LAYER_PATTERN",
     "MOONSHINE",
+    "MUSE_GLIMMER_GGUF",
     "QWEN35_GGUF",
     "QWEN35_MOE_GGUF",
     "QWEN35_PARO_MOE",
@@ -133,6 +135,7 @@ __all__ = [
     "ModelPlugin",
     "MoonshineForConditionalGenerationModel",
     "MoonshineModelSpec",
+    "MuseGlimmerGGUFModel",
     "Qwen35DMSDecisionCapability",
     "Qwen35GGUFModel",
     "Qwen35MoeGGUFModel",

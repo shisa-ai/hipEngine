@@ -6,7 +6,10 @@ owns: Muse Glimmer 30B gfx1151 bring-up campaign: text/vision/DFlash implementat
 
 Last updated: 2026-11-06
 
-Status: **P0 baseline retained; P1 text bring-up in progress (tokenizer landed).**
+Status: **P0 baseline retained; P1 text bring-up landed with initial correctness
+(plugin + loader + resident runner + generator; oracle argmax exact, f32
+reference KL gate passed, exercised through `LLM.generate()`).** Vision (P2),
+DFlash (P3), and performance (P4) remain.
 
 Lead directive (2026-11-06): implement full Muse Glimmer inference in hipEngine —
 text, vision stack, and MTP/DFlash — with an initial correctness pass, and do not
