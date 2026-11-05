@@ -1564,12 +1564,12 @@
       "ledger_line": 1107,
       "owner": "`hipengine/runtime/laguna_moe.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "scripts/laguna_target_ar_bench.py:81,256-257,720 exposes grid comparison.",
         "hipengine/runtime/laguna_gguf_runner.py:3001,3188-3190 resolves IQ2 grid independently."
       ],
-      "next_action": "Inventory compact-grid comparison caller and migrate or explicitly retain it with host route tests; do not remove grouped-prefill consumers.",
+      "next_action": "Retain constructor/plan-owned compact-grid diagnostic and both target-AR callers/result metadata. Host tests confirm independent grouped/multi-row keys and raw ABI. Actual public c1 gate requires Laguna checkpoint at R0249/R0250; primitive gfx1100 checks require that device. See worklog/entries/20261105T192702.534968Z-lhl-laguna-iq2-owner-8f49be.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -5037,8 +5037,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 178,
-    "concrete_dependency_blocker": 43,
+    "locally_actionable": 177,
+    "concrete_dependency_blocker": 44,
     "human_decision_required": 6,
     "completed": 5,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."

@@ -67,6 +67,10 @@ def test_iq2_local64_rejection_restores_retained_grid64_c1_owner() -> None:
     )
     assert candidate_key not in retained.kernel_keys
     assert not disabled.c1_selected_gate_up_keys
+    # Scalar comparison must not change grouped-prefill or multi-row owners.
+    assert retained.selected_gate_up_keys == disabled.selected_gate_up_keys
+    assert retained.grouped_pair16_gate_up_keys == disabled.grouped_pair16_gate_up_keys
+    assert retained.c1_selected_gate_up_routes["gguf_iq2_xs"].allocation_name == "raw"
     with pytest.raises(TypeError, match="unexpected keyword argument"):
         moe_module.resolve_laguna_moe_plan(
             config,

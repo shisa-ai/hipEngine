@@ -1086,14 +1086,15 @@ Owner: `hipengine/runtime/laguna_moe.py`.
 
 Scope: `use_iq2_grid64`.
 
-Done when: Decision needed: retain the constructor/CLI grid comparison as a supported diagnostic, or
-migrate callers to a scoped c1 policy owner before retiring it. **Clearing action:** migrate both
-target-AR construction sites/result fields, then run the host-only grid-route node in
-`tests/test_live_laguna_moe_gpu.py`, `tests/test_unit_laguna_iq2_local64_reduction_runtime.py`,
-runner and target-AR units. Preserve independent c1/multi-row selection and actual registered
-compact-grid fallbacks. Compare exact primitive outputs and exercise R0249/R0250's public
-continuation/lifecycle gate with the c1 route confirmed. Do not reintroduce rejected local64 runtime
-controls or alter grouped-prefill consumers.
+Done when: complete exact primitive comparisons and the R0249/R0250 public
+continuation/lifecycle gate with c1 route attribution. Retain the constructor/CLI
+compact-grid comparison as a supported diagnostic: the constructor resolves it into
+`LagunaMoEKernelPlan.c1_selected_gate_up_routes`; target-AR passes it at both
+construction sites and reports the effective value. Host route tests verify that
+on/off choices leave grouped-prefill and multi-row keys unchanged. Preserve raw-IQ
+allocation ABI and registered fallbacks. Do not reintroduce rejected local64 runtime
+controls. Actual-weight validation requires the Laguna checkpoint, not additional
+selector migration.
 
 ### R0281-DFLASH — Verifier tiles and shared true-AR mismatch
 
