@@ -687,24 +687,6 @@ overlap, full-attention/recurrent/FFN handoffs and teardown. Run
 `tests/test_unit_qwen35_gguf_prefill_plan.py`, followed by public selected-route and cleanup
 validation with R0219's packed-prefill integration. Preserve sole T16 residency and exact fallbacks.
 
-### R0223 — Q6 prefill selector normalization
-
-Owner: `hipengine/kernels/hip_gfx1151/__init__.py`.
-
-Scope: `tests/test_unit_gfx1151_backend.py`; `tests/test_unit_loading_qwen35_gguf_policy.py`; `tests/test_unit_gguf_linear_dispatch.py`.
-
-Done when: Decision needed: keep separate standard/planar package wrappers or express their ordered row
-bands through a shared policy representation. The original two rows>=512 selectors have expanded:
-standard shared4 starts at 96 with earlier and overlapping sibling bands; planar shared4 starts at
-256 with shape-specific, exact-row and bounded-interval overrides. A single min-row field cannot
-preserve that precedence. **Clearing action:** if normalization is chosen, map each current branch
-to an ordered quant/shape/row rule in the backend package, then compare selected function identities
-before/after over every interval boundary, exact-row override, unrelated row and shape miss. Keep
-engine/model dispatch free of backend/quant branches. Run `tests/test_unit_gfx1151_backend.py`,
-`tests/test_unit_loading_qwen35_gguf_policy.py` and `tests/test_unit_gguf_linear_dispatch.py`, then
-confirm public selected owners and cleanup on gfx1151. Do not couple this structural cleanup to
-retuning the QKV layout or re-admitting the rejected residual composite.
-
 ### R0231 — Maple CUDA resident fixed-batch owner
 
 Owner: `hipengine/generation/maple.py`.

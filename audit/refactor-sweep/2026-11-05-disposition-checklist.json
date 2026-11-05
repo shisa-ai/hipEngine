@@ -1065,11 +1065,12 @@
       "ledger_line": 705,
       "owner": "`hipengine/kernels/hip_gfx1151/__init__.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/kernels/hip_gfx1151/__init__.py:731-897 contains distinct standard and planar shared4 bands with shape overrides."
+        "Retain separate standard/planar backend wrappers: distinct precedence, exact-row and per-shape intervals do not reduce to a shared minimum-row field.",
+        "397 backend/loading/dispatch tests pass; worklog/entries/20261105T222313.946361Z-lhl-r0223-wrapper-7b6768.md records unchanged selectors and decision."
       ],
-      "next_action": "Map ordered rules and capture selected function identities at each boundary, then normalize only if that representation reduces duplication without changing precedence.",
+      "next_action": "None. No normalization selected, no dispatch/default/math changes; completed decision removed from ledger.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
