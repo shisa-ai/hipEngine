@@ -137,6 +137,55 @@ def test_none_items_and_factory_failure_release_capacity():
     asyncio.run(check())
 
 
+def test_waiting_consumer_cancellation_does_not_consume_a_slot():
+    async def check():
+        entered = threading.Event()
+        release = threading.Event()
+        pool = StreamBridgePool(max_workers=1, buffer_size=1)
+
+        def source():
+            entered.set()
+            assert release.wait(5)
+            yield 1
+
+        first = pool.stream(source)
+        pending = asyncio.create_task(anext(first))
+        assert await asyncio.to_thread(entered.wait, 1)
+        waiting = pool.stream(lambda: iter((2,)))
+        cancelled = asyncio.create_task(anext(waiting))
+        await asyncio.sleep(0)
+        cancelled.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled
+        release.set()
+        assert await asyncio.wait_for(pending, 1) == 1
+        await first.aclose()
+        assert [x async for x in pool.stream(lambda: iter((3,)))] == [3]
+
+    asyncio.run(check())
+
+
+def test_close_failure_propagates_and_releases_capacity():
+    class Source:
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise StopIteration
+
+        def close(self):
+            raise ValueError("close failed")
+
+    async def check():
+        pool = StreamBridgePool(max_workers=1)
+        with pytest.raises(ValueError, match="close failed"):
+            async for _ in pool.stream(Source):
+                pass
+        assert [x async for x in pool.stream(lambda: iter((1,)))] == [1]
+
+    asyncio.run(check())
+
+
 @pytest.mark.parametrize("many", [False, True])
 def test_server_stream_uses_bounded_bridge_and_finalizes_on_disconnect(many, monkeypatch):
     from types import SimpleNamespace

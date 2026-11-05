@@ -3804,11 +3804,12 @@
       "ledger_line": 3118,
       "owner": "`hipengine/server/api.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/server/api.py:3072,4620-4664 advances blocking iterators via per-item threadpool handoffs."
+        "51cf8e7a8 adds bounded dedicated producer ownership; 68 focused streaming tests pass.",
+        "worklog/entries/20261105T214039.270157Z-lhl-r0503-http-4707e3.md records real gfx1151 HTTP multi-choice, disconnect/reuse, concurrent streams and clean teardown."
       ],
-      "next_action": "Bounded dedicated producer bridge and text/multi-row server integration implemented; 66 bridge/stream tests pass. Remaining: real loaded-engine HTTP first-chunk/cancel/teardown and concurrency validation. Blocked synchronous next retains bounded worker capacity until return. See worklog/entries/20261105T213409.488519Z-lhl-r0503-bridge-d2e332.md.",
+      "next_action": "None. Supported bounded bridge replaces per-item handoffs. Blocked synchronous next retains its worker slot until return; no unsafe thread termination. Removed completed ledger section.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

@@ -3025,28 +3025,6 @@ branch conditions, token chains, rollback and request reuse through the public s
 generated-audio quality suite. If arithmetic changes, run the applicable execution-profile numerical
 gate as well.
 
-### R0503 — Choose a bounded streaming handoff contract
-
-Owner: `hipengine/server/api.py`.
-
-Scope: `_stream_engine_text`, `_stream_engine_many`, `_next_stream_item`,
-`EngineChildHandle.iter_chunks`, `EngineService.stream_many_detailed`.
-
-**Implemented bounded producer bridge:** server text and multi-row streams now use
-`StreamBridgePool` with eight dedicated producer slots and eight queued chunks per stream
-(plus one producer-held chunk). Iterator construction, advancement and close share one worker.
-Disconnect stops buffering; a blocked `next()` retains its slot until it returns, rather than
-closing the generator concurrently or consuming the shared threadpool. See
-`worklog/entries/20261105T213409.488519Z-lhl-r0503-bridge-d2e332.md`.
-
-**Remaining validation:** confirm real server first-chunk delivery, cancellation and teardown with
-the loaded engine, including producer failures and concurrent choices. The bridge does not kill
-an indefinitely blocked synchronous producer; it bounds that resource exposure.
-
-Done when: The replacement must emit the first ready chunk without waiting for a full batch, preserve
-per-choice ordering/fairness, bound buffering and propagate thread failure, disconnect and
-cancellation without leaking generator ownership.
-
 ### R0504 — Evaluate overlapping chunked prompt activations
 
 Owner: `hipengine/generation/engine_loop.py`.
