@@ -1439,23 +1439,6 @@ both HIP backends, tracing storage/scales, graph/MTP engagement, cancellation, r
 Kernel-arithmetic changes require their independent quality and state gates; control migration alone
 must not change arithmetic or defaults.
 
-### R0281-Q8-EXPERIMENTS — Standalone raw-Q4/Q8_1 comparison retention
-
-Owner: `scripts/gguf_q4_k_t16_selected_prefill_microbench.py`.
-
-Scope: `scripts/gguf_q4_k_t16_selected_prefill_microbench.py`,
-`tests/test_gpu_gguf_q4_k_q8_1_selected_prefill.py`.
-
-**Decision needed:** keep the old modes as explicit numerical/design controls, or archive their
-performance interfaces while retaining the independent parity references that still serve later
-work. An old release-window or promotion condition does not decide which controls are useful now.
-
-Done when: enumerate each mode's wrapper, symbol, registry key, tests and non-test
-consumers before removing it. Migrate archived command replay if needed; keep CPU-reference oracles
-and shared helpers with live consumers. Run the microbench `--help`, its registry/build-plan,
-common-wrapper and preview reconstruction nodes, then the affected device parity nodes if kernels
-change. A wrapper/library change also needs public Laguna/Qwen MMQ route engagement and cleanup.
-
 ### R0281-PARO-INT8-PREFILL — Oracle/streaming resource-policy ownership
 
 Owner: `hipengine/runtime/qwen35_paro_runner.py`.

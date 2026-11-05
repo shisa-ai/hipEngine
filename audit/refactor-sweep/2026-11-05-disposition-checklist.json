@@ -2009,11 +2009,12 @@
       "ledger_line": 1516,
       "owner": "`scripts/gguf_q4_k_t16_selected_prefill_microbench.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "scripts/gguf_q4_k_t16_selected_prefill_microbench.py:168-169,294-314 exposes independent pack/WMMA modes and says it does not test model quality."
+        "Retain all standalone --mode comparisons as explicit primitive numerical/design controls; no symbol, wrapper or runtime removal.",
+        "Microbench help, registry/build-plan, wrapper contract and preview reconstruction pass; worklog/entries/20261105T223841.619714Z-lhl-q8-experiments-a420fb.md."
       ],
-      "next_action": "Inventory every mode wrapper/symbol/registry/test consumer and name retained primitive diagnostic ownership before archiving any executable comparison.",
+      "next_action": "None. Maintained primitive diagnostic owner retained; no kernel/library change or archival migration.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
