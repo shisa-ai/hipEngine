@@ -1221,11 +1221,13 @@
       "ledger_line": 840,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "scripts/laguna_long_context_profile.py:249-269,734-736,811-815 retains branch concurrency/low-priority comparisons."
+        "Profile passes concurrency/priority at construction; resident owner creates and closes shared streams/events, including constructor rollback.",
+        "Queue/priority/resource runner and profile tests pass (/tmp/laguna-scheduling-owners.xml).",
+        "worklog/entries/20261105T185438.942513Z-lhl-laguna-scheduling-owners-fb8474.md records retained diagnostic ownership."
       ],
-      "next_action": "Inspect stream/event owners and callers, choose retained diagnostics or scoped migration, and validate restoration/queue behavior with unit tests before checkpoint-dependent public validation.",
+      "next_action": "Use R0249/R0250 checkpoint command for public single/multi-row eager/graph, cancellation and shutdown checks. Keep supported constructor diagnostics and stream/event ownership unchanged.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -5035,8 +5037,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 182,
-    "concrete_dependency_blocker": 40,
+    "locally_actionable": 181,
+    "concrete_dependency_blocker": 41,
     "human_decision_required": 6,
     "completed": 4,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."

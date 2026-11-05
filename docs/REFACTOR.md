@@ -807,15 +807,20 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `scripts/laguna_long_context_profile.py`; `tests/test_unit_laguna_gguf_runner.py`; `tests/test_unit_laguna_long_context_profile.py`.
 
-Done when: Decision needed: retain constructor/profile scheduling overrides as supported diagnostics, or
-move comparisons to scoped harness controls and retire redundant mutation interfaces.
-`scripts/laguna_long_context_profile.py` still exposes concurrency, after-router and low-priority
-choices. **Clearing action:** if retired, migrate those callers while preserving sequential and
-priority-0 controls; do not remove the live stream/events or queue-capacity fallback. Run
-`tests/test_unit_laguna_gguf_runner.py`, `tests/test_unit_laguna_long_context_profile.py` and
-`tests/test_live_laguna_moe_gpu.py`; compare public single-/multi-row eager and graph execution,
-queue limits, cancellation and shutdown with the local checkpoint dependency at R0249/R0250. Confirm
-dependencies and resource cleanup, not just token equality.
+Done when: validate the supported constructor/profile diagnostics through the
+public lifecycle matrix below. `scripts/laguna_long_context_profile.py` owns
+explicit sequential/concurrent, after-router and low-priority comparisons.
+`LagunaGGUFResidentSession` owns the resulting streams/events from construction
+to close, including constructor-failure cleanup. Concurrency and priority are
+resource-construction policy, not redundant live mutation interfaces; retain
+the sequential and priority-0 controls and automatic queue-capacity fallback.
+The after-router setter only changes launch ordering, not resource ownership.
+
+**Clearing action:** with the checkpoint at R0249/R0250, compare public single-
+and multi-row eager/graph execution, queue limits, cancellation and shutdown.
+Confirm stream/event dependencies and cleanup, not just token equality. The
+runner/profile unit bundle covers queue admission, priority and resource owners;
+it does not replace the missing actual-weight public run.
 
 ### R0270 — Laguna selected-MMQ diagnostic modes
 
