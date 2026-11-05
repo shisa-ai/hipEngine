@@ -1346,7 +1346,7 @@ def test_gguf_speculative_mtp_c2_uses_packed_prefill_by_default(
             0,
             ((10, 11, 12, 13), (20, 21, 22, 23)),
             (0, 1),
-            "1",
+            None,
             False,
             True,
         )
@@ -1386,7 +1386,8 @@ def test_gguf_speculative_mtp_c2_uses_batch_verifier_when_available() -> None:
             calls.append(("verify_block", self.slot_id, tuple(input_token_ids), dict(kwargs)))
             raise AssertionError("per-slot verifier should not be used when batch verifier exists")
 
-        def verify_target_blocks_batch(self, jobs):
+        def verify_target_blocks_batch(self, jobs, *, capture_prefill_gdn=False):
+            assert capture_prefill_gdn is True
             self.last_packed_verify_stage_timings_ms = {"packed_verify_total": 1.25}
             calls.append(
                 (
@@ -1837,7 +1838,8 @@ def test_gguf_speculative_mtp_batch_verifier_notimplemented_falls_back() -> None
             self.slot_id = int(slot_id)
             self.position = 4
 
-        def verify_target_blocks_batch(self, jobs):
+        def verify_target_blocks_batch(self, jobs, *, capture_prefill_gdn=False):
+            assert capture_prefill_gdn is True
             calls.append(("verify_batch", tuple((job["session"].slot_id, tuple(job["input_token_ids"])) for job in jobs)))
             raise NotImplementedError("unsupported packed shape")
 
@@ -1886,7 +1888,8 @@ def test_gguf_speculative_mtp_batch_verifier_chunks_above_four_slots() -> None:
             self.slot_id = int(slot_id)
             self.position = 4
 
-        def verify_target_blocks_batch(self, jobs):
+        def verify_target_blocks_batch(self, jobs, *, capture_prefill_gdn=False):
+            assert capture_prefill_gdn is True
             calls.append(("verify_batch", self.slot_id, tuple(job["session"].slot_id for job in jobs)))
             return [
                 SimpleNamespace(
@@ -1964,7 +1967,8 @@ def test_gguf_speculative_mtp_batch_verifier_streams_chunks_above_four_slots(mon
             self.position = 4
             self.runtime = FakeRuntime()
 
-        def verify_target_blocks_batch(self, jobs, *, stream: int = 0):
+        def verify_target_blocks_batch(self, jobs, *, stream: int = 0, capture_prefill_gdn=False):
+            assert capture_prefill_gdn is True
             calls.append(("verify_batch", self.slot_id, int(stream), tuple(job["session"].slot_id for job in jobs)))
             return [
                 SimpleNamespace(
@@ -5855,7 +5859,8 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
             )
             return results
 
-        def verify_target_blocks_batch(self, jobs):
+        def verify_target_blocks_batch(self, jobs, *, capture_prefill_gdn=False):
+            assert capture_prefill_gdn is True
             calls.append(
                 (
                     "verify_batch",
@@ -5871,7 +5876,7 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
                         )
                         for job in jobs
                     ),
-                    os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"),
+                    "1" if capture_prefill_gdn else None,
                 )
             )
             return [
@@ -5935,46 +5940,13 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
     assert result["packed_mtp_verify_prompt_lengths"] == [4]
     assert [call for call in calls if call[0] == "draft_init"] == []
     assert [call for call in calls if call[0] == "prefill_batch"] == [
-        (
-            "prefill_batch",
-            0,
-            2,
-            ((1, 2, 3, 4), (2, 3, 4, 5)),
-            (0, 1),
-            "1",
-            False,
-            True,
-        ),
-        (
-            "prefill_batch",
-            0,
-            4,
-            ((1, 2, 3, 4), (2, 3, 4, 5), (3, 4, 5, 6), (4, 5, 6, 7)),
-            (0, 1, 2, 3),
-            "1",
-            False,
-            True,
-        ),
-        (
-            "prefill_batch",
-            0,
-            4,
-            ((1, 2, 3, 4), (2, 3, 4, 5), (3, 4, 5, 6), (4, 5, 6, 7)),
-            (0, 1, 2, 3),
-            "1",
-            False,
-            True,
-        ),
-        (
-            "prefill_batch",
-            4,
-            4,
-            ((5, 6, 7, 8), (6, 7, 8, 9), (7, 8, 9, 10), (8, 9, 10, 11)),
-            (4, 5, 6, 7),
-            "1",
-            False,
-            True,
-        ),
+        ("prefill_batch", owner, len(slots), prompts, slots, None, False, True)
+        for owner, slots, prompts in [
+            (0, (0, 1), ((1, 2, 3, 4), (2, 3, 4, 5))),
+            (0, (0, 1, 2, 3), ((1, 2, 3, 4), (2, 3, 4, 5), (3, 4, 5, 6), (4, 5, 6, 7))),
+            (0, (0, 1, 2, 3), ((1, 2, 3, 4), (2, 3, 4, 5), (3, 4, 5, 6), (4, 5, 6, 7))),
+            (4, (4, 5, 6, 7), ((5, 6, 7, 8), (6, 7, 8, 9), (7, 8, 9, 10), (8, 9, 10, 11))),
+        ]
     ]
     assert [call for call in calls if call[0] == "verify_batch"] == [
         (
