@@ -2077,11 +2077,13 @@
       "ledger_line": 1571,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:9231,11509,14107,25741 retains scalar graph session lifecycle."
+        "Retain supported unchained FFN comparison; no production reader/wiring/default change. G5/PM4 off writers, metadata and independent cache consumers preserved.",
+        "15 host routing/control and 5 actual-model parity/GPU cache tests pass on gfx1151; captures/replays positive and rejects/eager zero.",
+        "worklog/entries/20261105T230940.773482Z-lhl-r0281-moe-graph-84ae48.md"
       ],
-      "next_action": "Coordinate unchained policy with R0281-TAIL-RMS, retain or retire actual GGUF comparison wiring only after callers migrate; leave standalone cache primitives intact.",
+      "next_action": "None; explicit comparison remains supported without disabling production norm chaining.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

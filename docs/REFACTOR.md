@@ -1458,23 +1458,6 @@ public uniform and mixed requests with oracle/direct selection, short/long/ragge
 rejection, reset/cancellation and cleanup. Verify actual attention sources and transient oracle
 owners.
 
-### R0281-MOE-GRAPH — Scalar per-layer graph diagnostic ownership
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_MOE_GRAPH`.
-
-**Decision needed:** preserve this GGUF route as an explicit unchained FFN comparison, migrate it to
-scoped diagnostic construction, or retire its session wiring and live comparison together. Keep
-standalone graph-cache consumers and strict eager FFN primitives regardless. Do not silently disable
-production norm chaining to make the optional graph engage.
-
-Done when: coordinate the tail-RMS comparison migration, G5/PM4 off writers, benchmark
-metadata, session close and whole-step incompatibility tests. Run tail-RMS routing, Qwen4Exp
-graph-control and graph-cache upload contracts; if keeping the GGUF route, run the live MoE parity
-gate with actual capture, replay/reject counters. A production reader/wiring change also needs
-public short/long decode, graph/eager selection, repeat output, cancellation and cleanup.
-
 ### R0281-DENSE-Q8 — Verifier sidecar placement and compatibility controls
 
 Owner: `hipengine/loading/qwen35_gguf_materialize.py`.
