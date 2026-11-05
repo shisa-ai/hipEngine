@@ -1894,32 +1894,6 @@ confirm public chain routing stays unchanged. The corresponding GGUF root/siblin
 is separately owned by `scripts/gguf_mtp_bench.py`; its supported-comparison disposition is recorded
 in `worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md`.
 
-### R0281-METADATA — Contiguous prefill metadata policy and host oracle
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `_GGUFFullAttentionPrefillScratch.for_chunk()`, `cu_q`, `cu_k`, `cu_seqlens`;
-`HIPENGINE_GGUF_PREFILL_DEVICE_METADATA`.
-
-**Decision needed:** retain named host/device comparisons or migrate them into an explicit prefill
-diagnostic policy; decide automatic long-context selection separately from interface retirement. A
-release window alone does not migrate the live isolation callers, and missing long-context
-measurements do not make the explicit device path incapable of running.
-
-Done when: migrate the selector, backend policy, isolation profiles, profiler and
-provenance together, preserving an independent host oracle. Run:
-
-```bash
-uv run pytest -o addopts='' -q \
-  tests/test_unit_gguf_packed_verify_layout.py \
-  tests/test_unit_qwen35_prefill_kernel_profile.py \
-  tests/test_unit_gguf_full_attn_split_demand.py \
-  tests/test_gpu_runtime_state_unpack_metadata.py
-```
-
-Exercise both metadata writers through `LLM.generate()` below, above and away from the old ceiling;
-verify all six arrays, stream ordering, partial/final chunks and teardown.
-
 ### R0281-Q8-WAVES — Dense T16 prefill schedule policy
 
 Owner: `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py`.

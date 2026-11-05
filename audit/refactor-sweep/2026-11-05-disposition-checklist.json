@@ -2851,11 +2851,13 @@
       "ledger_line": 2231,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:9234,9491-9500 resolves host/device metadata preference and backend ceiling."
+        "Retain independent host/device metadata comparisons and existing automatic backend policy; no execution change.",
+        "93 host and 5 GPU tests pass. Public host/device selection at 37 (bypass), 4093 and 4127 tokens verified all six arrays on reached writers and zero allocations after close.",
+        "worklog/entries/20261105T235734.914296Z-lhl-r0281-metadata-75f621.md"
       ],
-      "next_action": "Migrate metadata policy and independent host oracle into explicit prefill owner with all six arrays/stream ordering tested at varied lengths.",
+      "next_action": "None; automatic long-context selection remains separate from interface retention.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
