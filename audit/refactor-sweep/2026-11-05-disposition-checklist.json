@@ -1471,12 +1471,12 @@
       "ledger_line": 1044,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "scripts/laguna_target_ar_bench.py:293,739,871-872 passes and reports Q4 head comparison.",
         "hipengine/runtime/laguna_gguf_runner.py:2998,3172-3180 selects scalar Q4 owner independently."
       ],
-      "next_action": "Name retained Q4 scalar diagnostic owner or scope its comparison policy; test true Q4 full logits and missing-key fallback, not unrelated Q6 top1.",
+      "next_action": "Constructor-owned scalar diagnostic retained; both benchmark construction sites and effective metadata inspected. Focused Q4 candidate/missing-key and row separation tests pass. Actual Q4 public gate requires Laguna checkpoint at R0249/R0250. See worklog/entries/20261105T192134.703425Z-lhl-laguna-q4-head-disposition-572d63.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -5037,8 +5037,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 180,
-    "concrete_dependency_blocker": 41,
+    "locally_actionable": 179,
+    "concrete_dependency_blocker": 42,
     "human_decision_required": 6,
     "completed": 5,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."

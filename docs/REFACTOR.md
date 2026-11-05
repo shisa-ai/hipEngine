@@ -1019,13 +1019,15 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 Scope: `use_q4_lm_head_local32_fixed_meta`, `_project_and_sample()`, `_project_rows_last()`,
 `_project_rows_all()`.
 
-Done when: Decision needed: keep the constructor/CLI opt-out as a supported diagnostic, or move the
-comparison to a scoped projection owner before retiring it. **Clearing action:** migrate both
-target-AR construction sites and result fields, then run `tests/test_unit_laguna_gguf_runner.py` and
-`tests/test_unit_laguna_target_ar_bench.py`. Preserve scalar-versus-bulk/verifier selection, exact
-fallback bodies and backend capability behavior. Exercise actual Q4 full logits and a missing-key
-fallback, then R0249/R0250's public continuation/lifecycle gate; do not treat a Q6 producer-top1 run
-as exercising this Q4 path.
+Done when: validate the supported scalar-Q4 diagnostic through the checkpoint-dependent
+public continuation/lifecycle gate at R0249/R0250. The constructor owns the resolved
+variant; `scripts/laguna_target_ar_bench.py` passes its CLI opt-out at both construction
+sites and records effective selection. Keep that comparison: scalar full-logit decode
+uses the registered variant, while bulk/verifier projection keeps its independent
+selection. Runner, target-AR and dispatcher unit tests cover selection and missing-key
+fallback; those host tests are not actual-weight Q4 output validation. Preserve exact
+fallback bodies and backend capability behavior. Exercise actual Q4 full logits; do
+not treat a Q6 producer-top1 run as exercising this Q4 path.
 
 ### R0281-IQ3 — c1 IQ3 schedule comparison interface
 
