@@ -192,6 +192,9 @@ def test_profiler_enters_global_scope_and_restores_before_owner_close(
 
     class Session:
         kv_cache = cache
+        prefill_swa_attention_hipblaslt = False
+        prefill_dense_contiguous_cache = False
+        prefill_attention_diagnostic = LagunaGGUFResidentSession.prefill_attention_diagnostic
 
         @property
         def prefill_chunk_size(self):

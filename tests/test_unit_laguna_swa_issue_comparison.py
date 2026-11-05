@@ -141,6 +141,9 @@ def test_profile_enters_and_restores_swa_scope_before_owner_cleanup(owner, monke
 
     class Session:
         kv_cache = cache
+        prefill_swa_attention_hipblaslt = False
+        prefill_dense_contiguous_cache = False
+        prefill_attention_diagnostic = LagunaGGUFResidentSession.prefill_attention_diagnostic
 
         @property
         def prefill_chunk_size(self):
