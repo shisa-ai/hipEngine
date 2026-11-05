@@ -43,6 +43,11 @@ def test_threshold_child_pins_fused_pair_and_records_effective_environment(monke
     expected = None if role == "current" else "0"
     assert env.get(name) == expected
     assert os.environ.get(name) == inherited
+    assert result['diagnostics']['dense-bulk'] == (role == 'current')
+    assert 'HIPENGINE_GGUF_DENSE_WMMA_BULK' not in launches[0][1]['env']
+    command = launches[0][0]
+    assert command[command.index('--diagnostic-dense-bulk') + 1] == (
+        'on' if role == 'current' else 'off')
     assert result["environment"] == {key: env.get(key) for key in sweep.ROLE_ENVS[quant][role]}
 
     # Exercise the real dispatch predicate, not just the spelling of the env.

@@ -86,8 +86,19 @@ def run_one(
             env.pop(name, None)
         else:
             env[name] = value
+    diagnostics = {
+        'dense-bulk': ROLE_ENVS[quant][role].get('HIPENGINE_GGUF_DENSE_WMMA_BULK') != '0',
+        'dense-residual': True,
+        'q8-pair': True,
+    }
+    for name in ('HIPENGINE_GGUF_DENSE_WMMA_BULK',
+                 'HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL',
+                 'HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL'):
+        env.pop(name, None)
     command = [
-        sys.executable, str(ROOT / 'scripts/qwen35_readme_sweep.py'),
+        sys.executable, str(ROOT / 'scripts/qwen35_08b_threshold_child.py'),
+        *(arg for field, enabled in diagnostics.items()
+          for arg in (f'--diagnostic-{field}', 'on' if enabled else 'off')),
         '--engine', 'gguf', '--model', model, '--quant', quant_label,
         '--workloads', f'{length}/1',
         '--token-id', '9707', '--warmup-runs', '1', '--measured-runs', '1',
@@ -115,6 +126,7 @@ def run_one(
         'artifact': str(artifact),
         'command': command,
         'environment': {name: env.get(name) for name in ROLE_ENVS[quant][role]},
+        'diagnostics': diagnostics,
         'elapsed_s': time.perf_counter() - started,
         'source_commit': payload['provenance']['hipengine_commit'],
         'clean_tree': not bool(payload['provenance']['dirty']),
