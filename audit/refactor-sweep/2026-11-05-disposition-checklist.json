@@ -3808,7 +3808,7 @@
       "evidence": [
         "hipengine/server/api.py:3072,4620-4664 advances blocking iterators via per-item threadpool handoffs."
       ],
-      "next_action": "Implement bounded producer handoff or ready-only iterator with explicit worker/buffer ownership; add first-ready/fairness/error/disconnect/cancel tests before replacing loops.",
+      "next_action": "Bounded dedicated producer bridge and text/multi-row server integration implemented; 66 bridge/stream tests pass. Remaining: real loaded-engine HTTP first-chunk/cancel/teardown and concurrency validation. Blocked synchronous next retains bounded worker capacity until return. See worklog/entries/20261105T213409.488519Z-lhl-r0503-bridge-d2e332.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

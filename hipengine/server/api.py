@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import base64
 from contextlib import suppress
+import contextlib
 from copy import deepcopy
 from enum import Enum
 import hashlib
@@ -171,6 +172,7 @@ from hipengine.server.session_snapshots import (
     CHAT_SESSION_SNAPSHOT_SCHEMA,
     SessionSnapshotModel,
 )
+from hipengine.server.stream_bridge import StreamBridgePool
 from hipengine.server.model_lifecycle import ModelBuildSpec, ModelLifecycle
 # SSE frame projection and stream accounting live in their own owner; live
 # sequencing, cancellation, backpressure, and finish/error policy stay here.
@@ -2482,6 +2484,7 @@ class _RequestControl:
 
 
 _STREAM_DONE = object()
+_STREAM_BRIDGE_POOL = StreamBridgePool()
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -3068,13 +3071,6 @@ def _resolve_realized_generation_route(
             "evidence": decision.evidence,
         },
     )
-
-
-def _next_stream_item(iterator: Iterator[Any]) -> object:
-    try:
-        return next(iterator)
-    except StopIteration:
-        return _STREAM_DONE
 
 
 class _DebugPayloadMiddleware:
@@ -4614,40 +4610,22 @@ async def _stream_engine_text(
     else:
         detailed_streamer = getattr(engine, "stream_detailed", None)
     if callable(detailed_streamer):
-        iterator = iter(detailed_streamer(prompt, sampling))
-        done = False
-        try:
-            while True:
-                item = await run_in_threadpool(_next_stream_item, iterator)
-                if item is _STREAM_DONE:
-                    done = True
-                    break
+        async with contextlib.aclosing(
+            _STREAM_BRIDGE_POOL.stream(lambda: iter(detailed_streamer(prompt, sampling)))
+        ) as stream:
+            async for item in stream:
                 yield _coerce_generation_stream_chunk(item)
-        finally:
-            if not done:
-                closer = getattr(iterator, "close", None)
-                if callable(closer):
-                    await run_in_threadpool(closer)
         return
     streamer = getattr(engine, "stream", None)
     if not callable(streamer):
         for output in await run_in_threadpool(engine.generate, (prompt,), sampling):
             yield _coerce_generation_stream_chunk(output)
         return
-    iterator = iter(streamer(prompt, sampling))
-    done = False
-    try:
-        while True:
-            item = await run_in_threadpool(_next_stream_item, iterator)
-            if item is _STREAM_DONE:
-                done = True
-                break
+    async with contextlib.aclosing(
+        _STREAM_BRIDGE_POOL.stream(lambda: iter(streamer(prompt, sampling)))
+    ) as stream:
+        async for item in stream:
             yield _coerce_generation_stream_chunk(item)
-    finally:
-        if not done:
-            closer = getattr(iterator, "close", None)
-            if callable(closer):
-                await run_in_threadpool(closer)
 
 
 async def _stream_engine_many(
@@ -4658,20 +4636,11 @@ async def _stream_engine_many(
     streamer = _engine_stream_many_callable(engine)
     if streamer is None:
         raise NotImplementedError("multi-row streaming is not supported by this generator")
-    iterator = iter(streamer(tuple(prompts), sampling))
-    done = False
-    try:
-        while True:
-            item = await run_in_threadpool(_next_stream_item, iterator)
-            if item is _STREAM_DONE:
-                done = True
-                break
+    async with contextlib.aclosing(
+        _STREAM_BRIDGE_POOL.stream(lambda: iter(streamer(tuple(prompts), sampling)))
+    ) as stream:
+        async for item in stream:
             yield _coerce_generation_stream_chunk(item)
-    finally:
-        if not done:
-            closer = getattr(iterator, "close", None)
-            if callable(closer):
-                await run_in_threadpool(closer)
 
 
 @dataclass(frozen=True)

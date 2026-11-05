@@ -3032,11 +3032,16 @@ Owner: `hipengine/server/api.py`.
 Scope: `_stream_engine_text`, `_stream_engine_many`, `_next_stream_item`,
 `EngineChildHandle.iter_chunks`, `EngineService.stream_many_detailed`.
 
-**Deferred interface decision:** choose either a ready-only batch iterator contract propagated
-through the LLM/generator boundary, or a bounded producer bridge with explicit worker ownership and
-concurrency limits. Calling `next()` repeatedly can block the first chunk behind future production;
-reserving a shared threadpool worker for every live stream can starve other requests. Increasing
-collector drain sizes alone does not remove the server's per-item handoff.
+**Implemented bounded producer bridge:** server text and multi-row streams now use
+`StreamBridgePool` with eight dedicated producer slots and eight queued chunks per stream
+(plus one producer-held chunk). Iterator construction, advancement and close share one worker.
+Disconnect stops buffering; a blocked `next()` retains its slot until it returns, rather than
+closing the generator concurrently or consuming the shared threadpool. See
+`worklog/entries/20261105T213409.488519Z-lhl-r0503-bridge-d2e332.md`.
+
+**Remaining validation:** confirm real server first-chunk delivery, cancellation and teardown with
+the loaded engine, including producer failures and concurrent choices. The bridge does not kill
+an indefinitely blocked synchronous producer; it bounds that resource exposure.
 
 Done when: The replacement must emit the first ready chunk without waiting for a full batch, preserve
 per-choice ordering/fairness, bound buffering and propagate thread failure, disconnect and
