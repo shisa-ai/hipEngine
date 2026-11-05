@@ -1199,11 +1199,11 @@
       "ledger_line": 821,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "scripts/laguna_long_context_profile.py:169,1069-1073 exposes attention rows and mutates SWA/cache controls."
       ],
-      "next_action": "Record these as supported geometry/comparison policy or migrate redundant mutations to scoped test owners with restoration tests; preserve matrix-capacity and independent span fallbacks.",
+      "next_action": "Retain constructor geometry/resource policy and profile-owned scoped comparisons. Host runner/profile/scope tests pass, including setup failure and independent owners. Public dense/rolling/tail/continuation/verifier output/state/cleanup matrix requires R0249/R0250 Laguna checkpoint. See worklog/entries/20261105T194050.709618Z-lhl-laguna-geometry-owners-7ee144.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -5037,8 +5037,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 175,
-    "concrete_dependency_blocker": 46,
+    "locally_actionable": 174,
+    "concrete_dependency_blocker": 47,
     "human_decision_required": 6,
     "completed": 5,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."

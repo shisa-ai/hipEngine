@@ -788,18 +788,21 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `prefill_global_attention_chunk_size`.
 
-Done when: Decision needed: retain explicit constructor/profile controls as supported diagnostics and
-geometry policy, or move comparisons into scoped test owners and retire redundant mutation
-interfaces. The profile harness still calls `set_prefill_swa_attention_hipblaslt()` and
-`set_prefill_dense_contiguous_cache()` and supplies `--attention-rows`. **Clearing action:** if
-retiring controls, migrate those arms first, preserving actual generic-versus-selected execution and
-restoration after failures. Keep backend width defaults, matrix-capacity validation, bounded
-allocation and full `KVLiveSpans` fallbacks. Run `tests/test_unit_laguna_gguf_runner.py`,
-`tests/test_unit_laguna_long_context_profile.py` and `tests/test_gpu_laguna_kv_attention.py`; then
-use R0249/R0250's public gate with dense and rolling/wrapped prompts, non-aligned tails,
-continuation, verifier and shape misses on each applicable backend. Confirm selected width,
-owner/layout, output/state and cleanup. Global query geometry is a resource choice, not an evidence
-allowlist; do not remove a supported width merely because a benchmark did not cover it.
+Done when: complete the actual-weight public lifecycle matrix below. Retain explicit
+constructor/profile controls as geometry policy and supported diagnostics. The profile
+harness owns generic-versus-selected SWA and dense-contiguous comparisons through
+`prefill_attention_diagnostic()` in its `ExitStack`; success and failure restore the
+owner before close. Global attention rows are constructor-time resource sizing, not
+an arithmetic comparison override. Keep backend width defaults, matrix-capacity
+validation, bounded allocation and full `KVLiveSpans` fallbacks.
+
+**Clearing action:** with R0249/R0250's checkpoint, run public dense and rolling/wrapped
+prompts, non-aligned tails, continuation, verifier and shape misses on each applicable
+backend. Confirm selected width, owner/layout, output/state and cleanup. Runner,
+profile and diagnostic-scope tests cover nested failure, partial setup failure and
+independent owners; they do not replace this actual-weight run. Global query geometry
+is a resource choice, not an evidence allowlist; do not remove a supported width
+merely because a benchmark did not cover it.
 
 ### R0269 — Laguna MoE scheduling diagnostic controls
 
