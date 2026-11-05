@@ -54,6 +54,48 @@ def test_stream_draft_failure_frees_successful_sibling_snapshots(monkeypatch, fa
     assert sorted(freed) == [index for index in range(3) if index != failure_index]
 
 
+@pytest.mark.parametrize("submission_failure", [False, True])
+def test_stream_draft_cleanup_continues_and_preserves_original_failure(monkeypatch, submission_failure):
+    generator = _generator()
+    slots = [SimpleNamespace(
+        request_id=index, draft_stream=700, generated_ids=[1], timing={},
+        resident_context=SimpleNamespace(pending_seed=object()),
+        session=SimpleNamespace(runtime=SimpleNamespace(
+            stream_create=lambda **kwargs: 700,
+            stream_synchronize=lambda stream: None,
+            stream_destroy=lambda stream: None,
+        )),
+    ) for index in range(3)]
+    freed = []
+    real_pool = qwen35_gguf.concurrent.futures.ThreadPoolExecutor
+
+    class Pool(real_pool):
+        def submit(self, fn, slot):
+            if submission_failure and slot.request_id == 2:
+                raise RuntimeError("submit failed")
+            return super().submit(fn, slot)
+
+    def draft(slot, *args, **kwargs):
+        if not submission_failure and slot.request_id == 2:
+            raise RuntimeError("worker failed")
+        return SimpleNamespace(slot=slot)
+
+    def free(result):
+        freed.append(result.slot.request_id)
+        if result.slot.request_id == 0:
+            raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr(qwen35_gguf.concurrent.futures, "ThreadPoolExecutor", Pool)
+    monkeypatch.setattr(generator, "_draft_mtp_serving_slot", draft)
+    monkeypatch.setattr(generator, "_free_mtp_serving_cycle_snapshot", free)
+    with pytest.raises(RuntimeError, match="submit failed" if submission_failure else "worker failed") as error:
+        generator._try_draft_mtp_serving_slots_streams(
+            slots, object(), SimpleNamespace(max_tokens=4, deadline_at=None), base_env={},
+        )
+    assert freed == [0, 1]
+    assert error.value.__notes__ == ["draft snapshot cleanup failed: cleanup failed"]
+
+
 def _generator():
     return object.__new__(qwen35_gguf.Qwen35GGUFBringupGenerator)
 
