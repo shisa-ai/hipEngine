@@ -1108,12 +1108,13 @@
       "ledger_line": 742,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:3509-3557 implements mapped host embedding with storage ownership.",
-        "worklog/entries/20260816T152449.196381Z-lhl-qwen38-gfx1151-memory-parity-d82d61.md records anonymous copy safe and direct file registration divergent."
+        "docs/ENVS.md documents supported placement policy; shared/public runner resolves auto while comparison harnesses pin device placement.",
+        "worklog/entries/20261105T184744.169336Z-lhl-host-embedding-policy-a27567.md records caller inventory and focused test evidence.",
+        "Anonymous-copy storage and external ownership safeguards are unchanged; no fresh public arithmetic equivalence claim."
       ],
-      "next_action": "Inventory placement consumers and record supported resource-policy ownership; do not delete a functioning placement choice as duplicate storage or conflate it with scratch reuse.",
+      "next_action": "No cleanup remains for retaining supported resource placement. Preserve the control and keep R0219/R0220 separate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -5034,10 +5035,10 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 183,
+    "locally_actionable": 182,
     "concrete_dependency_blocker": 40,
     "human_decision_required": 6,
-    "completed": 3,
+    "completed": 4,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."
   }
 }

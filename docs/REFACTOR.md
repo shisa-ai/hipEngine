@@ -724,27 +724,6 @@ cuda_sm120a --out /tmp/maple-cuda-public-batch.json`. Extend those gates to cove
 rather than counting serialized c1 calls as batching. This is implementation work, not a
 missing-evidence gate; working c1 execution and its oracle remain unchanged.
 
-### R0239 — Host-token embedding placement control
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `scripts/qwen35_08b_cumulative_semantic.py`, `scripts/qwen35_08b_threshold_sweep.py`,;
-`HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING`; `scripts/qwen35_08b_three_way.py`,
-`scripts/qwen35_08b_graph_rerank.py`.
-
-Done when: Decision needed: retain this host-memory/VRAM placement override as a supported resource policy,
-or replace it with an explicit public placement option and migrate diagnostic callers before
-retiring the environment read. **Clearing action:** if retained, document it as supported policy and
-close this cleanup; if retired, migrate the named callers without changing their device control
-arms, then run `tests/test_gpu_qwen35_gguf_host_token_embedding.py`,
-`tests/test_unit_qwen35_gguf_serving_width_sidecar.py` and
-`tests/test_unit_qwen35_08b_cumulative_semantic.py`. Compare real public auto and device placement,
-eager/graph outputs, selected storage and teardown on each applicable backend. Preserve gfx1151's
-anonymous-copy requirement: direct file-backed registration has an observed trajectory failure.
-Dedicated dense-prefill fields and context-dependent chunk policy are supported safety policy, not
-duplicate allocations to remove here; R0220 owns the unresolved alias failures and R0219 the packed
-source-F16 integration.
-
 ### R0258 — Laguna grouped-IQ diagnostic chain and policy normalization
 
 Owner: `hipengine/kernels/hip_gfx1100/__init__.py`.
