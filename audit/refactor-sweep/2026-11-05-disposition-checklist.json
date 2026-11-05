@@ -2781,11 +2781,13 @@
       "ledger_line": 2170,
       "owner": "`hipengine/speculative/mtp_resident_draft.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/speculative/mtp_resident_draft.py:1085,1153,2044,2102 retains host/device seed and KV writer APIs."
+        "Retain independent context/cache/seed comparisons, no API/arithmetic migration. Parser and legacy-upload cleanup repairs committed separately.",
+        "167 context CPU tests; actual host/device primed and distinct no-cache/device-only/primed cycles pass with correct metadata/cursors and zero allocation close.",
+        "worklog/entries/20261105T234525.114923Z-lhl-r0281-context-621c7e.md"
       ],
-      "next_action": "Create explicit benchmark context policy for priming/cache/seed independently of public NextN, migrate cache lifetimes and provenance with exact commit/rollback coverage.",
+      "next_action": "None; keep compatibility context lifetimes separate from public NextN streaming.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

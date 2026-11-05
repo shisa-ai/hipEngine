@@ -1894,25 +1894,6 @@ confirm public chain routing stays unchanged. The corresponding GGUF root/siblin
 is separately owned by `scripts/gguf_mtp_bench.py`; its supported-comparison disposition is recorded
 in `worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md`.
 
-### R0281-CONTEXT — GGUF benchmark prompt priming and draft KV policy
-
-Owner: `hipengine/speculative/mtp_resident_draft.py`.
-
-Scope: `write_kv_rows`.
-
-**Decision needed:** preserve these independent prompt/cache and host/device-seed comparisons or
-replace the switches with an explicit benchmark context policy across their callers. Prompt priming,
-cache placement and public NextN prompt streaming are different owners; do not replace one with
-another or change the standalone single-seed default merely to remove a switch.
-
-Done when: migrate all-row prompt capture/shift, resident and legacy KV writers,
-device-seed staging, native proposal cache ownership, suite/workbench arguments and context/cache
-provenance together. Retain no-cache, device-only and prompt-primed cases, B1 and deeper drafts,
-reject/partial/full repair, capacity exhaustion, cached-session reset and close checks. Run real
-host/device seed cycles and verify output, acceptance, hidden/KV/cursor continuity; confirm the
-public NextN provider is unchanged. Do not remove the compatibility cache until its replacement
-implements those same lifetime and commit semantics.
-
 ### R0281-TARGET-POLICY / R0284 / R0299 / R0300 — GGUF verifier controls and native naming
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
