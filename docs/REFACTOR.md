@@ -2932,21 +2932,6 @@ the host contract. Any changed arithmetic default additionally follows the
 execution-profile gate. The optional contract and compatibility native-row route
 are implemented; their public scheduler integration is not.
 
-### R0475 — Eager AR diagnostic retirement
-
-Owner: `scripts/gguf_ar_eager_graph_equivalence.py`.
-
-Scope: `scripts/gguf_ar_eager_graph_equivalence.py`, `scripts/qwen36_dense_gguf_suite.py`.
-
-Done when: Deferred decision: keep this operator diagnostic or move its eager runner into a routinely
-exercised device gate before retiring the suite option. If migrating, remove `--ar-decode-mode`, its
-eager `_run_ar` branch and `autoregressive_step` stage only after updating the checker and its
-callers. Run the three unit modules `test_unit_gguf_ar_eager_graph_equivalence.py`,
-`test_unit_qwen36_dense_gguf_suite.py` and `test_unit_ud_mtp_paired.py`, then exercise the
-replacement device comparison with matching settings on both paths. Keep graph mode as the paired
-denominator; the paired validator must continue rejecting eager payloads. No product admission
-depends on this choice.
-
 ### R0484 — Surya decode fallback and sparse-chunk work
 
 Owner: `hipengine/runtime/surya.py`.

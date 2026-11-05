@@ -3580,11 +3580,11 @@
       "ledger_line": 2951,
       "owner": "`scripts/gguf_ar_eager_graph_equivalence.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
         "scripts/qwen36_dense_gguf_suite.py:436,597 retains eager AR comparison stage/CLI."
       ],
-      "next_action": "Name maintained eager diagnostic ownership or migrate it into device gate alongside checker/suite, preserving graph paired denominator and rejection of eager payloads.",
+      "next_action": "None. Retain independent eager AR operator diagnostic and suite option; paired denominator remains graph-only. Named unit bundle and maintained eager/graph checker pass on local gfx1151 artifact with matching settings. See worklog/entries/20261105T211030.396725Z-lhl-r0475-diagnostic-5e59cf.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

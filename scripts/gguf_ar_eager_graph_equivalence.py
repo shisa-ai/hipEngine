@@ -14,8 +14,13 @@ same model, prompt, and settings twice -- once with ``--ar-decode-mode eager``
 (synchronous scalar ``step()`` submission) and once with ``graph`` -- and
 compares the recorded token ids transition by transition.
 
+The eager mode is a supported operator diagnostic, owned by this checker and
+``qwen36_dense_gguf_suite._run_ar``. It is not a performance denominator:
+``ud_mtp_paired`` requires graph mode and rejects eager payloads. Keep both
+paths independently callable so graph-shared faults remain observable.
+
 This is an operator-invoked GPU check, not part of the default test run: it
-loads the artifact twice. ``tests/test_qwen36_dense_gguf_suite.py`` pins the
+loads the artifact twice. ``tests/test_unit_qwen36_dense_gguf_suite.py`` pins the
 wiring contract that both modes must satisfy; this pins the device behaviour.
 
 Exit code is 0 when every transition matches and 1 otherwise.
