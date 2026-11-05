@@ -6,7 +6,7 @@ owns: Muse Glimmer 30B gfx1151 bring-up campaign: text/vision/DFlash implementat
 
 Last updated: 2026-11-06
 
-Status: **P0 baseline pending; no hipEngine Glimmer path exists yet.**
+Status: **P0 baseline retained; P1 text bring-up in progress (tokenizer landed).**
 
 Lead directive (2026-11-06): implement full Muse Glimmer inference in hipEngine —
 text, vision stack, and MTP/DFlash — with an initial correctness pass, and do not
@@ -151,15 +151,30 @@ Bring-up follows the implementation-stage discipline: full-model tests stay at
 escalation beyond 4K is rate-gated later, mirroring
 [`BENCHMARK.md`](../BENCHMARK.md) "Implementation-stage context escalation".
 
-### P0 — llama.cpp baseline (before any hipEngine perf claim)
+### P0 — llama.cpp baseline (before any hipEngine perf claim) — DONE
+
+Retained baseline (clean worktree @ `44498df1a`, artifact
+`benchmarks/results/2026-11-06-gfx1151-muse-glimmer-llamacpp-hip-baseline.json`):
+llama.cpp HIP build 12005 `e0f142d5d`, `-ngl 99 -fa 1 -ctk f16 -ctv f16`,
+5 repetitions, GTT peak sampling, Radeon 8060S / gfx1151.
+
+| Workload | Prefill tok/s | Decode tok/s | Peak GTT Δ GiB |
+| --- | ---: | ---: | ---: |
+| 512/128 | 394.404 | 12.240 | 15.868 |
+| 1K/128 | 385.784 | 12.167 | 15.895 |
+| 4K/128 | 376.332 | 12.047 | 15.984 |
+
+These are the Gate A targets. A first same-day run reproduced within ~0.5%
+(396.5/12.25 at 512) before the clean rerun; it is kept only as a dirty-
+provenance diagnostic outside the tree.
 
 - `llama-bench` AR (no draft) via `scripts/llamacpp_bench_with_peak.py`,
   HIP build `~/llama.cpp/llama.cpp-hip/build/bin/llama-bench`,
   `-ngl 99 -fa 1 -ctk f16 -ctv f16`, workloads **512/128, 1K/128, 4K/128**,
-  5 repetitions, GTT memory domain, TheRock Python.
+  5 repetitions, GTT memory domain.
 - Server diagnostic with `--spec-type draft-dflash` + mmproj at the production
-  configuration (natural prompts, `temperature=0`), recorded as an external
-  diagnostic per `BENCHMARK.md` cross-engine rules.
+  configuration (natural prompts, `temperature=0`): pending, recorded as an
+  external diagnostic per `BENCHMARK.md` cross-engine rules when P3 lands.
 - Compact JSON artifact under `benchmarks/results/` with full provenance
   (host, build, commit, commands, samples). This is the pre-registered baseline.
 
