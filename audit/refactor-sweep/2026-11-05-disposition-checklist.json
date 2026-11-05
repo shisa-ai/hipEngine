@@ -3272,11 +3272,12 @@
       "ledger_line": 2661,
       "owner": "`hipengine/generation/qwen35_dense_gfx1100_profiles.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "hipengine/generation/qwen35_dense_gfx1100_profiles.py:31 retains grouped-Q6 rollback input."
+        "Retain supported grouped-Q6 rollback/diagnostic with profile snapshots and explicit workspace ownership; tests/test_unit_q6_grouped_session.py: 31 passed.",
+        "detect_hip_physical_device_arches() reports only gfx1151; worklog/entries/20261105T215959.241558Z-lhl-r0393-q6-e91c33.md."
       ],
-      "next_action": "Resolve diagnostic ownership locally and migrate reader if appropriate; record gfx1100 packed-C8 public engagement separately as hardware-blocked.",
+      "next_action": "On gfx1100 run real public packed C8 and record selected Q6/grouped engagement, repeats and teardown. Interface ownership resolved; no local implementation remains for this section.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

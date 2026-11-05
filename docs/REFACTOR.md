@@ -2642,10 +2642,14 @@ Owner: `hipengine/generation/qwen35_dense_gfx1100_profiles.py`.
 
 Scope: `GGUF_Q6_DP4A_GROUPED_TARGET_REQUEST_COUNTS`.
 
-**Decision needed / removal condition:** keep `HIPENGINE_C8_Q6_DP4A_GROUPED` as a supported
-production rollback and standalone diagnostic, or replace it with an explicit session/profile
-interface. Remove the environment reader and reference only after the replacement preserves those
-controls; do not remove the workspace scope as temporary policy debt.
+**Interface decision:** retain `HIPENGINE_C8_Q6_DP4A_GROUPED` as a supported production
+rollback and standalone diagnostic. Profiles snapshot the selection on the generator;
+explicit workspace scopes do not reread the environment. Preserve the workspace scope
+and bounded q8_1 resource checks. See
+`worklog/entries/20261105T215959.241558Z-lhl-r0393-q6-e91c33.md`.
+
+**Concrete dependency:** this host exposes only gfx1151; no gfx1100 device is available
+for the remaining public engagement check.
 
 Done when: Hardware follow-up: run a real public packed-C8 request on gfx1100 and record selected Q6
 variant, grouped-kernel engagement, repeatability and allocation drain. gfx1151 normal public
