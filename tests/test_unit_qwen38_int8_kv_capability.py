@@ -582,6 +582,35 @@ def _public_kv_generator(tmp_path: Path, *, backend: str) -> Qwen35GGUFBringupGe
     return generator
 
 
+@pytest.mark.parametrize("status", ["unsupported", "rejected"])
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+def test_diagnostic_override_only_bypasses_recorded_quality_rejection(
+    tmp_path: Path, monkeypatch, status: str, backend: str,
+) -> None:
+    from dataclasses import replace
+
+    generator = _public_kv_generator(tmp_path, backend=backend)
+    declared = generator._resolve_int8_kv_capability(SimpleNamespace(
+        storage_dtype=DType.INT8_PER_TOKEN_HEAD, storage_layout="uniform",
+        scale_dtype=DType.FP32, scale_granularity="per_token_head",
+    ))
+    refusal = replace(
+        declared, status=status, runtime_action="fallback_bf16",
+        reason="recorded quality rejection" if status == "rejected" else
+        "no registered kernel implements requested contract",
+    )
+    monkeypatch.setattr(generator, "_resolve_int8_kv_capability", lambda resolved: refusal)
+    monkeypatch.setenv(gguf_runner._GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, "1")
+    params = SimpleNamespace(kv_storage="int8_per_token_head", kv_scale_dtype="fp32")
+    if status == "unsupported":
+        with pytest.raises(ValueError, match="no registered kernel implements"):
+            generator._resolve_request_kv_policy(params)
+        assert generator.kv_capability_provenance["runtime_action"] == "fallback_bf16"
+    else:
+        generator._resolve_request_kv_policy(params)
+        assert generator.kv_capability_provenance["runtime_action"] == "diagnostic_override"
+
+
 @pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
 @pytest.mark.parametrize("long_override", [None, "0", "1"])
 @pytest.mark.parametrize("max_positions", [512, 8191, 8192, 8193, 12345])

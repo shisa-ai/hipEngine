@@ -1714,7 +1714,10 @@ class Qwen35GGUFBringupGenerator:
                     ),
                 )
             if capability.runtime_action != "admit":
-                if self._int8_kv_diagnostic_override_enabled():
+                if (
+                    capability.status == "rejected"
+                    and self._int8_kv_diagnostic_override_enabled()
+                ):
                     capability = capability.with_runtime_outcome(
                         effective_kv_storage=requested.storage_dtype.value,
                         runtime_action="diagnostic_override",
