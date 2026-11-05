@@ -583,6 +583,7 @@ _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
 )
 _GGUF_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_DECODE_GRAPH"
 _GGUF_MTP_HOT_VOCAB_ENV = "HIPENGINE_GGUF_MTP_HOT_VOCAB"
+_GGUF_MTP_HOT_VOCAB_UNSET = object()
 _GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
 # Provider prefix checkpoints: one entry per captured prefix, each holding a
 # copy of that prefix's provider KV and recurrent state. Bounded capture keeps
@@ -14259,14 +14260,22 @@ def _native_gpu_sampler_requested() -> bool:
     return value is None or value.strip().lower() not in {"", "0", "false", "no", "off"}
 
 
+def _make_gguf_generator_with_hot_vocab(*, mtp_hot_vocab, **kwargs):
+    if mtp_hot_vocab is not _GGUF_MTP_HOT_VOCAB_UNSET:
+        kwargs["mtp_hot_vocab"] = mtp_hot_vocab
+    return Qwen35GGUFBringupGenerator(**kwargs)
+
+
 def make_qwen35_gguf_bringup_generator(
     *,
     model_path: str | Path,
     weight_index: GGUFModelInfo,
     model_plugin: Any,
+    mtp_hot_vocab: str | None = _GGUF_MTP_HOT_VOCAB_UNSET,
 ) -> Qwen35GGUFBringupGenerator:
     backend = "hip_gfx1100"
-    return Qwen35GGUFBringupGenerator(
+    return _make_gguf_generator_with_hot_vocab(
+        mtp_hot_vocab=mtp_hot_vocab,
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
@@ -14293,6 +14302,7 @@ def make_qwen35_gguf_q4_k_m_generator_gfx1100(
     model_path: str | Path,
     weight_index: GGUFModelInfo,
     model_plugin: Any,
+    mtp_hot_vocab: str | None = _GGUF_MTP_HOT_VOCAB_UNSET,
 ) -> Qwen35GGUFBringupGenerator:
     """Create the gfx1100 Q4_K_M generator with the measured fair launch default.
 
@@ -14305,7 +14315,8 @@ def make_qwen35_gguf_q4_k_m_generator_gfx1100(
     """
 
     backend = "hip_gfx1100"
-    return Qwen35GGUFBringupGenerator(
+    return _make_gguf_generator_with_hot_vocab(
+        mtp_hot_vocab=mtp_hot_vocab,
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
@@ -14353,10 +14364,12 @@ def make_qwen35_gguf_ud_q3_k_m_generator(
     model_path: str | Path,
     weight_index: GGUFModelInfo,
     model_plugin: Any,
+    mtp_hot_vocab: str | None = _GGUF_MTP_HOT_VOCAB_UNSET,
 ) -> Qwen35GGUFBringupGenerator:
     """Select exact fully-bulk prefill and native c>N decode for UD-Q3_K_M."""
 
-    return Qwen35GGUFBringupGenerator(
+    return _make_gguf_generator_with_hot_vocab(
+        mtp_hot_vocab=mtp_hot_vocab,
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
@@ -14373,8 +14386,10 @@ def make_qwen35_gguf_bringup_generator_gfx1151(
     model_path: str | Path,
     weight_index: GGUFModelInfo,
     model_plugin: Any,
+    mtp_hot_vocab: str | None = _GGUF_MTP_HOT_VOCAB_UNSET,
 ) -> Qwen35GGUFBringupGenerator:
-    return Qwen35GGUFBringupGenerator(
+    return _make_gguf_generator_with_hot_vocab(
+        mtp_hot_vocab=mtp_hot_vocab,
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
@@ -14387,11 +14402,13 @@ def make_qwen35_gguf_q4_k_m_generator_gfx1151(
     model_path: str | Path,
     weight_index: GGUFModelInfo,
     model_plugin: Any,
+    mtp_hot_vocab: str | None = _GGUF_MTP_HOT_VOCAB_UNSET,
 ) -> Qwen35GGUFBringupGenerator:
     """Create the gfx1151 Q4_K_M generator with F4-retained loop defaults."""
 
     backend = "hip_gfx1151"
-    return Qwen35GGUFBringupGenerator(
+    return _make_gguf_generator_with_hot_vocab(
+        mtp_hot_vocab=mtp_hot_vocab,
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,

@@ -3827,7 +3827,7 @@ Owner: `hipengine/generation/qwen35_gguf.py`.
 
 Scope: `Qwen35GGUFGenerator._mtp_hot_vocab_path()`; `HIPENGINE_GGUF_MTP_HOT_VOCAB`.
 
-**Owner interface:** `mtp_hot_vocab` on `Qwen35GGUFBringupGenerator` accepts `None`
+**Owner interface:** `mtp_hot_vocab` on `LLM` and `Qwen35GGUFBringupGenerator` accepts `None`
 for the profile default, `"auto"` for an explicit packaged map, off/empty for the
 full head, or an explicit map path. The compatibility environment is captured by
 the constructor only when the argument is omitted. Later environment changes
@@ -3835,8 +3835,10 @@ cannot change an existing owner's choice or protect its automatic cache from
 capacity-driven release. Map integrity and tokenizer/token-ID compatibility
 checks remain in the loader, separate from model admission.
 
-**Remaining:** inventory and migrate compatibility environment callers before
-retiring that transport. Public gfx1151 MTP checks cover captured full-head intent,
+**Remaining:** migrate server configuration and compatibility environment callers
+before retiring that transport. Public LLM constructor forwarding and all five
+GGUF factory adapters preserve explicit values, including `None`, while omission
+preserves compatibility capture. Public gfx1151 MTP checks cover captured full-head intent,
 an explicit nonidentity compact map at singleton and physical batch width two,
 and invalid explicit-map rejection. Each returns tracked bytes to zero after
 close. See `worklog/entries/20261105T202411.342255Z-lhl-r0197-compact-public-1f638d.md`

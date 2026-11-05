@@ -20,6 +20,7 @@ from hipengine.speculative.registry import resolve_speculative_provider_candidat
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 
 AUTO_QUANT = "auto"
+_MTP_HOT_VOCAB_UNSET = object()
 
 
 def _declare_serving_context(generator: Any, max_sequence_length: int | None) -> None:
@@ -378,6 +379,7 @@ class LLM:
         speculative_provider: str | None = None,
         draft_model: str | None = None,
         speculative_candidate_budget: int | None = None,
+        mtp_hot_vocab: str | None = _MTP_HOT_VOCAB_UNSET,
         kv_storage: str | None = None,
         kv_scale_dtype: str | None = None,
         kv_scale_granularity: str | None = None,
@@ -472,6 +474,7 @@ class LLM:
         )
         self.speculative_provider = provider
         self.draft_model = drafter
+        self.mtp_hot_vocab = mtp_hot_vocab
         self.speculative_candidate_budget = candidate_budget
         # An omitted budget resolves from capability data when the resident
         # generator loads; ``requested`` keeps the caller's intent for reporting.
@@ -1608,6 +1611,8 @@ class LLM:
             resident_capacity=(self.max_active_requests if self.max_active_requests is not None
                                else base_loop_config.max_active_requests)))
         try:
+            if self.mtp_hot_vocab is not _MTP_HOT_VOCAB_UNSET:
+                factory_kwargs["mtp_hot_vocab"] = self.mtp_hot_vocab
             generator = (
                 factory(**factory_kwargs)
                 if profile_resolution is None
