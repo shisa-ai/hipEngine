@@ -1865,28 +1865,6 @@ head-major GPU copy fixtures. A resource-policy replacement also needs public sh
 requests, allocation-denial fallback and zero tracked cleanup. Do not use historical copy-inclusive
 speed rows as evidence for a changed capacity policy.
 
-### R0281-SELECTED-X8 — Selected-expert replacement-layout policy
-
-Owner: `hipengine/loading/qwen35_gguf_materialize.py`.
-
-Scope: `HIPENGINE_GGUF_SELECTED_X8_REPACK`, `HIPENGINE_GGUF_SELECTED_GATE_UP_X8`,
-`HIPENGINE_GGUF_SELECTED_GATE_UP_RAW`.
-
-**Decision needed:** move primary-layout selection into the loader's explicit plan with coordinated
-compatibility/bench/profiler callers, or preserve the existing diagnostic selector. Do not remove
-Q5/both solely from the old timing row or let a named X8 route silently load a different layout.
-
-Done when: migrate quant-family parser/precedence, materialization, prerequisite/admission
-byte plans, selected adapters/workspace, cache identity, CLI/suite provenance and forced-trace
-replay together. Run both quant families with repack on/off, raw precedence and non-down slots;
-retain converter, selected-call/admission and BF16/F32 output tests. A runtime/layout change also
-needs actual public and compatibility decode/verification, reset/cancellation and teardown plus the
-applicable arithmetic profile gates.
-
-Include `HIPENGINE_GGUF_SELECTED_GATE_UP_RAW` and `HIPENGINE_GGUF_SELECTED_GATE_UP_X8` in the
-loader-plan migration. Raw placement takes precedence; changing an environment value after load
-cannot change resident bytes.
-
 ### R0281-PARO-PROVIDER — Manual provider and private-scorer migration
 
 Owner: `hipengine/speculative/paro_mtp_profiles.py`.

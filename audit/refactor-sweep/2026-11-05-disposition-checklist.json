@@ -2713,11 +2713,12 @@
       "ledger_line": 2099,
       "owner": "`hipengine/loading/qwen35_gguf_materialize.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/loading/qwen35_gguf_materialize.py:97,101-102,1123-1136,1183-1193 parses X8 and raw precedence."
+        "Retain explicit selected-X8 diagnostic selector and raw precedence; resolved specs identify resident bytes. No layout/runtime/arithmetic change.",
+        "501 CPU plan/converter/routing/bench/suite and 11 gfx1151 GPU selected-output tests pass; worklog/entries/20261105T232547.660034Z-lhl-r0281-selected-x8-adf25e.md."
       ],
-      "next_action": "Move primary selected layout into explicit loader plan, migrate byte planning/adapters/cache/result consumers and preserve raw priority over X8.",
+      "next_action": "None; preserve q5/q6/both, gate-up comparisons, caller provenance and raw priority.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
