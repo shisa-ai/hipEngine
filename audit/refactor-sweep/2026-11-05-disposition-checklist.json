@@ -158,13 +158,13 @@
       "ledger_line": 159,
       "owner": "`hipengine/models/qwen35.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "hipengine/models/qwen35.py:86-115 still names historical qwen36-dense serving evidence.",
         "worklog/entries/20261026T070317.847391Z-cleanup-refactor-r0060-61ff7b.md says historical identity requires artifact verification.",
         "Local model directory contains Qwen3.8-27B artifacts but no named Qwen3.6 dense checkpoint."
       ],
-      "next_action": "Inspect historical artifact paths and recorded digests to establish whether the original bytes remain accessible; only after verifying absence classify as artifact blocked. Never substitute the current Qwen3.8 artifact.",
+      "next_action": "Recorded Qwen3.6-27B-Q4_K_M.gguf path is absent and local GGUF store has no file matching historical byte size. Obtain original digest-verified bytes, then record execution fingerprint for attribution only. Capability-without-identity regression passes. See worklog/entries/20261105T193801.672754Z-lhl-dense-historical-artifact-06596f.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "evidence_binding",
@@ -5037,8 +5037,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 176,
-    "concrete_dependency_blocker": 45,
+    "locally_actionable": 175,
+    "concrete_dependency_blocker": 46,
     "human_decision_required": 6,
     "completed": 5,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."

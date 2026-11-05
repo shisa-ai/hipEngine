@@ -88,9 +88,8 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
             "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
         ),
         artifact_size_bytes=17_106_773_120,
-        # Execution identity unresolved: this artifact is not present on
-        # this host, so the row cannot admit until it is recorded with
-        # python3 scripts/gguf_execution_identity.py <artifact.gguf>.
+        # Historical attribution awaits the original artifact; missing identity
+        # does not gate admission, which uses implementation capability.
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",
@@ -116,9 +115,8 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
             "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
         ),
         artifact_size_bytes=17_106_773_120,
-        # Execution identity unresolved: this artifact is not present on
-        # this host, so the row cannot admit until it is recorded with
-        # python3 scripts/gguf_execution_identity.py <artifact.gguf>.
+        # Historical attribution awaits the original artifact; missing identity
+        # does not gate admission, which uses implementation capability.
         backend="hip_gfx1100",
         target_arch="gfx1100",
         weight_quant="gguf_q4_k_m",
