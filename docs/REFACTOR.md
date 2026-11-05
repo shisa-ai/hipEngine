@@ -2377,18 +2377,22 @@ real public plus compatibility proposal/verification/commit/reset and teardown c
 
 Owner: `hipengine/speculative/mtp_resident_draft.py`.
 
-Scope: `device_chain_enabled`; `HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN`.
+Scope: `device_chain_enabled`; the retired
+`HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN` is ignored.
 
-**Decision needed:** keep explicit host/device comparison control or move chain selection into one
-caller-owned proposal plan with its observation and workspace requirements. Do not delete the host
-path merely because normal compatibility generation already chooses device-chain, or label the live
-compatibility path default-off because the standalone constructor is different.
+The explicit constructor control is supported. `scripts/gguf_mtp_bench.py` owns
+host/device comparison, keys cached drafts by chain choice, and records requested
+and effective selection. Its full-vocabulary recovery owner receives the same
+choice. `scripts/gguf_mtp_draft_rocprof.py` and the compatibility generation owner
+explicitly request device-chain and prewarm. Preserve the host comparison path;
+there is no remaining process reader to migrate for this control.
 
-Done when: coordinate constructor, benchmark cache/provenance, profiler, compatibility
-owner and native proposal/complete-cycle validation. Cover explicit true/false/unspecified, prewarm
-ownership, probability cutoffs, confidence/hidden/stage capture, depth/capacity and top-k
-boundaries, plus proposal/commit/reset/reuse and teardown through public and compatibility requests.
-Keep embedding gathers, stream ownership and primitive oracles.
+Done when: finish native proposal/complete-cycle and public/compatibility lifecycle
+validation. Constructor tests cover true/false/unspecified, stale environment and
+prewarm; device-commit tests cover state ownership. Cover probability cutoffs,
+confidence/hidden/stage capture, depth/capacity and top-k boundaries, plus
+proposal/commit/reset/reuse and teardown. Keep embedding gathers, stream ownership
+and primitive oracles.
 
 ### R0282-PREFILL-POLICY — Resident prefill diagnostic ownership
 

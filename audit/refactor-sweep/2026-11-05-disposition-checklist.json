@@ -1789,7 +1789,7 @@
       "evidence": [
         "hipengine/generation/qwen35_gguf.py:344,2076-2077,5430,5519-5520 shares bounded four-slot policy across callers."
       ],
-      "next_action": "Separate prefill/warmup/verifier ownership first and record bounded chunks as supported default unless a measured tuning objective selects a changed width; do not delete live shared constant.",
+      "next_action": "Independent prefill/verifier/warmup constants are implemented with unchanged four-slot bounds (ec2184b41). Chunk policy and targeted packed-prefill/verifier/warmup fixtures pass after explicit-capture fixture repair (bfe32e417). Finish actual public lifecycle matrix without retuning widths.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -3010,7 +3010,7 @@
       "evidence": [
         "hipengine/speculative/mtp_resident_draft.py:560,637,647,1185 retains explicit device_chain_enabled and prewarm branch."
       ],
-      "next_action": "Inspect current actual environment readers before migration: constructor already carries chain choice; migrate remaining callers/cache metadata or record supported explicit API rather than repeating completed field work.",
+      "next_action": "Public/native proposal lifecycle checks remain. Explicit constructor control, bench cache/requested/effective metadata, profiler and recovery propagation are already implemented; see worklog/entries/20261105T190614.350126Z-lhl-draft-chain-disposition-396f5d.md. Do not repeat process-reader migration.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
