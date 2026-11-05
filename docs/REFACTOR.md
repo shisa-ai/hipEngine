@@ -3038,20 +3038,6 @@ single-request runs through the public generation surface; check that waiting re
 provider and that all claims and sink buffers are released. The lifecycle fix alone does not enable
 overlap or establish its numerical/acceptance behavior.
 
-### R0507 — Consolidate the raw greedy MTP compatibility entry point
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `LLM.generate_speculative_mtp_detailed`, `LLM._get_text_generator`,
-`submit_speculative_detailed`.
-
-Done when: Deferred compatibility decision: retire the raw GGUF entry point or route its callers through a
-shared service owner without recursive delegation or independent state owners. Preserve non-staged
-compatibility where required. Do not broaden the raw verifier's sampling constants: sampled
-acceptance belongs to the staged adapter. Validate blocking and streaming public requests, sampled
-and greedy requests, cancellation, and non-staged fallback before removing the raw implementation or
-its guards.
-
 ### R0509 — Choose shared target/provider checkpoint memory accounting
 
 Owner: `scripts/int8_mtp_prefix_gate.py`.

@@ -5043,11 +5043,12 @@ class Qwen35GGUFBringupGenerator:
 
     @_target_arch_scoped
     def generate_speculative_mtp_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
-        """Generate through the llama.cpp-compatible GGUF MTP route.
+        """Run the direct greedy compatibility/diagnostic MTP route.
 
-        The c=1 path keeps the retained direct llama-compat hot loop. Coalesced
-        c>1 requests use shared-weight resident slots with isolated target/MTP
-        state and a phase-serial scheduler inside the server process.
+        Public LLM MTP requests use EngineService child ownership when the
+        resident adapter supports it. This entry remains for direct comparison
+        callers (including specdec2_perf_bridge) and non-staged compatibility;
+        sampled acceptance belongs to the staged adapter, not this method.
         """
 
         if request.max_tokens < 0:

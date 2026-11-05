@@ -3889,11 +3889,13 @@
       "ledger_line": 3180,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/generation/qwen35_gguf.py retains raw compatibility route alongside resident submit/poll owner."
+        "LLM construction wraps resident driver in EngineService; public greedy/sampled blocking and streaming routes use child ownership.",
+        "scripts/specdec2_perf_bridge.py::_run_legacy_native remains a maintained direct diagnostic caller; 74 focused tests pass.",
+        "worklog/entries/20261105T215742.015696Z-lhl-r0507-owner-9a916a.md records loaded-model public attribution and retained compatibility decision."
       ],
-      "next_action": "Map raw-entry callers and consolidate through shared service ownership without recursion; cover staged sampled and non-staged greedy fallbacks before removal.",
+      "next_action": "None. Retain direct greedy diagnostic/non-staged compatibility entry and its guards; public service remains sole driver. Removed completed ledger section.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
