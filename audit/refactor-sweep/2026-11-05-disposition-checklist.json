@@ -4350,13 +4350,14 @@
       "ledger_line": 3592,
       "owner": "`hipengine/runtime/qwen4_exp_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen4_exp_runner.py reset now consumes constructor-owned bounded_kv_reset after 5a0f051fe; batched position already resolved only during construction.",
-        "Remaining per-call process reads: Q5 risk multipliers at 6571/6935 and fused combine at 8316/8615; initialization and telemetry are separate.",
-        "Q5 risk multipliers now use explicit invocation/owner transport with public actual-kernel-argument/repeat-logit/cleanup coverage; worklog q5-risk-owner-f19c9a."
+        "5a0f051fe: bounded reset frozen at construction; batched position already constructor-only.",
+        "20243e854: Q5 risk owner transport; public kernel-argument/logit/repeat/cleanup check passes.",
+        "1353651f3: explicit fused-combine owner transport; CPU/public engagement/logit/repeat/cleanup pass.",
+        "Final remaining-read inventory and preserved independent R0023/R0410 scope: worklog/entries/20261105T175820.871756Z-lhl-r0149-closure-ec32cb.md"
       ],
-      "next_action": "Migrate fused grouped-prefill combine process input to explicit ownership while preserving the R0410 comparison; keep constructor-only and diagnostic reads separate.",
+      "next_action": "None for transport; R0023 numerical repair and R0410 combine adjudication remain independent open items.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

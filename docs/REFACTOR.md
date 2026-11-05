@@ -2791,8 +2791,9 @@ teardown. Changing the flag alone would erase a working comparison arm, not fini
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
 
-Scope: `qwen4_exp_runner.py`, `weighted_lanes_sum_out_bf16_f32w`,;
-`HIPENGINE_QWEN4_EXP_FUSED_COMBINE`; `shared_gate_combine_f32_shared_out_bf16`,
+Scope: `qwen4_exp_runner.py`, `weighted_lanes_sum_out_bf16_f32w`;
+`fused_combine_enabled(owner, enabled)` and the explicit layer/runner argument;
+`shared_gate_combine_f32_shared_out_bf16`,
 `weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w`.
 
 **Deferred decision:** retain the candidate and its explicit interface, promote it after a current
@@ -3588,64 +3589,6 @@ Done when: run attention-gate policy and profile unit tests, then exercise the e
 through public prefill and confirm actual dispatch. Check full logits/state, repeatability and
 cleanup before retiring the comparison. Do not silently claim engagement from setting this flag
 while the MMQ owner is absent.
-
-### R0149 — Replace remaining Qwen4Exp profile environment transport
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: direct/unbound Qwen4Exp route fallbacks.
-
-The profile-binding migration and the enumerated direct/unbound route
-fallback removals are complete, including paired GR IU8 and QSA flash policies.
-Keep explicit owner diagnostic scopes and their requested/effective reports.
-Inventory the remaining runtime environment reads separately: distinguish
-unmigrated owner settings from initialization inputs and diagnostics. The MMQ
-attention-gate and prepack fallbacks are removed after their direct diagnostic
-callers migrated; explicit prepack rollback and resource preparation remain.
-The independent Q8 MMQ plane-count fallback is removed from both registered
-policy resolution and per-prefill application. Profiles publish the unchanged
-three-plane F32 choice; campaign, standalone logits-probe and generic
-AR/profile-gap arms bind and report explicit owner planes without process writes.
-`q8_mmq_f32_planes` transport includes late-runner inheritance. Dense-wide
-also uses explicit owner/session policy only: its enable/layer ambient fallbacks
-are removed after candidate AR and the dedicated diagnostics migrated. Unbound
-calls keep the exact parent; the independent short-row selector is unchanged.
-Q4 DP4A
-also uses explicit owner state only; R0023 still owns its independent numerical
-repair. Remove a fallback only after every in-tree direct consumer
-supplies its explicit owner choice and targeted public route/repeat/teardown
-checks pass; absence of profile writes alone is not that inventory.
-
-Inventory of the remaining direct reads in `qwen4_exp_runner.py`:
-
-- Execution policy still using per-call process input: fused grouped-prefill
-  combine. R0410 owns the combine decision; preserve its explicit comparison arm.
-- Q5_K/Q5_1 IU8 risk multipliers use explicit invocation arguments and owner
-  scopes, with unchanged 16.0 defaults. Single, batch, mixed-target and serving
-  clones forward them; batch capture keys distinguish the values. The retired
-  process keys are ignored.
-- Runner construction: bounded KV reset, batched position updates, PLE page-cache
-  warming and layer-graph enablement. Bounded reset is frozen on the runner,
-  with an explicit `bounded_kv_reset` constructor override; subsequent process
-  changes cannot alter an initialized owner's reset. Batched position already
-  resolved once during construction. These are not per-prefill selector reads.
-- Diagnostics: risk telemetry enablement. It does not select arithmetic.
-
-The unused generic environment-backed layer-scope helper was removed; explicit
-layer-scope parsing and owner-bound selectors remain. Do not treat the remaining
-reads as one homogeneous transport change.
-
-```bash
-python3 scripts/qwen4exp_layer2_profile_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --decode-steps 32 --prefill-chunk-size 1024 --output /tmp/q4-decode-short.json
-python3 scripts/qwen4exp_long_context_gate.py --model-root "$MODEL_ROOT" --candidate decode_dp4a_linear --numeric-prompts "$LONG_PROMPTS" --max-sequence-length 20000 --prefill-chunk-size 1024 --candidate-repeats 3 --output /tmp/q4-decode-long.json
-```
-
-Done when: Preserve registered diagnostic kernels, exact coltile-Q8/grouped Q4/Q5 fallbacks, hc-down handling
-and K-alignment limits during transport migration. Separately repair the Q4 DP4A long-context decode
-discrepancy before restoring its arithmetic default. Set MODEL_ROOT to the model directory and
-LONG_PROMPTS to the fixture including the 12,287-token failure and controls. Both displayed
-numerical commands and complete task/serving gates must pass. For transport-only changes, run
-profile/owner-isolation tests and public route/output/cleanup checks.
 
 ### R0151 — Separate prefill staging ownership from implemented AR batching
 
