@@ -38,6 +38,27 @@ from scripts.gguf_mtp_bench import (
 )
 
 
+def test_benchmark_finally_releases_legacy_warmup_uploads() -> None:
+    tree = ast.parse(inspect.getsource(bench.main))
+    run = next(node for node in ast.walk(tree) if isinstance(node, ast.Try)
+               and any(isinstance(child, ast.Name) and child.id == "resident_draft"
+                       for statement in node.finalbody for child in ast.walk(statement)))
+    for cached in (False, True):
+        events = []
+        namespace = {
+            "target_graph": None,
+            "resident_draft": SimpleNamespace(close=lambda: events.append("draft")),
+            "resident_draft_full_vocab": None,
+            "runtime": object(),
+            "mtp_device_kv_buffers": [],
+            "_cache_session": cached,
+            "session": SimpleNamespace(close=lambda: events.append("session")),
+            "clear_weight_cache": lambda: events.append("legacy_uploads"),
+        }
+        exec(compile(ast.Module(body=run.finalbody, type_ignores=[]), "<bench-cleanup>", "exec"), namespace)
+        assert events == (["legacy_uploads"] if cached else ["draft", "session", "legacy_uploads"])
+
+
 def test_default_mtp_policy_is_b1_root_top40_speed_first() -> None:
     args = build_arg_parser().parse_args([])
 

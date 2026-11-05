@@ -1792,6 +1792,7 @@ def main(argv: list[str] | None = None):
     from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
     from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
     from hipengine.kernels.hip_gfx1100.speculative.mtp_nextn import (
+        clear_weight_cache,
         qwen35_gguf_mtp_nextn_layer_logits_f32 as gpu_kernel,
     )
     from hipengine.speculative.gguf_mtp import Qwen35GGUFMTPContext
@@ -3483,6 +3484,8 @@ def main(argv: list[str] | None = None):
                 free(_buf, runtime=runtime)
         if not _cache_session:
             session.close()
+        # Legacy warmup/host drafting uploads are not owned by resident sessions.
+        clear_weight_cache()
 
     # Compute metrics
     metrics = compute_speculative_metrics(cycle_details)
