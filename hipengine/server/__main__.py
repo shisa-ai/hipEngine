@@ -407,8 +407,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "GGUF MTP proposal vocabulary: auto for the packaged map, off for "
-            "the full head, or a JSON map path. Omission preserves the profile "
-            "default or HIPENGINE_GGUF_MTP_HOT_VOCAB compatibility input."
+            "the full head, or a JSON map path. Omission uses the profile default."
         ),
     )
     parser.add_argument(

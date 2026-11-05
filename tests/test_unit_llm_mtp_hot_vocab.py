@@ -67,6 +67,4 @@ def test_registered_gguf_factories_preserve_omission_and_explicit_default(monkey
     if explicit:
         kwargs["mtp_hot_vocab"] = None
     getattr(module, factory_name)(**kwargs)
-    assert ("mtp_hot_vocab" in captured) is explicit
-    if explicit:
-        assert captured["mtp_hot_vocab"] is None
+    assert captured["mtp_hot_vocab"] is None

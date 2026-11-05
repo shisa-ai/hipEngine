@@ -4633,11 +4633,11 @@
       "ledger_line": 3882,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
         "hipengine/generation/qwen35_gguf.py:581,890,2517-2531 retains automatic/off/explicit hot-vocab path choice."
       ],
-      "next_action": "Constructor intent and public gfx1151 full-head, explicit nonidentity compact singleton/physical-batch, invalid-map rejection and zero tracked teardown pass. Inventory and migrate compatibility env callers before transport retirement. See worklog/entries/20261105T202411.342255Z-lhl-r0197-compact-public-1f638d.md.",
+      "next_action": "None. LLM/server/direct-generator intent replaces environment transport; capacity, map integrity/remapping, public singleton/batch MTP and HTTP teardown verified. See worklog/entries/20261105T204335.049511Z-lhl-r0197-retirement-789b2f.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

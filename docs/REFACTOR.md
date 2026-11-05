@@ -3821,37 +3821,6 @@ supported groups, including shape misses and strict profiles; public generation 
 selected rows and fallback reason. Compare matched full-request category/heldout performance when
 claiming a benefit.
 
-### R0197 — Give hot-vocabulary selection an explicit owner-bound interface
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `Qwen35GGUFGenerator._mtp_hot_vocab_path()`; `HIPENGINE_GGUF_MTP_HOT_VOCAB`.
-
-**Owner interface:** `mtp_hot_vocab` on `LLM` and `Qwen35GGUFBringupGenerator` accepts `None`
-for the profile default, `"auto"` for an explicit packaged map, off/empty for the
-full head, or an explicit map path. The compatibility environment is captured by
-the constructor only when the argument is omitted. Later environment changes
-cannot change an existing owner's choice or protect its automatic cache from
-capacity-driven release. Map integrity and tokenizer/token-ID compatibility
-checks remain in the loader, separate from model admission.
-
-**Remaining:** migrate compatibility environment callers before retiring that
-transport. ServerConfig and `--mtp-hot-vocab` now forward explicit strings
-through model lifecycle construction; omission preserves compatibility input.
-Public LLM constructor forwarding and all five
-GGUF factory adapters preserve explicit values, including `None`, while omission
-preserves compatibility capture. Public gfx1151 MTP checks cover captured full-head intent,
-an explicit nonidentity compact map at singleton and physical batch width two,
-and invalid explicit-map rejection. Each returns tracked bytes to zero after
-close. See `worklog/entries/20261105T202411.342255Z-lhl-r0197-compact-public-1f638d.md`
-for the route/lifecycle protocol; these checks do not assert cross-width numerical
-equivalence or throughput.
-
-Done when: automatic/off/explicit choices, invalid map failures, per-owner isolation,
-capacity-driven automatic release without changing explicit intent, full-token-ID remapping for
-singleton and physical batches, and public MTP selection/teardown. Preserve strict-profile
-arithmetic behavior and distinguish proposal changes from target correctness.
-
 ### R0006 — Remaining Flash-Next batch capacity and scheduling decisions
 
 Owner: `hipengine/generation/qwen4_exp_ar_batch.py`.
