@@ -11,6 +11,7 @@ compared arithmetic and is not an equivalent edit.
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -391,17 +392,23 @@ def _session_for_mode(
             global_prefill_variant=lane.global_prefill_variant,
             swa_prefill_variant=lane.swa_prefill_variant,
         )
-        _configure_prefill_lane(session, lane)
+        with ExitStack() as cleanup:
+            cleanup.callback(session.close)
+            _configure_prefill_lane(session, lane)
+            cleanup.pop_all()
         return session
     session = _session(owner, args)
-    if comparison.execution_mode == "selected_down":
-        session.set_selected_down_mode(mode)
-    elif comparison.execution_mode not in {
-        "f16_prefill",
-        "global_prefill",
-        "cumulative_prefill",
-    }:
-        raise ValueError(f"unknown Laguna execution mode {comparison.execution_mode!r}")
+    with ExitStack() as cleanup:
+        cleanup.callback(session.close)
+        if comparison.execution_mode == "selected_down":
+            session.set_selected_down_mode(mode)
+        elif comparison.execution_mode not in {
+            "f16_prefill",
+            "global_prefill",
+            "cumulative_prefill",
+        }:
+            raise ValueError(f"unknown Laguna execution mode {comparison.execution_mode!r}")
+        cleanup.pop_all()
     return session
 
 

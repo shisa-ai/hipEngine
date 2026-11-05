@@ -838,6 +838,8 @@ category callers. Its older grouped-only default description does not replace th
 package default; include these mode names in the same retention/migration decision rather than
 tracking a second selector debt. **Clearing action:** migrate those callers before removing a mode;
 preserve actual arithmetic comparisons, strict fallbacks and down primitives shared with production.
+Category-session configuration now closes its newly constructed owner if selected-mode
+or cumulative-lane setup fails; successful setup transfers ownership to the caller.
 Run `tests/test_unit_laguna_selected_mmq_modes.py`,
 `tests/test_unit_laguna_grouped_down_category_bench.py` and `tests/test_live_laguna_moe_gpu.py`,
 then R0249/R0250's public model gate on the applicable backend. Include non-aligned small/large

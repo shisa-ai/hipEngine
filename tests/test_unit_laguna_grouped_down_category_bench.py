@@ -40,6 +40,28 @@ from scripts.laguna_grouped_down_category_bench import (
 )
 
 HORIZONS = (16, 32)
+
+
+@pytest.mark.parametrize("comparison", [
+    benchmark.GROUPED_DOWN_COMPARISON,
+    CUMULATIVE_CONTROL_COMPARISON,
+])
+def test_mode_configuration_failure_closes_new_session(monkeypatch, comparison):
+    closed = []
+    session = SimpleNamespace(close=lambda: closed.append(True))
+
+    def fail(*args):
+        raise ValueError("configuration failed")
+
+    session.set_selected_down_mode = fail
+    monkeypatch.setattr(benchmark, "_session", lambda *args, **kwargs: session)
+    monkeypatch.setattr(benchmark, "_configure_prefill_lane", fail)
+    with pytest.raises(ValueError, match="configuration failed"):
+        benchmark._session_for_mode(
+            object(), SimpleNamespace(), comparison.modes[0], comparison=comparison,
+        )
+    assert closed == [True]
+
 CATEGORIES = ("code", "general_en", "general_ja", "mixed_ja_en")
 
 
@@ -413,6 +435,9 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
         def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
             self.row["attention_hipblaslt"] = enabled
 
+        def close(self):
+            self.row["closed"] = True
+
         def prefill(self, _token_ids):
             self.row["f16_prefill_mode"] = benchmark.current_f16_prefill_strategy()
             return object()
@@ -623,6 +648,9 @@ def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
 
         def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
             self.row["attention_hipblaslt"] = enabled
+
+        def close(self):
+            self.row["closed"] = True
 
         def prefill(self, _token_ids):
             self.row["retained_f16_strategy"] = benchmark.current_f16_prefill_strategy()
