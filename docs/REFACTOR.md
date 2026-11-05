@@ -831,22 +831,25 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `mmq64x32_d4_f32`.
 
-Done when: Decision needed: retain older D8, D4x2/D4x3 and down modes as supported diagnostics, or migrate
-their comparison callers and remove redundant mode names.
-`scripts/laguna_grouped_down_category_bench.py`, `scripts/laguna_prefill_production_publication.py`
-and `tests/test_live_laguna_moe_gpu.py` still use these interfaces. The old one-release rollback
-note is not a runtime precondition. R0281's grouped-down row uses the same
-`set_selected_down_mode()` owner: direct, `grouped_smallm*` and adaptive/fused modes still have
-category callers. Its older grouped-only default description does not replace the current MMQ
-package default; include these mode names in the same retention/migration decision rather than
-tracking a second selector debt. **Clearing action:** migrate those callers before removing a mode;
-preserve actual arithmetic comparisons, strict fallbacks and down primitives shared with production.
-Category-session configuration now closes its newly constructed owner if selected-mode
-or cumulative-lane setup fails; successful setup transfers ownership to the caller.
-Run `tests/test_unit_laguna_selected_mmq_modes.py`,
-`tests/test_unit_laguna_grouped_down_category_bench.py` and `tests/test_live_laguna_moe_gpu.py`,
-then R0249/R0250's public model gate on the applicable backend. Include non-aligned small/large
-rows, quant/shape misses, continuation and cleanup.
+Done when: validate the supported comparison modes through the public model gate
+below. Retain D8, D4x2/D4x3 and independent down modes: publication isolation arms
+select plain D8/D4 against wave-column defaults, the category benchmark owns direct,
+adaptive/fused grouped-smallm and cumulative MMQ lanes, and primitive tests own the
+residual-pass comparisons. These are distinct arithmetic/staging comparisons, not
+redundant aliases. The rejected one-plane D4 gate/up selector remains removed;
+its independent D4 down primitive is still supported.
+
+R0281's grouped-down row uses the same `set_selected_down_mode()` owner. Its old
+grouped-only default description does not replace current package policy. Preserve
+strict fallbacks and down primitives shared with production. Category-session
+configuration closes its newly constructed owner if selected-mode or cumulative-lane
+setup fails; successful setup transfers ownership to the caller.
+
+**Clearing action:** with R0249/R0250's checkpoint, run the applicable-backend public
+model gate with non-aligned small/large rows, quant/shape misses, continuation and
+cleanup. Selected-mode, category/publication and host MoE tests cover the diagnostic
+interfaces; they do not establish actual-weight model parity. No reader/mode removal
+is required while these comparisons remain maintained.
 
 ### R0277 — GGUF capture-inclusive graph policy and diagnostic interfaces
 

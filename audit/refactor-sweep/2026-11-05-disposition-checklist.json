@@ -1245,12 +1245,12 @@
       "ledger_line": 856,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "scripts/laguna_grouped_down_category_bench.py:174-175,398-425 actively selects comparison down modes.",
         "hipengine/runtime/laguna_gguf_runner.py retains selected-down mode setters."
       ],
-      "next_action": "Inventory individual mode callers and explicitly retain needed comparisons; migrate only redundant interfaces with tests and no arithmetic/fallback collapse.",
+      "next_action": "Retain publication D8/D4 isolation, category direct/adaptive/fused/cumulative comparisons and primitive residual modes. Host bundle plus focused missing-import repair passes. Public non-aligned small/large rows, quant/shape misses, continuation and cleanup require R0249/R0250 Laguna checkpoint. See worklog/entries/20261105T194502.729675Z-lhl-laguna-mmq-owners-7c280b.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -5037,8 +5037,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 174,
-    "concrete_dependency_blocker": 47,
+    "locally_actionable": 173,
+    "concrete_dependency_blocker": 48,
     "human_decision_required": 6,
     "completed": 5,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."
