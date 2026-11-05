@@ -6133,9 +6133,12 @@ class Qwen35GGUFBringupGenerator:
                     )
                 )
             return verified
-        except Exception:
+        except BaseException as failure:
             for drafted in drafted_cycles:
-                self._free_mtp_serving_cycle_snapshot(drafted)
+                try:
+                    self._free_mtp_serving_cycle_snapshot(drafted)
+                except BaseException as exc:
+                    failure.add_note(f"verifier snapshot cleanup failed: {exc}")
             raise
 
     def _try_verify_mtp_serving_cycles_batch(

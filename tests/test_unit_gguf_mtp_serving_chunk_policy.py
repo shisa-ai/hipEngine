@@ -116,6 +116,30 @@ def test_verifier_snapshot_acquisition_failure_releases_earlier_owners(monkeypat
     assert freed == list(range(failure_index))
 
 
+def test_verifier_failure_releases_all_snapshots_despite_cleanup_error(monkeypatch):
+    generator = _generator()
+    freed = []
+    cycles = [SimpleNamespace(
+        slot=SimpleNamespace(session=SimpleNamespace(_linear_state_snapshot=lambda: object()), timing={}),
+        direct_commit_exact=False, snapshot=None,
+    ) for _ in range(3)]
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("verify failed")
+
+    def free(cycle):
+        freed.append(cycle)
+        if cycle is cycles[0]:
+            raise RuntimeError("release failed")
+
+    monkeypatch.setattr(generator, "_try_verify_mtp_serving_cycles_batch", fail)
+    monkeypatch.setattr(generator, "_free_mtp_serving_cycle_snapshot", free)
+    with pytest.raises(RuntimeError, match="verify failed") as error:
+        generator._verify_mtp_serving_cycles(cycles, object())
+    assert len(freed) == len(cycles)
+    assert error.value.__notes__ == ["verifier snapshot cleanup failed: release failed"]
+
+
 def _generator():
     return object.__new__(qwen35_gguf.Qwen35GGUFBringupGenerator)
 
