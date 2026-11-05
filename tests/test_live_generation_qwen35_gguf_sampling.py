@@ -1523,7 +1523,8 @@ def test_gguf_speculative_mtp_deferred_verify_scatter_commits_from_owner(
             self.position = 4
             self.runtime = SimpleNamespace()
 
-        def verify_target_blocks_batch(self, jobs):
+        def verify_target_blocks_batch(self, jobs, *, capture_prefill_gdn=False):
+            assert capture_prefill_gdn is True
             calls.append(
                 (
                     "verify_batch",
