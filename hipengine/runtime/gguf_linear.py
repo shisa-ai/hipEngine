@@ -2013,21 +2013,22 @@ _q8_t16_dual_wmma_prefill_enabled: ContextVar[bool] = ContextVar(
 )
 
 
-_cumulative_prefill_override: ContextVar[tuple[bool | None, bool | None, bool | None]] = ContextVar(
-    "cumulative_prefill_override", default=(None, None, None)
+_cumulative_prefill_override: ContextVar[tuple[bool | None, ...]] = ContextVar(
+    "cumulative_prefill_override", default=(None, None, None, None, None)
 )
 
 
 @contextlib.contextmanager
 def cumulative_prefill_diagnostic(
     *, dense_bulk: bool | None = None, dense_residual: bool | None = None,
-    q8_pair: bool | None = None,
+    q8_pair: bool | None = None, pack8_bulk: bool | None = None,
+    pack8_pair: bool | None = None,
 ) -> Iterator[None]:
     """Replace named comparison controls for this context and restore on exit."""
     enclosing = _cumulative_prefill_override.get()
     token = _cumulative_prefill_override.set(tuple(
         old if new is None else bool(new)
-        for old, new in zip(enclosing, (dense_bulk, dense_residual, q8_pair))
+        for old, new in zip(enclosing, (dense_bulk, dense_residual, q8_pair, pack8_bulk, pack8_pair))
     ))
     try:
         yield
@@ -2037,7 +2038,13 @@ def cumulative_prefill_diagnostic(
 
 def _cumulative_prefill_enabled(index: int) -> bool:
     override = _cumulative_prefill_override.get()[index]
-    return True if override is None else override
+    if override is not None:
+        return override
+    legacy = {
+        3: "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK",
+        4: "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL",
+    }.get(index)
+    return legacy is None or os.environ.get(legacy, "1") != "0"
 
 
 @contextlib.contextmanager
@@ -3275,11 +3282,7 @@ def _pack8_dual_wmma_silu_dispatch(
     if (
         not use_wmma
         or not _q4_pack8_dual_wmma_silu_prefill_enabled.get()
-        or os.environ.get(
-            "HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL",
-            "1",
-        )
-        == "0"
+        or not _cumulative_prefill_enabled(4)
         or dispatch_a.abi != "pack8"
         or dispatch_b.abi != "pack8"
         or dispatch_a.key != expected
@@ -4353,9 +4356,9 @@ def _q8_dpp_reduction_raw() -> str:
 
 
 def _q4_pack8_wmma_bulk_raw() -> str:
-    """The raw Q4 pack8 WMMA bulk flag, for the same reason as the DPP flag."""
+    """Canonical pack8 choice shared by diagnostic selection and cache identity."""
 
-    return _raw_env_value("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1")
+    return "1" if _cumulative_prefill_enabled(3) else "0"
 
 
 _RAW_ENV_CACHE: dict[tuple[str, str], str] = {}
@@ -5856,10 +5859,7 @@ def _launch_gguf_linear_impl(
                             False,
                         )
                     )
-                    and os.environ.get(
-                        "HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1"
-                    )
-                    != "0"
+                    and _cumulative_prefill_enabled(3)
                     and _backend_prefill_shape_is_qualified(
                         resolved_backend,
                         "GGUF_Q4_PACK8_WMMA_BULK_PREFILL_SHAPES",
@@ -9925,7 +9925,7 @@ def _resolve_gguf_linear_pair_plan(
         if (
             use_wmma
             and rows >= 16
-            and os.environ.get("HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK", "1") != "0"
+            and _cumulative_prefill_enabled(3)
             and backend_package_capability(
                 resolved_backend,
                 "GGUF_Q4_PACK8_WMMA_BULK_PREFILL",

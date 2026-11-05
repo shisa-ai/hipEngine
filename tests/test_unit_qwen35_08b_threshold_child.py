@@ -14,7 +14,7 @@ def test_child_restores_scope_and_arguments(monkeypatch, fail):
 
     def run():
         assert sys.argv == ['child', '--workloads', '513/1']
-        assert linear._cumulative_prefill_override.get() == (False, True, True)
+        assert linear._cumulative_prefill_override.get() == (False, True, True, True, True)
         if fail:
             raise RuntimeError('child failed')
         return 7
@@ -26,4 +26,4 @@ def test_child_restores_scope_and_arguments(monkeypatch, fail):
     else:
         assert child.main() == 7
     assert sys.argv is argv
-    assert linear._cumulative_prefill_override.get() == (None, None, None)
+    assert linear._cumulative_prefill_override.get() == (None, None, None, None, None)

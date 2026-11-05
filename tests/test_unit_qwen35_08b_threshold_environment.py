@@ -41,7 +41,8 @@ def test_threshold_child_pins_fused_pair_and_records_effective_environment(monke
     env = {key: launches[0][1]["env"].get(key) for key in (
         *sweep.ROLE_ENVS[quant][role], name)}
     expected = None if role == "current" else "0"
-    assert env.get(name) == expected
+    assert env.get(name) is None
+    assert result['diagnostics']['pack8-pair'] == (role == 'current')
     assert os.environ.get(name) == inherited
     assert result['diagnostics']['dense-bulk'] == (role == 'current')
     assert 'HIPENGINE_GGUF_DENSE_WMMA_BULK' not in launches[0][1]['env']
@@ -61,7 +62,8 @@ def test_threshold_child_pins_fused_pair_and_records_effective_environment(monke
             "linear", "gguf_q4_k", "pack8_prefill_bf16_bf16_out"))
         patch.setattr(gguf_linear, "_ensure_linear_kernel_registered", lambda key: None)
         patch.setattr(gguf_linear, "is_registered", lambda key: True)
-        with gguf_linear.q4_pack8_dual_wmma_silu_prefill_session(True):
+        with gguf_linear.q4_pack8_dual_wmma_silu_prefill_session(True), \
+                gguf_linear.cumulative_prefill_diagnostic(pack8_pair=role == 'current'):
             key = gguf_linear._pack8_dual_wmma_silu_dispatch(dispatch, dispatch,
                 rows=512, in_features=1024, out_features=3584, use_wmma=True)
         assert (key is not None) == (role == "current")

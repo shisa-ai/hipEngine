@@ -90,10 +90,14 @@ def run_one(
         'dense-bulk': ROLE_ENVS[quant][role].get('HIPENGINE_GGUF_DENSE_WMMA_BULK') != '0',
         'dense-residual': True,
         'q8-pair': True,
+        'pack8-bulk': ROLE_ENVS[quant][role].get('HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK') != '0',
+        'pack8-pair': ROLE_ENVS[quant][role].get('HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL') != '0',
     }
     for name in ('HIPENGINE_GGUF_DENSE_WMMA_BULK',
                  'HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL',
-                 'HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL'):
+                 'HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL',
+                 'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK',
+                 'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL'):
         env.pop(name, None)
     command = [
         sys.executable, str(ROOT / 'scripts/qwen35_08b_threshold_child.py'),

@@ -132,11 +132,13 @@ def role_environment(quant: str, role: str) -> Iterator[None]:
         'HIPENGINE_GGUF_DENSE_WMMA_BULK',
         'HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL',
         'HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL',
+        'HIPENGINE_GGUF_Q4_PACK8_WMMA_BULK',
+        'HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL',
     )
     # Pin every field, including defaults, so inherited rollback state cannot
     # contaminate a comparison. These names are artifact labels, not env writes.
     diagnostic = dict(zip(
-        ('dense_bulk', 'dense_residual', 'q8_pair'),
+        ('dense_bulk', 'dense_residual', 'q8_pair', 'pack8_bulk', 'pack8_pair'),
         (updates.pop(name, None) != '0' for name in diagnostic_names),
     ))
     previous = {name: os.environ.get(name) for name in updates}

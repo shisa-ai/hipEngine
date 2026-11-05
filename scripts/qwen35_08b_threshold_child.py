@@ -16,7 +16,7 @@ from scripts import qwen35_readme_sweep
 
 def main() -> int:
     parser = argparse.ArgumentParser(add_help=False)
-    for field in ('dense-bulk', 'dense-residual', 'q8-pair'):
+    for field in ('dense-bulk', 'dense-residual', 'q8-pair', 'pack8-bulk', 'pack8-pair'):
         parser.add_argument(f'--diagnostic-{field}', choices=('on', 'off'), default='on')
     args, remaining = parser.parse_known_args()
     previous = sys.argv
@@ -26,6 +26,8 @@ def main() -> int:
             dense_bulk=args.diagnostic_dense_bulk == 'on',
             dense_residual=args.diagnostic_dense_residual == 'on',
             q8_pair=args.diagnostic_q8_pair == 'on',
+            pack8_bulk=args.diagnostic_pack8_bulk == 'on',
+            pack8_pair=args.diagnostic_pack8_pair == 'on',
         ):
             return qwen35_readme_sweep.main()
     finally:
