@@ -3316,11 +3316,11 @@
       "ledger_line": 2697,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
         "hipengine/generation/qwen35_gguf_mtp2.py:3441-3443,3936,5452 retains singleton and packed target owners."
       ],
-      "next_action": "Inspect specialization boundaries and record intentional ownership or implement missing packed graph capture before converging; test same C1 owner/replay rather than deleting singleton dispatch blindly.",
+      "next_action": "None. Retain supported singleton/session-local and packed/physical target specializations; ownership documented at both methods. Named CPU bundle and repeated public gfx1151 C1 native graph replay, exact repeats and allocation drain pass. See worklog/entries/20261105T210400.635569Z-lhl-r0402-owner-2912e0.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",

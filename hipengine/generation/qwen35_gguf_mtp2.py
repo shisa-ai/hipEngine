@@ -3444,7 +3444,14 @@ class Qwen35GGUFMTP2Adapter:
         self,
         request_ids: tuple[int, ...],
     ) -> None:
-        """Keep a physical provider but use the exact C1 target when alone."""
+        """Attach the supported C1 target specialization to a lone provider.
+
+        Provider batching and target ownership are independent. A physical-C1
+        request keeps its packed target owner; other lone requests (including
+        gfx1151 and a survivor in a nonzero resident slot) use this session's
+        transactional verifier and graph buckets. The verifier remains owned by
+        the request state and is retired with it, not shared across requests.
+        """
 
         if len(request_ids) != 1:
             return
@@ -5457,6 +5464,14 @@ class Qwen35GGUFMTP2Adapter:
         *,
         cancelled_request_ids: Callable[[], Sequence[int]],
     ) -> SpecCycleResult:
+        """Execute the packed target owner for physical request groups.
+
+        This also handles an admitted physical-C1 group. It does not replace
+        the session-local transactional verifier used by the singleton route:
+        that owner has its own graph capture, selected-row commit and rollback
+        lifetime. Converging them requires packed graph capture and a matched
+        public C1 comparison, not simply redirecting singleton dispatch here.
+        """
         ids = tuple(int(value) for value in plan.speculative_request_ids)
         states = tuple(self._states[request_id] for request_id in ids)
         rows = tuple(self.owner._row(request_id) for request_id in ids)

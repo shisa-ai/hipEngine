@@ -2698,27 +2698,6 @@ selection, repeated public use and complete teardown. If retiring, remove the wh
 unit and preserve the historical artifacts. A future public gfx1100 C8 request must record actual
 selected-kernel engagement rather than infer it from the sidecar's presence.
 
-### R0402 — Singleton and packed target-verifier ownership
-
-Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
-
-Scope: `_ensure_active_singleton_target_verifier`, `_execute_target_frontier_batch`,
-`verify_target_blocks_batch`.
-
-**Decision needed:** keep the singleton verifier as a supported specialization, or converge on the
-packed target owner. If keeping it, document the ownership boundary and close this duplication
-entry. If converging, implement packed target graph capture and compare both routes through the same
-public C1 request before removing singleton dispatch and graph-bucket preparation. Preserve backend
-capabilities, sampled acceptance, DMS handling, cancellation, selected-row state commits and
-singleton survivors in nonzero resident slots.
-
-Done when: run `uv run pytest -o addopts='' -q
-tests/test_unit_qwen35_gguf_mtp2_c1_physical.py tests/test_unit_qwen35_gguf_mtp2_seam.py
-tests/test_unit_gguf_mtp_native_state_attribution.py`, then repeated public `LLM.generate()` or HTTP
-requests confirming the intended owner, graph replay, matching outputs and complete allocation
-drain. Convergence also needs a matched C1 route-comparison harness; the existing server benchmark
-does not expose that comparison.
-
 ### R0403 — DMS and INT8 hidden-plane alias rollback interfaces
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
