@@ -1894,27 +1894,6 @@ confirm public chain routing stays unchanged. The corresponding GGUF root/siblin
 is separately owned by `scripts/gguf_mtp_bench.py`; its supported-comparison disposition is recorded
 in `worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md`.
 
-### R0281-TARGET-POLICY / R0284 / R0299 / R0300 — GGUF verifier controls and native naming
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `hipengine/runtime/qwen35_gguf_runner.py` — GGUF verifier controls and native naming.
-
-**Decision needed:** preserve named comparison controls or consolidate them into an explicit
-benchmark verifier policy, and decide whether to rename the legacy native API/registry surface in
-the same coordinated migration. R0284's remaining alias-retention decision belongs to that migration
-alongside R0281-CONTEXT, R0281-DRAFT-CHAIN and R0281-SELECTED-DP4A; it is not a separate speed-only
-gate. Do not remove a correct target-only or fallback capability because a historical throughput
-comparison preferred a different complete-cycle route.
-
-Done when: migrate bench parsing, suite/workbench aliases, verifier schedule/commit
-choices, native helpers/class/registry references, graph cache identity and
-requested/effective/fallback artifact fields together. Keep exact public and compatibility owners
-separate. Run parser/suite, snapshot/replay, selected-state commit, dynamic context/position and
-graph failure/close tests; exercise real reject/partial/full and output-tail cycles,
-reset/cached-session reuse and public generation. Any arithmetic change needs its profile gate; any
-speed claim needs a matched protocol rather than the removed historical ledger rows.
-
 ### R0281-CAPTURE — GGUF production row-state and diagnostic policy
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.

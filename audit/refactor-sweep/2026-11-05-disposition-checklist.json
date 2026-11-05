@@ -2804,11 +2804,12 @@
       "ledger_line": 2189,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py retains separate native verification/capture helpers; scripts/gguf_mtp_bench.py validates native stage dependencies at 1725-1734."
+        "Retain named verifier comparisons and native API/registry aliases, with existing graph identity and requested/effective/fallback provenance. No runtime/default/arithmetic change.",
+        "108 host and 99 live/native graph tests pass, including actual-model hidden/state/KV parity on gfx1151; worklog/entries/20261105T234849.910706Z-lhl-r0281-target-policy-31bc32.md."
       ],
-      "next_action": "Inventory verifier schedule/commit/native aliases and migrate benchmark policy plus graph identities/result fields together without deleting target-only fallback capability.",
+      "next_action": "None; preserve target-only/fallback and compatibility aliases independently of historical speed results.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
