@@ -15,6 +15,7 @@ import threading
 from copy import copy
 import time
 from contextlib import closing, contextmanager, nullcontext
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field, replace
 from functools import partial, wraps
 from pathlib import Path
@@ -9193,9 +9194,15 @@ _GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
 _GGUF_T16_SELECTED_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE"
 _GGUF_T16_SELECTED_DOWN_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE"
 _GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE"
-_gguf_t16_selected_pairreuse_min_rows_session: int | None = None
-_gguf_t16_selected_down_pairreuse_min_rows_session: int | None = None
-_gguf_t16_selected_q6_down_pairreuse_min_rows_session: int | None = None
+_gguf_t16_selected_pairreuse_min_rows_session = ContextVar[int | None](
+    "gguf_t16_selected_pairreuse_min_rows", default=None,
+)
+_gguf_t16_selected_down_pairreuse_min_rows_session = ContextVar[int | None](
+    "gguf_t16_selected_down_pairreuse_min_rows", default=None,
+)
+_gguf_t16_selected_q6_down_pairreuse_min_rows_session = ContextVar[int | None](
+    "gguf_t16_selected_q6_down_pairreuse_min_rows", default=None,
+)
 _GGUF_RAW_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_RAW_SELECTED_DP4A"
 _GGUF_DENSE_Q8_DP4A_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A"
 _GGUF_DENSE_Q8_DP4A_ALL_ENV = "HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL"
@@ -10778,22 +10785,20 @@ def _gguf_q8_t16_decode_rowtile_all_for_rows(backend: str, *, rows: int) -> bool
 def _gguf_t16_selected_pairreuse_min_rows_scope(min_rows: int | None):
     """Apply a backend-certified physical-width floor during packed enqueue."""
 
-    global _gguf_t16_selected_pairreuse_min_rows_session
-    previous = _gguf_t16_selected_pairreuse_min_rows_session
-    _gguf_t16_selected_pairreuse_min_rows_session = (
+    token = _gguf_t16_selected_pairreuse_min_rows_session.set(
         None if min_rows is None else int(min_rows)
     )
     try:
         yield
     finally:
-        _gguf_t16_selected_pairreuse_min_rows_session = previous
+        _gguf_t16_selected_pairreuse_min_rows_session.reset(token)
 
 
 def _gguf_t16_selected_pairreuse_enabled() -> bool:
     raw = os.environ.get(_GGUF_T16_SELECTED_PAIRREUSE_ENV, "")
     if raw:
         return _env_flag(_GGUF_T16_SELECTED_PAIRREUSE_ENV, False)
-    min_rows = _gguf_t16_selected_pairreuse_min_rows_session
+    min_rows = _gguf_t16_selected_pairreuse_min_rows_session.get()
     return min_rows is not None and min_rows > 0
 
 
@@ -10801,22 +10806,20 @@ def _gguf_t16_selected_pairreuse_enabled() -> bool:
 def _gguf_t16_selected_down_pairreuse_min_rows_scope(min_rows: int | None):
     """Apply a backend-certified selected-down reuse width floor."""
 
-    global _gguf_t16_selected_down_pairreuse_min_rows_session
-    previous = _gguf_t16_selected_down_pairreuse_min_rows_session
-    _gguf_t16_selected_down_pairreuse_min_rows_session = (
+    token = _gguf_t16_selected_down_pairreuse_min_rows_session.set(
         None if min_rows is None else int(min_rows)
     )
     try:
         yield
     finally:
-        _gguf_t16_selected_down_pairreuse_min_rows_session = previous
+        _gguf_t16_selected_down_pairreuse_min_rows_session.reset(token)
 
 
 def _gguf_t16_selected_down_pairreuse_enabled() -> bool:
     raw = os.environ.get(_GGUF_T16_SELECTED_DOWN_PAIRREUSE_ENV, "")
     if raw:
         return _env_flag(_GGUF_T16_SELECTED_DOWN_PAIRREUSE_ENV, False)
-    min_rows = _gguf_t16_selected_down_pairreuse_min_rows_session
+    min_rows = _gguf_t16_selected_down_pairreuse_min_rows_session.get()
     return min_rows is not None and min_rows > 0
 
 
@@ -10872,22 +10875,20 @@ def _gguf_t16_selected_c1_variant(
 def _gguf_t16_selected_q6_down_pairreuse_min_rows_scope(min_rows: int | None):
     """Apply a backend-certified Q6 selected-down reuse width floor."""
 
-    global _gguf_t16_selected_q6_down_pairreuse_min_rows_session
-    previous = _gguf_t16_selected_q6_down_pairreuse_min_rows_session
-    _gguf_t16_selected_q6_down_pairreuse_min_rows_session = (
+    token = _gguf_t16_selected_q6_down_pairreuse_min_rows_session.set(
         None if min_rows is None else int(min_rows)
     )
     try:
         yield
     finally:
-        _gguf_t16_selected_q6_down_pairreuse_min_rows_session = previous
+        _gguf_t16_selected_q6_down_pairreuse_min_rows_session.reset(token)
 
 
 def _gguf_t16_selected_q6_down_pairreuse_enabled() -> bool:
     raw = os.environ.get(_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE_ENV, "")
     if raw:
         return _env_flag(_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE_ENV, False)
-    min_rows = _gguf_t16_selected_q6_down_pairreuse_min_rows_session
+    min_rows = _gguf_t16_selected_q6_down_pairreuse_min_rows_session.get()
     return min_rows is not None and min_rows > 0
 
 

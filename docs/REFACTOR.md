@@ -1260,7 +1260,12 @@ Scope: `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE`, `HIPENGINE_GGUF_T16_SELECTED_DOW
 Done when: Decision needed: retain the controls as diagnostics or replace both on/off requests with an
 explicit scoped policy before removing their readers. The batch-route gate clears and restores these
 variables to exercise package policy; its capture metadata must migrate too. Preserve per-lane
-fallback kernels, backend defaults and the separate request-local small-row scope. **Clearing
+fallback kernels, backend defaults and the separate request-local small-row scope.
+The three packed width scopes now use context-local token/reset storage rather than
+process globals; overlapping-thread and nested-failure tests cover isolation. Local
+public C8 MoE generation confirms all three package-floor scopes engage and restore
+with clean tracked allocation teardown. This does not complete reader migration or
+the full callable/neighbor-width matrix below. **Clearing
 action:** run `tests/test_unit_qwen35_gguf_compact_moe_gemv_routing.py` and
 `tests/test_unit_execution_profile_gguf_batch_route_gate.py`; migrate the gate and `docs/ENVS.md`
 with any reader removal. A runtime migration also needs the primitive pair-reuse parity tests and
