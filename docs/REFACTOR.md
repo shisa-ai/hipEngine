@@ -3835,11 +3835,13 @@ cannot change an existing owner's choice or protect its automatic cache from
 capacity-driven release. Map integrity and tokenizer/token-ID compatibility
 checks remain in the loader, separate from model admission.
 
-**Remaining:** retire the compatibility environment after public map-on singleton
-and physical-batch validation. Public gfx1151 full-head MTP generation confirms
-that a later invalid environment path does not alter the captured off choice,
-with speculative cycles and zero tracked bytes after close. This does not cover
-actual compact-head remapping or explicit-map public failure handling.
+**Remaining:** inventory and migrate compatibility environment callers before
+retiring that transport. Public gfx1151 MTP checks cover captured full-head intent,
+an explicit nonidentity compact map at singleton and physical batch width two,
+and invalid explicit-map rejection. Each returns tracked bytes to zero after
+close. See `worklog/entries/20261105T202411.342255Z-lhl-r0197-compact-public-1f638d.md`
+for the route/lifecycle protocol; these checks do not assert cross-width numerical
+equivalence or throughput.
 
 Done when: automatic/off/explicit choices, invalid map failures, per-owner isolation,
 capacity-driven automatic release without changing explicit intent, full-token-ID remapping for
