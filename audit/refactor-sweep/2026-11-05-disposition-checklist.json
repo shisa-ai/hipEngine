@@ -2827,11 +2827,13 @@
       "ledger_line": 2210,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:9224-9229 still declares six distinct row-state capture controls."
+        "Retain named capture diagnostics and explicit production prefill-GDN owner transport; no route/default/arithmetic changes.",
+        "94 capture/transport/state/probe-script and 201 forced-target probe tests pass; recent native-model state/KV parity also green.",
+        "worklog/entries/20261105T235115.317881Z-lhl-r0281-capture-cad9eb.md"
       ],
-      "next_action": "Separate production row-state capture from debug policy, migrating profile/gate metadata and scratch ownership with reject/partial/full cleanup tests.",
+      "next_action": "None; preserve live production row-state writers independently of historical negative diagnostic results.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

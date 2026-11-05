@@ -1894,27 +1894,6 @@ confirm public chain routing stays unchanged. The corresponding GGUF root/siblin
 is separately owned by `scripts/gguf_mtp_bench.py`; its supported-comparison disposition is recorded
 in `worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md`.
 
-### R0281-CAPTURE — GGUF production row-state and diagnostic policy
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN`, `HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV`,
-`HIPENGINE_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN`, `HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT`,
-`HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV`,
-`HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL`.
-
-**Decision needed:** retain these named comparisons or move them into an explicit debug capture
-policy, separately from the production row-state mechanism. The earlier negative experiments are
-preserved in the sweep manifest and benchmark artifacts; they do not make the live production
-writers disposable.
-
-Done when: migrate production/profile/gate binding and diagnostic policy, scratch
-ownership, FP16 incompatibility errors, scored-boundary readers and probe metadata together. Test
-segmented/single capture, deferred and final state commit, reject/partial/full acceptance and
-exception cleanup. Any route removal must reject unsupported historical requests explicitly or leave
-an equivalent replay route. Run real state-row and prefix-consistency checks and public generation
-before changing execution; arithmetic changes also need their execution-profile gate.
-
 ### R0281-METADATA — Contiguous prefill metadata policy and host oracle
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
