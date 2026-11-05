@@ -1069,10 +1069,11 @@ session allocator, not ambient environment transport. Preserve both harnesses/re
 workspace lifetime, invalid-combination errors, package defaults and registered score/token4
 fallbacks. See `worklog/entries/20261105T221358.471073Z-lhl-laguna-attention-interface-7e6394.md`.
 
-Done when: run the fake-runtime bounded-workspace node in
-`tests/test_gpu_laguna_kv_attention.py`, runner, target-AR and long-context-profile units. Exercise
-actual global/SWA lengths below, above and unrelated to each crossover, wrap/continuation and
-multi-row fallback, then R0249/R0250's public generation and allocation-cleanup gate.
+Done when: supply the Laguna checkpoint for R0249/R0250 public generation,
+wrap/continuation, route attribution and allocation cleanup. Local host/fake-runtime,
+split/tile16 CPU-oracle crossover and multi-row wrap checks pass on gfx1151; see
+`worklog/entries/20261105T221706.111110Z-lhl-laguna-attention-validation-21ff11.md`.
+The checkpoint is absent from the local model store; no runtime admission gate is added.
 
 ### R0281-FUSION / R0338 — Attention fusion and reducer comparison controls
 
@@ -1086,12 +1087,11 @@ fusion dependency errors, resolved-variant reporting and unfused chains. These i
 owner-bound, so no environment migration is needed. See
 `worklog/entries/20261105T221358.471073Z-lhl-laguna-attention-interface-7e6394.md`.
 
-**Validation remaining:** run the
-fake-runtime bounded-workspace node in `tests/test_gpu_laguna_kv_attention.py`,
-`tests/test_unit_laguna_global_head_wave0_tree_runtime.py`, runner, target-AR and
-long-context-profile units. Compare the head/KV and split-gate primitive chains and
-wave-local/shared-statistics reducers on GPU, including missing keys, below-threshold lengths, wrap
-and multi-row paths; then run R0249/R0250's public continuation/lifecycle gate.
+**Validation remaining:** supply the absent Laguna checkpoint and run R0249/R0250
+public continuation/lifecycle with selected-route attribution. Local host/fake-runtime,
+head/KV and split-gate fused/unfused, wave-local/shared-statistics and wrap/multi-row
+primitive checks pass on gfx1151; see
+`worklog/entries/20261105T221706.111110Z-lhl-laguna-attention-validation-21ff11.md`.
 
 Done when: Wave-local reduction requires split attention and split-gate fusion. Gate-fusion comparisons must
 disable wave-local too; preserve named dependency errors and the shared-statistics fallback.

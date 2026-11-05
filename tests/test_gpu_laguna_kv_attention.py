@@ -1481,7 +1481,8 @@ def test_laguna_global_and_swa_token_serial_attention_match_cpu_across_wraps() -
     values = rng.normal(0.0, 0.12, size=(total_tokens, 8, 128)).astype(np.float32)
     keys_bf16 = bf16_to_float32(float_array_to_bf16_bits(keys))
     values_bf16 = bf16_to_float32(float_array_to_bf16_bits(values))
-    selected = {510, 511, 512, 513, 1024, 1025}
+    selected = {31, 63, 64, 65, 125, 126, 127, 255, 256, 257,
+                389, 510, 511, 512, 513, 1024, 1025}
     allocations = []
     evicted_position = 700
     try:

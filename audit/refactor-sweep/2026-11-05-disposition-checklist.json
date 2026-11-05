@@ -1518,12 +1518,12 @@
       "ledger_line": 1073,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "scripts/laguna_target_ar_bench.py:120-122,302-306 keeps independent crossover controls.",
-        "hipengine/runtime/laguna_gguf_runner.py:2980-2981,3937-3971 forwards split workspace policy."
+        "Supported explicit owner-bound interfaces retained; 146 host tests and gfx1151 split/tile16 crossover CPU-oracle plus multi-row wrap checks pass.",
+        "worklog/entries/20261105T221706.111110Z-lhl-laguna-attention-validation-21ff11.md; Laguna checkpoint absent locally."
       ],
-      "next_action": "Inventory crossover comparisons and retain them as resource policy or migrate both harnesses/session allocator coherently; preserve bounded workspace and invalid-combination errors.",
+      "next_action": "Supply Laguna weights, then R0249/R0250 public continuation/lifecycle and allocation cleanup with route attribution. No local interface migration remains.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -1541,12 +1541,12 @@
       "ledger_line": 1088,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "hipengine/runtime/laguna_gguf_runner.py:2983-2984,3973-3987 binds split-gate and wave-local reduction independently.",
-        "scripts/laguna_target_ar_bench.py:318-320 forwards wave-local opt-out."
+        "Supported explicit fusion/reducer diagnostics retained with named dependencies and strict unfused fallbacks; 146 host and available gfx1151 fusion/reducer primitive tests pass.",
+        "worklog/entries/20261105T221706.111110Z-lhl-laguna-attention-validation-21ff11.md; actual-weight public check requires absent Laguna checkpoint."
       ],
-      "next_action": "Migrate redundant comparison inputs to a scoped attention owner or record supported diagnostics; keep named dependency errors and exact unfused/shared-statistics fallback.",
+      "next_action": "Supply Laguna weights and run R0249/R0250 public continuation/lifecycle with route attribution. Local interface and primitive work complete.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
