@@ -1865,26 +1865,6 @@ head-major GPU copy fixtures. A resource-policy replacement also needs public sh
 requests, allocation-denial fallback and zero tracked cleanup. Do not use historical copy-inclusive
 speed rows as evidence for a changed capacity policy.
 
-### R0301 — Verifier Q6 top-1 sidecar comparison ownership
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR`, `HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A`.
-
-**Decision needed:** retain the explicit singleton comparison or migrate the load-time sidecar and
-runtime choice into one owner-local head policy. Retire or rename multirow comparison aliases only
-with their CLI/result consumers, rather than silently presenting fallback measurements as
-direct-top-1 measurements. Do not delete the shared Q6 kernels or couple this allocation to draft
-layout.
-
-Done when: migrate materialization, singleton/packed head callers, benchmark
-setup/provenance and suite routes together. Run
-`tests/test_unit_qwen35_gguf_verify_lm_head_top1.py`, `tests/test_unit_gguf_mtp_bench_metrics.py`,
-suite and weight-upload contracts, then public MTP requests confirming singleton versus multirow
-head/sampler paths, continuation and cleanup. A proposed multirow direct path must first resolve the
-recorded sentinel failure and pass independent numerical/ownership checks; changed-arithmetic
-promotion still requires its execution-profile gates.
-
 ### R0281-SELECTED-X8 — Selected-expert replacement-layout policy
 
 Owner: `hipengine/loading/qwen35_gguf_materialize.py`.

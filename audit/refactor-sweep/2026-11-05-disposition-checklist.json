@@ -2689,11 +2689,13 @@
       "ledger_line": 2079,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:9204 retains verifier Q6 top1 input distinct from draft layout."
+        "Retain singleton comparison with separate target-sidecar placement and accurate multirow fallback labels. No runtime/default/arithmetic change.",
+        "493 host tests pass; public gfx1151 MTP observes singleton direct top1 and rows 2/3/6 rowtile logits, repeat equality and zero allocations after close.",
+        "worklog/entries/20261105T232304.720837Z-lhl-r0301-verifier-top1-58cd64.md"
       ],
-      "next_action": "Bind singleton head placement/runtime choice in owned policy and migrate suite/provenance; keep multirow sentinel failure contained and accurately report fallback.",
+      "next_action": "None; multirow direct shortcut remains excluded for its recorded sentinel failure, not promoted by this disposition.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
