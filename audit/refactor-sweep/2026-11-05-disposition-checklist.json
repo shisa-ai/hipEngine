@@ -1874,11 +1874,11 @@
       "ledger_line": 1379,
       "owner": "`scripts/gguf_mtp_bench.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
         "scripts/gguf_mtp_bench.py:893-923 exposes distinct target/complete/proposal stages and 1725-1734 validates dependencies."
       ],
-      "next_action": "Inventory stage consumers and explicitly retain four diagnostic stages or migrate to one stage enum without combining graph composition; test route metadata and unsupported-shape behavior.",
+      "next_action": "None. Retain four supported diagnostic stages and existing explicit controls/dependency errors/metadata. Named host bundle passes; native graph/live-cycle files also pass under ROCm without skips. No combined-graph or arithmetic change. See worklog/entries/20261105T211419.246726Z-lhl-native-diagnostic-stages-7fb9c3.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

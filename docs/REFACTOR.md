@@ -1358,32 +1358,6 @@ final-output/hidden-seed accounting, repeated output and cleanup recorded. Do no
 arithmetic promotion as a prerequisite for running the existing default; apply the numerical gates
 only to changed math.
 
-### R0281-NATIVE-CYCLE / R0384 — Native diagnostic interfaces and graph composition
-
-Owner: `scripts/gguf_mtp_bench.py`.
-
-Scope: `scripts/gguf_mtp_bench.py`, `scripts/gguf_ar_mtp_suite.py`,
-`scripts/gguf_mtp_verifier_rocprof.py`.
-
-**Decision needed:** retain these diagnostic stages as supported interfaces, or replace them with
-one explicit stage selector while preserving route names, effective options, result metadata and
-profiler comparisons. Treat combined graph composition as an independent experiment; do not remove
-working controls or change arithmetic/defaults merely to reduce the flag count.
-
-Done when: run `tests/test_unit_gguf_mtp_bench_metrics.py`,
-`tests/test_unit_gguf_ar_mtp_suite.py`, `tests/test_unit_scripts_gguf_mtp_verifier_rocprof.py`,
-`tests/test_unit_native_spec_cycle.py` and `tests/test_unit_mtp_resident_draft_device_commit.py`,
-plus native launcher registration, fallback, complete-cycle and bucket/cache nodes in
-`tests/test_gpu_native_spec_cycle_graph.py` and `tests/test_live_gguf_native_spec_cycle.py`. An
-interface migration also needs real diagnostic and public requests confirming selected submission
-stages, accepted-row/cursor ownership, B1/B2 and unsupported-shape behavior, repeat output and
-teardown. A combined-graph or arithmetic experiment additionally needs its applicable numerical and
-complete-wall gates, separately from this interface cleanup.
-
-Preserve four independent stages: target cycle, proposal cycle, proposal graph and complete cycle.
-Combined graph execution needs active-row-subset proposal support; test B1/B2 and fallback shapes
-before collapsing these interfaces.
-
 ### R0281-PARO-NATIVE — Provider graph and selected-commit control migration
 
 Owner: `hipengine/runtime/qwen35_paro_runner.py`.

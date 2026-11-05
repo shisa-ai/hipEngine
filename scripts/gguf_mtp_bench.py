@@ -7,6 +7,12 @@ accepted_per_output), and saves a compact JSON artifact in benchmarks/results/.
 
 Usage:
     python3 scripts/gguf_mtp_bench.py [--model GGUF_PATH] [--cycles N]
+
+Native target cycle, proposal cycle, proposal graph and complete cycle are
+supported independent diagnostic stages. This harness, gguf_ar_mtp_suite and
+gguf_mtp_verifier_rocprof own their explicit comparisons and effective metadata.
+Keep their dependency errors and fallback attribution distinct; combining graphs
+is a separate experiment requiring active-row-subset proposal support.
 """
 
 from __future__ import annotations
