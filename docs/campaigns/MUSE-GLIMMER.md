@@ -153,7 +153,66 @@ no Qwen/Laguna/Gemma runner branches. Primitive map verified in-tree:
 Bring-up is eager (no graph replay); performance phase adds the production
 owners. Weight re-permutation is a load-time layout transform, not arithmetic.
 
-### 3.2 Subsystem map
+### 3.2 P2 vision design (decided 2026-11-06)
+
+Graph decoded from `tools/mtmd/models/muse-glimmer.cpp` + the
+`PROJECTOR_TYPE_MUSE_GLIMMER` host branch in `clip.cpp`:
+
+1. Preprocess: `muse_glimmer_grid_size` in 28px (patch×merge) units, aspect-
+   preserving floor/ceil candidate pick, cap 4096 post-merge tokens; Lanczos
+   stretch resize (no padding); normalize (p/255 − 0.5)/0.5.
+2. conv2d patchify 14×14 stride 14, no bias; raster patch order.
+3. Learned 32×32 position table bilinear-resized (half-pixel, align_corners
+   False, clamped) to the patch grid; added.
+4. 32×32-window grouping permutation (`sp_perm`); 1-indexed width/height RoPE
+   positions travel in permuted order.
+5. pre-LN (LayerNorm eps 1e-5, weight+bias) → 50 ViT layers: ln1 → Q/K/V
+   (1536², bias) → 2D **interleaved** RoPE on Q/K (dims [0,48) width,
+   [48,96) height; 24 pairs/half; base 10000) → bidirectional attention
+   (scale 1/√96; sparse layers block-diagonal window mask, every 4th + last
+   global) → out proj+bias → residual; ln2 → up (8960) + bias → **erf** GELU →
+   down+bias → residual. post_ln.
+6. Inverse permutation; 2×2 pixel-shuffle, channel-outer concat → [n_out, 6144].
+7. Adapter mm.0 (6144→4096) → erf GELU → mm.1 (4096→4096) → erf GELU →
+   mm.2 (4096→6656); BF16 weights, no biases.
+
+Token placement: `<|image_start|>` 200080 + n_out placeholder rows +
+`<|image_end|>` 200081; placeholder id `<|image|>` 200090; ATEM template
+marker `<|patch|>` 200092. Oracle prompt chunks verified:
+[BOS, "Describe this image: ", 200080] + n_out + [200081].
+
+**Precision finding:** on RDNA3 ggml routes Q4_K projections to the MMQ
+integer kernel for *all* batch sizes (int8-quantized activations — changed
+arithmetic vs the f32 architecture), and dequantizes other quants to F16 for
+cuBLAS by default. `GGML_CUDA_CUBLAS_COMPUTE_TYPE=f32` fixes the cuBLAS path
+but cannot reach MMQ, so GPU-config embeddings diverge from any f32
+implementation far beyond rounding (~1%/Q4_K layer, compounding through the
+amplifying residual stream to ~60% by layer 49). The **semantic oracle is the
+llama.cpp CPU backend** (`GLIMMER_CPU=1` in the capture tool): dequantize →
+f32 vec_dot. The hipEngine tower computes f32 (rocBLAS sgemm + FP32
+primitives, the gemma4_vision pattern) and gates against that oracle.
+Cross-engine generation sanity against the GPU server is a *sanity* check
+(consistent descriptions), not an embedding-parity gate.
+
+Implementation: CPU reference first (oracle-gated), then GPU runner, then
+generator `generate_multimodal_detailed` with embedding-row overrides at the
+placeholder spans (the gemma4 `image_input` pattern). Overrides enter before
+the weightless embedding norm — llama.cpp's external-embedding path feeds the
+graph the same way (the norm applies to image rows too).
+
+**Amplification finding (gate design):** stage-by-stage bisection against the
+oracle's graph nodes (GPU-runner injection hook) shows every stage matches to
+f32 rounding; injecting the oracle's `pre_ln` makes the full downstream tower
+agree to 0.004. The residual upstream difference is zero-mean f32 noise
+(std ~6e-4), and this network amplifies it ~10^4x on smooth inputs: injecting
+random noise of the same std into the oracle's own pre_ln reproduces the
+observed output spread (2.9–14.9 vs our 14.4 on the 896² gradient; the 448²
+and 672×448 fixtures stay within 0.023/0.125). Per-element parity is therefore
+not the semantic gate; the live tiers gate on cosine ≥ 0.998, mean/std drift
+≤ 0.01, and a catastrophic max-err bound. Image-conditioned generation sanity
+vs llama.cpp is the product-level check.
+
+### 3.3 Subsystem map
 
 | Need | Existing surface | New work |
 | --- | --- | --- |

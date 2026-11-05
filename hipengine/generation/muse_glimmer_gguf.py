@@ -54,10 +54,13 @@ class MuseGlimmerGGUFGenerator:
     backend: str = "hip_gfx1151"
     context_length: int | None = None
     execution_profile: str | None = None
+    vision_model_path: str | Path | None = None
     tokenizer: MuseGlimmerGGUFTokenizer = field(init=False)
     max_prompt_tokens: int = field(init=False)
     _loaded: MuseGlimmerLoadedWeights | None = field(default=None, init=False, repr=False)
     _session: MuseGlimmerResidentSession | None = field(default=None, init=False, repr=False)
+    _vision_runner: Any = field(default=None, init=False, repr=False)
+    _vision_reader: Any = field(default=None, init=False, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
     _load_seconds: float | None = field(default=None, init=False, repr=False)
@@ -82,6 +85,14 @@ class MuseGlimmerGGUFGenerator:
         )
         self.tokenizer = MuseGlimmerGGUFTokenizer.from_gguf_info(self.weight_index)
         self.max_prompt_tokens = self.context_length
+        if self.vision_model_path is not None:
+            self.vision_model_path = Path(self.vision_model_path).expanduser().resolve()
+            if not self.vision_model_path.exists():
+                raise FileNotFoundError(f"vision model not found: {self.vision_model_path}")
+
+    @property
+    def supports_vision(self) -> bool:
+        return self.vision_model_path is not None
 
     @staticmethod
     def _validate_execution_profile(value: str | None) -> str | None:
@@ -159,6 +170,10 @@ class MuseGlimmerGGUFGenerator:
             if self._closed:
                 return
             self._closed = True
+            if self._vision_runner is not None:
+                self._vision_runner.close()
+                self._vision_runner = None
+            self._vision_reader = None
             if self._session is not None:
                 self._session.close()
                 self._session = None
@@ -275,6 +290,74 @@ class MuseGlimmerGGUFGenerator:
             ),
         )
 
+    # -- multimodal --------------------------------------------------------
+    def _ensure_vision_runner(self):
+        if self._vision_runner is not None:
+            return self._vision_runner
+        if self.vision_model_path is None:
+            raise NotImplementedError(
+                "Muse Glimmer images require the mmproj GGUF via vision_model="
+            )
+        from hipengine.kernels.cpu_reference.muse_glimmer_vision import MuseGlimmerVisionConfig
+        from hipengine.runtime.muse_glimmer_vision import MuseGlimmerVisionRunner
+
+        self._vision_reader = GGUFReader(self.vision_model_path)
+        config = MuseGlimmerVisionConfig.from_gguf_info(self._vision_reader.info)
+        self._vision_runner = MuseGlimmerVisionRunner(
+            self._vision_reader, config, backend=self.backend
+        )
+        return self._vision_runner
+
+    def _load_image_rgb(self, value) -> np.ndarray:
+        if isinstance(value, np.ndarray):
+            array = np.asarray(value)
+        else:
+            from PIL import Image
+
+            if isinstance(value, (str, Path)):
+                image = Image.open(value)
+            elif isinstance(value, Image.Image):
+                image = value
+            else:
+                raise NotImplementedError(
+                    "Muse Glimmer images accept an RGB array, PIL image, or file path"
+                )
+            array = np.asarray(image.convert("RGB"))
+        if array.ndim != 3 or array.shape[2] != 3:
+            raise ValueError("Muse Glimmer images must be HWC RGB")
+        return array.astype(np.uint8)
+
+    def generate_multimodal_detailed(self, prompt, image, request):
+        """Encode ordered images and run the normal sampler over image-aware KV."""
+
+        from dataclasses import replace
+
+        from hipengine.generation.muse_glimmer_multimodal import (
+            muse_glimmer_embedding_overrides,
+            muse_glimmer_image_prompt,
+            muse_glimmer_media_images,
+        )
+
+        self._validate_request(request)
+        if len(request.prompts) != 1:
+            raise ValueError("Muse Glimmer image generation requires one prompt per request")
+        with self._lock:
+            self._require_open()
+            images = [self._load_image_rgb(v) for v in muse_glimmer_media_images(image)]
+            vision = self._ensure_vision_runner()
+            features = [vision.encode(img, request=request) for img in images]
+            ids, spans = muse_glimmer_image_prompt(
+                prompt, [len(f) for f in features], self.tokenizer
+            )
+            if len(ids) + request.max_tokens > self.context_length:
+                raise ValueError("Muse Glimmer image prompt plus max_tokens exceeds context_length")
+            prepared = replace(request, prompts=(ids,))
+            session = self._ensure_session()
+            overrides = muse_glimmer_embedding_overrides(features, spans)
+            with session.image_input(overrides):
+                result = self.generate_detailed(prepared)[0]
+            return replace(result, prompt_tokens=len(ids))
+
     # -- refusals ----------------------------------------------------------
     def _validate_request(self, request: GenerationRequest) -> None:
         blockers: list[str] = []
@@ -313,6 +396,7 @@ def make_muse_glimmer_gguf_generator_gfx1151(
     model_plugin: Any,
     max_sequence_length: int | None = None,
     execution_profile: str | None = None,
+    vision_model_path: str | Path | None = None,
 ) -> MuseGlimmerGGUFGenerator:
     generator = MuseGlimmerGGUFGenerator(
         model_path=model_path,
@@ -320,6 +404,7 @@ def make_muse_glimmer_gguf_generator_gfx1151(
         model_plugin=model_plugin,
         backend="hip_gfx1151",
         execution_profile=execution_profile,
+        vision_model_path=vision_model_path,
     )
     if max_sequence_length is not None:
         generator.declare_max_sequence_length(int(max_sequence_length))

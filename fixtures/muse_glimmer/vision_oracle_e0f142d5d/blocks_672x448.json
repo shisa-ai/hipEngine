@@ -1,0 +1,13 @@
+{
+  "image": "fixtures/muse_glimmer/images/blocks_672x448.png",
+  "bitmap_id": "07def168767e51e74fb035b11281d58142dd327bcdd1a5b1d7983f259df3e491",
+  "nx": 672,
+  "ny": 448,
+  "n_embd": 6656,
+  "chunks": [
+    {"type": "text", "n_tokens": 7, "tokens": [200000, 51212, 544, 3371, 38, 220, 200080]},
+    {"type": "image", "n_tokens": 384, "first_decoder_pos": [0, 0, 0]},
+    {"type": "text", "n_tokens": 1, "tokens": [200081]}
+  ],
+  "n_out": 384
+}

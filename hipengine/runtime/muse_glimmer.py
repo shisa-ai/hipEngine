@@ -21,6 +21,7 @@ Bring-up contracts:
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
@@ -116,6 +117,7 @@ class MuseGlimmerResidentSession:
             raise ValueError("max_context and prefill_chunk must be positive")
         self._closed = False
         self._length = 0
+        self._image_overrides: dict[int, np.ndarray] | None = None
         self._scratch: _SessionScratch | None = None
         self._kv: list[tuple[DeviceBuffer, DeviceBuffer]] = []
         self._buffers: list[DeviceBuffer] = []
@@ -199,6 +201,25 @@ class MuseGlimmerResidentSession:
         self._require_open()
         self._length = 0
 
+    @contextmanager
+    def image_input(self, overrides: dict[int, np.ndarray]):
+        """Replace embedding rows at absolute prompt positions for one prefill.
+
+        Overrides are projected F32 vision rows; they enter *before* the
+        weightless embedding norm, exactly as llama.cpp's external-embedding
+        path feeds the graph (the norm applies to image rows too). Cleared on
+        exit so a later text-only request cannot inherit stale rows.
+        """
+
+        self._require_open()
+        if self._image_overrides is not None:
+            raise RuntimeError("nested image_input spans are not supported")
+        self._image_overrides = dict(overrides)
+        try:
+            yield self
+        finally:
+            self._image_overrides = None
+
     def close(self) -> None:
         if self._closed:
             return
@@ -269,6 +290,18 @@ class MuseGlimmerResidentSession:
             backend=self.backend,
             runtime=rt,
         )
+        if self._image_overrides:
+            from hipengine.core.memory import DeviceBuffer
+            from hipengine.loading.materialize import float_array_to_bf16_bits
+
+            for pos, row in self._image_overrides.items():
+                if position_offset <= pos < position_offset + tokens:
+                    bits = float_array_to_bf16_bits(row)
+                    local = pos - position_offset
+                    copy_host_array_to_device(
+                        DeviceBuffer(self.hidden_a.ptr + local * hidden * 2, bits.nbytes),
+                        bits, runtime=rt,
+                    )
         gemma4_rmsnorm_weightless_bf16(
             self.hidden_a.ptr, self.hidden_b.ptr, tokens, hidden,
             cfg.rms_eps, runtime=rt,
