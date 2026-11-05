@@ -16,10 +16,15 @@ def test_cumulative_diagnostic_restores_nested_fields_on_exception():
     assert linear._cumulative_prefill_override.get() == (None, None, None)
 
 
-def test_cumulative_diagnostic_overrides_ambient_rollback(monkeypatch):
-    name = 'HIPENGINE_GGUF_DENSE_WMMA_BULK'
+@pytest.mark.parametrize('index,name', [
+    (0, 'HIPENGINE_GGUF_DENSE_WMMA_BULK'),
+    (1, 'HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL'),
+    (2, 'HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL'),
+])
+def test_cumulative_diagnostic_ignores_retired_environment(monkeypatch, index, name):
     monkeypatch.setenv(name, '0')
-    assert not linear._cumulative_prefill_enabled(0, name)
-    with linear.cumulative_prefill_diagnostic(dense_bulk=True):
-        assert linear._cumulative_prefill_enabled(0, name)
-    assert not linear._cumulative_prefill_enabled(0, name)
+    assert linear._cumulative_prefill_enabled(index)
+    fields = ('dense_bulk', 'dense_residual', 'q8_pair')
+    with linear.cumulative_prefill_diagnostic(**{fields[index]: False}):
+        assert not linear._cumulative_prefill_enabled(index)
+    assert linear._cumulative_prefill_enabled(index)

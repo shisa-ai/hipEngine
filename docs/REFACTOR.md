@@ -608,19 +608,18 @@ Owner: `hipengine/kernels/hip_gfx1100/__init__.py`.
 Scope: `scripts/qwen35_08b_cumulative_semantic.py`; `HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL`,
 `HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL`; `HIPENGINE_GGUF_DENSE_WMMA_BULK`.
 
-Done when: Dependency: move these diagnostic controls out of production environment selection and validate
-the actual Qwen3.5-0.8B Q4_K_M and Q8_0 callers. Neither checkpoint is present in the local
-`/models/gguf` catalogue; other available Qwen models do not establish
-engagement of the narrow rows512/K1024/N16+N16 pair. **Clearing action:** replace the harness's
-bulk/X6/X8 environment controls with scoped diagnostic overrides that restore on success and
-exception, migrate the threshold children, remove the production readers and Q8 pair-cache
-environment dimension, and update ENVS. Run `tests/test_unit_qwen35_08b_cumulative_semantic.py`,
-`tests/test_unit_qwen35_08b_threshold_environment.py` and `tests/test_unit_gguf_linear_dispatch.py`;
-with those checkpoints available, exercise public p512 generation and eager/graph decode, trace
-pair/residual selection, compare against the registered scalar/singleton/add controls, and verify
-cleanup. Check bulk dispatch at 511/512/513 and unrelated lengths. Keep backend/shape policy and
-primitive fallbacks. These are concrete harness and input dependencies, not a release-window or
-missing-qualification restriction; the fused defaults remain enabled.
+Done when: validate the actual Qwen3.5-0.8B Q4_K_M and Q8_0 callers. Neither
+checkpoint is present in the local `/models/gguf` catalogue; other available Qwen
+models do not establish engagement of the narrow rows512/K1024/N16+N16 pair.
+The diagnostic-control migration is implemented: the cumulative harness uses
+`cumulative_prefill_diagnostic`, threshold children carry explicit scoped arguments,
+and production no longer reads these three environment controls. Dispatch tests
+cover bulk policy at 511/512/513 and unrelated lengths; defaults and primitive
+fallbacks are unchanged. **Clearing action:** with those checkpoints available,
+exercise public p512 generation and eager/graph decode, trace pair/residual
+selection, compare against registered scalar/singleton/add controls, and verify
+cleanup. See the cumulative-prefill worklog entries for migration evidence.
+This remaining checkpoint dependency does not restrict runtime admission.
 
 ### R0217 — PM4 diagnostic controls and transport rollback
 

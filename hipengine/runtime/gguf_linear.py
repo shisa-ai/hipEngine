@@ -2035,10 +2035,9 @@ def cumulative_prefill_diagnostic(
         _cumulative_prefill_override.reset(token)
 
 
-def _cumulative_prefill_enabled(index: int, legacy_environment: str) -> bool:
+def _cumulative_prefill_enabled(index: int) -> bool:
     override = _cumulative_prefill_override.get()[index]
-    return (os.environ.get(legacy_environment, "1") != "0"
-            if override is None else override)
+    return True if override is None else override
 
 
 @contextlib.contextmanager
@@ -5766,7 +5765,7 @@ def _launch_gguf_linear_impl(
             out_features=out_features,
             enabled=(
                 use_wmma
-                and _cumulative_prefill_enabled(0, "HIPENGINE_GGUF_DENSE_WMMA_BULK")
+                and _cumulative_prefill_enabled(0)
                 and bool(
                     backend_package_capability(
                         resolved_backend,
@@ -6659,7 +6658,7 @@ def _resolve_gguf_linear_residual_plan(
             return _plan(
                 fallback_reason=_GGUF_RESIDUAL_FALLBACK_WMMA_PREFILL_DECLINED
             )
-        if not _cumulative_prefill_enabled(1, "HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL"):
+        if not _cumulative_prefill_enabled(1):
             return _plan(fallback_reason=_GGUF_RESIDUAL_FALLBACK_BULK_DISABLED)
         dispatch = resolve_gguf_linear_dispatch(
             weight,
@@ -6672,7 +6671,7 @@ def _resolve_gguf_linear_residual_plan(
             in_features=in_features,
             out_features=out_features,
             enabled=(
-                _cumulative_prefill_enabled(0, "HIPENGINE_GGUF_DENSE_WMMA_BULK")
+                _cumulative_prefill_enabled(0)
                 and bool(
                     backend_package_capability(
                         resolved_backend,
@@ -9376,7 +9375,7 @@ def _resolve_gguf_linear_pair_kind(
             (),
         )
         if (
-            _cumulative_prefill_enabled(2, "HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL")
+            _cumulative_prefill_enabled(2)
             and _q8_t16_dual_wmma_prefill_enabled.get()
             and bool(
                 backend_package_capability(
@@ -9650,7 +9649,7 @@ def _resolve_gguf_linear_pair_plan(
         resolved_backend,
         use_wmma,
         use_gemv,
-        _cumulative_prefill_enabled(2, "HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL"),
+        _cumulative_prefill_enabled(2),
         _q8_t16_dual_wmma_prefill_enabled.get(),
         _q4_t16_unequal_pair_prefill_enabled.get(),
         (

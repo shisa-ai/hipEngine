@@ -1576,20 +1576,26 @@ def test_launch_gguf_linear_residual_routes_registered_c1_t16_abi() -> None:
     ]
 
 
-@pytest.mark.parametrize("bulk", [None, "0", "1"])
+@pytest.fixture
+def cumulative_bulk_scope(request):
+    """Apply parametrized diagnostic choices with automatic restoration."""
+    with gguf_linear_module.cumulative_prefill_diagnostic(
+        dense_bulk=None if request.param is None else request.param != "0"
+    ):
+        yield request.param
+
+
+@pytest.mark.parametrize("cumulative_bulk_scope", [None, "0", "1"], indirect=True)
 def test_launch_gguf_linear_residual_routes_dense_wmma_bulk_owner(
     monkeypatch: pytest.MonkeyPatch,
-    bulk: str | None,
+    cumulative_bulk_scope,
 ) -> None:
+    bulk = cumulative_bulk_scope
     from hipengine.kernels.hip_gfx1100.linear.dense_gemv import (
         register_dense_gemv_kernels,
     )
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
-    if bulk is None:
-        monkeypatch.delenv("HIPENGINE_GGUF_DENSE_WMMA_BULK", raising=False)
-    else:
-        monkeypatch.setenv("HIPENGINE_GGUF_DENSE_WMMA_BULK", bulk)
     register_dense_gemv_kernels()
     register_gfx1151_kernels(replace=True)
     key = KernelKey(
@@ -2058,23 +2064,20 @@ def test_gfx1100_q4_pack8_bulk_prefill_keeps_exact_tile8x8() -> None:
         (513, 1_024, 512, "fallback"),
     ],
 )
-@pytest.mark.parametrize("bulk", [None, "0", "1"])
+@pytest.mark.parametrize("cumulative_bulk_scope", [None, "0", "1"], indirect=True)
 def test_gfx1151_dense_bf16_bulk_prefill_honors_qualified_shapes(
     monkeypatch: pytest.MonkeyPatch,
     rows: int,
     in_features: int,
     out_features: int,
     expected: str,
-    bulk: str | None,
+    cumulative_bulk_scope,
 ) -> None:
     """Bind the current shape policy and live scalar comparison control."""
+    bulk = cumulative_bulk_scope
 
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
-    if bulk is None:
-        monkeypatch.delenv("HIPENGINE_GGUF_DENSE_WMMA_BULK", raising=False)
-    else:
-        monkeypatch.setenv("HIPENGINE_GGUF_DENSE_WMMA_BULK", bulk)
     register_gfx1151_kernels(replace=True)
     weight = _fake_weight(layout=LAYOUT_DENSE_BF16, quant_key="gguf_q4_1")
     fallback_key = KernelKey("hip_gfx1151", "dense_gemv", "bf16", "prefill_out")
@@ -4830,12 +4833,11 @@ def test_gfx1151_q8_t16_dual_wmma_prefill_routes_exact_shape(
                 backend="hip_gfx1151", use_wmma_prefill=True, stream=7,
                 runtime="runtime-sentinel",
             )
-            monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL", "0")
-            assert not launch_gguf_linear_pair(
-                weight_a, weight_b, 100, 200, 300, 512, 1_024, 16,
-                backend="hip_gfx1151", use_wmma_prefill=True,
-            )
-            monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL")
+            with gguf_linear_module.cumulative_prefill_diagnostic(q8_pair=False):
+                assert not launch_gguf_linear_pair(
+                    weight_a, weight_b, 100, 200, 300, 512, 1_024, 16,
+                    backend="hip_gfx1151", use_wmma_prefill=True,
+                )
             assert not launch_gguf_linear_pair(
                 weight_a, weight_b, 100, 200, 300, 511, 1_024, 16,
                 backend="hip_gfx1151", use_wmma_prefill=True,
