@@ -2654,11 +2654,12 @@
       "ledger_line": 2061,
       "owner": "`hipengine/runtime/qwen35_paro_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_paro_runner.py:158,499 defaults family isolation on; hipengine/runtime/qwen35_gguf_runner.py:9974-9979 resolves distinct GGUF default."
+        "Retain explicit family-aware comparison control; PARO default isolation and GGUF default same-stream unchanged.",
+        "249 policy/lifecycle/exactness-harness/event-order host tests pass; worklog/entries/20261105T221947.943335Z-lhl-r0311-interface-b3183b.md."
       ],
-      "next_action": "Replace shared ambient name with family-aware resolved stream policy and migrate bridge/comparison metadata without merging defaults.",
+      "next_action": "None. Retained supported diagnostic, not a policy replacement; no bridge/default/metadata changes or new GGUF isolation claim.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

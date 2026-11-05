@@ -2002,24 +2002,6 @@ head-major GPU copy fixtures. A resource-policy replacement also needs public sh
 requests, allocation-denial fallback and zero tracked cleanup. Do not use historical copy-inclusive
 speed rows as evidence for a changed capacity policy.
 
-### R0311 — Family-specific AOTriton stream policy
-
-Owner: `hipengine/runtime/qwen35_paro_runner.py`.
-
-Scope: `HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM`.
-
-**Decision needed:** keep the explicit family-aware A/B control or replace it with resolved
-execution policy. Do not delete PARO's default isolation or make GGUF inherit it merely because both
-readers use the same environment name.
-
-Done when: migrate both readers, comparison script, bridge ownership and execution
-metadata together. Run stream policy/lifecycle, PARO exactness and decode-state event-order tests.
-Any policy replacement needs real public prefill requests below/above/unrelated to the row
-threshold, state/KV/output comparison, repeated cleanup and long-prompt stability for affected
-families. A changed GGUF isolation design must finish the recorded long-prompt protocol and
-same-stream controls before replacing its default; timing claims need copy/queue-inclusive
-end-to-end evidence, not a clean short focus leg.
-
 ### R0301 — Verifier Q6 top-1 sidecar comparison ownership
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
