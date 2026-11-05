@@ -96,6 +96,26 @@ def test_stream_draft_cleanup_continues_and_preserves_original_failure(monkeypat
     assert error.value.__notes__ == ["draft snapshot cleanup failed: cleanup failed"]
 
 
+@pytest.mark.parametrize("failure_index", [1, 2])
+def test_verifier_snapshot_acquisition_failure_releases_earlier_owners(monkeypatch, failure_index):
+    generator = _generator()
+    freed = []
+    cycles = []
+    for index in range(3):
+        def snapshot(index=index):
+            if index == failure_index:
+                raise RuntimeError("snapshot failed")
+            return index
+        cycles.append(SimpleNamespace(
+            slot=SimpleNamespace(session=SimpleNamespace(_linear_state_snapshot=snapshot), timing={}),
+            direct_commit_exact=False, snapshot=None,
+        ))
+    monkeypatch.setattr(generator, "_free_mtp_serving_cycle_snapshot", lambda cycle: freed.append(cycle.snapshot) if cycle.snapshot is not None else None)
+    with pytest.raises(RuntimeError, match="snapshot failed"):
+        generator._verify_mtp_serving_cycles(cycles, object())
+    assert freed == list(range(failure_index))
+
+
 def _generator():
     return object.__new__(qwen35_gguf.Qwen35GGUFBringupGenerator)
 

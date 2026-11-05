@@ -6081,18 +6081,18 @@ class Qwen35GGUFBringupGenerator:
         _ = request
         if not drafted_cycles:
             return []
-        for drafted in drafted_cycles:
-            slot = drafted.slot
-            snapshot_start = time.perf_counter()
-            snapshot = (
-                slot.session._linear_state_snapshot()
-                if not drafted.direct_commit_exact
-                else None
-            )
-            drafted.snapshot = snapshot
-            if snapshot is not None:
-                _timing_add(slot.timing, "linear_state_snapshot_ms", snapshot_start)
         try:
+            for drafted in drafted_cycles:
+                slot = drafted.slot
+                snapshot_start = time.perf_counter()
+                snapshot = (
+                    slot.session._linear_state_snapshot()
+                    if not drafted.direct_commit_exact
+                    else None
+                )
+                drafted.snapshot = snapshot
+                if snapshot is not None:
+                    _timing_add(slot.timing, "linear_state_snapshot_ms", snapshot_start)
             block_results = self._try_verify_mtp_serving_cycles_batch(
                 drafted_cycles,
                 verify_owner_session=verify_owner_session,
