@@ -52,8 +52,31 @@ def test_the_packaged_default_is_decided_by_sizing(monkeypatch) -> None:
 @pytest.mark.parametrize("env", ["auto", "0", "4096"])
 def test_an_explicit_env_choice_is_never_overridden(monkeypatch, env) -> None:
     generator = _generator(monkeypatch)
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_HOT_VOCAB", env)
+    generator.mtp_hot_vocab = env
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_HOT_VOCAB", "different-map.json")
     assert not generator._mtp_hot_vocab_choice_pending()
+    assert generator._mtp_hot_vocab_path() == (None if env == "0" else env)
+
+
+@pytest.mark.parametrize("setting", [None, "auto", "off", "/tmp/explicit.json"])
+def test_constructor_captures_compatibility_input_once(monkeypatch, setting):
+    monkeypatch.setattr(qwen35_gguf, "resolve_backend", lambda backend: backend)
+    monkeypatch.setattr(qwen35_gguf.Qwen35GGUFTokenizer, "from_gguf_info", lambda info: object())
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_HOT_VOCAB", "first.json")
+    inherited = qwen35_gguf.Qwen35GGUFBringupGenerator(
+        model_path="unused", weight_index=None, model_plugin=None, backend="hip_gfx1151",
+    )
+    explicit = qwen35_gguf.Qwen35GGUFBringupGenerator(
+        model_path="unused", weight_index=None, model_plugin=None, backend="hip_gfx1151",
+        mtp_hot_vocab=setting,
+    )
+    inherited.execution_profile = explicit.execution_profile = "production"
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_HOT_VOCAB", "second.json")
+    assert inherited._mtp_hot_vocab_path() == "first.json"
+    expected = "auto" if setting is None else None if setting == "off" else setting
+    assert explicit._mtp_hot_vocab_path() == expected
+    assert explicit._mtp_hot_vocab_choice_pending() is (setting is None)
+    assert not inherited._mtp_hot_vocab_choice_pending()
 
 
 def test_strict_profile_has_no_head_to_decide(monkeypatch) -> None:

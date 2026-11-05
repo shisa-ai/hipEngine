@@ -888,10 +888,12 @@ def _gguf_decode_graph_enabled() -> bool:
     return os.environ.get(_GGUF_DECODE_GRAPH_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _gguf_mtp_hot_vocab_setting(execution_profile: str) -> str | None:
+def _gguf_mtp_hot_vocab_setting(
+    execution_profile: str, setting: str | None = None,
+) -> str | None:
     """Resolve packaged production default, explicit map, or full-head rollback."""
 
-    raw = os.environ.get(_GGUF_MTP_HOT_VOCAB_ENV)
+    raw = setting
     if raw is None:
         return "auto" if str(execution_profile) == "production" else None
     value = raw.strip()
@@ -1436,6 +1438,11 @@ class Qwen35GGUFBringupGenerator:
     native_batch_capacity: int = 8
     # Independent of model execution_profile: explicit strict debugging opt-out.
     native_sampler_algorithm: str = "sorted"
+    # None selects the profile default; an empty string disables the cache.
+    # The compatibility environment input is captured once per owner.
+    mtp_hot_vocab: str | None = field(
+        default_factory=lambda: os.environ.get(_GGUF_MTP_HOT_VOCAB_ENV)
+    )
     engine_loop_config_defaults: Mapping[str, Any] = field(default_factory=dict, repr=False)
     server_plain_ar_max_active_requests: int | None = None
     server_plain_ar_max_active_requests_by_max_sequence_length: Mapping[int, int] = field(
@@ -2524,14 +2531,17 @@ class Qwen35GGUFBringupGenerator:
         choice = getattr(self, "_mtp_hot_vocab_choice", None)
         if choice is not None:
             return choice[0]
-        return _gguf_mtp_hot_vocab_setting(str(getattr(self, "execution_profile", "strict")))
+        return _gguf_mtp_hot_vocab_setting(
+            str(getattr(self, "execution_profile", "strict")),
+            getattr(self, "mtp_hot_vocab", None),
+        )
 
     def _mtp_hot_vocab_choice_pending(self) -> bool:
         """The packaged default is undecided: no env choice and not yet sized."""
 
         return (
             getattr(self, "_mtp_hot_vocab_choice", None) is None
-            and os.environ.get(_GGUF_MTP_HOT_VOCAB_ENV) is None
+            and getattr(self, "mtp_hot_vocab", None) is None
             and self._mtp_hot_vocab_path() == "auto"
         )
 

@@ -637,10 +637,10 @@ def test_gguf_mtp_hot_vocab_defaults_only_in_production_with_rollback(
     assert qwen35_gguf._gguf_mtp_hot_vocab_setting("production") == "auto"
     assert qwen35_gguf._gguf_mtp_hot_vocab_setting("strict") is None
 
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_HOT_VOCAB", "0")
-    assert qwen35_gguf._gguf_mtp_hot_vocab_setting("production") is None
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_HOT_VOCAB", "/tmp/custom.json")
-    assert qwen35_gguf._gguf_mtp_hot_vocab_setting("strict") == "/tmp/custom.json"
+    assert qwen35_gguf._gguf_mtp_hot_vocab_setting("production", "0") is None
+    assert qwen35_gguf._gguf_mtp_hot_vocab_setting(
+        "strict", "/tmp/custom.json"
+    ) == "/tmp/custom.json"
 
 
 @pytest.mark.parametrize("retired_override", [None, "0", "false"])

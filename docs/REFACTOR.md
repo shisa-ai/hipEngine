@@ -3827,11 +3827,19 @@ Owner: `hipengine/generation/qwen35_gguf.py`.
 
 Scope: `Qwen35GGUFGenerator._mtp_hot_vocab_path()`; `HIPENGINE_GGUF_MTP_HOT_VOCAB`.
 
-**Deferred interface decision:** replace ambient path selection with an explicit model/generator
-option before retiring the environment transport. Preserve packaged automatic selection,
-off/full-head control and explicit validated maps; reducing the interface to on/off alone would
-remove a live capability. Keep map integrity and tokenizer/token-ID compatibility checks separate
-from model admission. The target remains authoritative and full-head fallback remains.
+**Owner interface:** `mtp_hot_vocab` on `Qwen35GGUFBringupGenerator` accepts `None`
+for the profile default, `"auto"` for an explicit packaged map, off/empty for the
+full head, or an explicit map path. The compatibility environment is captured by
+the constructor only when the argument is omitted. Later environment changes
+cannot change an existing owner's choice or protect its automatic cache from
+capacity-driven release. Map integrity and tokenizer/token-ID compatibility
+checks remain in the loader, separate from model admission.
+
+**Remaining:** retire the compatibility environment after public map-on singleton
+and physical-batch validation. Public gfx1151 full-head MTP generation confirms
+that a later invalid environment path does not alter the captured off choice,
+with speculative cycles and zero tracked bytes after close. This does not cover
+actual compact-head remapping or explicit-map public failure handling.
 
 Done when: automatic/off/explicit choices, invalid map failures, per-owner isolation,
 capacity-driven automatic release without changing explicit intent, full-token-ID remapping for

@@ -4637,7 +4637,7 @@
       "evidence": [
         "hipengine/generation/qwen35_gguf.py:581,890,2517-2531 retains automatic/off/explicit hot-vocab path choice."
       ],
-      "next_action": "Move path choice to model/generator constructor intent, preserve validated map/token compatibility and automatic release without overriding explicit choice.",
+      "next_action": "Constructor mtp_hot_vocab now owns intent and captures omitted-argument env once; focused map validation/remapping tests and public gfx1151 off-path MTP isolation/teardown pass. Complete public compact-head singleton/physical-batch and invalid-map checks before env retirement. See worklog/entries/20261105T201635.169173Z-lhl-r0197-owner-intent-d2cca1.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
