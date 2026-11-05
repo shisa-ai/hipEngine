@@ -1448,12 +1448,12 @@
       "ledger_line": 1024,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "scripts/laguna_target_ar_bench.py:274,730,864 uses mixed projection choice in both construction/result paths.",
         "hipengine/runtime/laguna_gguf_runner.py:2995,3154-3157 consumes mixed projection control."
       ],
-      "next_action": "Migrate three distinct comparison levels without collapsing local32/fixed-Q6/generic miss order; maintain both construction sites and result schema.",
+      "next_action": "Retain independent constructor/CLI local32, fixed-Q6 and generic diagnostics. Host fallback matrix and gfx1151 mixed primitive suite pass; both target-AR sites and effective fields remain distinct. Public route/lifecycle matrix requires Laguna checkpoint, gfx1100 checks require hardware. See worklog/entries/20261105T200712.155209Z-lhl-mixed-levels-66406d.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -5037,8 +5037,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 170,
-    "concrete_dependency_blocker": 51,
+    "locally_actionable": 169,
+    "concrete_dependency_blocker": 52,
     "human_decision_required": 6,
     "completed": 5,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."

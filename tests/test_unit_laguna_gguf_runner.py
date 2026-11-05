@@ -2485,8 +2485,10 @@ def test_laguna_mixed_attention_projection_quad_is_registry_owned_and_fail_close
     assert len(calls) == before
 
 
+@pytest.mark.parametrize("fixed_q6", [False, True])
+@pytest.mark.parametrize("local32", [False, True])
 def test_laguna_attention_projection_prefers_explicit_local32_variant(
-    monkeypatch,
+    monkeypatch, fixed_q6, local32,
 ) -> None:
     variants: list[str] = []
     accept_local32 = [True]
@@ -2524,20 +2526,22 @@ def test_laguna_attention_projection_prefers_explicit_local32_variant(
             libraries=SimpleNamespace(),
             runtime=None,
             use_mixed_q5_q6_attention=True,
-            use_mixed_q6_fixed_meta_attention=True,
-            use_mixed_local32_fixed_meta_attention=True,
+            use_mixed_q6_fixed_meta_attention=fixed_q6,
+            use_mixed_local32_fixed_meta_attention=local32,
         )
 
+    fallback = (
+        "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out"
+        if fixed_q6 else "mixed_pack8_gemv_decode_bf16_f32_out"
+    )
+    local = "mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"
     assert launch()
-    assert variants == ["mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out"]
+    assert variants == [local if local32 else fallback]
 
     variants.clear()
     accept_local32[0] = False
     assert launch()
-    assert variants == [
-        "mixed_local32_fixed_meta_pack8_gemv_decode_bf16_f32_out",
-        "mixed_q6_fixed_meta_pack8_gemv_decode_bf16_f32_out",
-    ]
+    assert variants == ([local, fallback] if local32 else [fallback])
 
 
 def test_laguna_scalar_lm_head_candidate_is_decode_only(monkeypatch) -> None:

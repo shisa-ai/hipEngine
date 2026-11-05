@@ -1010,18 +1010,18 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 Scope: `laguna_target_ar_bench.py`, `use_mixed_q5_q6_attention`,
 `use_mixed_q6_fixed_meta_attention`, `use_mixed_local32_fixed_meta_attention`.
 
-Done when: Decision needed: keep the three comparison levels as a supported constructor/CLI diagnostic, or
-migrate callers to a scoped projection-policy owner and remove public controls. **Clearing action:**
-migrate both target-AR construction sites and result fields together. Preserve local32 miss
-ordering, fixed-Q6 versus generic comparison (disable local32 to exercise it), full quad disable,
-layer-47 tuple handling, multi-row and key-miss fallbacks. Run
-`tests/test_unit_laguna_gguf_runner.py`, `tests/test_unit_laguna_target_ar_bench.py`,
-`tests/test_unit_laguna_mixed_pair_reuse_runtime.py` and
-`tests/test_unit_laguna_q5_swar_pair_runtime.py`, corresponding primitive GPU comparisons and
-R0249/R0250's public generation/lifecycle gate.
+Done when: complete actual-weight public binding/lifecycle checks with the
+R0249/R0250 checkpoint, then the gfx1100 device checks on that hardware. Retain
+these constructor/CLI diagnostics: local32, fixed-Q6 and generic comparison levels
+have distinct fallback semantics. Both target-AR construction sites forward the
+three choices independently and report their effective values separately.
 
-Migrate `use_mixed_q5_q6_attention`, `use_mixed_q6_fixed_meta_attention` and
-`use_mixed_local32_fixed_meta_attention` independently; they select different fallback levels.
+Host tests cover local32 hit/miss ordering with fixed-Q6 either enabled or disabled,
+and direct fixed-Q6/generic selection with local32 off. The runner, target-AR,
+mixed-pair and SWAR-pair unit bundle passes; gfx1151 mixed primitive comparisons
+pass at role shapes, including the Q6/Q8 tuple and local32/fixed-metadata parity.
+Preserve full quad disable, layer-47 tuple handling, multi-row and missing-key
+fallbacks. Primitive evidence does not replace public route engagement.
 
 ### R0281-Q4HEAD — Scalar Q4 head comparison control
 
