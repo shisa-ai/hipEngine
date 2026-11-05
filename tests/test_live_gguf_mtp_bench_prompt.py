@@ -45,9 +45,20 @@ def test_select_prompt_tokens_preserves_existing_chat_template_path() -> None:
     ) == build_chat_prompt(FakeTokenizer(), "Say hi", reasoning="none")
 
 
-def test_prompt_token_ids_cli_parses_exact_nonnegative_ids() -> None:
-    args = build_arg_parser().parse_args(["--prompt-token-ids", "248045,846,198,42"])
-    assert args.prompt_token_ids == (248045, 846, 198, 42)
+@pytest.mark.parametrize("raw,expected", [
+    ("248045,846,198,42", (248045, 846, 198, 42)),
+    ("9707,9707,0,9707", (9707, 9707, 0, 9707)),
+    (" 42, ,42, 0, ", (42, 42, 0)),
+])
+def test_prompt_token_ids_cli_parses_exact_nonnegative_ids(raw, expected) -> None:
+    args = build_arg_parser().parse_args(["--prompt-token-ids", raw])
+    assert args.prompt_token_ids == expected
+
+
+@pytest.mark.parametrize("raw", ["42,-1", "42,invalid"])
+def test_prompt_token_ids_cli_rejects_invalid_ids(raw) -> None:
+    with pytest.raises(SystemExit):
+        build_arg_parser().parse_args(["--prompt-token-ids", raw])
 
 
 def test_build_chat_prompt_uses_supplied_user_prompt() -> None:

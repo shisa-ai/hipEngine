@@ -124,8 +124,11 @@ def _parse_nonnegative_int_csv(raw: str) -> tuple[int, ...]:
 
 def _parse_nonnegative_token_csv(raw: str) -> tuple[int, ...]:
     try:
-        return _parse_nonnegative_int_csv(raw)
-    except argparse.ArgumentTypeError as exc:
+        values = tuple(int(part.strip()) for part in str(raw).split(",") if part.strip())
+        if any(value < 0 for value in values):
+            raise ValueError("negative token ID")
+        return values
+    except ValueError as exc:
         raise argparse.ArgumentTypeError("must be a comma-separated list of non-negative token IDs") from exc
 
 
@@ -1364,7 +1367,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--target-score-candidate-tokens",
-        type=_parse_nonnegative_token_csv,
+        type=_parse_nonnegative_int_csv,
         default=(),
         help=(
             "Comma-separated extra token IDs to score in target lm-head diagnostics, "
