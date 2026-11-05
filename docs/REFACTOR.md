@@ -1278,11 +1278,14 @@ migrated.
 
 Owner: `hipengine/generation/qwen35_gguf.py`.
 
-Scope: `_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4`, `hipengine/generation/qwen35_gguf.py`.
+Scope: `_MTP_SERVING_PREFILL_MAX_SLOTS`, `_MTP_SERVING_VERIFY_MAX_SLOTS`,
+`_MTP_WARMUP_BATCH_MAX_SLOTS` in `hipengine/generation/qwen35_gguf.py`.
 
-Done when: Remaining decision: retain bounded chunks, or tune a wider verifier and give prefill/warmup
-their own policies. Do not delete the shared constant as dead code or change prompt-prefill
-admission as a side effect of verifier tuning. **Clearing action:** run
+Done when: validate the independently named bounded prefill, verifier and warmup
+policies through the public route. All three limits remain four; the shared
+constant has been removed without widening any path. Unit coverage pins chunk
+order, singleton-tail avoidance and verifier independence from the other limits.
+Do not change prompt-prefill admission as a side effect of verifier tuning. **Clearing action:** run
 `tests/test_unit_gguf_mtp_serving_chunk_policy.py` and the batch-verifier, packed-prefill and MTP
 warmup nodes in `tests/test_live_generation_qwen35_gguf_sampling.py`. A runtime policy change also
 needs public explicit-MTP requests at neighboring, unrelated and larger widths, selected

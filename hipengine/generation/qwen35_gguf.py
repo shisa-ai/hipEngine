@@ -341,7 +341,11 @@ _LLAMA_COMPAT_MTP_ENV = {
     "HIPENGINE_RESIDENT_MTP_DRAFT_ROUTER_ROW_PARALLEL": "1",
 }
 _GGUF_MTP_CONTEXT_REPLAY_MIN_PROMPT_TOKENS = 4
-_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4
+# Independent bounded policies: verifier tuning must not change prompt admission.
+_MTP_SERVING_PREFILL_MAX_SLOTS = 4
+_MTP_SERVING_VERIFY_MAX_SLOTS = 4
+# Warmup exercises paired prefill/verify batches, not serving admission.
+_MTP_WARMUP_BATCH_MAX_SLOTS = 4
 _GGUF_AR_NATIVE_MAX_SLOTS = 8
 # Resident request concurrency for the dense GGUF route when the caller does
 # not set --max-active-requests. This is scheduler admission, not a KV-memory
@@ -2073,8 +2077,8 @@ class Qwen35GGUFBringupGenerator:
                             chunk_start_index = 0
                             while chunk_start_index < width:
                                 remaining = width - chunk_start_index
-                                take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
-                                if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
+                                take = min(_MTP_WARMUP_BATCH_MAX_SLOTS, remaining)
+                                if remaining > _MTP_WARMUP_BATCH_MAX_SLOTS and remaining - take == 1:
                                     take -= 1
                                 chunk_sessions = sessions[chunk_start_index:chunk_start_index + take]
                                 chunk_owner = chunk_sessions[0]
@@ -5427,7 +5431,7 @@ class Qwen35GGUFBringupGenerator:
     ) -> list[_GGUFMTPServingSlot] | None:
         if len(request.prompts) <= 1:
             return None
-        if len(request.prompts) > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS:
+        if len(request.prompts) > _MTP_SERVING_PREFILL_MAX_SLOTS:
             return None
         if not callable(getattr(Qwen35GGUFResidentSession, "prefill_batch_native", None)):
             return None
@@ -5516,8 +5520,8 @@ class Qwen35GGUFBringupGenerator:
                 chunk_start_index = 0
                 while chunk_start_index < len(acquired):
                     remaining = len(acquired) - chunk_start_index
-                    take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
-                    if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
+                    take = min(_MTP_SERVING_PREFILL_MAX_SLOTS, remaining)
+                    if remaining > _MTP_SERVING_PREFILL_MAX_SLOTS and remaining - take == 1:
                         take -= 1
                     chunk_entries = acquired[chunk_start_index:chunk_start_index + take]
                     chunk_owner = chunk_entries[0]["session"]
@@ -6129,8 +6133,8 @@ class Qwen35GGUFBringupGenerator:
         index = 0
         while index < len(drafted_cycles):
             remaining = len(drafted_cycles) - index
-            take = min(_MTP_SERVING_TARGET_BATCH_MAX_SLOTS, remaining)
-            if remaining > _MTP_SERVING_TARGET_BATCH_MAX_SLOTS and remaining - take == 1:
+            take = min(_MTP_SERVING_VERIFY_MAX_SLOTS, remaining)
+            if remaining > _MTP_SERVING_VERIFY_MAX_SLOTS and remaining - take == 1:
                 take -= 1
             chunks.append(drafted_cycles[index:index + take])
             index += take

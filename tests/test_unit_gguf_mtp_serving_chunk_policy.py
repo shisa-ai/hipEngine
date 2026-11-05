@@ -7,6 +7,22 @@ import pytest
 from hipengine.generation import qwen35_gguf
 
 
+def test_verifier_width_does_not_inherit_prefill_or_warmup_limit(monkeypatch):
+    monkeypatch.setattr(qwen35_gguf, "_MTP_SERVING_PREFILL_MAX_SLOTS", 2)
+    monkeypatch.setattr(qwen35_gguf, "_MTP_WARMUP_BATCH_MAX_SLOTS", 2)
+    generator = _generator()
+    calls = []
+    monkeypatch.setattr(generator, "_try_verify_mtp_serving_cycle_chunks_streams", lambda chunks: None)
+
+    def verify(chunk, **kwargs):
+        calls.append(len(chunk))
+        return list(chunk)
+
+    monkeypatch.setattr(generator, "_verify_mtp_serving_cycle_chunk", verify)
+    assert generator._try_verify_mtp_serving_cycles_batch(list(range(7))) == list(range(7))
+    assert calls == [4, 3]
+
+
 def _generator():
     return object.__new__(qwen35_gguf.Qwen35GGUFBringupGenerator)
 
