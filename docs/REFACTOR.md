@@ -266,16 +266,6 @@ Done when: Run a defaults-only, same-protocol public repeat for the Q4-T16 down 
 rows33-192. Confirm selected launches, output/state parity and teardown; preserve the registered
 256-row shared-B parent outside that scope.
 
-### R0202 — SPECDEC2 dense NextN host/device proposal duplication
-
-Owner: `hipengine/runtime/qwen35_gguf_nextn.py`.
-
-Scope: `_enqueue_batch_hidden_transition`.
-
-Done when: Validate shared `_enqueue_batch_hidden_transition` through public device accept/commit, eager/graph
-agreement and cancellation/cleanup. Check host-materialized and device-top1 callers retain their
-token staging, synchronization/scoring, cursor publication and result contracts.
-
 ### R0067 — Dense prefix retention budget
 
 Owner: `hipengine/generation/qwen35_gguf.py`.

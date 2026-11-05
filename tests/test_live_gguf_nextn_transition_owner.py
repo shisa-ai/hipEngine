@@ -26,7 +26,16 @@ def test_public_dense_nextn_transition_commit_repeat_and_cancel(monkeypatch):
     from hipengine.generation.deadline import GenerationCancellationToken
     from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNExecutor
     from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
 
+    plans = []
+    frontier_original = Qwen35GGUFMTP2Adapter.execute_target_frontier
+
+    def frontier(self, plan, *args, **kwargs):
+        plans.append(plan.execution_route)
+        return frontier_original(self, plan, *args, **kwargs)
+
+    monkeypatch.setattr(Qwen35GGUFMTP2Adapter, 'execute_target_frontier', frontier)
     accepts = []
     accept_original = Qwen35GGUFMTP2Adapter._enqueue_target_batch_accept
 
@@ -54,16 +63,20 @@ def test_public_dense_nextn_transition_commit_repeat_and_cancel(monkeypatch):
     try:
         params = SamplingParams(max_tokens=12, temperature=0, ignore_eos=True, speculative_mtp=True)
         outputs = []
-        for _ in range(2):
+        for graph in (False, True, True):
+            monkeypatch.setattr(Qwen35GGUFResidentModelRunner, 'speculative_graph_available',
+                                lambda self, work: graph)
+            plans.clear()
             calls.clear()
             accepts.clear()
             output = llm.generate_detailed([[9707] * 17, [9707] * 23], params)[0]
             assert accepts, 'public batch did not enqueue device accept'
+            assert plans and set(plans) == ({'graph'} if graph else {'eager'})
             assert any(options.get('synchronize') is False for options in calls)
             assert calls, 'public NextN request did not execute the shared transition'
             assert len(output.generated_token_ids) == 12
             outputs.append(tuple(output.generated_token_ids))
-        assert outputs[0] == outputs[1]
+        assert outputs[0] == outputs[1] == outputs[2]
         cancellation = GenerationCancellationToken()
         calls.clear()
         cancelled = llm.generate_detailed([[9707] * 17, [9707] * 23], SamplingParams(
