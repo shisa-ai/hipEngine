@@ -190,6 +190,15 @@ def test_build_engine_passes_exact_factory_kwargs_and_omits_absent_dms() -> None
     assert "dms" not in calls[0][1]
 
 
+def test_build_engine_forwards_hot_vocabulary_intent() -> None:
+    calls = []
+    _lifecycle([]).build_engine(
+        _spec(mtp_hot_vocab="/tmp/map.json"),
+        lambda model, **kwargs: calls.append(kwargs),
+    )
+    assert calls[0]["mtp_hot_vocab"] == "/tmp/map.json"
+
+
 def test_build_engine_forwards_an_explicit_dms_sidecar() -> None:
     dms = DMSConfig(metadata_path="sidecar.json")
     calls: list[tuple[str, dict[str, Any]]] = []

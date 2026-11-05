@@ -3835,8 +3835,10 @@ cannot change an existing owner's choice or protect its automatic cache from
 capacity-driven release. Map integrity and tokenizer/token-ID compatibility
 checks remain in the loader, separate from model admission.
 
-**Remaining:** migrate server configuration and compatibility environment callers
-before retiring that transport. Public LLM constructor forwarding and all five
+**Remaining:** migrate compatibility environment callers before retiring that
+transport. ServerConfig and `--mtp-hot-vocab` now forward explicit strings
+through model lifecycle construction; omission preserves compatibility input.
+Public LLM constructor forwarding and all five
 GGUF factory adapters preserve explicit values, including `None`, while omission
 preserves compatibility capture. Public gfx1151 MTP checks cover captured full-head intent,
 an explicit nonidentity compact map at singleton and physical batch width two,

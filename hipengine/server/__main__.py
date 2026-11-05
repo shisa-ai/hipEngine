@@ -403,6 +403,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--mtp-hot-vocab",
+        default=None,
+        help=(
+            "GGUF MTP proposal vocabulary: auto for the packaged map, off for "
+            "the full head, or a JSON map path. Omission preserves the profile "
+            "default or HIPENGINE_GGUF_MTP_HOT_VOCAB compatibility input."
+        ),
+    )
+    parser.add_argument(
         "--speculative-candidate-budget",
         type=_positive_int,
         default=None,
@@ -523,6 +532,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         speculative_provider=args.speculative_provider,
         draft_model=args.draft_model,
         speculative_candidate_budget=args.speculative_candidate_budget,
+        mtp_hot_vocab=args.mtp_hot_vocab,
         vision_model=args.vision_model,
         vae_model=args.vae_model,
         vision_max_pixels=args.vision_max_pixels,

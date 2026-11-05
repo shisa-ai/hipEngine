@@ -442,6 +442,7 @@ class ServerConfig:
     speculative_provider: str | None = None
     draft_model: str | None = None
     speculative_candidate_budget: int | None = None
+    mtp_hot_vocab: str | None = None
     vision_model: str | None = None
     # Companion decoder checkpoint for models whose pipeline needs a second
     # artifact to produce its output (YuE2 decodes latents with ``m-a-p/YuE2-Vae``).
@@ -5080,6 +5081,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         speculative_provider=config.speculative_provider,
         draft_model=config.draft_model,
         speculative_candidate_budget=config.speculative_candidate_budget,
+        mtp_hot_vocab=config.mtp_hot_vocab,
         kv_storage=config.kv_storage,
         dms_metadata_path=config.dms_metadata_path,
         kv_scale_dtype=config.kv_scale_dtype,

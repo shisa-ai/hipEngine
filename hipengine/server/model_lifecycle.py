@@ -66,6 +66,7 @@ class ModelBuildSpec:
     kv_scale_granularity: str
     vision_model: str | None
     vae_model: str | None
+    mtp_hot_vocab: str | None = None
 
 
 class ModelLifecycle:
@@ -107,6 +108,8 @@ class ModelLifecycle:
             "vision_model": spec.vision_model,
             "vae_model": spec.vae_model,
         }
+        if spec.mtp_hot_vocab is not None:
+            kwargs["mtp_hot_vocab"] = spec.mtp_hot_vocab
         if spec.dms is not None:
             kwargs["dms"] = spec.dms
         return llm_factory(spec.model, **kwargs)
