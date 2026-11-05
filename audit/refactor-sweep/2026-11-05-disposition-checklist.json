@@ -2101,11 +2101,12 @@
       "ledger_line": 1588,
       "owner": "`hipengine/loading/qwen35_gguf_materialize.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/loading/qwen35_gguf_materialize.py:103-104,1211-1220 still reads raw-sidecar and all-projection placement controls."
+        "Retain named pair-only/all/F32 compatibility comparisons with explicit load-time raw sidecar placement; no code/default/arithmetic change.",
+        "175 sidecar/routing/verifier/suite/bench tests pass; worklog/entries/20261105T231209.856929Z-lhl-r0281-dense-q8-42aa77.md."
       ],
-      "next_action": "Create explicit load/route comparison policy and migrate normal verifier versus resident-draft callers separately, preserving requested arithmetic comparisons.",
+      "next_action": "None; comparisons stay distinct, resident-draft stage policy handled independently.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

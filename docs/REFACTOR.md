@@ -1458,25 +1458,6 @@ public uniform and mixed requests with oracle/direct selection, short/long/ragge
 rejection, reset/cancellation and cleanup. Verify actual attention sources and transient oracle
 owners.
 
-### R0281-DENSE-Q8 — Verifier sidecar placement and compatibility controls
-
-Owner: `hipengine/loading/qwen35_gguf_materialize.py`.
-
-Scope: `HIPENGINE_GGUF_Q8_0_RAW_SIDECAR`, `HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL`,
-`HIPENGINE_GGUF_DENSE_Q8_DP4A_F32`, `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS`.
-
-**Decision needed:** keep named compatibility comparisons with explicit load-time placement, or
-migrate their loose environment controls to one scoped route policy. Retire pair-only/all variants
-only with their suite/CLI consumers; do not turn a named comparison into a silent default-path
-rerun.
-
-Done when: migrate loader plan/materialization, pair/single/triple callers, bench
-setup/provenance and suite routes together. Keep normal shared projections and resident-draft
-consumers separate. Run CPU sidecar-scope/row-domain contracts, dense-Q8 routing, suite and
-bench-parser tests; a changed runtime route also needs actual public short/long decode and target
-verification, logits/state oracles, reset/cancellation and cleanup. Any changed arithmetic needs its
-execution-profile numerical/task gates; removing a flag is not that gate.
-
 ### R0281-DRAFT-DENSE-Q8 / R0303 — Resident draft stage-policy migration
 
 Owner: `hipengine/speculative/mtp_resident_draft.py`.
