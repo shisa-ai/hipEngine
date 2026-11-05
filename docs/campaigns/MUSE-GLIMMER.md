@@ -127,6 +127,31 @@ and speculative-provider registry are reuse candidates, not rewrites.
 
 ## 3. Reuse map and new work
 
+### 3.1 P1 runner design (decided 2026-11-06)
+
+New `MuseGlimmerResidentSession` (runtime) composed from registered kernels;
+no Qwen/Laguna/Gemma runner branches. Primitive map verified in-tree:
+
+| Step | Kernel surface | Notes |
+| --- | --- | --- |
+| Projections (Q4_K/Q6_K/Q5_K) | `runtime/gguf_linear.launch_gguf_linear`, `LAYOUT_RAW_GGUF` | raw quant bytes uploaded as-is; dispatch resolves GEMV decode / prefill owners per quant |
+| Embedding | raw Q4_K `embedding/lookup_bf16_out` consumer contract | `resolve_embedding_consumer_contract` |
+| Pre/post RMSNorm | `gemma4_rmsnorm_f32w_bf16` (plain weight, eps arg) | Gemma4 family applies weight as-is — required, since Glimmer weights are +1-folded; Qwen gguf_ops norms apply (1+w) and must NOT be used |
+| Embedding norm | `gemma4_rmsnorm_weightless_bf16` | eps 1e-5 |
+| QK-norm + RoPE | `gguf_qwen35_head_rmsnorm_partial_rotary_position_f32_weight` (NEOX) | **load-time re-permutation**: invert the conversion's `_unpermute_for_rope` on Q/K projection rows so existing NEOX rotary equals ggml NORM interleaved rope; dot products invariant under consistent Q/K permutation; unit-test against CPU reference interleaved rope |
+| NoPE full layers | skip the rotary step | config-driven from `swa_pattern` |
+| Attention | gemma4 attention family (bf16 prefill block + decode, keep-mask) | generic head_dim; SWA via keep mask `key > query - window`; decode split/flash routes for long full layers; GQA 32:2 |
+| Sigmoid attn gate | `gguf_gate_mul_bf16` | `out = attn * sigmoid(gate)`; gate projected from pre-attn normed hidden |
+| SwiGLU | `silu_mul_separate_out_bf16` (fused/paro_silu) | gate/up parallel, then down |
+| Residual adds | `gguf_bf16_add` / gemma4 add fusion | post-norm eps 1e-8 then add |
+| Head | `launch_gguf_linear` (Q5_K) → scale → `gemma4_logit_softcap_f32` | scale 0.19611613 then cap 20 |
+| KV | contiguous per-layer f16 bring-up cache | migrate to KVLiveSpans paged path in P4 if the serving/DMS surface requires it; record as campaign decision, not a silent shortcut |
+
+Bring-up is eager (no graph replay); performance phase adds the production
+owners. Weight re-permutation is a load-time layout transform, not arithmetic.
+
+### 3.2 Subsystem map
+
 | Need | Existing surface | New work |
 | --- | --- | --- |
 | GGUF container/metadata | `hipengine/loading/gguf.py` | tensor-map for `muse-glimmer` post-norm/gate names |
