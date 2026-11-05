@@ -915,6 +915,8 @@ class SuryaGpuRunner:
             self._span_partial_out.ptr, self._span_partial_m.ptr,
             self._span_partial_l.ptr, self._spans(),
             self._span_plan.block_size, nq, nk, hd, hd ** -0.5,
+            chunk_size=self._span_plan.chunk_size,
+            partial_num_splits=self._span_plan.num_splits,
             library=self.surya_library, runtime=self.runtime,
         )
 

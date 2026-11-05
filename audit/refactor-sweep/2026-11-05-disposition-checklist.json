@@ -4258,7 +4258,7 @@
       "evidence": [
         "hipengine/runtime/surya.py retains capacity-derived span decode launch and partial scratch; R0131 names capacity5000/live4096 mismatch."
       ],
-      "next_action": "Add host launch/allocation RED tests and coordinate live bound/split count/all three partial buffers; Surya checkpoint only blocks later model validation.",
+      "next_action": "Allocation plan now binds runtime chunk/split capacity and wrapper rejects insufficient partials; host and span GPU regressions pass. See worklog/entries/20261105T212021.191426Z-lhl-r0131-workspace-943878.md. Remaining: validated live-derived scheduling with graph/growth/empty-range coverage, followed by model continuation. Surya checkpoint only blocks later model validation.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

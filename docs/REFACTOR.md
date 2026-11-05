@@ -3429,7 +3429,10 @@ Owner: `hipengine/runtime/surya.py`.
 Scope: `surya_full_attn_decode_f32_spans`, `spans.max_live_count`.
 
 **Deferred arithmetic/launch design:** pass a validated live launch bound and consistent split count
-through the wrapper, or provide storage for the actual capacity-derived count. Keep the physical
+through the wrapper, or provide storage for the actual capacity-derived count. The runtime now
+passes its allocation plan's chunk and split capacity explicitly; the wrapper rejects undersized
+partial buffers before submission. Host regressions cover allocation/launch agreement (see
+`worklog/entries/20261105T212021.191426Z-lhl-r0131-workspace-943878.md`). Keep the physical
 page/span bounds separate from the live work bound, and size all three partial buffers for the
 launch they serve. Account for growing live counts, graph reuse and empty producer ranges.
 

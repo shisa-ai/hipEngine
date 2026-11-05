@@ -248,6 +248,7 @@ def surya_full_attn_decode_f32_spans(
     scale: float,
     *,
     chunk_size: int | None = None,
+    partial_num_splits: int | None = None,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -256,7 +257,9 @@ def surya_full_attn_decode_f32_spans(
 
     Replaces the batched-SGEMM scores/softmax/AV chain with one producer launch
     plus one reduce launch.  Returns the resolved ``(chunk_size, num_splits)``
-    so callers can record the plan they actually ran.
+    so callers can record the plan they actually ran. ``partial_num_splits``
+    declares the capacity of each of the three partial buffers; owner-managed
+    workspaces must pass it so a changed plan fails before submission.
     """
 
     _require_nonzero(
@@ -288,6 +291,10 @@ def surya_full_attn_decode_f32_spans(
     resolved_chunk, num_splits = plan_surya_decode_splits(
         capacity, chunk_size=chunk_size
     )
+    if partial_num_splits is not None and int(partial_num_splits) < num_splits:
+        raise ValueError(
+            f"partial buffers provide {partial_num_splits} splits, launch requires {num_splits}"
+        )
 
     runtime = runtime or get_hip_runtime()
     library = library or build_surya_ops(load=True)
