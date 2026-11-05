@@ -1232,13 +1232,13 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 Scope: `HIPENGINE_GGUF_LINEAR_ATTN_CONV_PREFILL_MODE`.
 
 Done when: finish gfx1100 primitive/public generation validation with route engagement
-and cleanup on each intended backend. Keep the schedule selector as a supported diagnostic: the full-stack
+and cleanup. Keep the schedule selector as a supported diagnostic: the full-stack
 runner caches its resolved registered callable, and the maintained sweep's baseline
-isolation profile sets it before use. Host policy/registry/profile tests, gfx1151
-primitive output/final-state checks and public lifecycle checks with `baseline` pass.
-Temporary instrumentation established that the short packed NextN request does not
-call this selector; it is not a convolution-engagement gate. Add a public ordinary
-prefill request that reaches this owner before claiming that validation.
+isolation profile sets it before use. Host policy/registry/profile tests and gfx1151
+primitive output/final-state checks pass. The public ordinary-prefill test
+`tests/test_live_gguf_conv_prefill_owner.py` confirms both baseline/tiled callable
+selection, repeated output and allocation teardown on gfx1151. Packed NextN prompts
+use a different convolution entry and are not this selector's engagement gate.
 Preserve backend auto choices, exact baseline/segmented/state-capture fallbacks and
 the tiled gfx1151 implementation. No environment-reader retirement is required while
 this comparison remains supported. Do not turn cleanup into gfx1100 promotion or

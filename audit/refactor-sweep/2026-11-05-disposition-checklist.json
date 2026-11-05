@@ -1719,11 +1719,11 @@
       "ledger_line": 1251,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "hipengine/runtime/qwen35_gguf_runner.py:9237-9238,9512-9523 resolves convolution environment schedule."
       ],
-      "next_action": "Migrate live isolation profiles to explicit construction schedule before reader removal or name retained diagnostic ownership; preserve backend auto and all strict captured-state fallbacks.",
+      "next_action": "Retain runner-cached schedule diagnostic and maintained baseline sweep consumer. Host, gfx1151 primitive and ordinary public baseline/tiled engagement/repeat/teardown checks pass. Remaining intended-backend validation requires gfx1100 device. See worklog/entries/20261105T193550.216761Z-lhl-conv-public-engagement-b7a4e1.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -5037,8 +5037,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 177,
-    "concrete_dependency_blocker": 44,
+    "locally_actionable": 176,
+    "concrete_dependency_blocker": 45,
     "human_decision_required": 6,
     "completed": 5,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."
