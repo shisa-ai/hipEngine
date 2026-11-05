@@ -1654,11 +1654,11 @@
       "ledger_line": 1187,
       "owner": "`hipengine/loading/qwen35_gguf_policy.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "hipengine/loading/qwen35_gguf_policy.py:124-140 implements one explicit decode-repack resolver."
       ],
-      "next_action": "Inventory raw/default callers and retain layout resource policy or migrate to explicit load owner; test admission/materialization agreement and absence of duplicate payloads.",
+      "next_action": "Retain shared load-time resolver and raw/default semantic/true-AR diagnostics. Host bundle passes; gfx1151 public Q4_K_S on/off loads have distinct layouts, no raw/T16 allocation pair per weight, matching short output and clean teardown. Remaining gfx1100 public matrix requires hardware. See worklog/entries/20261105T195705.442443Z-lhl-gguf-repack-owners-d1e27b.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",
@@ -5037,8 +5037,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 172,
-    "concrete_dependency_blocker": 49,
+    "locally_actionable": 171,
+    "concrete_dependency_blocker": 50,
     "human_decision_required": 6,
     "completed": 5,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."

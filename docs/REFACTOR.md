@@ -1176,19 +1176,23 @@ Owner: `hipengine/loading/qwen35_gguf_policy.py`.
 Scope: `resolve_gguf_decode_repack()`, `use_wmma_prefill`, `use_gemv_decode`;
 `HIPENGINE_GGUF_DECODE_REPACK`.
 
-Done when: Decision needed: keep environment/API layout selection as supported resource and diagnostic
-policy, or migrate comparison callers to an explicit load owner before retiring the environment
-reader. A passed release window alone does not migrate those callers. **Clearing action:** preserve
-one resolver meaning across admission and materialization, explicit-value precedence, per-tensor
-capability, byte planning, cleanup and the existing observed raw-fastpath containment. Do not turn
-layout selection into an artifact/measurement allowlist or change the activation math as a side
-effect of repacking. Run `tests/test_unit_qwen35_gguf_decode_repack_semantics.py`,
-`tests/test_unit_qwen35_gguf_decode_repack_dispatch.py`,
-`tests/test_unit_qwen35_gguf_fastpath_safety.py`, `tests/test_unit_gguf_gdn_semantic_gate.py` and
-`tests/test_unit_qwen35_gguf_bench_metadata.py`; then exercise actual public `LLM.generate()`
-default/raw requests and migrated harness comparisons with compatible local quants on each
-applicable backend. Confirm actual layouts, effective selectors, no duplicate raw/T16 residency,
-bounded allocation and cleanup.
+Done when: complete public layout/lifecycle validation on gfx1100. Retain explicit
+API/environment layout selection as load-time resource policy and diagnostics:
+`resolve_gguf_decode_repack()` already gives admission and materialization one
+meaning with explicit-value precedence. Semantic and true-AR comparison harnesses
+still exercise both values. No reader retirement is needed for these maintained
+comparisons. Preserve per-tensor capability, byte planning, cleanup and observed
+raw-fastpath containment; never use artifact/measurement admission allowlists or
+change activation math as a repacking side effect.
+
+**Clearing action:** exercise actual public default/raw requests with compatible
+quants on gfx1100 and confirm layouts, selectors, no duplicate raw/T16 residency,
+bounded allocation and cleanup. The decode-repack semantics/dispatch/fastpath,
+GDN semantic-gate and benchmark-metadata unit bundle passes. Local gfx1151 public
+Q4_K_S default/raw requests produce distinct planned/resident layouts, no raw/T16
+allocation pair on one weight, matching short greedy output and clean tracked
+allocation teardown. This is local lifecycle evidence, not a full model-quality
+or cross-backend parity claim.
 
 ### R0281-SILU-FLOOR — Bulk-prefill and verifier fused-FFN policy
 
