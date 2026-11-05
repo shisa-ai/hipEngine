@@ -76,9 +76,29 @@ def test_prefill_cancellation_restores_transport_owners_and_continues(monkeypatc
         assert linear._q8_dpp_reduction_raw() == '1'
         params = SamplingParams(max_tokens=3, temperature=0, ignore_eos=True,
                                 speculative_mtp=False)
+        # Capture recurrent state on the actual executing runner, before the
+        # serving layer releases/reset its slot after completion.
+        import os
+        from unittest.mock import patch as patch_environment
+        with patch_environment.dict(os.environ):
+            from scripts.qwen4exp_layer2_profile_gate import _state_summary
+        states = []
+
+        def record_state_steps(runner, *args, **kwargs):
+            result = yield from real_steps(runner, *args, **kwargs)
+            states.append(_state_summary(runner))
+            return result
+
         graph_runs.clear()
-        first = llm.generate_detailed([[1] * length], params)
-        second = llm.generate_detailed([[1] * length], params)
+        with monkeypatch.context() as patch:
+            patch.setattr(runtime.Qwen4ExpGGUFResidentModelRunner,
+                          '_prefill_chunk_steps', record_state_steps)
+            first = llm.generate_detailed([[1] * length], params)
+            first_states = list(states)
+            states.clear()
+            second = llm.generate_detailed([[1] * length], params)
+        assert first_states and first_states == states
+        assert all(state['finite'] for state in states)
         assert 'replay' in graph_runs, graph_runs
         assert len(first[0].generated_token_ids) == 3
         assert first[0].generated_token_ids == second[0].generated_token_ids
