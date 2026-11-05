@@ -10648,6 +10648,7 @@ class Qwen4ExpGGUFResidentModelRunner:
     q4_iu8_exact_enabled: bool | None = None
     q51_iu8_exact_enabled: bool | None = None
     q5k_iu8_exact_enabled: bool | None = None
+    bounded_kv_reset: bool = True
 
     def __init__(
         self,
@@ -10658,6 +10659,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         backend: str = "hip_gfx1151",
         runtime: HipRuntime | None = None,
         moe_graph_enabled: bool | None = None,
+        bounded_kv_reset: bool | None = None,
         q4_dp4a_decode_enabled: bool | None = None,
         q4_dp4a_decode_layers: frozenset[int] | None = None,
         production_moe_prefill_enabled: bool | None = None,
@@ -10686,6 +10688,10 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.resident = resident
         self.config = resident.plan.config
         self.backend = str(backend)
+        self.bounded_kv_reset = (
+            _qwen4_exp_bounded_kv_reset_enabled()
+            if bounded_kv_reset is None else bool(bounded_kv_reset)
+        )
         self.q4_dp4a_decode_enabled = q4_dp4a_decode_enabled
         self.q4_dp4a_decode_layers = (
             None
@@ -11726,7 +11732,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             self._pending_prefill_append = None
         assert self.state is not None
         self.state.zero()
-        bounded = _qwen4_exp_bounded_kv_reset_enabled()
+        bounded = self.bounded_kv_reset
         for attention in self.attention_states:
             if bounded:
                 # RT-4: clear only what this request could have written.  Sound by
