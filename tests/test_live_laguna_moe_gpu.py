@@ -18,6 +18,7 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.registry import KernelKey, is_registered
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.loading.laguna_gguf import (
     SLIDING_ATTENTION,
     SPARSE_MOE,
