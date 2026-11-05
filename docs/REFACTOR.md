@@ -625,19 +625,26 @@ This remaining checkpoint dependency does not restrict runtime admission.
 
 Owner: `scripts/pm4_graph_bench.py`.
 
-Scope: `pm4_stateful_local`, `pm4_stateful`, `pm4_timestamps`.
+Scope: `pm4_stateful`, `pm4_timestamps`, `HIPENGINE_SUBMISSION_TRANSPORT`.
 
-Done when: Decision needed: retain the distinct global-dependency/timestamp modes and
-`HIPENGINE_SUBMISSION_TRANSPORT` rollback as supported diagnostics, or retire their comparison
-interfaces. **Dependency:** timestamp/quarantine retirement also needs a disposition of the recorded
-ROCm/ROCm#6529 lifecycle investigation. No gfx1100 runtime is available in this local sweep to
-exercise that fault or public PM4 selection; gfx1151 HIP execution does not substitute for it.
-**Clearing action:** if retained, name the diagnostic owner and close the remaining cleanup; if
-retired, migrate the lifecycle/graph benchmark callers and remove only unused encoder options. Run
-`tests/test_unit_pm4_graph_bench.py`, `tests/test_unit_pm4_transport.py` and
-`tests/test_unit_pm4_lifecycle_repro.py`, then on gfx1100 exercise public automatic and explicitly
-selected transport, rebuild/cancel/shutdown and resource cleanup. Preserve native HIP graph and
-distinct AQL profiling, and keep full provenance serialization out of replay.
+The comparison interfaces have live owners: `scripts/pm4_graph_bench.py` owns
+explicit global-dependency (`pm4_stateful`) and timestamp (`pm4_timestamps`)
+comparisons in separate submission contexts; `scripts/pm4_lifecycle_repro.py`
+owns timestamp/quarantine stress controls. `pm4_stateful_local` is already
+rejected: canonical `pm4` uses stateful registers with local dependencies.
+The transport selector remains the supported explicit rollback interface in
+`hipengine/core/pm4/transport.py`; do not delete these distinct comparisons as
+unused aliases.
+
+Done when: resolve the recorded ROCm/ROCm#6529 lifecycle investigation on
+gfx1100 and validate public automatic/explicit transport, rebuild, cancellation,
+shutdown and resource cleanup. No gfx1100 runtime is available on this gfx1151
+host. **Clearing action:** on gfx1100 run the safe public transport lifecycle
+checks and follow `docs/reference/PM4.md`'s issue-grade runbook for investigation;
+reset-risk queue-recreation stress needs its separate explicit approval.
+The local graph-bench/transport/lifecycle unit bundle passes; it does not prove
+gfx1100 device behavior. Preserve HIP graph and distinct AQL profiling, and keep
+full provenance serialization out of replay.
 
 ### R0219 — Source-F16 packed-prefill integration and rollback decision
 

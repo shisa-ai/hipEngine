@@ -995,12 +995,13 @@
       "ledger_line": 646,
       "owner": "`scripts/pm4_graph_bench.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "scripts/pm4_graph_bench.py:43-53,373-387 retains distinct timestamp and stateful modes.",
-        "docs/REFACTOR.md R0217 permits naming retained diagnostic ownership instead of removing functioning comparisons."
+        "Graph benchmark owns distinct global-dependency/timestamp comparisons; lifecycle reproducer owns timestamp/quarantine stress; transport module owns explicit rollback.",
+        "pm4_stateful_local is already rejected; 19 graph-bench/transport/lifecycle unit tests pass (/tmp/pm4-diagnostic-ownership.xml).",
+        "Native submission factory requires hip_gfx1100/gfx1100; current host is gfx1151."
       ],
-      "next_action": "Inspect active lifecycle/graph callers and record retained diagnostic ownership or remove only demonstrably unused options. Keep the gfx1100 lifecycle investigation separate from locally possible interface disposition.",
+      "next_action": "On gfx1100 validate public transport lifecycle and resolve ROCm#6529 following docs/reference/PM4.md; reset-risk stress requires separate approval. Interface ownership inventory is complete; preserve live comparisons.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -5033,8 +5034,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 184,
-    "concrete_dependency_blocker": 39,
+    "locally_actionable": 183,
+    "concrete_dependency_blocker": 40,
     "human_decision_required": 6,
     "completed": 3,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."
