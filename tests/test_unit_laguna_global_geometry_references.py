@@ -98,6 +98,7 @@ def test_lcd3_leaf_keeps_distinct_current_geometry_references(harness, monkeypat
     assert all(args[:3] == (3, 101, 102) for _, args, _ in h.calls)
     assert result["candidate_kind"] == candidate and result["performance_claim"] is False
     assert all(row["correctness"]["context_f32_byte_exact"] and row["correctness"]["gated_bf16_byte_exact"] for row in result["rows"])
+    assert all(not any(key.startswith("repair_") for key in row["correctness"]) for row in result["rows"])
     assert h.cache_calls == ["prepare", "append", "commit", "position", "free"]
     assert h.freed == list(reversed([buffer.ptr for buffer in h.allocated]))
 

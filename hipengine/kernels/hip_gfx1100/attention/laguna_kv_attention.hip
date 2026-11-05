@@ -2848,7 +2848,6 @@ void laguna_global_attention_split_gqa6_ctx4096_pv_merge_kernel(
     float* out,
     const float* gate,
     uint16_t* gated_out,
-    int32_t* repair_mask,
     const int64_t* row_positions,
     int num_splits) {
   constexpr int kNumQueryHeads = 48;
@@ -2874,131 +2873,10 @@ void laguna_global_attention_split_gqa6_ctx4096_pv_merge_kernel(
       acc += partial;
     }
   }
-  float reverse_acc = 0.0f;
-  for (int split = num_splits - 1; split >= 0; --split) {
-    reverse_acc += partial_out[static_cast<int64_t>(split) * kOutputElements +
-                               output_idx];
-  }
   out[output_idx] = acc;
   const float gated = acc * laguna_softplus_f32(gate[q_head]);
   const uint16_t rounded_bits = laguna_float_to_bf16_bits(gated);
   gated_out[output_idx] = rounded_bits;
-
-  // Context splitting only changes cross-split F32 association. Most outputs
-  // remain far from a BF16 rounding boundary and are therefore provably
-  // unchanged at the consumed ABI. Flag the narrow ambiguous band for a
-  // chronological scalar repair instead of serializing all 6,144 outputs.
-  const float rounded = laguna_bf16_bits_to_float(rounded_bits);
-  uint16_t lower_bits;
-  uint16_t upper_bits;
-  if ((rounded_bits & 0x7fffu) == 0u) {
-    lower_bits = 0x8001u;
-    upper_bits = 0x0001u;
-  } else if ((rounded_bits & 0x8000u) != 0u) {
-    lower_bits = static_cast<uint16_t>(rounded_bits + 1u);
-    upper_bits = static_cast<uint16_t>(rounded_bits - 1u);
-  } else {
-    lower_bits = static_cast<uint16_t>(rounded_bits - 1u);
-    upper_bits = static_cast<uint16_t>(rounded_bits + 1u);
-  }
-  const float lower_midpoint =
-      0.5f * (rounded + laguna_bf16_bits_to_float(lower_bits));
-  const float upper_midpoint =
-      0.5f * (rounded + laguna_bf16_bits_to_float(upper_bits));
-  const float boundary_distance = fminf(
-      fabsf(gated - lower_midpoint), fabsf(upper_midpoint - gated));
-  const float gate_scale = laguna_softplus_f32(gate[q_head]);
-  const float association_probe =
-      fabsf(acc - reverse_acc) * fabsf(gate_scale);
-  const float repair_margin = 4.0e-9f + 4.0f * association_probe;
-  repair_mask[output_idx] =
-      (!isfinite(gated) || boundary_distance <= repair_margin) ? 1 : 0;
-}
-
-// Sparse exact repair for outputs whose context-parallel result lies close
-// enough to a BF16 midpoint that changed F32 association could change the
-// consumed BF16 bit pattern. One thread owns one output and replays precisely
-// the chronological scalar-F32 FMA chain used by the exact D32 fallback.
-__global__ __launch_bounds__(128)
-void laguna_global_attention_split_gqa6_ctx4096_pv_repair_kernel(
-    const uint16_t* value_cache,
-    const float* score_scratch,
-    const int32_t* physical_scratch,
-    const int32_t* repair_mask,
-    float* out,
-    const float* gate,
-    uint16_t* gated_out,
-    const int64_t* live_counts,
-    const int64_t* row_positions,
-    int64_t capacity,
-    int64_t scratch_stride,
-    int64_t scan_slots) {
-  constexpr int kNumKvHeads = 8;
-  constexpr int kQueryGroup = 6;
-  constexpr int kHeadDim = 128;
-  constexpr int kValueStage = 64;
-  __shared__ float shared_probability[kValueStage];
-  __shared__ uint16_t shared_value[kValueStage * kHeadDim];
-  __shared__ int repair_any;
-  const int q_head = static_cast<int>(blockIdx.x);
-  const int dim = static_cast<int>(threadIdx.x);
-  if (q_head >= 48 || dim >= kHeadDim || row_positions[0] < 0) return;
-  const int output_idx = q_head * kHeadDim + dim;
-  const bool repair_output = repair_mask[output_idx] != 0;
-  if (dim == 0) repair_any = 0;
-  __syncthreads();
-  if (repair_output) atomicExch(&repair_any, 1);
-  __syncthreads();
-  if (repair_any == 0) return;
-  int64_t context_len = live_counts[0] < capacity ? live_counts[0] : capacity;
-  context_len = context_len < scan_slots ? context_len : scan_slots;
-  if (context_len <= 0) return;
-  const int kv_head = q_head / kQueryGroup;
-  const int64_t scratch_base =
-      static_cast<int64_t>(q_head) * scratch_stride;
-  float acc = 0.0f;
-  for (int64_t stage_base = 0; stage_base < context_len;
-       stage_base += kValueStage) {
-    const int stage_count = static_cast<int>(
-        context_len - stage_base < kValueStage
-            ? context_len - stage_base
-            : kValueStage);
-    if (dim < stage_count) {
-      shared_probability[dim] =
-          score_scratch[scratch_base + stage_base + dim];
-    }
-    for (int value_idx = dim; value_idx < stage_count * kHeadDim;
-         value_idx += static_cast<int>(blockDim.x)) {
-      const int stage_token = value_idx / kHeadDim;
-      const int value_dim = value_idx - stage_token * kHeadDim;
-      const int physical_slot =
-          physical_scratch[stage_base + stage_token];
-      if (physical_slot >= 0) {
-        const int64_t value_offset =
-            (static_cast<int64_t>(physical_slot) * kNumKvHeads + kv_head) *
-                kHeadDim +
-            value_dim;
-        shared_value[value_idx] = value_cache[value_offset];
-      } else {
-        shared_value[value_idx] = 0;
-      }
-    }
-    __syncthreads();
-    if (repair_output) {
-      for (int stage_token = 0; stage_token < stage_count; ++stage_token) {
-        const float weight = shared_probability[stage_token];
-        if (!(weight > 0.0f)) continue;
-        acc += weight * laguna_bf16_bits_to_float(
-            shared_value[stage_token * kHeadDim + dim]);
-      }
-    }
-    __syncthreads();
-  }
-  if (repair_output) {
-    out[output_idx] = acc;
-    gated_out[output_idx] = laguna_float_to_bf16_bits(
-        acc * laguna_softplus_f32(gate[q_head]));
-  }
 }
 
 // Natural Laguna global-attention reducer specialization. The live length
@@ -11675,7 +11553,6 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
   float* partial_out = kDeferredNorm
       ? inverse_sums + kInverseElements
       : reinterpret_cast<float*>(physical_scratch + capacity);
-  int32_t* repair_mask = reinterpret_cast<int32_t*>(partial_out);
   if constexpr (kAllwaveScore) {
     static_assert(kDensePrefixScore);
     hipLaunchKernelGGL(
@@ -11798,7 +11675,6 @@ laguna_global_attention_decode_split_gated_gqa6_vstage64_ctx4096_impl(
       out,
       gate,
       gated_out,
-      repair_mask,
       row_positions,
       num_splits);
   error = static_cast<int>(hipGetLastError());

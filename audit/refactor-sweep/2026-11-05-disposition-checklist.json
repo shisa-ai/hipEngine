@@ -2249,11 +2249,13 @@
       "ledger_line": 1726,
       "owner": "`scripts/laguna_global_issue_diagnostic.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "scripts/laguna_global_issue_diagnostic.py is the current geometry comparison owner."
+        "Geometry comparisons retained; unused repair kernel/mask writes and leaf reporting removed with unchanged partial storage/forward accumulation.",
+        "62 host and 28 GPU tests pass; 20 pre/post context/gated hash pairs match across compensation and normalization modes on gfx1151.",
+        "worklog/entries/20261105T224402.566213Z-lhl-r0368-repair-2b6a03.md"
       ],
-      "next_action": "Inventory geometry symbol consumers, separate dead repair/mask reporting from shared production merge and preserve exact partial storage/arithmetic.",
+      "next_action": "Supply absent Laguna checkpoint for public route/teacher/KV/reset/reuse/teardown checks; local cleanup complete.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

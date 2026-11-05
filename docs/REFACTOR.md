@@ -1638,18 +1638,16 @@ Owner: `scripts/laguna_global_issue_diagnostic.py`.
 
 Scope: `scripts/laguna_global_issue_diagnostic.py` — LC-D3 global geometry diagnostics and unused repair separation.
 
-**Decision needed:** retain the explicit geometry comparisons or move them to a diagnostic build
-before deleting their symbols. Separate dead repair code and mask reporting from the shared
-production merge without changing partial-output storage or arithmetic. Validation requires a ROCm host and the Laguna artifact.
+**Local cleanup complete:** retain explicit geometry comparisons. The unused repair kernel,
+reverse-association probe, aliased repair-mask writes and misleading leaf repair counters are
+removed. Partial-output layout and forward accumulation remain unchanged. Both compensation
+modes and normalized/deferred merges have matching pre/post context and gated-output hashes
+at live lengths 3997, 4095, 4096, 4097 and 6131 on gfx1151. Host and device suites pass;
+see `worklog/entries/20261105T224402.566213Z-lhl-r0368-repair-2b6a03.md`.
 
-Done when: inventory wrapper, registration, leaf and GPU-test consumers before deleting
-geometry symbols. For repair removal, test both compensation modes and normalized/deferred merges,
-then run `uv run pytest tests/test_unit_laguna_global_geometry_references.py
-tests/test_unit_laguna_global_issue_comparison.py tests/test_gpu_laguna_kv_attention.py`. Run the
-global leaf on both sides of the split/policy boundaries and unrelated live lengths, then public
-Laguna generation with route attribution, teacher logits, KV metadata, reset/reuse and teardown.
-Preserve broader production numerical contracts; strict-parent equality is not a replacement for the
-profile gate.
+Done when: supply the absent Laguna checkpoint and run public generation with route attribution,
+teacher logits, KV metadata, reset/reuse and teardown. Preserve broader production numerical
+contracts; unchanged primitive hashes do not establish a new profile or full-model result.
 
 ### R0367 — Selected gate/up halfdot and exact-teacher ownership
 
