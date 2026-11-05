@@ -935,18 +935,20 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `global_prefill_variant`; `swa_prefill_variant`; `swa_decode_variant`.
 
-Done when: Decision needed: keep `global_prefill_variant`, `swa_prefill_variant` and `swa_decode_variant`
-as supported diagnostic controls, or migrate comparison callers and retire redundant public positive
-selection. The grouped-down category, SWA leaf, target-AR, DFlash and publication harnesses still
-use these interfaces. Existing runtime-policy/GPU tests exercise explicit variants too. **Clearing
-action:** migrate those callers before removing a mode, preserving independent comparison arithmetic
-and backend defaults. Run `tests/test_unit_laguna_gguf_runner.py`,
-`tests/test_unit_laguna_grouped_down_category_bench.py`,
-`tests/test_unit_laguna_target_ar_bench.py`, `tests/test_unit_laguna_dflash_category_bench.py` and
-`tests/test_gpu_laguna_kv_attention.py`. Complete R0249/R0250's public gate on each applicable
-backend with wrapped SWA, dense/global and non-dense spans, empty/short/partial rows, continuation,
-verifier rows and cleanup. Do not collapse strict exact fallbacks into online arithmetic during
-interface cleanup.
+Done when: complete R0249/R0250's actual-weight public gate below. Retain these
+explicit constructor diagnostics: grouped-down categories compare exact spans,
+online qrow2 and wider qrow4 routes; publication arms isolate global/SWA prefill;
+SWA leaf and ceiling harnesses select their own reference/candidate; target-AR
+forwards requests and DFlash reports resolved target variants. Resolvers validate
+implemented names, while omitted requests use independent backend package defaults.
+No shared mutable selector or redundant alias requires migration here.
+
+**Clearing action:** with the Laguna checkpoint, run public wrapped SWA,
+dense/global and non-dense spans, empty/short/partial rows, continuation, verifier
+rows and cleanup on each applicable backend. Runner, category, target-AR and DFlash
+unit tests pass for the interfaces; primitive tests are separate from actual-weight
+validation. Preserve independent exact fallbacks and do not collapse them into
+online arithmetic during interface cleanup.
 
 ### R0281-PARO-WIDTH — PARO batch policy and diagnostic controls
 

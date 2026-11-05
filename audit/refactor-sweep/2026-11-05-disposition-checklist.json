@@ -1356,12 +1356,12 @@
       "ledger_line": 955,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "scripts/laguna_dflash_category_bench.py:137-147,680-704 still reports separate global/SWA prefill variants.",
         "hipengine/runtime/laguna_gguf_runner.py:2951,3081-3083 keeps independent decode choice."
       ],
-      "next_action": "Inventory distinct exact comparisons, name retained diagnostic owners or migrate redundant positive-selection callers with scoped restoration; public gate waits on checkpoint.",
+      "next_action": "Retain constructor variant diagnostics with category exact/online/wide, publication isolation, leaf reference/candidate, target-AR forwarding and DFlash reporting owners. Host interface bundle passes. Public wrapped/dense/non-dense/partial/continuation/verifier and cleanup matrix requires R0249/R0250 checkpoint. See worklog/entries/20261105T195237.253077Z-lhl-laguna-attention-variants-51aebb.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
@@ -5037,8 +5037,8 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 173,
-    "concrete_dependency_blocker": 48,
+    "locally_actionable": 172,
+    "concrete_dependency_blocker": 49,
     "human_decision_required": 6,
     "completed": 5,
     "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."
