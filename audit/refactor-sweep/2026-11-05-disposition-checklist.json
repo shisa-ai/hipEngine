@@ -2053,11 +2053,13 @@
       "ledger_line": 1552,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/generation/qwen35_gguf.py:14210 still reads native sampler placement flag."
+        "Retain supported host-placement rollback and independent strict-algorithm diagnostic; profiler/generators/API remain coordinated, native default unchanged.",
+        "65 sampler/API host tests, 180 lifecycle tests, real per-arm fixed-seed repeats and sampled HTTP batch/cancel/refill/cleanup pass.",
+        "Slot-view sampler leak repaired in ca22607f0; worklog/entries/20261105T225834.096370Z-lhl-r0508-disposition-0a64d3.md."
       ],
-      "next_action": "Inventory profiler/generator/capabilities consumers and migrate placement comparison into owned sampler policy or document supported diagnostics without changing RNG algorithm.",
+      "next_action": "None. No control retirement or arithmetic/support expansion; forced/dynamic host fallback preserved.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

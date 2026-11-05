@@ -1458,25 +1458,6 @@ public uniform and mixed requests with oracle/direct selection, short/long/ragge
 rejection, reset/cancellation and cleanup. Verify actual attention sources and transient oracle
 owners.
 
-### R0281-SAMPLER / R0508 — Native placement rollback and algorithm controls
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `HIPENGINE_QWEN35_NATIVE_SAMPLER`.
-
-**Decision needed:** keep host-placement and strict-algorithm controls as supported diagnostics, or
-migrate the environment comparison to scoped sampler policy. Do not delete working native workspace
-wiring because an older tool scenario failed, and do not broaden forced/dynamic request support
-implicitly.
-
-Done when: migrate actual profiler, generator and capabilities-endpoint consumers together
-if retiring the placement flag, preserving host/native comparison arms and explicit fallback
-reasons. Run the GGUF default/prefill-owner, PARO generator, sampler-contract and capabilities
-tests, plus real sampled `LLM.generate()`/server requests with fixed-seed repeats, packed/staggered
-rows, forced/dynamic fallback, cancellation/refill and cleanup. Algorithm changes also need
-independent distribution and numerical-oracle gates; host/native repeat stability does not mean
-their RNG streams must match.
-
 ### R0281-MOE-GRAPH — Scalar per-layer graph diagnostic ownership
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
