@@ -804,6 +804,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         diagnostic_scopes.enter_context(swa_issue_comparison(owner, args))
         diagnostic_scopes.enter_context(global_issue_comparison(owner, args))
+        diagnostic_scopes.enter_context(owner.prefill_attention_diagnostic())
         active_matrix_rows = owner.prefill_chunk_size
         if args.warmup_rows > active_matrix_rows:
             raise ValueError("LPF-5 warmup rows must fit one retained chunk")

@@ -7,6 +7,7 @@ owned scratch, greedy top-1, and caller-owned DFlash hidden taps.
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import os
 from collections.abc import Mapping, Sequence
@@ -4218,6 +4219,23 @@ class LagunaGGUFResidentSession:
         """Select bounded-state blocks within qualified long attention."""
 
         self.prefill_block_attention_hipblaslt = bool(enabled)
+
+    @contextlib.contextmanager
+    def prefill_attention_diagnostic(
+        self, *, swa: bool | None = None, dense_contiguous: bool | None = None,
+    ):
+        """Restore owner-local attention comparison choices even after failure."""
+        previous = (self.prefill_swa_attention_hipblaslt,
+                    self.prefill_dense_contiguous_cache)
+        try:
+            if swa is not None:
+                self.set_prefill_swa_attention_hipblaslt(swa)
+            if dense_contiguous is not None:
+                self.set_prefill_dense_contiguous_cache(dense_contiguous)
+            yield
+        finally:
+            (self.prefill_swa_attention_hipblaslt,
+             self.prefill_dense_contiguous_cache) = previous
 
     def set_prefill_dense_contiguous_cache(self, enabled: bool) -> None:
         """Select direct identity addressing for qualified global prompt KV."""
