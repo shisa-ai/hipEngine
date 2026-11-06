@@ -5092,9 +5092,10 @@
       "review_status": "reviewed",
       "disposition": "locally_actionable",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:2601-2656 retains packed target private allocation/copy maps."
+        "worklog/entries/20261106T043511.163461Z-lhl-r0210-inventory-9e1ed3.md",
+        "Pool-backed missing-eager, appended-chunk, confined placement/growth and mixed-map replacement implemented through 34fc24c17; charge ownership 2a9eaa40d; binding failure cleanup 73c8fd2db. Actual gfx1151 graph page-map gate: 7 pass."
       ],
-      "next_action": "Inventory private producers/fallbacks and migrate to lease-backed allocation with graph invalidation and failed-capture release before deleting fallback.",
+      "next_action": "Give no-pool direct sessions a compatible lease/storage owner and migrate remaining private fallback before deleting it. Private allocation charge acquisition is isolated; pool-backed placement is implemented. Preserve resource refusal, graph invalidation and direct strict fixtures.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
