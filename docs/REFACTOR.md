@@ -2915,12 +2915,15 @@ Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
 Scope: `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS`,
 `HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES`.
 
-**Partial ownership migration:** exact rows and padding are immutable
-`PhysicalTargetRowsPlan` values bound by dense gfx1100/gfx1151 and MoE gfx1151
-profile construction. Direct callers use the same resolver. See
-[`row-owner checkpoint`](../worklog/entries/20261106T094204.248065Z-lhl-r0195-row-owner-2c7013.md).
-Mixed-Q6 partitions, prompt streaming and concurrency/shape policy still need
-consolidation into the profile-resolved physical-target manifest.
+**Partial ownership migration:** exact rows, padding and Q4/Q5/Q6 rowtile choices
+are immutable `PhysicalTargetRowsPlan` values bound by dense gfx1100/gfx1151
+and MoE gfx1151 profile construction. Width/depth cells are also frozen on the
+profile owner; adapter capacity clamping remains independent. Direct callers use
+the same resolvers. See
+[`row-owner checkpoint`](../worklog/entries/20261106T094204.248065Z-lhl-r0195-row-owner-2c7013.md)
+and [`width-owner checkpoint`](../worklog/entries/20261106T095506.365433Z-lhl-r0195-width-owner-457c24.md).
+Loaded-geometry prompt policy and final target-shape attribution still need
+integration into the profile-resolved physical-target manifest.
 Reuse RF-1/RF-10 ownership rather than add a parallel selector. Retire the two rollback flags
 only with explicit coverage of their replacement policies and diagnostic controls.
 
