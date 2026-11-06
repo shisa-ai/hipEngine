@@ -1645,16 +1645,17 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `LLM.generate()`.
 
-**Remaining work:** migrate the dedicated comparison to an explicit diagnostic owner before retiring
-the constructor override and script. Preserve generic unpack and gate primitives. The local Laguna
-artifact resource blocker in R0273/R0274 prevents actual-weight/public validation here, not
-execution by a user with an available artifact.
+**Comparison migration implemented:** the dedicated harness uses owner-local
+`packed_attention_diagnostic(...)` for warmup and measured runs, without package-global
+mutation or a constructor override. Backend defaults and generic unpack/gate primitives
+are unchanged. Host route, restoration and cleanup checks pass; device/full-state and
+public validation still require the absent Laguna artifact (R0273/R0274).
 
 Done when: run packed-output, producer-retirement, runner and long context profile host
 checks; execute the repaired paired comparison with an available Laguna artifact and confirm
 distinct packed/generic gate routes, full-state equality and cleanup. Exercise public
-`LLM.generate()` with varied lengths including partial tiles. Then migrate the diagnostic owner and
-retire its redundant public selector without changing backend defaults.
+`LLM.generate()` with varied lengths including partial tiles. Keep paired result readers on the
+explicit owner scope without changing backend defaults.
 
 ### R0333–R0335 — Laguna Q4 P8 and sum comparison ownership
 

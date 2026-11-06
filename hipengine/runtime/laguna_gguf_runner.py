@@ -2956,7 +2956,6 @@ class LagunaGGUFResidentSession:
         prefill_global_qrow6: bool | None = None,
         prefill_dense_initial: bool | None = None,
         prefill_attention_hipblaslt: bool | None = None,
-        prefill_attention_hipblaslt_packed_output_gate: bool | None = None,
         prefill_long_attention_hipblaslt: bool | None = None,
         prefill_block_attention_hipblaslt: bool | None = None,
         prefill_dense_contiguous_cache: bool | None = None,
@@ -3478,8 +3477,6 @@ class LagunaGGUFResidentSession:
                 "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_OUTPUT_GATE",
                 False,
             )
-            if prefill_attention_hipblaslt_packed_output_gate is None
-            else prefill_attention_hipblaslt_packed_output_gate
         )
         self.prefill_long_attention_hipblaslt = bool(
             backend_package_capability(

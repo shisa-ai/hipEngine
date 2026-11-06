@@ -2437,7 +2437,7 @@
       "evidence": [
         "hipengine/runtime/laguna_gguf_runner.py:2958,3474-3481 retains packed-output gate comparison."
       ],
-      "next_action": "Move dedicated packed/generic output comparison into explicit diagnostic owner, migrate script/result consumers and preserve generic unpack/gate primitives.",
+      "next_action": "Owner-local packed_attention_diagnostic and harness migration completed in d4e5763a2; redundant packed-output constructor override retired with 87 focused host tests. Remaining actual-weight paired full-state/public varied-length validation requires absent Laguna model artifact R0273/R0274; generic unpack/gate primitives and production defaults remain unchanged.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

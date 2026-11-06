@@ -38,8 +38,11 @@ def test_packed_attention_diagnostic_restores_nested_owner_choices(fails):
     assert owner.prefill_attention_hipblaslt_packed_output_gate is True
 
 
-def test_producer_override_is_removed():
-    name = "prefill_attention_hipblaslt_packed_query_producer"
+@pytest.mark.parametrize("name", [
+    "prefill_attention_hipblaslt_packed_query_producer",
+    "prefill_attention_hipblaslt_packed_output_gate",
+])
+def test_producer_override_is_removed(name):
     assert name not in inspect.signature(LagunaGGUFResidentSession).parameters
     for value in (False, True):
         with pytest.raises(TypeError, match="unexpected keyword"):
