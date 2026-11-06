@@ -588,6 +588,11 @@ def _cache_native_target_graph(
     graph: Any,
 ) -> None:
     cache = _native_target_graph_cache(session)
+    previous = cache.get(key)
+    if previous is not None and previous is not graph:
+        close = getattr(previous, "close", None)
+        if callable(close):
+            close()
     cache.pop(key, None)
     cache[key] = graph
     while len(cache) > _NATIVE_TARGET_GRAPH_CACHE_MAX_ENTRIES:

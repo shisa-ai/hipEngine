@@ -5,6 +5,20 @@ from hipengine.runtime import gguf_native_spec_cycle as cycle
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 
+def test_same_key_replacement_closes_previous_graph_once():
+    session = SimpleNamespace()
+    closed = []
+    first = SimpleNamespace(close=lambda: closed.append('first'))
+    second = SimpleNamespace(close=lambda: closed.append('second'))
+    key = (2, True, 256, False)
+    cycle._cache_native_target_graph(session, key, first)
+    cycle._cache_native_target_graph(session, key, first)
+    assert closed == []
+    cycle._cache_native_target_graph(session, key, second)
+    assert closed == ['first']
+    assert session._native_spec_target_graphs == {key: second}
+
+
 def test_warmup_uses_bounded_cache_insertion(monkeypatch):
     monkeypatch.setattr(cycle, '_NATIVE_TARGET_GRAPH_CACHE_MAX_ENTRIES', 1)
     session = object.__new__(Qwen35GGUFResidentSession)
