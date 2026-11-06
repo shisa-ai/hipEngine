@@ -142,6 +142,9 @@ class FakeBatchRunner:
         )
         return tuple(reversed(slots)) if self.free_slot_order == "descending" else slots
 
+    def position(self, slot):
+        return int(self._positions[int(slot)])
+
     def owners_of(self, slots):
         return tuple(self._owners[int(slot)] for slot in slots)
 
