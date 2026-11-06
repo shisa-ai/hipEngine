@@ -597,12 +597,13 @@ def _cache_native_target_graph(
     cache[key] = graph
     while len(cache) > _NATIVE_TARGET_GRAPH_CACHE_MAX_ENTRIES:
         _evicted_key, evicted = next(iter(cache.items()))
-        cache.pop(_evicted_key, None)
-        if evicted is graph:
-            continue
-        close = getattr(evicted, "close", None)
-        if callable(close):
-            close()
+        if evicted is not graph:
+            close = getattr(evicted, "close", None)
+            if callable(close):
+                close()
+        # Close may remove its own aliases; only forget the entry after success.
+        if cache.get(_evicted_key) is evicted:
+            cache.pop(_evicted_key, None)
 
 
 def _dynamic_target_scratch(session: Any, buffers: TargetVerifyBuffers, *, rows: int, context_limit: int):

@@ -1,8 +1,34 @@
 """Host-only target graph warmup cache ownership."""
 from types import SimpleNamespace
 
+import pytest
+
 from hipengine.runtime import gguf_native_spec_cycle as cycle
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+
+def test_eviction_close_failure_keeps_graph_reachable_for_retry(monkeypatch):
+    monkeypatch.setattr(cycle, '_NATIVE_TARGET_GRAPH_CACHE_MAX_ENTRIES', 1)
+    session = SimpleNamespace()
+    events = []
+    failing = True
+    def close():
+        if failing:
+            raise RuntimeError('injected close failure')
+        events.append('closed')
+    first = SimpleNamespace(close=close)
+    second = SimpleNamespace(close=lambda: None)
+    first_key = (1, True, 256, False)
+    second_key = (2, True, 256, False)
+    cycle._cache_native_target_graph(session, first_key, first)
+    with pytest.raises(RuntimeError, match='injected close failure'):
+        cycle._cache_native_target_graph(session, second_key, second)
+    assert session._native_spec_target_graphs[first_key] is first
+    assert session._native_spec_target_graphs[second_key] is second
+    failing = False
+    cycle._cache_native_target_graph(session, second_key, second)
+    assert events == ['closed']
+    assert session._native_spec_target_graphs == {second_key: second}
 
 
 def test_same_key_replacement_closes_previous_graph_once():
