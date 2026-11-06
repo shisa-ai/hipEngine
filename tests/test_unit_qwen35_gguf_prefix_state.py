@@ -153,6 +153,21 @@ def _two_layer_state():
     )
 
 
+def test_idle_trim_reserves_allowance_for_quarantine() -> None:
+    runtime = _FakeRuntime()
+    pool = _RecordingPool(runtime)
+    idle = pool.acquire(4096)
+    quarantined = pool.acquire(8192)
+    pool.release(idle)
+    pool.quarantine(quarantined, stream=7)
+    try:
+        pool.trim_idle(quarantined.owner.nbytes)
+        assert idle.closed
+        assert not quarantined.closed
+    finally:
+        pool.close()
+
+
 def test_idle_budget_trim_preserves_quarantined_arenas() -> None:
     runtime = _FakeRuntime()
     pool = _RecordingPool(runtime)

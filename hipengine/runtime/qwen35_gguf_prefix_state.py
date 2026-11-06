@@ -157,15 +157,21 @@ class _GGUFPrefixSnapshotArenaPool:
         }))
 
     def trim_idle(self, max_bytes: int) -> int:
-        """Free idle arenas to a byte bound, never touching in-flight quarantine."""
+        """Fit held owners to a byte bound by freeing only idle arenas.
+
+        Quarantined owners consume allowance but cannot be reclaimed here.
+        """
         if int(max_bytes) < 0:
             raise ValueError("idle arena byte bound must be non-negative")
+        quarantined_bytes = sum(int(arena.capacity_bytes)
+                                for arena, _stream in self._quarantine if not arena.closed)
+        idle_allowance = max(0, int(max_bytes) - quarantined_bytes)
         total = sum(int(arena.capacity_bytes)
                     for bucket in self._free.values() for arena in bucket)
         released = 0
         for capacity in sorted(self._free, reverse=True):
             bucket = self._free[capacity]
-            while bucket and total > int(max_bytes):
+            while bucket and total > idle_allowance:
                 arena = bucket[-1]
                 size = int(arena.capacity_bytes)
                 arena.close()
