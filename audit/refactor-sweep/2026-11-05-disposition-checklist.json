@@ -2415,7 +2415,7 @@
       "evidence": [
         "hipengine/runtime/f16_weight_linear.py:23,108-114 reads source-F16 decode mode and backend capability."
       ],
-      "next_action": "Context-local decode strategy and profiler environment migration completed in 8a6893fc4 (29 shape/decode and 68 profiler tests). Finish GPU generic-K/single/triple/alternate-launch shape matrix; public Laguna remains blocked by absent model artifact under R0273. Preserve legacy environment compatibility until reader migration is complete.",
+      "next_action": "Context-local decode strategy and profiler environment migration completed in 8a6893fc4. Generic-K leaf parity and alternate launch-width single/triple device dispatch passed on gfx1151 (full projection file: 50 passed; worklog 20261106T113231.562115Z-lhl-r0340-auto-device-73121d.md). Finish remaining compatibility-reader migration; actual-weight public Laguna generation/continuation/teardown depends on absent model artifact R0273.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

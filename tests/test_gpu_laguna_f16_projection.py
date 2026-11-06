@@ -1477,6 +1477,74 @@ def test_laguna_f16_projection_wmma_rejects_non_tile_k() -> None:
         laguna_f16w_wmma_bf16_f32_out(1, 2, 3, 16, 63, 32)
 
 
+@pytest.mark.parametrize("width,threads", [(256, 64), (3072, 64), (3073, 128), (4096, 256)])
+@pytest.mark.parametrize("triple", [False, True])
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_f16_auto_decode_device_launch_widths(monkeypatch, width, threads, triple):
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.runtime import f16_weight_linear as dispatch
+    from hipengine.kernels.hip_gfx1100.linear import laguna_f16_projection as primitive
+
+    runtime = get_hip_runtime()
+    library = primitive.build_laguna_f16_projection(load=True)
+    rng = np.random.default_rng(340 + width + threads)
+    allocations = []
+    selected = []
+    original_resolve = dispatch._resolve
+
+    def record(key):
+        selected.append(key.variant)
+        return original_resolve(key)
+
+    monkeypatch.setattr(dispatch, "_resolve", record)
+    try:
+        x = _upload(float_array_to_bf16_bits(
+            rng.normal(0, 0.1, (1, width)).astype(np.float32)
+        ), runtime, allocations)
+        weights = [_upload(rng.normal(0, 0.1, (17, width)).astype(np.float16),
+                           runtime, allocations) for _ in range(3)]
+        refs = [_alloc((1, 17), np.float32, runtime, allocations) for _ in weights]
+        outputs = [_alloc((1, 17), np.float32, runtime, allocations) for _ in weights]
+        owners = [SimpleNamespace(
+            backend="hip_gfx1151",
+            spec=SimpleNamespace(layout="dense_f16", quant_key="fp16"),
+            allocation=lambda name, device=device: SimpleNamespace(
+                tensor=SimpleNamespace(ptr=device.ptr)),
+        ) for device in weights]
+        kwargs = dict(library=library, runtime=runtime, threads=threads)
+        with dispatch.f16_decode_strategy("auto"), dispatch.f16_prefill_strategy("auto"):
+            if triple:
+                primitive.laguna_f16w_triple_gemv_bf16_f32_out(
+                    x.ptr, *(w.ptr for w in weights), *(out.ptr for out in refs),
+                    1, width, 17, 17, 17, **kwargs,
+                )
+                dispatch.launch_f16_weight_linear_triple(
+                    *owners, x.ptr, *(out.ptr for out in outputs),
+                    rows=1, in_features=width,
+                    out_a_features=17, out_b_features=17, out_c_features=17,
+                    libraries={"fp16_weight": library}, runtime=runtime, threads=threads,
+                )
+            else:
+                primitive.laguna_f16w_gemv_bf16_f32_out(
+                    x.ptr, weights[0].ptr, refs[0].ptr, 1, width, 17, **kwargs,
+                )
+                dispatch.launch_f16_weight_linear(
+                    owners[0], x.ptr, outputs[0].ptr, 1, width, 17,
+                    libraries={"fp16_weight": library}, runtime=runtime, threads=threads,
+                )
+        runtime.device_synchronize()
+        assert selected == ["onebarrier_bf16_f32_out" if threads == 256 else "bf16_f32_out"]
+        for ref, output in zip(refs[:3 if triple else 1], outputs):
+            np.testing.assert_array_equal(
+                _download(ref, (1, 17), np.float32, runtime),
+                _download(output, (1, 17), np.float32, runtime),
+            )
+    finally:
+        runtime.device_synchronize()
+        for device in reversed(allocations):
+            free(device, runtime=runtime)
+
+
 def _upload(array: np.ndarray, runtime, allocations):
     host = np.ascontiguousarray(array)
     device = malloc(host.nbytes, runtime=runtime)
