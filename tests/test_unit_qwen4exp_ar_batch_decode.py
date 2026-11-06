@@ -639,6 +639,37 @@ def test_controlled_row_requests_the_logits_readback(batch_env, monkeypatch) -> 
         native.close()
 
 
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_admission_binding_failure_never_publishes_request(monkeypatch, cleanup_fails) -> None:
+    owner = _standalone_owner(state_slots=1)
+    batch = owner.ensure()
+    original = ValueError("binding failed")
+
+    def fail_binding(slot, token):
+        raise original
+
+    monkeypatch.setattr(batch, "admission", fail_binding)
+    if cleanup_fails:
+        def fail_release(slot, token):
+            raise RuntimeError("release failed")
+        monkeypatch.setattr(batch, "release", fail_release)
+    try:
+        with pytest.raises(ValueError, match="binding failed") as caught:
+            owner.reserve(17, positions=2)
+        assert caught.value is original
+        assert owner.live_request_ids == ()
+        if cleanup_fails:
+            assert "release failed" in " ".join(original.__notes__)
+            assert owner.failure is not None
+            with pytest.raises(RuntimeError, match="disabled"):
+                owner.reserve(18, positions=2)
+        else:
+            assert batch.free_slots == (0,)
+            assert owner.failure is None
+    finally:
+        owner.close()
+
+
 def test_owner_lease_shares_physical_admission_identity() -> None:
     from tests.test_unit_qwen4exp_batch_runner import _fake_runner
 
