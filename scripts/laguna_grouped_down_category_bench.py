@@ -11,7 +11,7 @@ compared arithmetic and is not an equivalent edit.
 from __future__ import annotations
 
 import argparse
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -428,10 +428,13 @@ def _set_f16_prefill_mode(session: LagunaGGUFResidentSession, mode: str) -> str:
 def _configure_prefill_lane(
     session: LagunaGGUFResidentSession,
     lane: PrefillLaneConfiguration,
+    *,
+    select_moe: bool = True,
 ) -> None:
     """Apply one frozen cumulative lane and refuse a silent route substitution."""
-    session.set_selected_gate_up_mode(lane.selected_gate_up_mode)
-    session.set_selected_down_mode(lane.selected_down_mode)
+    if select_moe:
+        session.set_selected_gate_up_mode(lane.selected_gate_up_mode)
+        session.set_selected_down_mode(lane.selected_down_mode)
     resolved = _set_f16_prefill_mode(session, lane.f16_projection_mode)
     if resolved != lane.f16_projection_mode:
         raise ValueError(
@@ -476,8 +479,13 @@ def _oracle_for_candidate(
     if comparison.execution_mode == "cumulative_prefill":
         lane = _PREFILL_LANE_CONFIGURATIONS[candidate_mode]
 
-        def configure_session(session: LagunaGGUFResidentSession) -> None:
-            _configure_prefill_lane(session, lane)
+        @contextmanager
+        def configure_session(session: LagunaGGUFResidentSession):
+            with session.selected_moe_diagnostic(
+                gate_up=lane.selected_gate_up_mode, down=lane.selected_down_mode,
+            ):
+                _configure_prefill_lane(session, lane, select_moe=False)
+                yield
 
         with _f16_prefill_mode(lane.f16_prefill_mode):
             return _oracle_gate(
@@ -485,7 +493,7 @@ def _oracle_for_candidate(
                 args,
                 global_prefill_variant=lane.global_prefill_variant,
                 swa_prefill_variant=lane.swa_prefill_variant,
-                session_configurator=configure_session,
+                session_scope=configure_session,
             )
     return _oracle_gate(owner, args)
 

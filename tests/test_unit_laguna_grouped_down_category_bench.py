@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from copy import deepcopy
 import json
 from types import SimpleNamespace
@@ -643,8 +644,16 @@ def test_cumulative_control_oracle_uses_explicit_shipping_lane(monkeypatch) -> N
             configured.append(("attention_hipblaslt", enabled))
 
     def fake_oracle(_owner, _args, **kwargs):
-        configurator = kwargs.pop("session_configurator")
-        configurator(FakeSession())
+        configurator = kwargs.pop("session_scope")
+        session = FakeSession()
+        @contextmanager
+        def selection(**selected):
+            session.set_selected_gate_up_mode(selected["gate_up"])
+            session.set_selected_down_mode(selected["down"])
+            yield
+        session.selected_moe_diagnostic = selection
+        with configurator(session):
+            pass
         calls.append(
             {
                 **kwargs,
@@ -814,8 +823,16 @@ def test_prefill_350_oracle_configures_the_candidate_session(monkeypatch) -> Non
             configured.append(("attention_hipblaslt", enabled))
 
     def fake_oracle(_owner, _args, **kwargs):
-        configurator = kwargs.pop("session_configurator")
-        configurator(FakeSession())
+        configurator = kwargs.pop("session_scope")
+        session = FakeSession()
+        @contextmanager
+        def selection(**selected):
+            session.set_selected_gate_up_mode(selected["gate_up"])
+            session.set_selected_down_mode(selected["down"])
+            yield
+        session.selected_moe_diagnostic = selection
+        with configurator(session):
+            pass
         oracle_kwargs.append(
             {
                 **kwargs,
