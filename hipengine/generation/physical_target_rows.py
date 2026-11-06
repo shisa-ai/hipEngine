@@ -68,7 +68,10 @@ def resolve_physical_prompt_policies(backend: str) -> Mapping:
     for key, raw in policies.items():
         if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
             raise RuntimeError("backend prompt-streaming widths must be a sequence")
-        widths = tuple(sorted({int(value) for value in raw}))
+        try:
+            widths = tuple(sorted({int(value) for value in raw}))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise RuntimeError("backend prompt-streaming widths must be integers") from exc
         if any(value < 1 or value > MTP2_MAX_PHYSICAL_REQUESTS for value in widths):
             raise RuntimeError(
                 "backend prompt-streaming widths must be within "

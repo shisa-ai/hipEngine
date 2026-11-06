@@ -77,6 +77,33 @@ def test_rows_plan_snapshots_rollbacks(monkeypatch, profile):
         initial.exact_counts = ()
 
 
+@pytest.mark.parametrize("raw", [None, "12", b"12", 3])
+def test_prompt_policy_rejects_nonsequence_widths(monkeypatch, raw):
+    import hipengine.generation.physical_target_rows as module
+
+    monkeypatch.setattr(module, "backend_package_capability", lambda *args: {"key": raw})
+    with pytest.raises(RuntimeError, match="widths must be a sequence"):
+        module.resolve_physical_prompt_policies("test_backend")
+
+
+@pytest.mark.parametrize("raw", [[None], ["bad"], [float("inf")]])
+def test_prompt_policy_names_invalid_integer_widths(monkeypatch, raw):
+    import hipengine.generation.physical_target_rows as module
+
+    monkeypatch.setattr(module, "backend_package_capability", lambda *args: {"key": raw})
+    with pytest.raises(RuntimeError, match="widths must be integers"):
+        module.resolve_physical_prompt_policies("test_backend")
+
+
+@pytest.mark.parametrize("raw", [[0], [9]])
+def test_prompt_policy_rejects_out_of_bounds_widths(monkeypatch, raw):
+    import hipengine.generation.physical_target_rows as module
+
+    monkeypatch.setattr(module, "backend_package_capability", lambda *args: {"key": raw})
+    with pytest.raises(RuntimeError, match="widths must be within"):
+        module.resolve_physical_prompt_policies("test_backend")
+
+
 def test_prompt_policy_snapshot_is_deeply_immutable(monkeypatch):
     import hipengine.generation.physical_target_rows as module
 
