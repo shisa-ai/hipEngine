@@ -7368,6 +7368,11 @@ class Qwen35GGUFMTP2Adapter:
             )
             return
         store.put(tuple(prompt_ids[:boundary]), tuple(block_ids), checkpoint)
+        # A provider capture can add device residency after the target boundary
+        # was retained. Re-evaluate the shared owner budget on this transition.
+        trim = getattr(getattr(self, "owner", None), "_trim_prefix_snapshots", None)
+        if callable(trim):
+            trim()
         _trace_prefix_checkpoint(
             f"captured prefix={boundary} blocks={len(tuple(block_ids))} "
             f"held={len(store)}"

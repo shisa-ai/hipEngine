@@ -6506,9 +6506,12 @@ def test_prefix_checkpoint_capture_takes_one_snapshot_at_the_aligned_boundary(
     provider = SimpleNamespace(executor=executor)
     target = SimpleNamespace(runtime=SimpleNamespace())
 
+    reviews = []
+    adapter.owner = SimpleNamespace(_trim_prefix_snapshots=lambda: reviews.append(True))
     buffer = adapter._catch_up_provider(
         provider, 7, prompt_ids, rows, target
     )
+    assert reviews == [True]
 
     assert buffer.ptr == 0x1000
     assert executor.positions == list(range(10))
