@@ -9302,6 +9302,18 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         and limited reuse to one hand-off per conversation.
         """
 
+        pools: dict[int, Any] = {}
+        for entry in self._prefix_state_snapshots.values():
+            pool = getattr(entry.snapshot, "arena_pool", None)
+            if pool is not None:
+                pools[id(pool)] = pool
+        sessions = [lease.session for lease in getattr(self, "_available", ())]
+        sessions.extend(row.lease.session for row in getattr(self, "_rows", {}).values()
+                        if row.lease is not None)
+        for session in sessions:
+            pool = getattr(session, "_gguf_prefix_snapshot_arena_pool", None)
+            if pool is not None:
+                pools[id(pool)] = pool
         transient = [
             tokens
             for tokens, entry in self._prefix_state_snapshots.items()
@@ -9320,6 +9332,13 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         ):
             tokens = retained.pop(0)
             self._evict_prefix_snapshot(tokens, reason="trim_retained")
+        remaining = max(0, self._prefix_retained_state_bytes_limit
+                        - self._retained_prefix_device_bytes(retained))
+        for pool in pools.values():
+            pool.trim_idle(remaining)
+            # Quarantine remains charged but is never freed before retirement.
+            remaining = max(0, remaining - sum(size for _ptr, size in
+                                              getattr(pool, "device_allocations", ())))
 
     def _promote_prefix_snapshots(self, row: _GGUFResidentLoopRow) -> None:
         cache = self._prefix_cache
