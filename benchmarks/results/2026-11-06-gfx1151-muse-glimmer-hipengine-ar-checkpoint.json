@@ -1,0 +1,156 @@
+{
+ "schema": 1,
+ "kind": "muse_glimmer_hipengine_ar_bench",
+ "status": "diagnostic",
+ "performance_claim": false,
+ "date": "2026-11-06",
+ "model": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "backend": "hip_gfx1151",
+ "timing_boundary": "session prefill / decode-step synchronized wall; sampling excluded",
+ "repeats": 3,
+ "warmup": "32-token prefill + 4 decode steps (kernel prebuild)",
+ "execution_path": "muse_glimmer_gguf_resident_eager",
+ "rows": [
+  {
+   "prompt_tokens": 512,
+   "gen_tokens": 128,
+   "prefill_tok_s": 320.1741583449961,
+   "decode_tok_s": 11.165186613305508,
+   "prefill_s_samples": [
+    1.5815423880703747,
+    1.5991296819411218,
+    1.6166301409248263
+   ],
+   "decode_s_samples": [
+    11.407509776996449,
+    11.4642060570186,
+    11.497569745988585
+   ],
+   "prefill_s_median": 1.5991296819411218,
+   "decode_s_median": 11.4642060570186
+  },
+  {
+   "prompt_tokens": 1024,
+   "gen_tokens": 128,
+   "prefill_tok_s": 299.69220264102256,
+   "decode_tok_s": 11.054809327114148,
+   "prefill_s_samples": [
+    3.416734106023796,
+    3.4305177740752697,
+    3.4168389800470322
+   ],
+   "decode_s_samples": [
+    11.570755348075181,
+    11.578670984948985,
+    11.591450916021131
+   ],
+   "prefill_s_median": 3.4168389800470322,
+   "decode_s_median": 11.578670984948985
+  },
+  {
+   "prompt_tokens": 4096,
+   "gen_tokens": 128,
+   "prefill_tok_s": 240.3401863242453,
+   "decode_tok_s": 10.848005697835566,
+   "prefill_s_samples": [
+    16.987935793004,
+    17.04250988003332,
+    17.070369149907492
+   ],
+   "decode_s_samples": [
+    11.799403831944801,
+    11.792181023978628,
+    11.802887544035912
+   ],
+   "prefill_s_median": 17.04250988003332,
+   "decode_s_median": 11.799403831944801
+  }
+ ],
+ "provenance": {
+  "kind": "hipengine_artifact_provenance",
+  "schema_version": 3,
+  "collected_at": "2026-11-06T11:37:09.148607+00:00",
+  "host_name": "zbook",
+  "repo_root": "/home/lhl/hipEngine-main",
+  "hipengine_commit": "b5efff468e353def40ca11b168e1b984e56bfabd",
+  "git_branch": "muse-glimmer",
+  "staged_dirty": false,
+  "unstaged_dirty": false,
+  "untracked_dirty": true,
+  "untracked_count": 1,
+  "dirty": true,
+  "dirty_paths": [],
+  "dirty_path_count": 0,
+  "untracked_paths": [
+   "worklog/entries/20261106T113554.086364Z-lhl-muse-glimmer-e29c77.md"
+  ],
+  "execution_affecting_dirty": false,
+  "execution_affecting_paths": [],
+  "configured_backend": "hip_gfx1151",
+  "resolved_backend": "hip_gfx1151",
+  "target_arch": "gfx1151",
+  "device_name": "AMD Radeon 8060S Graphics",
+  "model_path": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+  "model_revision": null,
+  "model_fingerprint": {
+   "algorithm": "sha256-sampled-v1",
+   "value": "0c34990e9926ceab29c14f6f253b5b90d7c48c204d1aa88d866c785220ce189e",
+   "size_bytes": 16756683904,
+   "sampled_bytes": 3145728,
+   "sample_offsets": [
+    0,
+    8377817664,
+    16755635328
+   ],
+   "exists": true,
+   "path_type": "file"
+  },
+  "quant": "gguf_q4_k_m",
+  "kv_dtype": "f16/f16",
+  "command": [
+   "scripts/muse_glimmer_ar_bench.py",
+   "--repeats",
+   "3",
+   "--output",
+   "/tmp/glimmer-ar-checkpoint.json"
+  ],
+  "environment": {
+   "HIPENGINE_BACKEND": null,
+   "HIPENGINE_HIP_ARCH": "gfx1151",
+   "GPU_MAX_HW_QUEUES": null,
+   "HIPENGINE_BUILD_CACHE_ROOT": null,
+   "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+   "HIP_VISIBLE_DEVICES": null,
+   "ROCR_VISIBLE_DEVICES": null,
+   "CUDA_VISIBLE_DEVICES": null,
+   "GPU_DEVICE_ORDINAL": null
+  },
+  "rocm_version": "HIP version: 7.15.26333-0000000",
+  "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+  "build_profile": null,
+  "timing_protocol": "session prefill / decode-step synchronized wall; sampling excluded",
+  "warmups": null,
+  "repetitions": 3,
+  "profiler": null
+ },
+ "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified)",
+ "gate_a_targets": {
+  "prefill_tok_s": [
+   394.404,
+   385.784,
+   376.332
+  ],
+  "decode_tok_s": [
+   12.24,
+   12.167,
+   12.047
+  ],
+  "workloads": [
+   "512/128",
+   "1024/128",
+   "4096/128"
+  ]
+ },
+ "notes": "AR checkpoint at b5efff468 (lead-directed pause before vision+DFlash). Diagnostic, not a retained Gate A claim: prefill and decode both still below the P0 llama.cpp targets. Measured code path clean; untracked worklog entry is non-execution-affecting documentation."
+}

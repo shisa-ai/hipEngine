@@ -6,10 +6,17 @@ owns: Muse Glimmer 30B gfx1151 bring-up campaign: text/vision/DFlash implementat
 
 Last updated: 2026-11-06
 
-Status: **P0 baseline retained; P1 text bring-up landed with initial correctness
-(plugin + loader + resident runner + generator; oracle argmax exact, f32
-reference KL gate passed, exercised through `LLM.generate()`).** Vision (P2),
-DFlash (P3), and performance (P4) remain.
+Status: **P0 baseline retained; P1 text, P2 vision, and P3 DFlash bring-up
+landed with correctness gates green (oracle argmax exact, f32 reference KL gate,
+vision distributional oracle gates, DFlash == true AR exact greedy). P4 (Gate A
+AR perf) is CHECKPOINTED at `b5efff468` by lead decision: prefill 320/300/240 vs
+394/386/376 and decode 11.17/11.06/10.85 vs 12.24/12.17/12.05 at 512/1K/4K
+(diagnostic artifact
+`benchmarks/results/2026-11-06-gfx1151-muse-glimmer-hipengine-ar-checkpoint.json`).**
+Lead sequencing (2026-11-06): verify vision end-to-end after the perf changes,
+then capture the llama.cpp `draft-dflash` mtpbench baseline and make hipEngine
+DFlash beat it (Gate B), then return to the Gate A AR kernel campaign. Gate A is
+not passed; the checkpoint is not a retained win.
 
 Lead directive (2026-11-06): implement full Muse Glimmer inference in hipEngine —
 text, vision stack, and MTP/DFlash — with an initial correctness pass, and do not
