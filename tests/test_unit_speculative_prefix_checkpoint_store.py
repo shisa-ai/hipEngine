@@ -32,6 +32,20 @@ def _store(capacity: int = 4) -> tuple[PrefixCheckpointStore, _Recorder]:
     return PrefixCheckpointStore(capacity=capacity, release=recorder), recorder
 
 
+def test_allocation_inventory_does_not_touch_lru_or_hit_counters() -> None:
+    from types import SimpleNamespace
+    store, _ = _store()
+    store.put((1,), (10,), SimpleNamespace(device_allocations=((4096, 8192),)))
+    store.put((2,), (11,), SimpleNamespace(device_allocations=((12288, 64),)))
+    keys, stats = store.token_keys(), store.stats()
+    assert store.device_allocations_for((1,)) == ((4096, 8192),)
+    assert store.device_allocations_for((3,)) == ()
+    assert store.token_keys() == keys
+    assert store.stats() == stats
+    store.drop((1,))
+    assert store.device_allocations_for((1,)) == ()
+
+
 def test_clear_drains_later_payloads_after_release_failure() -> None:
     released = []
     def release(payload):

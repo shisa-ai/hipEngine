@@ -132,6 +132,15 @@ class PrefixCheckpointStore:
             released=self._released,
         )
 
+    def device_allocations_for(
+        self, tokens: Sequence[int],
+    ) -> tuple[tuple[int, int], ...]:
+        """Inspect owning allocations without recording a cache hit or changing LRU."""
+        entry = self._entries.get(_token_key(tokens))
+        if entry is None or entry.released:
+            return ()
+        return tuple(getattr(entry.payload, "device_allocations", ()))
+
     def token_keys(self) -> tuple[tuple[int, ...], ...]:
         """Return the stored prefixes, most recently used first."""
 
