@@ -188,11 +188,13 @@ class DMSExternalLinearDeviceProjector:
                 bias.nbytes,
                 runtime=self._runtime,
             )
-        except BaseException:
-            for buffer in reversed(self._buffers):
-                free(buffer, runtime=self._runtime)
-            self._buffers.clear()
-            self._closed = True
+        except BaseException as error:
+            try:
+                self.close()
+            except BaseException as cleanup_error:
+                error.add_note(f"DMS projector rollback failed: {cleanup_error!r}")
+                for note in getattr(cleanup_error, "__notes__", ()):
+                    error.add_note(note)
             raise
 
     @property
