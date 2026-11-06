@@ -1324,14 +1324,12 @@ class ResidentBatchScheduler:
                 continue
             if ready is not None and not ready(request_id):
                 continue
-            if (
-                needs_activation is not None
-                and request.remaining_prefill > int(chunk_size)
-                and needs_activation(request_id)
-            ):
+            if needs_activation is not None and needs_activation(request_id):
                 if claim_taken:
                     continue
-                claim_taken = True
+                # A short prompt releases its claim before the next row runs;
+                # a chunked opener retains it, excluding every later opener.
+                claim_taken = request.remaining_prefill > int(chunk_size)
             selected.append(request_id)
             if len(selected) >= int(max_rows):
                 break
