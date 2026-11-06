@@ -1629,13 +1629,16 @@ class Qwen35GGUFMoEMTP2Adapter:
         )
 
     def close(self) -> None:
+        failures: list[BaseException] = []
         for request_id in tuple(set(self._states) | set(self._prompt_sinks)):
-            self.release_request(request_id)
+            try:
+                self.release_request(request_id)
+            except BaseException as error:
+                failures.append(error)
         self._intents.clear()
         getattr(self, "_sampling_mode_by_request", {}).clear()
         self._disabled_requests.clear()
         self._active_claims = None
-        failures: list[BaseException] = []
         hidden_slabs = tuple(self._target_hidden_slabs.values())
         self._target_hidden_slabs.clear()
         draft_slabs = tuple(self._draft_kv_slabs.values())

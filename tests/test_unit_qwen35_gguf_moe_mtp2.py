@@ -99,8 +99,11 @@ def test_shared_dense_kv_allocation_rolls_back_partial_failure(monkeypatch, fail
     assert freed == list(reversed(allocated))
 
 
+@pytest.mark.parametrize('fail_request_release', [False, True])
 @pytest.mark.parametrize('fail_first_free', [False, True])
-def test_moe_close_detaches_slab_without_a_synthetic_request(monkeypatch, fail_first_free) -> None:
+def test_moe_close_detaches_slab_without_a_synthetic_request(
+    monkeypatch, fail_first_free, fail_request_release,
+) -> None:
     from hipengine.generation import qwen35_gguf_moe_mtp2 as module
 
     adapter = object.__new__(Qwen35GGUFMoEMTP2Adapter)
@@ -115,6 +118,15 @@ def test_moe_close_detaches_slab_without_a_synthetic_request(monkeypatch, fail_f
                              _last_target_hidden_ptr=0x1008)
     buffers = tuple(DeviceBuffer(ptr, 32) for ptr in (0x1000, 0x2000, 0x3000))
     adapter._target_hidden_slabs = {id(target): (target, *buffers)}
+    retired = []
+    if fail_request_release:
+        adapter._states = {7: object(), 8: object()}
+        def retire(rid):
+            adapter._states.pop(rid)
+            retired.append(rid)
+            if rid == 7:
+                raise RuntimeError('request release failed')
+        adapter.release_request = retire
     freed = []
     def release(buffer, **kwargs):
         freed.append(buffer.ptr)
@@ -122,7 +134,7 @@ def test_moe_close_detaches_slab_without_a_synthetic_request(monkeypatch, fail_f
             raise RuntimeError('hidden slab free failed')
     monkeypatch.setattr(module, 'free', release)
 
-    if fail_first_free:
+    if fail_first_free or fail_request_release:
         with pytest.raises(BaseExceptionGroup, match='MoE MTP2 adapter close failed'):
             adapter.close()
     else:
@@ -130,6 +142,7 @@ def test_moe_close_detaches_slab_without_a_synthetic_request(monkeypatch, fail_f
     adapter.close()
 
     assert target._last_target_hidden_ptr == 0
+    assert set(retired) == ({7, 8} if fail_request_release else set())
     assert freed == [0x3000, 0x2000, 0x1000]
     assert adapter._target_hidden_slabs == {}
 
