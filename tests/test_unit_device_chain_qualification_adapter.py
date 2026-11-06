@@ -27,8 +27,10 @@ def test_qualification_failure_and_trace_bounds(monkeypatch, failure):
         SimpleNamespace(active_mask=(True,), draft_rows=1, candidate_tokens=(101,)))
     result = SimpleNamespace(rows=1 if failure == 'target_rows' else 2,
                              request_id=10, target_top1=SimpleNamespace(ptr=123))
+    copies = []
     def copy(destination, source, nbytes, **kwargs):
         import ctypes
+        copies.append(nbytes)
         ctypes.memmove(destination, values.ctypes.data, nbytes)
     monkeypatch.setattr(oracle, 'copy_device_to_host', copy)
     row = SimpleNamespace(mtp2_device_chain_oracle_trace=[{} for _ in range(64)])
@@ -43,6 +45,7 @@ def test_qualification_failure_and_trace_bounds(monkeypatch, failure):
         with pytest.raises(RuntimeError, match=message):
             oracle.qualify_device_accept(owner, frontier, object(), [result], summary, (4,), **kwargs)
         assert len(row.mtp2_device_chain_oracle_trace) == 64
+        assert copies == []
 
 
 @pytest.mark.parametrize('accepted', (0, 1, 2, 3, 4))

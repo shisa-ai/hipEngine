@@ -40,14 +40,14 @@ def qualify_device_accept(owner, frontier, proposal, target_results, summary,
         )) for request_id in batch.request_ids
     }
     for result in target_results:
+        destination_rows = (root_by_id[int(result.request_id)],
+                            *candidate_by_id[int(result.request_id)])
+        if len(destination_rows) != int(result.rows):
+            raise RuntimeError('device-chain oracle target rows changed')
         values = np.empty((int(result.rows),), dtype=np.int32)
         copy_device_to_host(host_array_ptr(values),
                             DeviceBuffer(result.target_top1.ptr, values.nbytes),
                             values.nbytes, runtime=runtime)
-        destination_rows = (root_by_id[int(result.request_id)],
-                            *candidate_by_id[int(result.request_id)])
-        if len(destination_rows) != values.size:
-            raise RuntimeError('device-chain oracle target rows changed')
         for row, value in zip(destination_rows, values, strict=True):
             top1[row] = int(value)
     cpu_accept = batch.accept_from_top1(
