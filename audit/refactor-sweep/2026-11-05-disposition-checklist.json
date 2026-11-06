@@ -2390,11 +2390,11 @@
       "ledger_line": 1837,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "hipengine/runtime/laguna_gguf_runner.py:3003-3005,3201-3226 retains natural tile8 control independently of interleaved layout."
       ],
-      "next_action": "Migrate constructor/setter and profiler comparison to scoped owner while keeping ordinary residents distinct from dual-layout production comparison.",
+      "next_action": "Host migration completed in bc2cf5aa5/db1598889/67d8307a5: scoped profiler arm, persistent setter/constructor retired, diagnostic-owner metadata added with historical basis preserved; 127 focused tests and audit passed. Both configured Laguna artifact paths absent locally on 2026-11-06; gfx1151 ROCm available. Provide accessible Laguna weights, then run ordinary/dual full-state paired comparison and public default/diagnostic generation with callable attribution and cleanup. Do not repeat host migration.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

@@ -1612,10 +1612,16 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `LLM.generate()`.
 
-**Remaining work:** migrate constructor/setter and profiler comparison to a scoped diagnostic owner
-before retiring the public tile8 control. Keep ordinary natural16/tile8 reference bodies and
-dual-layout dispatch distinct. Actual-weight/public validation is blocked locally by the unavailable
-ROCm runtime and Laguna artifact recorded in R0340/R0273.
+**Host migration complete:** the profiler selects each comparison arm with
+`selected_natural_tile8_diagnostic`; persistent setter and constructor override are removed.
+Backend package defaults and ordinary natural16/tile8 reference bodies are unchanged.
+Result metadata names the scoped owner and preserves the historical comparison basis.
+Host tile8-comparison, runner and profiler contracts pass (127 tests); see
+`worklog/entries/20261106T121454.078780Z-lhl-r0341-tile8-constructor-055760.md`.
+
+**Remaining dependency:** actual-weight/full-state and public ordinary/dual validation
+needs an accessible Laguna checkpoint. The configured benchmark and live-fixture paths
+are absent locally; ROCm is available on gfx1151. Do not repeat completed host migration.
 
 Done when: run tile8-comparison, runner, profiler and MoE numerical contracts; execute the
 repaired paired comparison on a ROCm host with an available Laguna artifact. Confirm distinct
