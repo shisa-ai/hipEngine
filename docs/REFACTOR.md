@@ -3129,8 +3129,14 @@ Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
 
 Scope: `device_chain_qualification_oracle=True`.
 
-Done when: Deferred oracle extraction: move the comparison body to a test/qualification adapter only after
-a replacement explicit diagnostic route exists. Preserve pure CPU acceptance and strict eager
+**Extraction implemented:** the comparison body lives in
+`hipengine/benchmark/device_chain_oracle.py`, lazily reached through the existing explicit
+`device_chain_qualification_oracle=True` adapter route. The default route does not import it.
+Focused CPU tests cover reject, partial and full acceptance plus mismatched summaries. Public
+physical-C2 generation has exercised the extracted oracle; the complete device/category matrix
+and default no-pre-accept-D2H trace below remain to be verified.
+
+Done when: Preserve pure CPU acceptance and strict eager
 fallback. Retain P4 reject/every-partial/ full, following-AR, cancellation/failure, profile and
 full-category checks with GPU/CPU accept agreement. Cache-only traces must show no pre-accept D2H in
 the default route. Public acceptance and lifecycle verification remain required; constructor
