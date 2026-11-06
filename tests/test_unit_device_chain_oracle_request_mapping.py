@@ -3,6 +3,7 @@ import ctypes
 from dataclasses import dataclass, replace
 from types import SimpleNamespace
 
+import pytest
 import numpy as np
 
 from hipengine.benchmark import device_chain_oracle as oracle
@@ -50,6 +51,11 @@ def test_oracle_maps_out_of_order_ragged_request_results(monkeypatch):
     oracle.qualify_device_accept(SimpleNamespace(_row=rows.__getitem__), frontier,
         object(), results, summary, (4, 4), provider=provider, runtime=None,
         trace_rows=_device_chain_oracle_trace_rows)
+    for invalid in (results[:1], [results[0], results[0]]):
+        with pytest.raises(RuntimeError, match='target request IDs'):
+            oracle.qualify_device_accept(SimpleNamespace(_row=rows.__getitem__), frontier,
+                object(), invalid, summary, (4, 4), provider=provider, runtime=None,
+                trace_rows=_device_chain_oracle_trace_rows)
     assert rows[10].mtp2_device_chain_oracle_trace[0]['accepted_count'] == 2
     assert rows[20].mtp2_device_chain_oracle_trace[0]['accepted_count'] == 0
     assert rows[10].mtp2_device_chain_oracle_trace[0]['target_top1'] == [101, 102, 777]

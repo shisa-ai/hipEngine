@@ -28,6 +28,9 @@ def qualify_device_accept(owner, frontier, proposal, target_results, summary,
         host_graph.to_draft_batch(), root_tokens=frontier.root_tokens,
         root_positions=frontier.root_positions,
     )
+    result_ids = tuple(int(result.request_id) for result in target_results)
+    if len(result_ids) != len(batch.request_ids) or set(result_ids) != set(batch.request_ids):
+        raise RuntimeError('device-chain oracle target request IDs changed')
     top1 = [0] * batch.rows
     root_by_id = dict(zip(batch.request_ids, batch.root_rows, strict=True))
     candidate_by_id = {
