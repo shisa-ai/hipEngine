@@ -251,28 +251,6 @@ def build_batch_route_quality(
 
 
 @contextlib.contextmanager
-def _router_candidate_policy(candidate: bool, *, enabled: bool) -> Iterator[None]:
-    if not enabled:
-        yield
-        return
-    previous = {
-        ROUTER_COOP_ENV: os.environ.get(ROUTER_COOP_ENV),
-        ROUTER_PERSISTENT_ENV: os.environ.get(ROUTER_PERSISTENT_ENV),
-    }
-    value = "1" if candidate else "0"
-    try:
-        os.environ[ROUTER_COOP_ENV] = value
-        os.environ[ROUTER_PERSISTENT_ENV] = value
-        yield
-    finally:
-        for key, prior in previous.items():
-            if prior is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = prior
-
-
-@contextlib.contextmanager
 def _rowtile_policy(enabled: bool) -> Iterator[None]:
     previous = os.environ.get(POLICY_ENV)
     if enabled and _router_candidate_enabled:
@@ -282,11 +260,7 @@ def _rowtile_policy(enabled: bool) -> Iterator[None]:
     else:
         os.environ[POLICY_ENV] = "1" if enabled else "0"
     try:
-        with _router_candidate_policy(
-            enabled,
-            enabled=_router_candidate_enabled,
-        ):
-            yield
+        yield
     finally:
         if previous is None:
             os.environ.pop(POLICY_ENV, None)
@@ -298,7 +272,7 @@ def _rowtile_policy(enabled: bool) -> Iterator[None]:
 def _current_package_policy() -> Iterator[None]:
     """Use package defaults while restoring any caller diagnostic overrides."""
 
-    keys = (POLICY_ENV, ROUTER_COOP_ENV, ROUTER_PERSISTENT_ENV)
+    keys = (POLICY_ENV,)
     previous = {key: os.environ.get(key) for key in keys}
     try:
         for key in keys:

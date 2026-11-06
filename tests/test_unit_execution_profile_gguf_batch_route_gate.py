@@ -96,8 +96,8 @@ def test_bundled_router_policy_uses_package_rowtile_floor_and_restores(
 
     with gate._candidate_bundle_policy(True, include_router_candidate=True):
         assert gate.POLICY_ENV not in os.environ
-        assert os.environ[gate.ROUTER_COOP_ENV] == "1"
-        assert os.environ[gate.ROUTER_PERSISTENT_ENV] == "1"
+        assert os.environ[gate.ROUTER_COOP_ENV] == "caller"
+        assert gate.ROUTER_PERSISTENT_ENV not in os.environ
 
     assert os.environ[gate.POLICY_ENV] == "caller-rowtile"
     assert os.environ[gate.ROUTER_COOP_ENV] == "caller"
@@ -117,8 +117,8 @@ def test_current_package_policy_clears_candidate_overrides_and_restores(
 
     with gate._current_package_policy():
         assert gate.POLICY_ENV not in os.environ
-        assert gate.ROUTER_COOP_ENV not in os.environ
-        assert gate.ROUTER_PERSISTENT_ENV not in os.environ
+        assert os.environ[gate.ROUTER_COOP_ENV] == "caller-coop"
+        assert os.environ[gate.ROUTER_PERSISTENT_ENV] == "caller-persistent"
 
     assert os.environ[gate.POLICY_ENV] == "caller-rowtile"
     assert os.environ[gate.ROUTER_COOP_ENV] == "caller-coop"
