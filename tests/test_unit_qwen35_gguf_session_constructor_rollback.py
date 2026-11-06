@@ -235,10 +235,11 @@ def _install_constructor_harness(monkeypatch: pytest.MonkeyPatch) -> _Controller
             raise ConstructorFailure("synthetic buffer free failure")
 
     def fake_runner_factory(*args, **kwargs):
-        del args, kwargs
+        del args
         if controller.fail_at == "runner":
             raise controller.failure
         runner = _FakeRunner(controller)
+        runner.target_moe_tail_next_rms = kwargs.get("target_moe_tail_next_rms")
         controller.runners.append(runner)
         return runner
 
@@ -453,12 +454,13 @@ def _install_constructor_harness(monkeypatch: pytest.MonkeyPatch) -> _Controller
     return controller
 
 
-def _construct(*, shared_runner=None, recorder_path=None, dms_path=None):
+def _construct(*, shared_runner=None, recorder_path=None, dms_path=None, moe_tail_next_rms=None):
     return gguf_runner.Qwen35GGUFResidentSession(
         "unused",
         runtime=_ACTIVE_CONTROLLER[0].runtime,
         backend="hip_gfx1100",
         shared_runner=shared_runner,
+        moe_tail_next_rms=moe_tail_next_rms,
         prefill_flight_recorder_path=recorder_path,
         dms_metadata_path=dms_path,
     )
@@ -565,6 +567,18 @@ def test_borrowed_runner_is_not_closed_and_shared_weights_survive(
     assert caught.value is controller.failure
     assert shared.closed == 0
     assert shared.weights is not None
+    _assert_every_allocation_attempted_once(controller)
+
+
+@pytest.mark.parametrize("tail_choice", [None, False, True])
+def test_tail_policy_forwarded_by_real_session_constructor(monkeypatch, tail_choice):
+    controller = _install_constructor_harness(monkeypatch)
+    session = _construct(moe_tail_next_rms=tail_choice)
+    try:
+        assert session.runner.target_moe_tail_next_rms is tail_choice
+        assert session.moe_tail_next_rms is tail_choice
+    finally:
+        session.close()
     _assert_every_allocation_attempted_once(controller)
 
 
