@@ -1842,7 +1842,7 @@
       "evidence": [
         "hipengine/generation/qwen35_gguf.py:572,799 still reads packed decode env in resident and compatibility paths."
       ],
-      "next_action": "Introduce resolved serial/packed diagnostic control, migrate real benchmark writers/effective metadata and tests, then remove process reader while preserving default packed execution.",
+      "next_action": "Explicit generator choice implemented cf2402aa3; resident forwarding repaired 4673a4361, control/owner 57 pass and public default packed trace/repeat/cleanup pass e2cfff758. Migrate real in-process and subprocess callers with explicit transport across EngineService; verify forced-off engagement before reader retirement. Preserve scalar/stream semantics.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

@@ -1251,6 +1251,13 @@ Owner: `hipengine/generation/qwen35_gguf.py`.
 Scope: `scripts/gguf_concurrency_baseline.py`, `scripts/server_f1_concurrency_bench.py`,;
 `HIPENGINE_GGUF_AR_PACKED_DECODE`; `scripts/gguf_live_server_bench.py`.
 
+**Progress:** explicit generator `ar_packed_decode` choice precedes legacy input; resident
+scheduler forwards through its generator (`cf2402aa3`, `4673a4361`). Control/owner tests pass
+(57), and public gfx1151 concurrent generation traces packed widths [2,2,3], exact repeats and
+zero tracked allocations after close (`e2cfff758`). Explicit forced-off public transport is not
+yet established. Subprocess server launchers still use the environment and require an explicit
+transport, not a caller-thread-only scope.
+
 **Remaining work:** migrate the diagnostic callers to an explicit resolved execution control, or
 designate a separate serial oracle before retiring the process-wide env reader. Update test fixtures
 and effective-route metadata in the same unit. Preserve default packed execution, scalar
