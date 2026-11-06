@@ -560,10 +560,14 @@ def _session(
         prefill_attention_chunk_size=args.attention_rows,
         prefill_global_attention_chunk_size=args.attention_rows,
     )
-    if args.grouped_exact_iq:
-        session.set_selected_gate_up_mode("grouped_exact")
-        session.set_selected_down_mode("grouped_exact")
     return session
+
+
+def _comparison_scope(session, args):
+    return session.selected_moe_diagnostic(
+        gate_up="grouped_exact" if args.grouped_exact_iq else None,
+        down="grouped_exact" if args.grouped_exact_iq else None,
+    )
 
 
 def _all_hidden_capture_targets(
@@ -614,13 +618,14 @@ def _full_state_snapshot(
     buffers: list[Any] = []
     try:
         targets, buffers = _all_hidden_capture_targets(session)
-        started = time.perf_counter()
-        result = session.prefill(
-            token_ids[:length],
-            capture_last=targets,
-        )
-        session.runtime.device_synchronize()
-        elapsed = time.perf_counter() - started
+        with _comparison_scope(session, args):
+            started = time.perf_counter()
+            result = session.prefill(
+                token_ids[:length],
+                capture_last=targets,
+            )
+            session.runtime.device_synchronize()
+            elapsed = time.perf_counter() - started
         logits = _device_values(session.runtime, result.logits, np.float32)
         snapshot = {
             "matrix_rows": matrix_rows,
@@ -724,10 +729,11 @@ def _routing_probe(
         before = memory_stats()
         session = _session(owner, args, matrix_rows=mode)
         try:
-            started = time.perf_counter()
-            replay = session.prefill_routing_replay(token_ids[:mode])
-            session.runtime.device_synchronize()
-            elapsed = time.perf_counter() - started
+            with _comparison_scope(session, args):
+                started = time.perf_counter()
+                replay = session.prefill_routing_replay(token_ids[:mode])
+                session.runtime.device_synchronize()
+                elapsed = time.perf_counter() - started
             host_replays[mode] = replay
             selected_payload = {
                 str(layer_id): list(values)
@@ -811,10 +817,11 @@ def _run_one(
     try:
         if gpu_total_after_allocate != gpu_total:
             raise RuntimeError("HIP total memory changed during matrix session allocation")
-        started = time.perf_counter()
-        result = session.prefill(token_ids[:length])
-        session.runtime.device_synchronize()
-        elapsed = time.perf_counter() - started
+        with _comparison_scope(session, args):
+            started = time.perf_counter()
+            result = session.prefill(token_ids[:length])
+            session.runtime.device_synchronize()
+            elapsed = time.perf_counter() - started
         logits = _device_values(session.runtime, result.logits, np.float32)
         row = {
             "matrix_rows": matrix_rows,
@@ -949,8 +956,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for mode in matrix_rows:
             warmup = _session(owner, args, matrix_rows=mode)
             try:
-                warmup.prefill(token_stream[: args.warmup_rows])
-                runtime.device_synchronize()
+                with _comparison_scope(warmup, args):
+                    warmup.prefill(token_stream[: args.warmup_rows])
+                    runtime.device_synchronize()
             finally:
                 warmup.close()
         for repetition in range(args.repetitions):
