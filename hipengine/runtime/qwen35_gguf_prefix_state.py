@@ -146,6 +146,34 @@ class _GGUFPrefixSnapshotArenaPool:
                 arena.close()
         self._quarantine.clear()
 
+    @property
+    def device_allocations(self) -> tuple[tuple[int, int], ...]:
+        """Idle and quarantined owners; checked-out snapshot arenas are excluded."""
+        arenas = [arena for bucket in self._free.values() for arena in bucket]
+        arenas.extend(arena for arena, _stream in self._quarantine)
+        return tuple(sorted({
+            (int(arena.owner.ptr), int(arena.owner.nbytes))
+            for arena in arenas if not arena.closed
+        }))
+
+    def trim_idle(self, max_bytes: int) -> int:
+        """Free idle arenas to a byte bound, never touching in-flight quarantine."""
+        if int(max_bytes) < 0:
+            raise ValueError("idle arena byte bound must be non-negative")
+        total = sum(int(arena.capacity_bytes)
+                    for bucket in self._free.values() for arena in bucket)
+        released = 0
+        for capacity in sorted(self._free, reverse=True):
+            bucket = self._free[capacity]
+            while bucket and total > int(max_bytes):
+                arena = bucket[-1]
+                size = int(arena.capacity_bytes)
+                arena.close()
+                bucket.pop()
+                total -= size
+                released += size
+        return released
+
     def stats(self) -> dict[str, int]:
         return {
             "acquires": int(self.acquires),

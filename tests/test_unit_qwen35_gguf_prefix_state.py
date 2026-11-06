@@ -153,6 +153,24 @@ def _two_layer_state():
     )
 
 
+def test_idle_budget_trim_preserves_quarantined_arenas() -> None:
+    runtime = _FakeRuntime()
+    pool = _RecordingPool(runtime)
+    idle = pool.acquire(4096)
+    quarantined = pool.acquire(8192)
+    pool.release(idle)
+    pool.quarantine(quarantined, stream=7)
+    try:
+        assert pool.device_allocations == ((idle.owner.ptr, idle.owner.nbytes),
+                                           (quarantined.owner.ptr, quarantined.owner.nbytes))
+        assert pool.trim_idle(0) == idle.owner.nbytes
+        assert idle.closed
+        assert not quarantined.closed
+        assert pool.device_allocations == ((quarantined.owner.ptr, quarantined.owner.nbytes),)
+    finally:
+        pool.close()
+
+
 def test_capture_copies_paired_state_into_one_pooled_arena() -> None:
     runtime = _FakeRuntime()
     pool = _RecordingPool(runtime)
