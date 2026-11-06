@@ -2907,6 +2907,8 @@ class Qwen35GGUFBringupGenerator:
         )
         from hipengine.runtime.qwen35_gguf_runner import (
             _gguf_aotriton_head_major_kv_scratch_nbytes,
+            _gguf_gapped_head_major_capacity,
+            _gguf_gapped_slot_local_fast_route_available,
             _gguf_packed_state_linear_bytes,
             _gguf_prefill_hidden_buffer_count,
             _gguf_prefill_scratch_nbytes,
@@ -2985,10 +2987,26 @@ class Qwen35GGUFBringupGenerator:
                 + _gguf_packed_state_linear_bytes(shared_runner, slot_count=slots)
             )
 
+        def gapped_scratch(max_positions: int) -> int:
+            if (
+                not server_pool or kv_storage != DType.BF16
+                or not _gguf_gapped_slot_local_fast_route_available(
+                    backend=shared_runner.backend, context_tokens=max_positions,
+                    kv_width=int(shared_runner.kv_width),
+                )
+            ):
+                return 0
+            # Each slot may retain its own demand-grown pair. Price the new
+            # rounded pair as well as a previous bucket during replacement.
+            rounded = _gguf_gapped_head_major_capacity(
+                context_tokens=max_positions, kv_width=int(shared_runner.kv_width),
+            )
+            return 2 * capacity * rounded * int(shared_runner.kv_width) * 4
+
         def post_pool_workspace(max_positions: int) -> int:
             return (
                 packed_scratch(max_positions) + snapshot_bytes
-                + checkpoint_bytes(max_positions)
+                + checkpoint_bytes(max_positions) + gapped_scratch(max_positions)
             )
 
         # The packed verify linear state is charged against the KV pool's own
@@ -3108,6 +3126,7 @@ class Qwen35GGUFBringupGenerator:
             "speculative_bytes_resolver": speculative,
             # Internal: the plain (non-pool) allocations that follow pool
             # creation, for the pool's execution reserve.
+            "_gapped_scratch_bytes_resolver": gapped_scratch,
             "_packed_scratch_bytes_resolver": post_pool_workspace,
             # ``configure_engine_loop`` caps the pool's idle floor at one
             # full-context request, which the KV term already prices.

@@ -93,6 +93,16 @@ def test_capacity_workspace_prices_optional_head_major_pair(monkeypatch):
     assert updated["prefill_workspace_bytes_resolver"](1024) == before + 123456
 
 
+def test_capacity_reserves_rounded_gapped_pairs_per_slot(monkeypatch):
+    monkeypatch.setattr(
+        gguf_runner, "_gguf_gapped_slot_local_fast_route_available", lambda **kw: True,
+    )
+    terms = _route_terms(monkeypatch, storage="bf16", capacity=4, mtp=False)
+    assert terms["_gapped_scratch_bytes_resolver"](4097) == 2 * 4 * 8192 * 1024 * 4
+    disabled = _route_terms(monkeypatch, storage="bf16", capacity=4, mtp=False, server_pool=False)
+    assert disabled["_gapped_scratch_bytes_resolver"](4097) == 0
+
+
 def test_packed_state_linear_bytes_match_the_state_allocator() -> None:
     runner = _dense_27b_runner()
     per_slot = gguf_runner._gguf_packed_state_linear_bytes(runner, slot_count=1)
@@ -264,11 +274,11 @@ def test_capacity_prices_resumable_checkpoint_allocator(monkeypatch, positions, 
     # A single-slot server suspends in place and allocates no checkpoint.
     checkpoints = 0 if capacity == 1 else capacity * sum(allocated)
     for terms in (plain, streamed):
-        # BF16 never suspends a layer-outer prefill; the rest of the post-pool
-        # workspace is storage-independent.
+        # Compare checkpoint bytes after removing BF16-only gapped reserves.
         assert (
             terms["_packed_scratch_bytes_resolver"](positions)
             - bf16["_packed_scratch_bytes_resolver"](positions)
+            + bf16["_gapped_scratch_bytes_resolver"](positions)
         ) == checkpoints
     generator = _route_generator(monkeypatch, mtp_policy="off")
     generator._prepared_kv_signature = ("int8_per_token_head",)
