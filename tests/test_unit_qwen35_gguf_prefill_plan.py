@@ -313,6 +313,26 @@ def test_source_f16_policy_with_only_bookkeeping_keys_leaves_weight_planes_empty
     assert "q6_f16_out" not in plan.views
 
 
+@pytest.mark.parametrize("rows", [3, 18, 65])
+def test_segmented_recurrent_input_and_output_cannot_alias(rows: int) -> None:
+    # Segments read FP32 convolution rows while publishing smaller BF16 rows
+    # concurrently; stage-disjoint aliasing would let one overwrite another.
+    lifetimes = prefill_plan._GGUF_PREFILL_SCRATCH_LIFETIMES
+    assert prefill_plan._prefill_scratch_lifetimes_overlap(
+        lifetimes["conv_out"], lifetimes["recurrent_bf16"]
+    )
+    plan = _build(
+        _dense_cfg(), rows=rows, capacity=rows, allocate_kv_cache=False,
+        disabled_fields=_DENSE_LIVENESS_DISABLED,
+    )
+    conv = plan.views["conv_out"]
+    out = plan.views["recurrent_bf16"]
+    assert conv is not None and out is not None
+    assert conv[0] != out[0] or (
+        conv[1] + conv[2] <= out[1] or out[1] + out[2] <= conv[1]
+    )
+
+
 def test_single_arena_layout_is_aligned_and_reports_its_groups() -> None:
     plan = _build(
         _moe_cfg(),

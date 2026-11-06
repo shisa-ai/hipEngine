@@ -153,7 +153,9 @@ _GGUF_PREFILL_SCRATCH_LIFETIMES: Mapping[str, ScratchLifetimes] = MappingProxyTy
         "prefill_query_scale": (("linear", 3, 5),),
         "prefill_key_scale": (("linear", 3, 5),),
         "recurrent_out": (("linear", 4, 5),),
-        "recurrent_bf16": (("linear", 5, 6),),
+        # Fused segmented GDN writes BF16 directly during recurrence, while
+        # conv_out is still read; it cannot alias the convolution input.
+        "recurrent_bf16": (("linear", 4, 6),),
         "full_q": (("full", 0, 2),),
         "full_k": (("full", 0, 3),),
         "full_v": (("full", 0, 4),),

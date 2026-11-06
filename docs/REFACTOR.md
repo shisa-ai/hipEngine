@@ -1250,13 +1250,13 @@ Owner: `hipengine/generation/qwen35_gguf.py`.
 
 Scope: `scripts/gguf_concurrency_baseline.py`; `HIPENGINE_GGUF_AR_PACKED_PREFILL`.
 
-**Observed failure:** public gfx1151 Qwen3.6 UD-Q4_K_M production width-four
-repeats produce differing first-row first tokens with packed prefill enabled;
-serial prefill makes the tested serial/packed decode repeats identical. Fresh
-width-four and short-prompt diagnostics reproduce it, so neither prior width-two
-work nor a long prompt is necessary. Repair this default-path defect as part of
-migration; do not remove or default-off packed prefill. Reproduction and isolation
-are recorded in `worklog/entries/20261106T161932.648028Z-lhl-r0309-prefill-nonrepeat-f3d1bc.md`.
+**Repeatability defect repaired:** the segmented recurrent writer's BF16 output
+aliased its live FP32 convolution input. Corrected scratch lifetimes prevent that
+overlap without changing arithmetic or disabling packed prefill. Public gfx1151
+Qwen3.6 UD-Q4_K_M production width-four short ragged requests now repeat across
+decode off/on/off/on with matching tokens and clean teardown. Repair and evidence:
+`worklog/entries/20261106T163959.712241Z-lhl-r0309-recurrent-alias-627a1a.md`.
+The explicit prefill control migration below remains open.
 
 Done when: Remaining work: give serial diagnostics an explicit prefill control and migrate
 warmup/compatibility/resident consumers coherently before retiring the env reader. Preserve packed
