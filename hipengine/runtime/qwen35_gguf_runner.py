@@ -1032,6 +1032,31 @@ def _layer_ffn_ops(runner) -> _layer_ffn.FfnOps:
     return _layer_ffn.FfnOps(**fields)
 
 
+@dataclass(frozen=True, slots=True)
+class GGUFRouterPlan:
+    cooperative: bool
+    persistent_counter: bool
+
+    @property
+    def variant(self) -> str:
+        if not self.cooperative:
+            return "separate_projections_topk"
+        return "coop_out_bf16_hidden_persistent" if self.persistent_counter else "coop_out_bf16_hidden"
+
+    @property
+    def counter_owner(self) -> str:
+        return "session_scratch_self_resetting" if self.cooperative and self.persistent_counter else "none"
+
+
+def _resolve_gguf_router_plan(owner) -> GGUFRouterPlan:
+    cooperative = getattr(owner, "router_f32w_coop", None)
+    persistent = getattr(owner, "router_f32w_persistent_counter", None)
+    return GGUFRouterPlan(
+        _gguf_router_f32w_coop_enabled() if cooperative is None else bool(cooperative),
+        _gguf_router_f32w_persistent_counter_enabled() if persistent is None else bool(persistent),
+    )
+
+
 def _layer_ffn_flags(runner) -> _layer_ffn.FfnFlags:
     """The FFN predicates, each a thunk over the owner or ambient policy.
 
@@ -1047,6 +1072,12 @@ def _layer_ffn_flags(runner) -> _layer_ffn.FfnFlags:
     def owner_flag(name: str, ambient) -> bool:
         value = getattr(runner, name, None)
         if value is None:
+            plan = getattr(runner, "router_plan", None)
+            if plan is not None:
+                return bool(getattr(plan, {
+                    "router_f32w_coop": "cooperative",
+                    "router_f32w_persistent_counter": "persistent_counter",
+                }[name]))
             return bool(ambient())
         return bool(value)
 
@@ -3243,6 +3274,7 @@ class Qwen35GGUFFullStackRunner:
     )
     # Owner-resolved router policy. ``None`` is the unbound/direct diagnostic
     # path, which keeps the historical per-call environment read.
+    router_plan: GGUFRouterPlan | None = field(default=None, init=False)
     router_f32w_coop: bool | None = field(default=None, init=False)
     router_f32w_persistent_counter: bool | None = field(default=None, init=False)
     # Owner-resolved broad-rowtile admission. ``None`` is the unbound/direct
@@ -3353,6 +3385,7 @@ class Qwen35GGUFFullStackRunner:
             if getattr(self, "target_router_f32w_persistent_counter", None) is None
             else bool(self.target_router_f32w_persistent_counter)
         )
+        self.router_plan = _resolve_gguf_router_plan(self)
         self.q8_t16_rowtile_all = (
             None
             if getattr(self, "target_q8_t16_rowtile_all", None) is None
