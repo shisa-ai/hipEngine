@@ -1,0 +1,763 @@
+{
+  "schema": 1,
+  "scope": "R0164 ownership and public lifecycle; no performance or arithmetic promotion claim",
+  "backend": "hip_gfx1151",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "model_sha256": null,
+  "command": "bash /tmp/r0219-run-hip.sh /tmp/r0164-refill-public.py",
+  "configuration": {
+    "execution_profile": "production",
+    "max_sequence_length": 512,
+    "max_active_requests": 2,
+    "candidate_budget": 2,
+    "max_tokens": 24,
+    "temperature": 0,
+    "ignore_eos": true,
+    "prefix_cache": "off"
+  },
+  "prompts": [
+    "Describe how rain forms and why clouds look white. ",
+    "Write a Python function to reverse a linked list.",
+    "Explain the difference between a star and a planet."
+  ],
+  "cycles": [
+    {
+      "request_ids": [
+        0,
+        1
+      ],
+      "speculative_request_ids": [
+        0,
+        1
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        1
+      ],
+      "accepted_counts": [
+        0,
+        0
+      ],
+      "committed_output_lengths": [
+        1,
+        1
+      ],
+      "target_cursor_deltas": [
+        1,
+        1
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        1
+      ],
+      "speculative_request_ids": [
+        0,
+        1
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        5
+      ],
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "committed_output_lengths": [
+        1,
+        3
+      ],
+      "target_cursor_deltas": [
+        1,
+        3
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        1
+      ],
+      "speculative_request_ids": [
+        0,
+        1
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        5
+      ],
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "committed_output_lengths": [
+        1,
+        3
+      ],
+      "target_cursor_deltas": [
+        1,
+        3
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        1
+      ],
+      "speculative_request_ids": [
+        0,
+        1
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        5
+      ],
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "committed_output_lengths": [
+        1,
+        3
+      ],
+      "target_cursor_deltas": [
+        1,
+        3
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        1
+      ],
+      "speculative_request_ids": [
+        0,
+        1
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        5
+      ],
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "committed_output_lengths": [
+        1,
+        3
+      ],
+      "target_cursor_deltas": [
+        1,
+        3
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        1
+      ],
+      "speculative_request_ids": [
+        0,
+        1
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        4
+      ],
+      "accepted_counts": [
+        0,
+        1
+      ],
+      "committed_output_lengths": [
+        1,
+        2
+      ],
+      "target_cursor_deltas": [
+        1,
+        2
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        1
+      ],
+      "speculative_request_ids": [
+        0,
+        1
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        5
+      ],
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "committed_output_lengths": [
+        1,
+        3
+      ],
+      "target_cursor_deltas": [
+        1,
+        3
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        1
+      ],
+      "speculative_request_ids": [
+        0,
+        1
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        4
+      ],
+      "accepted_counts": [
+        0,
+        1
+      ],
+      "committed_output_lengths": [
+        1,
+        2
+      ],
+      "target_cursor_deltas": [
+        1,
+        2
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        1
+      ],
+      "speculative_request_ids": [
+        0,
+        1
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        5
+      ],
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "committed_output_lengths": [
+        1,
+        3
+      ],
+      "target_cursor_deltas": [
+        1,
+        3
+      ]
+    },
+    {
+      "request_ids": [
+        0
+      ],
+      "speculative_request_ids": [
+        0
+      ],
+      "candidate_counts": [
+        2
+      ],
+      "selected_rows": [
+        0
+      ],
+      "accepted_counts": [
+        0
+      ],
+      "committed_output_lengths": [
+        1
+      ],
+      "target_cursor_deltas": [
+        1
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        2
+      ],
+      "speculative_request_ids": [
+        0,
+        2
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        1
+      ],
+      "accepted_counts": [
+        0,
+        0
+      ],
+      "committed_output_lengths": [
+        1,
+        1
+      ],
+      "target_cursor_deltas": [
+        1,
+        1
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        2
+      ],
+      "speculative_request_ids": [
+        0,
+        2
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        1
+      ],
+      "accepted_counts": [
+        0,
+        0
+      ],
+      "committed_output_lengths": [
+        1,
+        1
+      ],
+      "target_cursor_deltas": [
+        1,
+        1
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        2
+      ],
+      "speculative_request_ids": [
+        0,
+        2
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        5
+      ],
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "committed_output_lengths": [
+        1,
+        3
+      ],
+      "target_cursor_deltas": [
+        1,
+        3
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        2
+      ],
+      "speculative_request_ids": [
+        0,
+        2
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        5
+      ],
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "committed_output_lengths": [
+        1,
+        3
+      ],
+      "target_cursor_deltas": [
+        1,
+        3
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        2
+      ],
+      "speculative_request_ids": [
+        0,
+        2
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        4
+      ],
+      "accepted_counts": [
+        0,
+        1
+      ],
+      "committed_output_lengths": [
+        1,
+        2
+      ],
+      "target_cursor_deltas": [
+        1,
+        2
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        2
+      ],
+      "speculative_request_ids": [
+        0,
+        2
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        5
+      ],
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "committed_output_lengths": [
+        1,
+        3
+      ],
+      "target_cursor_deltas": [
+        1,
+        3
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        2
+      ],
+      "speculative_request_ids": [
+        0,
+        2
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        4
+      ],
+      "accepted_counts": [
+        0,
+        1
+      ],
+      "committed_output_lengths": [
+        1,
+        2
+      ],
+      "target_cursor_deltas": [
+        1,
+        2
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        2
+      ],
+      "speculative_request_ids": [
+        0,
+        2
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        5
+      ],
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "committed_output_lengths": [
+        1,
+        3
+      ],
+      "target_cursor_deltas": [
+        1,
+        3
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        2
+      ],
+      "speculative_request_ids": [
+        0,
+        2
+      ],
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "selected_rows": [
+        0,
+        5
+      ],
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "committed_output_lengths": [
+        1,
+        3
+      ],
+      "target_cursor_deltas": [
+        1,
+        3
+      ]
+    },
+    {
+      "request_ids": [
+        0,
+        2
+      ],
+      "speculative_request_ids": [
+        0,
+        2
+      ],
+      "candidate_counts": [
+        2,
+        1
+      ],
+      "selected_rows": [
+        0,
+        4
+      ],
+      "accepted_counts": [
+        0,
+        1
+      ],
+      "committed_output_lengths": [
+        1,
+        2
+      ],
+      "target_cursor_deltas": [
+        1,
+        2
+      ]
+    },
+    {
+      "request_ids": [
+        0
+      ],
+      "speculative_request_ids": [
+        0
+      ],
+      "candidate_counts": [
+        2
+      ],
+      "selected_rows": [
+        0
+      ],
+      "accepted_counts": [
+        0
+      ],
+      "committed_output_lengths": [
+        1
+      ],
+      "target_cursor_deltas": [
+        1
+      ]
+    },
+    {
+      "request_ids": [
+        0
+      ],
+      "speculative_request_ids": [
+        0
+      ],
+      "candidate_counts": [
+        1
+      ],
+      "selected_rows": [
+        1
+      ],
+      "accepted_counts": [
+        1
+      ],
+      "committed_output_lengths": [
+        2
+      ],
+      "target_cursor_deltas": [
+        2
+      ]
+    }
+  ],
+  "observed_acceptance_counts": [
+    0,
+    1,
+    2
+  ],
+  "outputs": [
+    {
+      "ids": [
+        471,
+        378,
+        21003,
+        877,
+        198,
+        34229,
+        198,
+        3367,
+        3455,
+        39136,
+        198,
+        34080,
+        594,
+        36011,
+        198,
+        72240,
+        1204,
+        10849,
+        7346,
+        321,
+        3069,
+        28552,
+        1353,
+        4022
+      ],
+      "request_id": "0",
+      "execution_path": "gguf_specdec2_mtp2"
+    },
+    {
+      "ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        12654,
+        709,
+        310,
+        9637,
+        264,
+        10278,
+        1103,
+        13,
+        6558,
+        728,
+        1683,
+        883,
+        1092,
+        310,
+        2830,
+        25,
+        271
+      ],
+      "request_id": "1",
+      "execution_path": "gguf_specdec2_mtp2"
+    },
+    {
+      "ids": [
+        271,
+        7732,
+        2107,
+        9467,
+        321,
+        31784,
+        513,
+        10632,
+        73766,
+        12497,
+        1669,
+        303,
+        3433,
+        11,
+        781,
+        1684,
+        41080,
+        303,
+        1204,
+        781,
+        513,
+        13717,
+        11,
+        1204
+      ],
+      "request_id": "2",
+      "execution_path": "gguf_specdec2_mtp2"
+    }
+  ],
+  "allocated_bytes_after_close": 0,
+  "passed": true
+}

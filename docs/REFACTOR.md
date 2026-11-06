@@ -2765,22 +2765,6 @@ Done when: run dense gfx1151 profile unit tests, then compare complete recurrent
 logits, continuation and accepted-prefix rollback across short and long histories for any
 replacement. Exercise public AR and packed MTP with storage attribution and lifecycle checks.
 
-### R0164 — Separate packed-target provenance from graph-cache consolidation
-
-Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
-
-Scope: `hipengine/generation/qwen35_gguf_mtp2.py` — Separate packed-target provenance from graph-cache consolidation.
-
-**Deferred graph-owner cleanup:** identify any remaining duplicated depth-specific cache fields and
-consolidate only equivalent ownership/lifetime behavior. A single bound does not imply every graph
-has identical shape or capture operands. Preserve uncached eager execution, singleton versus packed
-target identity, refill transitions, cancellation and teardown. Do not merge graph ownership solely
-because depths fit the same numeric range.
-
-Done when: run MTP2 seam tests for declared depth, uncached eager execution and
-singleton/refill behavior; test every affected cache lifecycle before removing fields. Exercise
-public generation with target attribution and all acceptance prefixes.
-
 ### R0173 — Verify owner-bound R28 dispatch on gfx1100
 
 Owner: `hipengine/generation/qwen35_dense_gfx1100_profiles.py`.

@@ -4512,11 +4512,13 @@
       "ledger_line": 3700,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/generation/qwen35_gguf_mtp2.py:2175-2222 creates budget-specific sampled graph buckets and 2480 selects by depth."
+        "worklog/entries/20261106T052653.588863Z-lhl-r0164-closure-02edcf.md maps every R0164 completion requirement to targeted tests and public lifecycle evidence.",
+        "audit/refactor-sweep/2026-11-06-r0164-public-lifecycle.json records packed/survivor/refill transitions and public acceptance counts 0/1/2; teardown allocations zero.",
+        "303 focused tests pass, 1 skipped; keyed aliases retain depth, sampler and device-accept capture identities."
       ],
-      "next_action": "Inventory exact duplicated cache fields and consolidate only equivalent lifetimes/operands; test singleton/packed/refill/cancel attribution before field removal.",
+      "next_action": "None for R0164; completed ledger section removed after scoped owner migration and public validation.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
