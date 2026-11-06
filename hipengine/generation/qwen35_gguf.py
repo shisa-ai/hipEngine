@@ -2029,7 +2029,10 @@ class Qwen35GGUFBringupGenerator:
                         while sessions:
                             session = sessions.pop()
                             key = keys.pop()
-                            self._release_shared_session(key, session)
+                            if release_after_probe:
+                                session.close()
+                            else:
+                                self._release_shared_session(key, session)
                     if unsupported:
                         break
                     result["packed_ar_prefill_prompt_lengths"].append(int(target_len))
@@ -2147,7 +2150,10 @@ class Qwen35GGUFBringupGenerator:
                         while sessions:
                             session = sessions.pop()
                             session_key = session_keys.pop()
-                            self._release_shared_session(session_key, session)
+                            if release_after_probe:
+                                session.close()
+                            else:
+                                self._release_shared_session(session_key, session)
                     if unsupported:
                         break
                     result["packed_mtp_prefill_prompt_lengths"].append(int(target_len))

@@ -5768,7 +5768,9 @@ def test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths(monkeypatch
 
     generator = _generator()
     generator.server_plain_ar_max_active_requests = 4
-    result = generator.prepare_request_scratch(max_prompt_tokens=4, max_batch_size=8)
+    result = generator.prepare_request_scratch(
+        max_prompt_tokens=4, max_batch_size=8, release_after_probe=False,
+    )
 
     assert result["max_batch_size"] == 8
     assert result["packed_ar_prefill_widths"] == [2, 4]
@@ -5794,6 +5796,9 @@ def test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths(monkeypatch
         ),
     ]
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
+    generator.prepare_request_scratch(max_prompt_tokens=4, max_batch_size=4,
+                                      release_after_probe=True)
+    assert len([call for call in calls if call[0] == "close"]) == 6
 
 
 def test_specdec2_streaming_prompt_missing_adapter_preserves_candidate_budget(
@@ -5936,7 +5941,7 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
     generator = _generator()
     generator.weight_index = _mtp_capable_weight_index()
     result = generator.prepare_request_scratch(
-        max_prompt_tokens=4, max_batch_size=8,
+        max_prompt_tokens=4, max_batch_size=8, release_after_probe=False,
         sampling_params=SamplingParams(speculative_mtp=True),
     )
 
