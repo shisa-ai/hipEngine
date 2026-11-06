@@ -6839,7 +6839,6 @@ class Qwen35GGUFMTP2Adapter:
         )
         self._provider_groups[group_key] = group
         root_buffers: dict[int, DeviceBuffer] = {}
-        verifiers: dict[int, Qwen35GGUFTransactionalVerifier] = {}
         try:
             for request_id in request_ids:
                 provider.reset_request(request_id)
@@ -6859,17 +6858,24 @@ class Qwen35GGUFMTP2Adapter:
                     verifier=None,
                     root_hidden_buffer=root_buffers[request_id],
                 )
-        except Exception:
-            for verifier in verifiers.values():
-                verifier.close()
+        except BaseException as error:
             for request_id, buffer in root_buffers.items():
                 target = targets[request_ids.index(request_id)]
-                free(buffer, runtime=target.runtime)
+                try:
+                    free(buffer, runtime=target.runtime)
+                except BaseException as cleanup_error:
+                    error.add_note(f"provider batch buffer rollback failed: {cleanup_error!r}")
             for request_id in request_ids:
-                provider.release_request(request_id)
                 self._states.pop(request_id, None)
+                try:
+                    provider.release_request(request_id)
+                except BaseException as cleanup_error:
+                    error.add_note(f"provider batch request rollback failed: {cleanup_error!r}")
             self._provider_groups.pop(group_key, None)
-            self.generator._release_mtp_draft_runner(pool_key, provider)
+            try:
+                self.generator._release_mtp_draft_runner(pool_key, provider)
+            except BaseException as cleanup_error:
+                error.add_note(f"provider batch pool rollback failed: {cleanup_error!r}")
             raise
 
     def _attach_request_to_group(

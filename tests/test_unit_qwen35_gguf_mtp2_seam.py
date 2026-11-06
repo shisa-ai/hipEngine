@@ -3782,6 +3782,46 @@ def test_refill_replay_failure_releases_only_provisional_provider_request(monkey
     assert target._last_target_hidden_ptr == 123
 
 
+def test_batch_replay_failure_drains_provider_requests_despite_release_error():
+    released = []
+    provider = SimpleNamespace(reset_request=lambda rid: None)
+    def release(rid):
+        released.append(rid)
+        if rid == 7:
+            raise RuntimeError("release failed")
+    provider.release_request = release
+    targets = [SimpleNamespace(target_layout=SimpleNamespace(max_sequence_length=32))
+               for _ in range(2)]
+    rows = {rid: SimpleNamespace(lease=SimpleNamespace(session=target))
+            for rid, target in zip((7, 8), targets)}
+    returned = []
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(_row=rows.get, _shared_runner=object())
+    adapter.generator = SimpleNamespace(
+        _acquire_dense_mtp_draft_provider=lambda *a, **kw: (provider, "pool", False),
+        _release_mtp_draft_runner=lambda key, selected: returned.append((key, selected)),
+    )
+    adapter._provider_groups = {}
+    adapter._states = {}
+    adapter._target_profile_supported = lambda target: True
+    adapter._bind_target_profile_metadata = lambda target: None
+    adapter._max_physical_requests = lambda: 2
+    failure = RuntimeError("batch replay failed")
+    def fail(*args):
+        raise failure
+    adapter._catch_up_provider_batch = fail
+
+    with pytest.raises(RuntimeError, match="batch replay failed") as caught:
+        adapter._open_batch_requests((7, 8))
+
+    assert caught.value is failure
+    assert released == [7, 8]
+    assert returned == [("pool", provider)]
+    assert adapter._provider_groups == {}
+    assert adapter._states == {}
+    assert any("release failed" in note for note in failure.__notes__)
+
+
 def test_refill_reuses_live_provider_group_before_opening_singleton() -> None:
     provider = SimpleNamespace(executor=SimpleNamespace(max_requests=2))
     group = mtp2_module._MTP2ProviderGroup(
