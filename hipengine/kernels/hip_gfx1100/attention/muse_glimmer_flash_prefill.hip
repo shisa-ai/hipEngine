@@ -21,7 +21,7 @@ namespace {
 constexpr int HEAD_DIM = 128;
 constexpr int GQA = 16;          // Q heads per KV head (32 / 2)
 constexpr int K_TILE = 16;       // keys per WMMA tile
-constexpr int WAVES = 4;
+constexpr int WAVES = 1;
 constexpr int THREADS = WAVES * 32;
 
 typedef _Float16 half_t;
