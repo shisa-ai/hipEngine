@@ -3956,7 +3956,7 @@ def test_packed_prompt_hidden_sinks_consume_post_output_norm_rows(monkeypatch) -
     ) == 0x4000
 
 
-@pytest.mark.parametrize("setup_failure", [None, "acquire", "first_sink", "sink"])
+@pytest.mark.parametrize("setup_failure", [None, "acquire", "first_sink", "sink", "prefix_miss"])
 @pytest.mark.parametrize("released_bulk", [False, True])
 @pytest.mark.parametrize("split_finish", [False, True])
 def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
@@ -4103,6 +4103,21 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     adapter.register_request(8, 2)
     adapter.physical_prompt_streaming = True
 
+    if setup_failure == "prefix_miss":
+        for row in rows.values():
+            row.prefix_reused_tokens = 1
+        adapter.restorable_prefix_rows = lambda selected: {row.request_id for row in selected}
+        adapter._restore_prefix_checkpoint_for_streaming = lambda *args, **kwargs: None
+        assert adapter.begin_prompt_streaming((7, 8), checkpoints={}) == (None, None)
+        assert provider.released == [7, 8]
+        assert released_pool == [("pool", provider)]
+        assert adapter.prompt_activation_available()
+        assert adapter._prompt_streaming_sinks == {}
+        assert adapter._prompt_streaming_group_keys == {}
+        assert adapter._provider_groups == {}
+        assert adapter._prompt_streaming_norm_buffers == {}
+        assert freed_norm == [0x9000, 0xA000]
+        return
     if setup_failure == "acquire":
         acquire = generator._acquire_dense_mtp_draft_provider
         def fail_acquire(*args, **kwargs):
