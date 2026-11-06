@@ -108,10 +108,17 @@ class Qwen4ExpARBatchStepError(RuntimeError):
 class _Lease:
     """One request's pinned physical slot, owner token, and import state."""
 
-    slot: int
-    owner: int
+    admission: Any
     positions: int
     imported: bool = False
+    @property
+    def slot(self) -> int:
+        return self.admission.slot
+
+    @property
+    def owner(self) -> int:
+        return self.admission.owner
+
     #: Physical widths this request's own decode steps ran at, keyed by row
     #: count. A request that shared a step with three peers reports ``{4: n}``,
     #: so a response can describe the work it actually took part in instead of
@@ -281,7 +288,15 @@ class Qwen4ExpARBatchOwner:
             )
         slot = int(free[0])
         owner = int(batch.admit(slot, positions=needed))
-        lease = _Lease(slot, owner, needed)
+        try:
+            lease = _Lease(batch.admission(slot, owner), needed)
+        except BaseException as error:
+            try:
+                batch.release(slot, owner)
+            except BaseException as cleanup:
+                error.add_note(f"admission cleanup failed: {cleanup!r}")
+                self._record_failure(f"admission cleanup for slot {slot} failed: {cleanup}")
+            raise
         with self._state_lock:
             collision = rid in self._leases
             if not collision:

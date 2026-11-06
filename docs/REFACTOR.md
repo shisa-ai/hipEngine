@@ -2961,8 +2961,10 @@ still uses host-issued device-to-device copies. A batched device operation remai
 profile the import boundary before claiming a benefit from a new kernel.
 
 **Remaining admission design:** the runner now stores owner token and cursor in one per-slot
-admission record; release detaches it and reuse creates a new record. Mixed-target consumers use
-checked runner methods. Unify request leases and owner row planning with this record next.
+admission record; release detaches it and reuse creates a new record. Request leases reference
+that same record rather than copying physical slot and owner fields; mixed-target consumers use
+checked runner methods. Owner row planning preserves the caller's request order through these
+records. Final device/public validation remains outstanding.
 Preserve physical-slot identity, cancellation/reuse, preflight failure and poisoned-step cleanup;
 publishing partial admission is not acceptable.
 

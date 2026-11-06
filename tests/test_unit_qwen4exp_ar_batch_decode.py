@@ -639,6 +639,23 @@ def test_controlled_row_requests_the_logits_readback(batch_env, monkeypatch) -> 
         native.close()
 
 
+def test_owner_lease_shares_physical_admission_identity() -> None:
+    from tests.test_unit_qwen4exp_batch_runner import _fake_runner
+
+    batch = _fake_runner(slots=2)
+    owner = Qwen4ExpARBatchOwner(
+        batch_factory=lambda: batch, state_slots=2, max_positions=8,
+    )
+    slot = owner.reserve(17, positions=8)
+    lease = owner._leases[17]
+    assert lease.admission is batch.admission(slot, lease.owner)
+    batch.publish_position(slot, lease.owner, 3)
+    assert lease.admission.position == 3
+    assert owner.release(17)
+    owner.reserve(18, positions=8)
+    assert owner._leases[18].admission is not lease.admission
+
+
 def _standalone_owner(*, state_slots=2, max_positions=8):
     """An owner over a fake batch, without a generator or serving runner."""
 

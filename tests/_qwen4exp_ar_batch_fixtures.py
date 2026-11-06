@@ -134,6 +134,7 @@ class FakeBatchRunner:
         self._owners = [0] * self.state_slots
         self._positions = [0] * self.state_slots
         self._next_owner = 0
+        self._admissions = {}
 
     @property
     def free_slots(self):
@@ -141,6 +142,11 @@ class FakeBatchRunner:
             slot for slot, owner in enumerate(self._owners) if not owner
         )
         return tuple(reversed(slots)) if self.free_slot_order == "descending" else slots
+
+    def admission(self, slot, owner):
+        if self._owners[slot] != owner:
+            raise RuntimeError("stale owner")
+        return self._admissions[slot]
 
     def position(self, slot):
         return int(self._positions[int(slot)])
@@ -172,6 +178,7 @@ class FakeBatchRunner:
         self._next_owner += 1
         self._owners[parsed] = self._next_owner
         self._positions[parsed] = 0
+        self._admissions[parsed] = SimpleNamespace(slot=parsed, owner=self._next_owner)
         self.admit_calls.append(parsed)
         return self._next_owner
 

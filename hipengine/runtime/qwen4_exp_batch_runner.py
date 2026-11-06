@@ -179,6 +179,7 @@ class Qwen4ExpBatchDecodeResult:
 
 @dataclass
 class _SlotAdmission:
+    slot: int
     owner: int
     position: int = 0
 
@@ -1624,6 +1625,14 @@ class Qwen4ExpGGUFBatchRunner:
         admission = self._admissions[self._require_slot(slot)]
         return 0 if admission is None else admission.owner
 
+    def admission(self, slot: int, owner: int) -> _SlotAdmission:
+        """Return the live admission identity after validating its owner token."""
+
+        self._require_open()
+        parsed = self._require_slot(slot)
+        self._require_owner(parsed, owner)
+        return self._admissions[parsed]
+
     def position(self, slot: int) -> int:
         """Next append position of an admitted slot."""
 
@@ -1734,7 +1743,7 @@ class Qwen4ExpGGUFBatchRunner:
             self._zero_slot(parsed)
         self._poisoned.discard(parsed)
         self._next_owner += 1
-        self._admissions[parsed] = _SlotAdmission(self._next_owner)
+        self._admissions[parsed] = _SlotAdmission(parsed, self._next_owner)
         self._ple_hash_states.pop(parsed, None)
         return self._next_owner
 
