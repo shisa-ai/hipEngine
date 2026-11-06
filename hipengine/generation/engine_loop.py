@@ -726,9 +726,8 @@ class SubmitPollTextGenerator:
             try:
                 for request in normalized:
                     admitted.append(self.submit_speculative_detailed(request))
-            except BaseException:
-                for submission in admitted:
-                    self.abort_submission(submission, reason="parent_submit_error")
+            except BaseException as error:
+                self._rollback_speculative_admissions(admitted, error)
                 raise
             return tuple(admitted)
         if (any(request.grammar is not None for request in normalized)
@@ -765,9 +764,8 @@ class SubmitPollTextGenerator:
             try:
                 for request in normalized:
                     admitted.append(self.submit_speculative_detailed(request))
-            except BaseException:
-                for submission in admitted:
-                    self.abort_submission(submission, reason="parent_submit_error")
+            except BaseException as error:
+                self._rollback_speculative_admissions(admitted, error)
                 raise
             return tuple(admitted)
         with self._submission_priority.submission(self._loop_lock):
@@ -829,6 +827,17 @@ class SubmitPollTextGenerator:
                 submissions.append(submission)
             self._last_speculative_submission = submissions[-1]
             return tuple(submissions)
+
+    def _rollback_speculative_admissions(
+        self,
+        submissions: Sequence[GenerationSubmission],
+        error: BaseException,
+    ) -> None:
+        for submission in submissions:
+            try:
+                self.abort_submission(submission, reason="parent_submit_error")
+            except BaseException as cleanup_error:
+                error.add_note(f"speculative admission rollback failed: {cleanup_error!r}")
 
     def submit_speculative_detailed(
         self,

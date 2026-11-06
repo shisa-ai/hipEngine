@@ -479,6 +479,49 @@ def test_legacy_speculative_batch_rolls_back_prior_admissions_on_failure(monkeyp
         driver.close()
 
 
+@pytest.mark.parametrize("generic", [False, True])
+def test_speculative_batch_rollback_drains_peers_when_retirement_raises(monkeypatch, generic):
+    runner = _ResidentLifetimeRunner()
+    driver = SubmitPollTextGenerator(_ResidentInner(runner), capacity=2)
+    monkeypatch.setattr(
+        SubmitPollTextGenerator, "supports_bounded_generic_speculative_children",
+        property(lambda self: generic),
+    )
+    monkeypatch.setattr(
+        SubmitPollTextGenerator, "supports_speculative_mtp", property(lambda self: not generic)
+    )
+    monkeypatch.setattr(
+        SubmitPollTextGenerator, "_supports_staged_speculative_mtp", property(lambda self: False)
+    )
+    requests = tuple(replace(_request(), max_tokens=count) for count in (11, 12, 13))
+    admitted = [object(), object()]
+    retired = []
+    calls = []
+    failure = RuntimeError("third child admission failed")
+
+    def submit(request):
+        calls.append(request)
+        if len(calls) == 3:
+            raise failure
+        return admitted[len(calls) - 1]
+
+    def abort(submission, *, reason):
+        retired.append((submission, reason))
+        if submission is admitted[0]:
+            raise RuntimeError("first child retirement failed")
+
+    monkeypatch.setattr(driver, "submit_speculative_detailed", submit)
+    monkeypatch.setattr(driver, "abort_submission", abort)
+    try:
+        with pytest.raises(RuntimeError, match="third child admission failed") as caught:
+            driver.submit_speculative_many_detailed(requests)
+        assert caught.value is failure
+        assert retired == [(child, "parent_submit_error") for child in admitted]
+        assert any("first child retirement failed" in note for note in failure.__notes__)
+    finally:
+        driver.close()
+
+
 def test_runner_without_lifetime_hooks_keeps_scheduler_only_contract() -> None:
     runner = _HooklessResidentRunner()
     loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
