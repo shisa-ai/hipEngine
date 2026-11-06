@@ -7,6 +7,43 @@ from pathlib import Path
 
 import pytest
 
+@pytest.mark.parametrize("field, option", [
+    ("long_attention", "compare_long_attention_hipblaslt"),
+    ("block_attention", "compare_block_attention_hipblaslt"),
+    ("swa", "compare_swa_attention_hipblaslt"),
+    ("dense_contiguous", "compare_dense_contiguous_cache"),
+])
+def test_attention_profiler_arms_restore_owner_on_switch_and_failure(field, option):
+    from contextlib import ExitStack
+    from types import SimpleNamespace
+    from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
+    from scripts.laguna_long_context_profile import _configure_attention_comparison
+
+    owner = object.__new__(LagunaGGUFResidentSession)
+    attributes = {
+        "long_attention": "prefill_long_attention_hipblaslt",
+        "block_attention": "prefill_block_attention_hipblaslt",
+        "swa": "prefill_swa_attention_hipblaslt",
+        "dense_contiguous": "prefill_dense_contiguous_cache",
+    }
+    for attr in attributes.values():
+        setattr(owner, attr, True)
+    before = vars(owner).copy()
+    args = SimpleNamespace(**{key: key == option for key in (
+        "compare_long_attention_hipblaslt", "compare_block_attention_hipblaslt",
+        "compare_swa_attention_hipblaslt", "compare_dense_contiguous_cache",
+    )})
+    with pytest.raises(RuntimeError, match="synthetic"):
+        with ExitStack() as stack:
+            for mode in ("control", "candidate", "control"):
+                _configure_attention_comparison(stack, owner, args, mode=mode)
+                assert getattr(owner, attributes[field]) is (mode == "candidate")
+                assert all(getattr(owner, attr) is True for key, attr in attributes.items()
+                           if key != field)
+            raise RuntimeError("synthetic")
+    assert vars(owner) == before
+
+
 @pytest.mark.parametrize("pair16", [False, True])
 def test_selected_moe_profiler_arms_restore_previous_policy(pair16):
     from contextlib import ExitStack

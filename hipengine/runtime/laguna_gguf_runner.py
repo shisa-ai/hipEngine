@@ -4224,19 +4224,25 @@ class LagunaGGUFResidentSession:
     @contextlib.contextmanager
     def prefill_attention_diagnostic(
         self, *, swa: bool | None = None, dense_contiguous: bool | None = None,
+        long_attention: bool | None = None, block_attention: bool | None = None,
     ):
         """Restore owner-local attention comparison choices even after failure."""
-        previous = (self.prefill_swa_attention_hipblaslt,
-                    self.prefill_dense_contiguous_cache)
+        choices = {
+            "prefill_swa_attention_hipblaslt": swa,
+            "prefill_dense_contiguous_cache": dense_contiguous,
+            "prefill_long_attention_hipblaslt": long_attention,
+            "prefill_block_attention_hipblaslt": block_attention,
+        }
+        previous = {key: getattr(self, key) for key, value in choices.items()
+                    if value is not None}
         try:
-            if swa is not None:
-                self.set_prefill_swa_attention_hipblaslt(swa)
-            if dense_contiguous is not None:
-                self.set_prefill_dense_contiguous_cache(dense_contiguous)
+            for key, value in choices.items():
+                if value is not None:
+                    getattr(self, "set_" + key)(value)
             yield
         finally:
-            (self.prefill_swa_attention_hipblaslt,
-             self.prefill_dense_contiguous_cache) = previous
+            for key, value in previous.items():
+                setattr(self, key, value)
 
     @contextlib.contextmanager
     def packed_attention_diagnostic(self, *, packed_query: bool, packed_output_gate: bool):

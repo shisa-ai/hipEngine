@@ -54,6 +54,21 @@ def _configure_selected_moe_comparison(stack: ExitStack, owner, args, *, mode: s
         stack.enter_context(owner.selected_moe_diagnostic(gate_up=gate, down="grouped_exact"))
 
 
+def _configure_attention_comparison(stack: ExitStack, owner, args, *, mode: str) -> None:
+    stack.close()
+    choices = {
+        key: mode == "candidate"
+        for key, option in (
+            ("long_attention", "compare_long_attention_hipblaslt"),
+            ("block_attention", "compare_block_attention_hipblaslt"),
+            ("swa", "compare_swa_attention_hipblaslt"),
+            ("dense_contiguous", "compare_dense_contiguous_cache"),
+        ) if getattr(args, option)
+    }
+    if choices:
+        stack.enter_context(owner.prefill_attention_diagnostic(**choices))
+
+
 def _configure_moe_tail_comparison(stack: ExitStack, owner, *, enabled: bool) -> None:
     if not enabled:
         stack.enter_context(unfused_moe_tail(owner))
@@ -718,6 +733,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     diagnostic_scopes = ExitStack()
     decode_scopes = ExitStack()
     selected_moe_scopes = ExitStack()
+    attention_scopes = ExitStack()
     from hipengine.runtime.f16_weight_linear import f16_decode_strategy
 
     if args.compare_f16_decode_onebarrier or args.compare_f16_decode_fixedk:
@@ -1042,10 +1058,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         else ("candidate", "control")
                     )
                 for mode in modes:
-                    if args.compare_long_attention_hipblaslt:
-                        owner.set_prefill_long_attention_hipblaslt(
-                            mode == "candidate"
-                        )
+                    _configure_attention_comparison(
+                        attention_scopes, owner, args, mode=mode,
+                    )
                     if args.compare_raw_k_prefill_rowbatch:
                         owner.set_raw_k_prefill_rowbatch(
                             int(raw_k_candidate)
@@ -1055,18 +1070,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     _configure_selected_moe_comparison(
                         selected_moe_scopes, owner, args, mode=mode,
                     )
-                    if args.compare_block_attention_hipblaslt:
-                        owner.set_prefill_block_attention_hipblaslt(
-                            mode == "candidate"
-                        )
-                    if args.compare_swa_attention_hipblaslt:
-                        owner.set_prefill_swa_attention_hipblaslt(
-                            mode == "candidate"
-                        )
-                    if args.compare_dense_contiguous_cache:
-                        owner.set_prefill_dense_contiguous_cache(
-                            mode == "candidate"
-                        )
                     if args.compare_f16_decode_onebarrier or args.compare_f16_decode_fixedk:
                         decode_scopes.close()
                         decode_mode = (
@@ -1200,6 +1203,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     )
         resident_nbytes = owner.resident_nbytes
     finally:
+        attention_scopes.close()
         selected_moe_scopes.close()
         decode_scopes.close()
         diagnostic_scopes.close()
