@@ -1894,29 +1894,6 @@ confirm public chain routing stays unchanged. The corresponding GGUF root/siblin
 is separately owned by `scripts/gguf_mtp_bench.py`; its supported-comparison disposition is recorded
 in `worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md`.
 
-### R0281-GDN / R0377 — Prefill selectors and session-owned scratch
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_GDN_PREFILL_MODE`.
-
-**Decision needed:** choose which explicit comparison interfaces to maintain or move to a scoped
-diagnostic plan, separately from production defaults and arithmetic promotion. `chain_k2`,
-register-tree, tiled/LDS and noncompact peer routes have comparison callers; they are not unused
-merely because another route is automatic. Preserve the strict unfused fallback and named capability
-errors. R0377's standalone Q8 cluster8 release-age note is consolidated here: its automatic route
-and explicit exact control already share this ownership decision. The FP16-state entry R0380
-separately owns storage and speculative writer migration; consolidating R0377 does not resolve it.
-
-Done when: migrate selector parsing, backend metadata, registered
-prepare/recurrent/segmented siblings, session scratch planning, typed writers and all comparison CLI
-choices/provenance together. Run the session-mode, prefill-routing, GDN geometry and four
-comparison-harness test files and help routes. Before changing execution, run primitive
-exact/parent-parity and typed state checks plus real `LLM.generate()` at short, segmented and longer
-prompts, with selected-route attribution, reset/reuse and allocation cleanup. Any changed arithmetic
-requires its declared execution-profile gate; a historical negative result alone does not revoke an
-explicit implemented comparison.
-
 ### R0281-SELECTED-PREFILL — Baseline, shared-X and pair32 ownership
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.

@@ -2947,11 +2947,13 @@
       "ledger_line": 2322,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:32836-32837 retains mode parser and typed state branches at 4108-4177."
+        "Retain explicit GDN comparison routes, strict fallback and session scratch owners; no selector/default/arithmetic migration. R0380 storage work stays separate.",
+        "210 session/routing/geometry/comparison tests pass; all four comparison help routes succeed.",
+        "worklog/entries/20261106T000733.709328Z-lhl-r0281-gdn-eca26e.md"
       ],
-      "next_action": "Migrate GDN parser, typed writers, scratch plan and comparison CLI into explicit plan while preserving all registered strict/peer siblings.",
+      "next_action": "None; recurrent storage/speculative writers remain independently tracked in R0380.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
