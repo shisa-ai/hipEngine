@@ -1916,27 +1916,6 @@ pair+SiLU dispatch at values below, within and above their row bounds. Preserve 
 registered strict fallbacks. Run the rowtile-control and GEMV dispatch unit tests, raw-K and pack8
 GPU parity files and public generation with route attribution, reset/reuse and cleanup.
 
-### R0281-DRAFT-CHAIN — Explicit chain policy and host fallback
-
-Owner: `hipengine/speculative/mtp_resident_draft.py`.
-
-Scope: `device_chain_enabled`; the retired
-`HIPENGINE_RESIDENT_MTP_DRAFT_DEVICE_CHAIN` is ignored.
-
-The explicit constructor control is supported. `scripts/gguf_mtp_bench.py` owns
-host/device comparison, keys cached drafts by chain choice, and records requested
-and effective selection. Its full-vocabulary recovery owner receives the same
-choice. `scripts/gguf_mtp_draft_rocprof.py` and the compatibility generation owner
-explicitly request device-chain and prewarm. Preserve the host comparison path;
-there is no remaining process reader to migrate for this control.
-
-Done when: finish native proposal/complete-cycle and public/compatibility lifecycle
-validation. Constructor tests cover true/false/unspecified, stale environment and
-prewarm; device-commit tests cover state ownership. Cover probability cutoffs,
-confidence/hidden/stage capture, depth/capacity and top-k boundaries, plus
-proposal/commit/reset/reuse and teardown. Keep embedding gathers, stream ownership
-and primitive oracles.
-
 ### R0282-PREFILL-POLICY — Resident prefill diagnostic ownership
 
 Owner: `hipengine/generation/qwen35_gguf.py`.

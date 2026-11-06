@@ -3043,11 +3043,13 @@
       "ledger_line": 2402,
       "owner": "`hipengine/speculative/mtp_resident_draft.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/speculative/mtp_resident_draft.py:560,637,647,1185 retains explicit device_chain_enabled and prewarm branch."
+        "Explicit constructor/bench/cache/recovery ownership already implemented; preserve host/device diagnostic and runtime defaults.",
+        "121 host control/lifecycle/trace tests and four actual-model host/device draft tests pass; existing 99 native-cycle tests and public/compatibility cycles cover unchanged downstream owners.",
+        "worklog/entries/20261106T001912.888122Z-lhl-r0281-draft-chain-validation-d0aeb8.md"
       ],
-      "next_action": "Public/native proposal lifecycle checks remain. Explicit constructor control, bench cache/requested/effective metadata, profiler and recovery propagation are already implemented; see worklog/entries/20261105T190614.350126Z-lhl-draft-chain-disposition-396f5d.md. Do not repeat process-reader migration.",
+      "next_action": "None; no execution migration or arithmetic promotion.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
