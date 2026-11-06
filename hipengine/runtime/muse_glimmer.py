@@ -48,6 +48,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
     gemma4_attention_prefill_bf16,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
+    gemma4_add_rmsnorm_scale_bf16,
     gemma4_rmsnorm_f32w_bf16,
     gemma4_rmsnorm_weightless_bf16,
 )
@@ -464,33 +465,29 @@ class MuseGlimmerResidentSession:
                 v_cache.ptr + position_offset * row_bytes, self.v_bf16.ptr,
                 tokens * row_bytes, MemcpyKind.DEVICE_TO_DEVICE,
             )
-            if tokens == 1:
-                from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
-                    muse_glimmer_decode_attention,
-                )
+            from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
+                muse_glimmer_decode_attention,
+            )
 
-                key_begin = (
-                    max(0, position_offset - cfg.sliding_window + 1) if is_swa else 0
-                )
+            key_begin = (
+                max(0, position_offset - cfg.sliding_window + 1) if is_swa else 0
+            )
+            if tokens == 1:
                 span = keys - key_begin
                 n_splits = min(64, max(1, (span + 31) // 32))
-                muse_glimmer_decode_attention(
-                    self.q_bf16.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
-                    self.attn_partials.ptr,
-                    n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
-                    key_begin=key_begin, key_end=keys, n_splits=n_splits,
-                    scale=float(d) ** -0.5, runtime=rt,
-                )
             else:
-                gemma4_attention_prefill_bf16(
-                    self.q_bf16.ptr, k_cache.ptr, v_cache.ptr,
-                    (self.keep_mask_swa if is_swa else self.keep_mask_full).ptr,
-                    self.attn_out.ptr,
-                    tokens=tokens, num_heads=cfg.n_heads, num_kv_heads=cfg.n_kv_heads,
-                    head_dim=d, scale=float(d) ** -0.5, keys=keys,
-                    window=cfg.sliding_window if is_swa else 0,
-                    row_offset=position_offset, runtime=rt,
-                )
+                # Prefill rows parallelize over queries (tokens x 8 groups);
+                # one split per row keeps partials bounded and writes direct.
+                n_splits = 1
+                key_begin = 0
+            muse_glimmer_decode_attention(
+                self.q_bf16.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
+                self.attn_partials.ptr,
+                n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
+                key_begin=key_begin, key_end=keys, n_splits=n_splits,
+                tokens=tokens, window=cfg.sliding_window if is_swa else 0,
+                scale=float(d) ** -0.5, runtime=rt,
+            )
             gguf_gate_mul_bf16(
                 self.attn_out.ptr, self.gate_bf16.ptr, self.attn_out.ptr,
                 tokens * q_dim, runtime=rt,
@@ -500,11 +497,11 @@ class MuseGlimmerResidentSession:
                 self.attn_proj.ptr, tokens, q_dim, hidden,
                 backend=self.backend, runtime=rt,
             )
-            gemma4_rmsnorm_f32w_bf16(
-                self.attn_proj.ptr, self.loaded.ptr(p + "post_attention_norm.weight"),
-                self.post_normed.ptr, tokens, hidden, cfg.post_norm_eps, runtime=rt,
+            gemma4_add_rmsnorm_scale_bf16(
+                self.attn_proj.ptr, src.ptr,
+                self.loaded.ptr(p + "post_attention_norm.weight"), 0,
+                dst.ptr, tokens, hidden, cfg.post_norm_eps, runtime=rt,
             )
-            gguf_bf16_add(src.ptr, self.post_normed.ptr, dst.ptr, tokens * hidden, runtime=rt)
             src, dst = dst, src
 
             gemma4_rmsnorm_f32w_bf16(
@@ -530,11 +527,11 @@ class MuseGlimmerResidentSession:
                 self.ff_out.ptr, tokens, cfg.n_ff, hidden,
                 backend=self.backend, runtime=rt,
             )
-            gemma4_rmsnorm_f32w_bf16(
-                self.ff_out.ptr, self.loaded.ptr(p + "post_ffw_norm.weight"),
-                self.post_normed.ptr, tokens, hidden, cfg.post_norm_eps, runtime=rt,
+            gemma4_add_rmsnorm_scale_bf16(
+                self.ff_out.ptr, src.ptr,
+                self.loaded.ptr(p + "post_ffw_norm.weight"), 0,
+                dst.ptr, tokens, hidden, cfg.post_norm_eps, runtime=rt,
             )
-            gguf_bf16_add(src.ptr, self.post_normed.ptr, dst.ptr, tokens * hidden, runtime=rt)
             src, dst = dst, src
 
         self._length = keys

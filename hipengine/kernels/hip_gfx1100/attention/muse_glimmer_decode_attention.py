@@ -42,30 +42,34 @@ def _library():
 def muse_glimmer_decode_attention(
     q_ptr: int, k_ptr: int, v_ptr: int, out_ptr: int, partials_ptr: int,
     *, n_q_heads: int, n_kv_heads: int, key_begin: int, key_end: int,
-    n_splits: int, scale: float, stream: int = 0,
-    library: ctypes.CDLL | None = None, runtime=None,
+    n_splits: int, scale: float, tokens: int = 1, window: int = 0,
+    stream: int = 0, library: ctypes.CDLL | None = None, runtime=None,
 ) -> None:
-    """One decode token over [key_begin, key_end) of the contiguous KV cache.
+    """Attention over [key_begin, key_end) of the contiguous KV cache.
 
-    ``partials`` must hold n_splits * n_q_heads * 130 float32 values.
-    ``q``/``out`` are [n_q_heads, 128] BF16; KV is [max_ctx, n_kv_heads, 128].
+    ``tokens==1`` is decode; ``tokens>1`` is a causal prefill block whose rows
+    occupy the last ``tokens`` positions ending at ``key_end``. ``window>0``
+    clamps each row to its sliding window. ``partials`` must hold
+    n_splits * tokens * n_q_heads * 130 float32 values (unused when
+    n_splits == 1, which writes output directly).
     """
 
     if n_q_heads % n_kv_heads or n_q_heads % 4:
         raise ValueError("Glimmer decode attention requires n_q_heads % n_kv_heads == 0 and % 4 == 0")
     if key_end <= key_begin:
         raise ValueError("key range must be non-empty")
-    if n_splits <= 0:
-        raise ValueError("n_splits must be positive")
+    if n_splits <= 0 or tokens <= 0:
+        raise ValueError("n_splits and tokens must be positive")
     library = library or _library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library, "hipengine_muse_glimmer_decode_attn",
-        (_P, _P, _P, _P, _P, _I64, _I64, _I64, _I64, _I64, _F, _P),
+        (_P, _P, _P, _P, _P, _I64, _I64, _I64, _I64, _I64, _I64, _I64, _F, _P),
         ctypes.c_int,
     )
     err = fn(q_ptr, k_ptr, v_ptr, out_ptr, partials_ptr,
-             n_q_heads, n_kv_heads, key_begin, key_end, n_splits, float(scale), stream)
+             n_q_heads, n_kv_heads, key_begin, key_end, n_splits, tokens, window,
+             float(scale), stream)
     runtime.check(int(err))
 
 

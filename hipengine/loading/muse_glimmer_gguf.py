@@ -39,6 +39,7 @@ LAYOUT_Q4_K_PACK8 = "q4_k_pack8"
 LAYOUT_GGUF_Q4_K_T16 = "gguf_q4_k_t16_v1"
 LAYOUT_GGUF_Q5_K_T16 = "gguf_q5_k_t16_v1"
 LAYOUT_GGUF_Q6_K_T16 = "gguf_q6_k_t16_v1"
+LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR = "gguf_q6_k_t16_qmicro_planar_v1"
 
 #: Raw-layout quant keys this loader uploads. The runtime dispatch surface
 #: resolves GEMV/prefill owners per key; admission never consults this map.
@@ -183,7 +184,7 @@ def upload_glimmer_tensor(
     from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8, repack_gguf_q4_k_tile16
     from hipengine.quant.gguf_t16 import (
         repack_gguf_q5_k_tile16,
-        repack_gguf_q6_k_tile16,
+        repack_gguf_q6_k_tile16_qmicro_planar,
     )
 
     if row_perm is not None:
@@ -200,12 +201,14 @@ def upload_glimmer_tensor(
         )
         spec = MuseGlimmerWeightSpec(layout=LAYOUT_GGUF_Q4_K_T16, quant_key="gguf_q4_k_t16_v1")
     elif ggml_type_name == "Q6_K":
-        packed = repack_gguf_q6_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
+        packed = repack_gguf_q6_k_tile16_qmicro_planar(raw if raw.ndim == 3 else raw[None, ...])
         allocs["tiles"] = load_host_array_to_device_as_dtype(
             name + ".tiles", np.ascontiguousarray(packed.tiles), DType.INT8,
             source_dtype="I8", runtime=runtime,
         )
-        spec = MuseGlimmerWeightSpec(layout=LAYOUT_GGUF_Q6_K_T16, quant_key="gguf_q6_k_t16_v1")
+        spec = MuseGlimmerWeightSpec(
+            layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR, quant_key="gguf_q6_k_t16_qmicro_planar_v1"
+        )
     elif ggml_type_name == "Q5_K":
         packed = repack_gguf_q5_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
         allocs["tiles"] = load_host_array_to_device_as_dtype(
