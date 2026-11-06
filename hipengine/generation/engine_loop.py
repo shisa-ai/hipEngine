@@ -761,7 +761,15 @@ class SubmitPollTextGenerator:
             for request in normalized
         )
         if any(item != compatibility[0] for item in compatibility[1:]):
-            return tuple(self.submit_speculative_detailed(request) for request in normalized)
+            admitted = []
+            try:
+                for request in normalized:
+                    admitted.append(self.submit_speculative_detailed(request))
+            except BaseException:
+                for submission in admitted:
+                    self.abort_submission(submission, reason="parent_submit_error")
+                raise
+            return tuple(admitted)
         with self._submission_priority.submission(self._loop_lock):
             combined = replace(
                 normalized[0],

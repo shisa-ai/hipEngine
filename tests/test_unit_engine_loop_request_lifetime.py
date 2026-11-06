@@ -447,6 +447,38 @@ def test_staged_speculative_submission_binds_the_original_request() -> None:
         driver.close()
 
 
+def test_legacy_speculative_batch_rolls_back_prior_admissions_on_failure(monkeypatch):
+    runner = _ResidentLifetimeRunner()
+    driver = SubmitPollTextGenerator(_ResidentInner(runner), capacity=2)
+    monkeypatch.setattr(
+        SubmitPollTextGenerator, "_supports_staged_speculative_mtp", property(lambda self: False)
+    )
+    monkeypatch.setattr(
+        SubmitPollTextGenerator, "supports_speculative_mtp", property(lambda self: True)
+    )
+    requests = (_request(), replace(_request(), max_tokens=17))
+    admitted = object()
+    calls = []
+    retired = []
+
+    def submit(request):
+        calls.append(request)
+        if len(calls) == 2:
+            raise RuntimeError("second child admission failed")
+        return admitted
+
+    monkeypatch.setattr(driver, "submit_speculative_detailed", submit)
+    monkeypatch.setattr(
+        driver, "abort_submission", lambda submission, *, reason: retired.append((submission, reason))
+    )
+    try:
+        with pytest.raises(RuntimeError, match="second child admission failed"):
+            driver.submit_speculative_many_detailed(requests)
+        assert retired == [(admitted, "parent_submit_error")]
+    finally:
+        driver.close()
+
+
 def test_runner_without_lifetime_hooks_keeps_scheduler_only_contract() -> None:
     runner = _HooklessResidentRunner()
     loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
