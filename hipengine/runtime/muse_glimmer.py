@@ -262,9 +262,196 @@ class MuseGlimmerResidentSession:
         self._require_open()
         if self._length >= self.max_context:
             raise ValueError("the KV cache is full; reset or raise max_context")
+        if self._image_overrides is None:
+            graph = self._ensure_decode_graph()
+            if graph is not None:
+                return self._decode_step_graph(graph, int(token_id))
         return self._forward_block(
             np.asarray([int(token_id)], dtype=np.int64), position_offset=self._length
         )
+
+    # -- HIP graph decode --------------------------------------------------
+    def _ensure_decode_graph(self):
+        """Capture the decode step once; replay eliminates the per-step host
+        dispatch bubble (~17 ms at 1068 launches). Returns the exec handle or
+        None if capture is unavailable (the eager path remains the fallback).
+        """
+
+        if getattr(self, "_graph_exec", 0):
+            return self._graph_exec
+        if getattr(self, "_graph_failed", False):
+            return None
+        rt = self.runtime
+        try:
+            from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
+                muse_glimmer_decode_attention, muse_glimmer_kv_append,
+            )
+
+            stream = rt.stream_create()
+            self._g_token = malloc(8, runtime=rt)
+            self._g_pos = malloc(8, runtime=rt)
+            self._g_key_end = malloc(8, runtime=rt)
+            self._graph_stream = stream
+            # Warm every kernel on the capture stream outside capture.
+            staging = np.asarray([13796], dtype=np.int64)
+            copy_host_array_to_device(self._g_token, staging, runtime=rt)
+            copy_host_array_to_device(self._g_pos, np.asarray([self._length], dtype=np.int64), runtime=rt)
+            copy_host_array_to_device(self._g_key_end, np.asarray([self._length + 1], dtype=np.int64), runtime=rt)
+            self._decode_graph_body(stream)
+            rt.stream_synchronize(stream)
+            rt.stream_begin_capture(stream, mode=0)
+            try:
+                self._decode_graph_body(stream)
+                graph = rt.stream_end_capture(stream)
+            except BaseException:
+                if rt.stream_is_capturing(stream):
+                    rt.stream_end_capture(stream)
+                raise
+            if not graph:
+                raise RuntimeError("decode graph capture produced no graph")
+            self._graph_exec = rt.graph_instantiate(graph)
+            rt.graph_destroy(graph)
+            return self._graph_exec
+        except Exception:
+            self._graph_failed = True
+            for name in ("_g_token", "_g_pos", "_g_key_end"):
+                buf = getattr(self, name, None)
+                if buf is not None:
+                    free(buf, runtime=rt)
+                    setattr(self, name, None)
+            return None
+
+    def _decode_graph_body(self, stream: int) -> None:
+        """Kernel-only decode sequence with graph-stable arguments.
+
+        Position-dependent content lives in device staging buffers updated
+        before each replay; the KV append and attention read the position and
+        live extent from those buffers, so no kernel argument changes between
+        steps. Mirrors the eager decode arithmetic exactly (fixed 64 splits).
+        """
+
+        from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
+            muse_glimmer_decode_attention, muse_glimmer_kv_append,
+        )
+        from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
+
+        cfg, rt = self.config, self.runtime
+        hidden = cfg.n_embd
+        q_dim, kv_dim, d = cfg.qkv_dim, cfg.kv_dim, cfg.head_dim
+        kw = {"stream": stream, "runtime": rt}
+
+        launch_gguf_embedding(
+            self.loaded.weight("token_embd.weight"), self._g_token.ptr,
+            self.hidden_a.ptr, rows=1, hidden_size=hidden,
+            vocab_size=cfg.vocab_size, backend=self.backend, **kw,
+        )
+        gemma4_rmsnorm_weightless_bf16(
+            self.hidden_a.ptr, self.hidden_b.ptr, 1, hidden, cfg.rms_eps, **kw
+        )
+        src, dst = self.hidden_b, self.hidden_a
+        for layer in range(cfg.n_layers):
+            p = f"blk.{layer}."
+            is_swa = cfg.swa_pattern[layer]
+            gemma4_rmsnorm_f32w_bf16(
+                src.ptr, self.loaded.ptr(p + "attn_norm.weight"), self.normed.ptr,
+                1, hidden, cfg.rms_eps, **kw,
+            )
+            self._linear(self.loaded.weight(p + "attn_q.weight"), self.normed.ptr,
+                         self.q_bf16.ptr, 1, hidden, q_dim, output_dtype="bf16",
+                         backend=self.backend, **kw)
+            self._linear(self.loaded.weight(p + "attn_k.weight"), self.normed.ptr,
+                         self.k_bf16.ptr, 1, hidden, kv_dim, output_dtype="bf16",
+                         backend=self.backend, **kw)
+            self._linear(self.loaded.weight(p + "attn_v.weight"), self.normed.ptr,
+                         self.v_bf16.ptr, 1, hidden, kv_dim,
+                         backend=self.backend, **kw)
+            self._linear(self.loaded.weight(p + "attn_gate.weight"), self.normed.ptr,
+                         self.gate_bf16.ptr, 1, hidden, q_dim,
+                         backend=self.backend, **kw)
+            bf16_to_f32(self.q_bf16.ptr, self.q_f32.ptr, q_dim, **kw)
+            bf16_to_f32(self.k_bf16.ptr, self.k_f32.ptr, kv_dim, **kw)
+            gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
+                self.q_f32.ptr, self.k_f32.ptr,
+                self.loaded.ptr(p + "attn_q_norm.weight"),
+                self.loaded.ptr(p + "attn_k_norm.weight"),
+                (self.cos_table if is_swa else self.identity_cos).ptr,
+                (self.sin_table if is_swa else self.identity_sin).ptr,
+                self._g_pos.ptr,
+                self.q_rot_f32.ptr, self.k_rot_f32.ptr,
+                cfg.rms_eps, 1, cfg.n_heads, cfg.n_kv_heads, d, d,
+                self.max_context, **kw,
+            )
+            f32_to_bf16(self.q_rot_f32.ptr, self.q_bf16.ptr, q_dim, **kw)
+            f32_to_bf16(self.k_rot_f32.ptr, self.k_bf16.ptr, kv_dim, **kw)
+            k_cache, v_cache = self._kv[layer]
+            muse_glimmer_kv_append(k_cache.ptr, self.k_bf16.ptr, self._g_pos.ptr,
+                                   row_elems=kv_dim, n=kv_dim, **kw)
+            muse_glimmer_kv_append(v_cache.ptr, self.v_bf16.ptr, self._g_pos.ptr,
+                                   row_elems=kv_dim, n=kv_dim, **kw)
+            muse_glimmer_decode_attention(
+                self.q_bf16.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
+                self.attn_partials.ptr,
+                n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
+                key_begin=0, key_end=self.max_context, n_splits=64,
+                tokens=1, window=cfg.sliding_window if is_swa else 0,
+                key_end_dev=self._g_key_end.ptr, scale=float(d) ** -0.5, **kw,
+            )
+            gguf_gate_mul_bf16(self.attn_out.ptr, self.gate_bf16.ptr,
+                               self.attn_out.ptr, q_dim, **kw)
+            self._linear(self.loaded.weight(p + "attn_output.weight"), self.attn_out.ptr,
+                         self.attn_proj.ptr, 1, q_dim, hidden,
+                         backend=self.backend, **kw)
+            gemma4_add_rmsnorm_scale_bf16(
+                self.attn_proj.ptr, src.ptr,
+                self.loaded.ptr(p + "post_attention_norm.weight"), 0,
+                dst.ptr, 1, hidden, cfg.post_norm_eps, **kw,
+            )
+            src, dst = dst, src
+            gemma4_rmsnorm_f32w_bf16(
+                src.ptr, self.loaded.ptr(p + "ffn_norm.weight"), self.normed.ptr,
+                1, hidden, cfg.rms_eps, **kw,
+            )
+            self._linear(self.loaded.weight(p + "ffn_gate.weight"), self.normed.ptr,
+                         self.ff_gate.ptr, 1, hidden, cfg.n_ff,
+                         backend=self.backend, **kw)
+            self._linear(self.loaded.weight(p + "ffn_up.weight"), self.normed.ptr,
+                         self.ff_up.ptr, 1, hidden, cfg.n_ff,
+                         backend=self.backend, **kw)
+            silu_mul_separate_out_bf16(self.ff_gate.ptr, self.ff_up.ptr,
+                                       self.ff_act.ptr, 1, cfg.n_ff, **kw)
+            self._linear(self.loaded.weight(p + "ffn_down.weight"), self.ff_act.ptr,
+                         self.ff_out.ptr, 1, cfg.n_ff, hidden,
+                         backend=self.backend, **kw)
+            gemma4_add_rmsnorm_scale_bf16(
+                self.ff_out.ptr, src.ptr,
+                self.loaded.ptr(p + "post_ffw_norm.weight"), 0,
+                dst.ptr, 1, hidden, cfg.post_norm_eps, **kw,
+            )
+            src, dst = dst, src
+        gemma4_rmsnorm_f32w_bf16(
+            src.ptr, self.loaded.ptr("output_norm.weight"), self.normed.ptr,
+            1, hidden, cfg.rms_eps, **kw,
+        )
+        self._linear(self.loaded.weight("output.weight"), self.normed.ptr,
+                     self.logits_bf16.ptr, 1, hidden, cfg.vocab_size,
+                     output_dtype="bf16", backend=self.backend, **kw)
+        bf16_to_f32(self.logits_bf16.ptr, self.logits_f32.ptr, cfg.vocab_size, **kw)
+
+    def _decode_step_graph(self, graph_exec: int, token_id: int) -> np.ndarray:
+        rt = self.runtime
+        pos = self._length
+        copy_host_array_to_device(self._g_token, np.asarray([token_id], dtype=np.int64), runtime=rt)
+        copy_host_array_to_device(self._g_pos, np.asarray([pos], dtype=np.int64), runtime=rt)
+        copy_host_array_to_device(self._g_key_end, np.asarray([pos + 1], dtype=np.int64), runtime=rt)
+        rt.graph_launch(graph_exec, self._graph_stream)
+        rt.stream_synchronize(self._graph_stream)
+        copy_device_to_host(self._logits_host.ctypes.data, self.logits_f32, runtime=rt)
+        self._length = pos + 1
+        logits = self._logits_host * np.float32(self.config.logit_scale)
+        cap = self.config.final_logit_softcapping
+        if cap:
+            logits = np.float32(cap) * np.tanh(logits / np.float32(cap))
+        return np.ascontiguousarray(logits, dtype=np.float32)
 
     # -- speculative (DFlash) surface --------------------------------------
     def prefill_with_taps(
@@ -474,7 +661,7 @@ class MuseGlimmerResidentSession:
             )
             if tokens == 1:
                 span = keys - key_begin
-                n_splits = min(64, max(1, (span + 31) // 32))
+                n_splits = 64
             else:
                 # Prefill rows parallelize over queries (tokens x 8 groups);
                 # one split per row keeps partials bounded and writes direct.

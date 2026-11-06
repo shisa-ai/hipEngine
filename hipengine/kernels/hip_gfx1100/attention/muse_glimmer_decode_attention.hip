@@ -52,7 +52,8 @@ __global__ __launch_bounds__(128, 4) void muse_glimmer_decode_attn_split_kernel(
     float* __restrict__ partials,          // [n_splits, tokens, n_q_heads, 130]
     uint16_t* __restrict__ out,            // [tokens, n_q_heads, 128] bf16
     int64_t n_q_heads, int64_t n_kv_heads, int64_t key_begin, int64_t key_end,
-    int64_t n_splits, int64_t tokens, int64_t window, float scale) {
+    int64_t n_splits, int64_t tokens, int64_t window, float scale,
+    const int64_t* __restrict__ key_end_dev) {
   const int split = blockIdx.x;
   const int q_group = blockIdx.y;  // 4 Q heads per block
   const int token = blockIdx.z;
@@ -61,6 +62,7 @@ __global__ __launch_bounds__(128, 4) void muse_glimmer_decode_attn_split_kernel(
   const int qh = q_group * GLIMMER_Q_PER_BLOCK + wave;
   if (qh >= n_q_heads || token >= tokens) return;
   const int kvh = qh / (n_q_heads / n_kv_heads);
+  if (key_end_dev != nullptr) key_end = *key_end_dev;
 
   // Per-row causal + SWA clamp (key_end is the live extent; row position is
   // key_end - tokens + token for a contiguous append).
@@ -149,11 +151,29 @@ __global__ void muse_glimmer_decode_attn_combine_kernel(
   out[(token * n_q_heads + qh) * GLIMMER_HEAD_DIM + lane] = f32_to_bf16(acc / l);
 }
 
+// Graph-safe KV append: destination row read from a device position buffer.
+__global__ void muse_glimmer_kv_append_kernel(
+    uint16_t* __restrict__ dst, const uint16_t* __restrict__ src,
+    const int64_t* __restrict__ pos, int64_t row_elems, int64_t n) {
+  const int64_t off = (*pos) * row_elems;
+  for (int64_t i = blockIdx.x * blockDim.x + threadIdx.x; i < n;
+       i += static_cast<int64_t>(gridDim.x) * blockDim.x)
+    dst[off + i] = src[i];
+}
+
+extern "C" int hipengine_muse_glimmer_kv_append(
+    uint16_t* dst, const uint16_t* src, const int64_t* pos, int64_t row_elems,
+    int64_t n, hipStream_t stream) {
+  if (!dst || !src || !pos || row_elems <= 0 || n <= 0) return hipErrorInvalidValue;
+  muse_glimmer_kv_append_kernel<<<1, 256, 0, stream>>>(dst, src, pos, row_elems, n);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_muse_glimmer_decode_attn(
     const uint16_t* q, const uint16_t* k, const uint16_t* v, uint16_t* out,
     float* partials, int64_t n_q_heads, int64_t n_kv_heads, int64_t key_begin,
     int64_t key_end, int64_t n_splits, int64_t tokens, int64_t window,
-    float scale, hipStream_t stream) {
+    float scale, const int64_t* key_end_dev, hipStream_t stream) {
   if (!q || !k || !v || !out || !partials || n_q_heads <= 0 || n_kv_heads <= 0 ||
       n_q_heads % n_kv_heads || n_q_heads % GLIMMER_Q_PER_BLOCK ||
       key_end <= key_begin || n_splits <= 0 || tokens <= 0)
@@ -163,7 +183,7 @@ extern "C" int hipengine_muse_glimmer_decode_attn(
             static_cast<unsigned>(tokens));
   muse_glimmer_decode_attn_split_kernel<<<grid, 128, 0, stream>>>(
       q, k, v, partials, out, n_q_heads, n_kv_heads, key_begin, key_end,
-      n_splits, tokens, window, scale);
+      n_splits, tokens, window, scale, key_end_dev);
   hipError_t err = hipGetLastError();
   if (err != hipSuccess) return static_cast<int>(err);
   if (n_splits > 1) {

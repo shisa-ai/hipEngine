@@ -43,7 +43,8 @@ def muse_glimmer_decode_attention(
     q_ptr: int, k_ptr: int, v_ptr: int, out_ptr: int, partials_ptr: int,
     *, n_q_heads: int, n_kv_heads: int, key_begin: int, key_end: int,
     n_splits: int, scale: float, tokens: int = 1, window: int = 0,
-    stream: int = 0, library: ctypes.CDLL | None = None, runtime=None,
+    key_end_dev: int = 0, stream: int = 0, library: ctypes.CDLL | None = None,
+    runtime=None,
 ) -> None:
     """Attention over [key_begin, key_end) of the contiguous KV cache.
 
@@ -64,13 +65,27 @@ def muse_glimmer_decode_attention(
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library, "hipengine_muse_glimmer_decode_attn",
-        (_P, _P, _P, _P, _P, _I64, _I64, _I64, _I64, _I64, _I64, _I64, _F, _P),
+        (_P, _P, _P, _P, _P, _I64, _I64, _I64, _I64, _I64, _I64, _I64, _F, _P, _P),
         ctypes.c_int,
     )
     err = fn(q_ptr, k_ptr, v_ptr, out_ptr, partials_ptr,
              n_q_heads, n_kv_heads, key_begin, key_end, n_splits, tokens, window,
-             float(scale), stream)
+             float(scale), key_end_dev, stream)
     runtime.check(int(err))
+
+
+def muse_glimmer_kv_append(dst_ptr: int, src_ptr: int, pos_ptr: int, *,
+                           row_elems: int, n: int, stream: int = 0,
+                           library: ctypes.CDLL | None = None, runtime=None) -> None:
+    """Append n BF16 elements at row *pos (device int64) of a contiguous cache."""
+
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_muse_glimmer_kv_append",
+        (_P, _P, _P, _I64, _I64, _P), ctypes.c_int,
+    )
+    runtime.check(int(fn(dst_ptr, src_ptr, pos_ptr, row_elems, n, stream)))
 
 
 def register_muse_glimmer_decode_attention_kernels():
