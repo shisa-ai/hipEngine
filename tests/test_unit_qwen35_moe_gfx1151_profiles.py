@@ -230,6 +230,8 @@ def test_production_binder_binds_cooperative_policy_on_the_owner(monkeypatch) ->
         weight_index=None,
         model_plugin=None,
     )
+    from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
+    assert generator.physical_target_arithmetic == PhysicalTargetArithmeticPlan(True, True, True)
     assert generator.target_router_f32w_coop is True
     assert generator.target_router_f32w_persistent_counter is True
     assert generator.target_q8_t16_rowtile_all is True
@@ -258,6 +260,8 @@ def test_strict_binder_binds_exact_policy_on_the_owner(monkeypatch) -> None:
         weight_index=None,
         model_plugin=None,
     )
+    from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
+    assert generator.physical_target_arithmetic == PhysicalTargetArithmeticPlan(True, True, True)
     assert generator.target_router_f32w_coop is False
     assert generator.target_router_f32w_persistent_counter is False
     assert generator.target_q8_t16_rowtile_all is False

@@ -1232,7 +1232,9 @@ def test_moe_prefill_is_unchanged_at_the_original_working_length(monkeypatch) ->
 
 
 @pytest.mark.parametrize("capacity", [2, 4, 8])
-def test_moe_adapter_factory_keeps_c1_and_selects_batched_owner(capacity, monkeypatch) -> None:
+@pytest.mark.parametrize("bound", [False, True])
+def test_moe_adapter_factory_keeps_c1_and_selects_batched_owner(capacity, bound, monkeypatch) -> None:
+    from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
     owner_c1 = SimpleNamespace(capacity=1, generator=SimpleNamespace())
     owner_c2 = SimpleNamespace(
         capacity=capacity,
@@ -1241,6 +1243,10 @@ def test_moe_adapter_factory_keeps_c1_and_selects_batched_owner(capacity, monkey
             backend="hip_gfx1100",
         ),
     )
+    if bound:
+        owner_c2.generator.physical_target_arithmetic = PhysicalTargetArithmeticPlan(
+            disable_f32_residual=False, pairreuse=True, exact_linear=False,
+        )
     kwargs = {
         "enabled": True,
         "target_verify_mode": "native",
@@ -1261,9 +1267,11 @@ def test_moe_adapter_factory_keeps_c1_and_selects_batched_owner(capacity, monkey
     assert c2.production_physical_extra_rowtiles is False
     assert c2.production_physical_q5_rowtile is False
     assert c2.production_physical_q6_rowtile is False
-    assert c2.physical_target_arithmetic.disable_f32_residual is True
+    assert c2.physical_target_arithmetic.disable_f32_residual is (not bound)
     assert c2.physical_target_arithmetic.pairreuse is True
-    assert c2.physical_target_arithmetic.exact_linear is True
+    assert c2.physical_target_arithmetic.exact_linear is (not bound)
+    if bound:
+        assert c2.physical_target_arithmetic is owner_c2.generator.physical_target_arithmetic
     from dataclasses import FrozenInstanceError
     with pytest.raises(FrozenInstanceError):
         c2.physical_target_arithmetic.exact_linear = False

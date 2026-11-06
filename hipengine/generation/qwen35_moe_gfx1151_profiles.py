@@ -206,6 +206,9 @@ def _binder(
 
     del resolved
     from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner
+    from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
+
+    generator.physical_target_arithmetic = PhysicalTargetArithmeticPlan(True, True, True)
     generator.launch_decision_owner = LaunchDecisionOwner()
     _apply_profile_policy(
         generator, cooperative=cooperative, rowtile_floor=rowtile_floor
