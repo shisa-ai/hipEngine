@@ -4141,6 +4141,37 @@ class LagunaGGUFResidentSession:
         finally:
             self.fuse_selected_silu_pack = previous
 
+    @contextlib.contextmanager
+    def q6_prefetch_diagnostic(
+        self, *, weight: bool, activation: bool, sums: bool,
+    ):
+        """Bind a complete Q6 producer/consumer comparison and restore it."""
+        selected = (bool(weight), bool(activation), bool(sums))
+        if selected[0] and not self.q6_qmicro_planar:
+            raise ValueError("Q6 WMMA weight prefetch requires planar qmicro")
+        if selected[1] and not selected[0]:
+            raise ValueError("Q6 WMMA activation prefetch requires weight prefetch")
+        if selected[2] and not selected[1]:
+            raise ValueError("Q6 precomputed activation sums require activation prefetch")
+        previous = (
+            self.q6_wmma_prefetch_weight,
+            self.q6_wmma_prefetch_activation,
+            self.q6_precomputed_activation_sums,
+        )
+        try:
+            (
+                self.q6_wmma_prefetch_weight,
+                self.q6_wmma_prefetch_activation,
+                self.q6_precomputed_activation_sums,
+            ) = selected
+            yield
+        finally:
+            (
+                self.q6_wmma_prefetch_weight,
+                self.q6_wmma_prefetch_activation,
+                self.q6_precomputed_activation_sums,
+            ) = previous
+
     def set_q6_wmma_prefetch_weight(self, enabled: bool) -> None:
         """Select exact Q6 register prefetch or its current WMMA rollback."""
 

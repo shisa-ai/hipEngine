@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import argparse
 import json
 from pathlib import Path
@@ -94,30 +95,55 @@ def _run(
 ) -> dict[str, float | int | str]:
     child = _child_session(owner, context_length=len(tokens))
     try:
-        _apply_mode(child, selected_gate_up_mode)
-        started = time.perf_counter()
-        result = child.prefill(tokens)
-        child.runtime.device_synchronize()
-        elapsed = time.perf_counter() - started
-        return {
-            "tok_s": len(tokens) / elapsed,
-            "length": len(tokens),
-            "next_token": int(result.next_token_id),
-            "next_token_logit_hex": float(result.next_token_logit).hex(),
-            "logits_sha256": _device_digest(
-                child.runtime, result.logits, np.float32
-            ),
-            "final_hidden_sha256": _device_digest(
-                child.runtime, result.final_hidden, np.uint16
-            ),
-            "post_layer_hidden_sha256": _device_digest(
-                child.runtime, result.post_layer_hidden, np.uint16
-            ),
-            "kv_sha256": _kv_digest(child),
-            "final_position": int(child.position),
-        }
+        with _mode_scope(child, selected_gate_up_mode):
+            return _capture_state(child, tokens)
     finally:
         child.close()
+
+
+def _capture_state(child, tokens):
+    started = time.perf_counter()
+    result = child.prefill(tokens)
+    child.runtime.device_synchronize()
+    elapsed = time.perf_counter() - started
+    return {
+        "tok_s": len(tokens) / elapsed,
+        "length": len(tokens),
+        "next_token": int(result.next_token_id),
+        "next_token_logit_hex": float(result.next_token_logit).hex(),
+        "logits_sha256": _device_digest(
+            child.runtime, result.logits, np.float32
+        ),
+        "final_hidden_sha256": _device_digest(
+            child.runtime, result.final_hidden, np.uint16
+        ),
+        "post_layer_hidden_sha256": _device_digest(
+            child.runtime, result.post_layer_hidden, np.uint16
+        ),
+        "kv_sha256": _kv_digest(child),
+        "final_position": int(child.position),
+    }
+
+
+_Q6_MODES = {
+    "q6_wmma_current": (False, False, False),
+    "q6_wmma_prefetch": (True, False, False),
+    "q6_wmma_prefetch_activation": (True, True, False),
+    "q6_wmma_precomputed_sums": (True, True, True),
+}
+
+
+@contextmanager
+def _mode_scope(session, runtime_mode):
+    if runtime_mode in _Q6_MODES:
+        weight, activation, sums = _Q6_MODES[runtime_mode]
+        with session.q6_prefetch_diagnostic(
+            weight=weight, activation=activation, sums=sums,
+        ):
+            yield
+    else:
+        _apply_mode(session, runtime_mode)
+        yield
 
 
 def _apply_mode(
@@ -190,9 +216,9 @@ def main() -> int:
                 context_length=args.length,
             )
             try:
-                _apply_mode(warm_session, gate_up_mode)
-                warm_session.prefill(tokens[:128])
-                runtime.device_synchronize()
+                with _mode_scope(warm_session, gate_up_mode):
+                    warm_session.prefill(tokens[:128])
+                    runtime.device_synchronize()
             finally:
                 warm_session.close()
         for repetition in range(args.repetitions):

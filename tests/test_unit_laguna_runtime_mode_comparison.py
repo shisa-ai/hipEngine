@@ -105,8 +105,40 @@ def test_q6_comparison_real_setters_keep_sum_producer_and_consumer_consistent(mo
     session.q6_qmicro_planar = True
     (session.q6_wmma_prefetch_weight, session.q6_wmma_prefetch_activation,
      session.q6_precomputed_activation_sums) = initial
-    comparison._apply_mode(session, mode)
+    with comparison._mode_scope(session, mode):
+        assert (
+            session.q6_wmma_prefetch_weight, session.q6_wmma_prefetch_activation,
+            session.q6_precomputed_activation_sums,
+        ) == expected
+        with pytest.raises(RuntimeError, match="synthetic"):
+            with session.q6_prefetch_diagnostic(weight=False, activation=False, sums=False):
+                raise RuntimeError("synthetic")
+        assert (
+            session.q6_wmma_prefetch_weight, session.q6_wmma_prefetch_activation,
+            session.q6_precomputed_activation_sums,
+        ) == expected
     assert (
         session.q6_wmma_prefetch_weight, session.q6_wmma_prefetch_activation,
         session.q6_precomputed_activation_sums,
-    ) == expected
+    ) == initial
+
+
+@pytest.mark.parametrize("planar,selected", [
+    (False, (True, False, False)),
+    (True, (False, True, False)),
+    (True, (True, False, True)),
+])
+def test_q6_diagnostic_rejects_invalid_bundle_before_mutation(planar, selected):
+    session = object.__new__(LagunaGGUFResidentSession)
+    session.q6_qmicro_planar = planar
+    session.q6_wmma_prefetch_weight = False
+    session.q6_wmma_prefetch_activation = False
+    session.q6_precomputed_activation_sums = False
+    with pytest.raises(ValueError):
+        with session.q6_prefetch_diagnostic(
+            weight=selected[0], activation=selected[1], sums=selected[2],
+        ):
+            pytest.fail("invalid bundle entered")
+    assert not session.q6_wmma_prefetch_weight
+    assert not session.q6_wmma_prefetch_activation
+    assert not session.q6_precomputed_activation_sums
