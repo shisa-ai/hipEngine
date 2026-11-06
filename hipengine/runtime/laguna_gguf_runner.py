@@ -4131,10 +4131,15 @@ class LagunaGGUFResidentSession:
             mode,
         )
 
-    def set_fused_selected_silu_pack(self, enabled: bool) -> None:
-        """Select exact dual-SiLU packing or its registered primitive fallback."""
-
-        self.fuse_selected_silu_pack = bool(enabled)
+    @contextlib.contextmanager
+    def fused_selected_silu_pack_diagnostic(self, enabled: bool):
+        """Scope exact dual-SiLU packing or its strict unfused chain."""
+        previous = self.fuse_selected_silu_pack
+        try:
+            self.fuse_selected_silu_pack = bool(enabled)
+            yield
+        finally:
+            self.fuse_selected_silu_pack = previous
 
     def set_q6_wmma_prefetch_weight(self, enabled: bool) -> None:
         """Select exact Q6 register prefetch or its current WMMA rollback."""

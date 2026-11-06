@@ -65,37 +65,41 @@ def _run(
     tokens: list[int],
 ) -> dict[str, float | int | str]:
     child = _child_session(owner)
-    child.set_fused_selected_silu_pack(_MODES[mode])
     try:
-        started = time.perf_counter()
-        result = child.prefill(tokens)
-        child.runtime.device_synchronize()
-        elapsed = time.perf_counter() - started
-        return {
-            "tok_s": 512.0 / elapsed,
-            "wall_ms": elapsed * 1000.0,
-            "next_token": int(result.next_token_id),
-            "next_token_logit_hex": float(result.next_token_logit).hex(),
-            "logits_sha256": _device_digest(
-                child.runtime,
-                result.logits,
-                np.float32,
-            ),
-            "final_hidden_sha256": _device_digest(
-                child.runtime,
-                result.final_hidden,
-                np.uint16,
-            ),
-            "post_layer_hidden_sha256": _device_digest(
-                child.runtime,
-                result.post_layer_hidden,
-                np.uint16,
-            ),
-            "kv_sha256": _kv_digest(child),
-            "final_position": int(child.position),
-        }
+        with child.fused_selected_silu_pack_diagnostic(_MODES[mode]):
+            return _capture_state(child, tokens)
     finally:
         child.close()
+
+
+def _capture_state(child, tokens: list[int]) -> dict[str, float | int | str]:
+    started = time.perf_counter()
+    result = child.prefill(tokens)
+    child.runtime.device_synchronize()
+    elapsed = time.perf_counter() - started
+    return {
+        "tok_s": 512.0 / elapsed,
+        "wall_ms": elapsed * 1000.0,
+        "next_token": int(result.next_token_id),
+        "next_token_logit_hex": float(result.next_token_logit).hex(),
+        "logits_sha256": _device_digest(
+            child.runtime,
+            result.logits,
+            np.float32,
+        ),
+        "final_hidden_sha256": _device_digest(
+            child.runtime,
+            result.final_hidden,
+            np.uint16,
+        ),
+        "post_layer_hidden_sha256": _device_digest(
+            child.runtime,
+            result.post_layer_hidden,
+            np.uint16,
+        ),
+        "kv_sha256": _kv_digest(child),
+        "final_position": int(child.position),
+    }
 
 
 def main() -> int:

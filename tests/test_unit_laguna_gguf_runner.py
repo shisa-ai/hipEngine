@@ -1666,8 +1666,9 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch,
         == "mmq64x64_d4_f32_q6_wavecols_direct_rawprefetch_q4_ge512"
     )
     assert session.fuse_selected_silu_pack is True
-    session.set_fused_selected_silu_pack(False)
-    assert session.fuse_selected_silu_pack is False
+    with session.fused_selected_silu_pack_diagnostic(False):
+        assert session.fuse_selected_silu_pack is False
+    assert session.fuse_selected_silu_pack is True
     assert session.dense_q4_prefill_mode == "wmma_pack8"
     assert session.f16_prefill_mode == "hipblaslt_range_direct"
     assert validated_modes == ["hipblaslt_range_direct"]

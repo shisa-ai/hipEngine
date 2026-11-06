@@ -95,6 +95,7 @@ def test_comparison_child_borrows_weights_and_runtime(monkeypatch):
 def test_comparison_captures_complete_state_and_closes_after_prefill(monkeypatch, mode, raises):
     events = []
     child = object.__new__(LagunaGGUFResidentSession)
+    child.fuse_selected_silu_pack = True
     child.position = 511
     child.runtime = SimpleNamespace(device_synchronize=lambda: events.append("sync"))
 
@@ -125,3 +126,20 @@ def test_comparison_captures_complete_state_and_closes_after_prefill(monkeypatch
             "kv_sha256": "kv-digest", "final_position": 511,
         }
         assert events == ["sync", "close"]
+    assert child.fuse_selected_silu_pack is True
+
+
+@pytest.mark.parametrize("initial", [False, True])
+def test_fused_silu_diagnostic_restores_nested_failure(initial):
+    assert not hasattr(LagunaGGUFResidentSession, "set_fused_selected_silu_pack")
+    child = object.__new__(LagunaGGUFResidentSession)
+    child.fuse_selected_silu_pack = initial
+    with child.fused_selected_silu_pack_diagnostic(not initial):
+        assert child.fuse_selected_silu_pack is not initial
+        with pytest.raises(RuntimeError, match="synthetic"):
+            with child.fused_selected_silu_pack_diagnostic(initial):
+                assert child.fuse_selected_silu_pack is initial
+                raise RuntimeError("synthetic")
+        assert child.fuse_selected_silu_pack is not initial
+    assert child.fuse_selected_silu_pack is initial
+
