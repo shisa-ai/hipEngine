@@ -48,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-context", type=int, default=2048)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--max-prompts", type=int, default=0, help="0 = all")
-    parser.add_argument("--candidate-budget", type=int, default=15)
+    parser.add_argument("--candidate-budget", type=int, default=4)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
 

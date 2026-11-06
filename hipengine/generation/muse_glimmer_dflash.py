@@ -320,7 +320,11 @@ register_speculative_provider(
         quant="gguf_q4_k_m",
     ),
     make_muse_glimmer_dflash_text_provider,
-    candidate_budget=15,
+    # Empirical optimum on the mtpbench suite (gfx1151): budgets 3-5 peak
+    # (~21.3-21.7 tok/s); acceptance decays with draft depth and the verify
+    # cost grows, while >=8 crosses the rowtile chunk boundary and collapses.
+    # budget=4 is the sweep peak (worklog 20261106T150626, /tmp budget sweep).
+    candidate_budget=4,
 )
 
 
