@@ -123,9 +123,9 @@ def test_global_scope_restores_nested_policies_and_failed_body(owner, failure):
         try:
             with global_issue_comparison(owner, SimpleNamespace(compare_global_assume_exp=True)):
                 assert not cache.global_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape
-                owner.set_decode_global_assume_exp(True)
-                if failure:
-                    raise RuntimeError("synthetic comparison failure")
+                with global_issue_arm(owner, SimpleNamespace(compare_global_assume_exp=True), candidate=True):
+                    if failure:
+                        raise RuntimeError("synthetic comparison failure")
         except RuntimeError as error:
             assert failure and str(error) == "synthetic comparison failure"
         assert vars(cache) == outer
@@ -219,8 +219,8 @@ def test_profiler_enters_global_scope_and_restores_before_owner_close(
         @property
         def prefill_chunk_size(self):
             for enabled in (False, True):
-                getattr(owner, "set_decode_global_" + name)(enabled)
-                assert cache.attend(0, 10, 20, gate_ptr=30, gated_out_ptr=40)
+                with global_issue_arm(owner, args, candidate=enabled):
+                    assert cache.attend(0, 10, 20, gate_ptr=30, gated_out_ptr=40)
             assert selected == [
                 "global_context_fused_exact_gated_" + variant + "_spans"
                 for variant in (control, candidate)

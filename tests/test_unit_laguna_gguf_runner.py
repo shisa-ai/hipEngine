@@ -591,61 +591,9 @@ def test_laguna_swa_mixed32_exp32_switch_is_session_scoped() -> None:
     )
 
 
-def test_laguna_global_assume_exp_switch_is_session_scoped() -> None:
-    session = object.__new__(runner_module.LagunaGGUFResidentSession)
-    session.kv_cache = SimpleNamespace(
-        global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape=False,
-    )
-
-    session.set_decode_global_assume_exp(True)
-    assert (
-        session.kv_cache.global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape
-        is True
-    )
-
-    session.set_decode_global_assume_exp(False)
-    assert (
-        session.kv_cache.global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape
-        is False
-    )
-
-
-def test_laguna_global_exp32_switch_is_session_scoped() -> None:
-    session = object.__new__(runner_module.LagunaGGUFResidentSession)
-    session.kv_cache = SimpleNamespace(
-        global_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape=False,
-    )
-
-    session.set_decode_global_exp32(True)
-    assert (
-        session.kv_cache.global_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape
-        is True
-    )
-
-    session.set_decode_global_exp32(False)
-    assert (
-        session.kv_cache.global_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape
-        is False
-    )
-
-
-def test_laguna_global_mixed32_switch_is_session_scoped() -> None:
-    session = object.__new__(runner_module.LagunaGGUFResidentSession)
-    session.kv_cache = SimpleNamespace(
-        global_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape=False,
-    )
-
-    session.set_decode_global_mixed32(True)
-    assert (
-        session.kv_cache.global_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape
-        is True
-    )
-
-    session.set_decode_global_mixed32(False)
-    assert (
-        session.kv_cache.global_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape
-        is False
-    )
+@pytest.mark.parametrize("name", ["assume_exp", "exp32", "mixed32"])
+def test_laguna_global_persistent_switch_is_retired(name) -> None:
+    assert not hasattr(runner_module.LagunaGGUFResidentSession, "set_decode_global_" + name)
 
 
 def test_laguna_routing_replay_copies_each_sparse_layer_to_a_bounded_plane() -> None:

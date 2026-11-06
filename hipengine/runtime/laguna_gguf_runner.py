@@ -4356,33 +4356,6 @@ class LagunaGGUFResidentSession:
             bool(enabled)
         )
 
-    def set_decode_global_assume_exp(self, enabled: bool) -> None:
-        """Select exact domain-specialized global expf or its rollback."""
-
-        if self.kv_cache is None:
-            raise RuntimeError("Laguna KV cache is not available")
-        self.kv_cache.global_gqa2_vstage64_vec16_direct_assume_exp_fixedshape = (
-            bool(enabled)
-        )
-
-    def set_decode_global_exp32(self, enabled: bool) -> None:
-        """Select exact wave-wide global softmax exp issue or its rollback."""
-
-        if self.kv_cache is None:
-            raise RuntimeError("Laguna KV cache is not available")
-        self.kv_cache.global_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape = (
-            bool(enabled)
-        )
-
-    def set_decode_global_mixed32(self, enabled: bool) -> None:
-        """Select exact 32-owner global attention or its GQA2 rollback."""
-
-        if self.kv_cache is None:
-            raise RuntimeError("Laguna KV cache is not available")
-        self.kv_cache.global_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape = (
-            bool(enabled)
-        )
-
     @property
     def resident_nbytes(self) -> int:
         self._check_open()
