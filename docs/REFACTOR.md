@@ -3135,8 +3135,13 @@ Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
 
 Scope: `moe_physical_c2_pairreuse_session(...)`, `x_rows*8`.
 
-Done when: Deferred profile design: fold this selection into the MoE physical-target manifest without
-losing nested disabled-scope restoration or geometry checks. Preserve row-bound/interior,
+Pair-reuse selection is now a field of the immutable profile-owned arithmetic plan,
+carried by `PhysicalTargetPlan` and bound around physical verification. Nested diagnostic
+scopes remain supported. The MoE factory prefers that plan over stale compatibility fields;
+see [factory precedence](../worklog/entries/20261106T104009.319250Z-lhl-r0193-moe-plan-precedence-5fb3a8.md).
+
+Done when: preserve nested disabled-scope restoration and geometry checks through public
+validation before retiring the context. Preserve row-bound/interior,
 selected-row mismatch and incompatible-geometry tests. Verify public exact state, acceptance,
 cancellation/reuse and selected kernel attribution before retiring the context. The original final
 three-repeat performance gate still governs a claimed promotion or rejection. A losing candidate may
@@ -3166,7 +3171,7 @@ restore the previous plan. See
 [`transport checkpoint`](../worklog/entries/20261106T093416.260440Z-lhl-r0193-plan-transport-c46791.md)
 and [`profile-owner checkpoint`](../worklog/entries/20261106T093803.590732Z-lhl-r0193-profile-owner-89e0f8.md).
 
-Done when: finish physical-target manifest integration while
+Done when: finish public validation of the integrated physical-target plan while
 preserving C1/strict fallbacks, nested disabled scopes, exception restoration and independent
 execution-context isolation. Reuse RF-1's owner boundary and keep this migration separate from
 numerical tuning. Run `tests/test_unit_moe_target_arithmetic_scopes.py` and affected adapter tests;
@@ -3178,8 +3183,11 @@ Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
 
 Scope: `moe_physical_c2_exact_linear_session(...)`.
 
-Done when: Deferred profile transport: carry exact-linear selection in the resolved target manifest,
-preserving selected-state journals, C1 arithmetic, nested scopes, exception restoration and
+Exact-linear selection now travels in the immutable profile-owned arithmetic plan and
+unified physical-target plan; construction and diagnostic scope isolation have host coverage.
+
+Done when: validate that transport publicly while preserving selected-state journals, C1
+arithmetic, nested scopes, exception restoration and
 execution-context isolation. Verify public selected arithmetic, exact rollback state and lifecycle
 before retiring the context. Keep this transport change separate from replacement-kernel tuning. Any
 replacement must independently pass the complete numerical/lifecycle gates and the original >=1.10x
