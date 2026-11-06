@@ -100,7 +100,9 @@ from hipengine.runtime.qwen35_gguf_prefill_plan import (
 from hipengine.runtime.qwen35_gguf_prefix_state import (
     Qwen35GGUFPrefixStateSnapshot, _GGUFPrefixSnapshotArenaPool,
 )
-from hipengine.runtime.gguf_target_graph_alias import NativeTargetGraphAlias
+from hipengine.runtime.gguf_target_graph_alias import (
+    NativeTargetGraphAlias, native_target_graph_alias, set_native_target_graph_alias,
+)
 from hipengine.runtime.gguf_packed_backing import acquire_packed_backing
 from hipengine.runtime.qwen35_gguf_workspace import (
     PackedWorkspaceOwner as _PackedWorkspaceState,
@@ -29367,10 +29369,9 @@ class Qwen35GGUFResidentSession:
         budget = len(tokens) - 1
         if budget not in {1, 2, 3, 4, 5, 6, 7}:
             return False
-        cache_name = f"_native_spec_b{budget}_target_graph_n2"
-        if sampled_accept:
-            cache_name = f"{cache_name}_sampled"
-        existing = getattr(self, cache_name, None)
+        existing = native_target_graph_alias(
+            self, budget, device_accept=True, sampled=sampled_accept,
+        )
         if existing is not None and not bool(getattr(existing, "closed", False)):
             compatible = getattr(existing, "compatible_with", None)
             if callable(compatible) and compatible(
@@ -29403,7 +29404,9 @@ class Qwen35GGUFResidentSession:
             verify_f32_residual=verify_f32_residual,
             verify_f32_post_norm=verify_f32_post_norm,
         )
-        setattr(self, cache_name, graph)
+        set_native_target_graph_alias(
+            self, budget, graph, device_accept=True, sampled=sampled_accept,
+        )
         from hipengine.runtime.gguf_native_spec_cycle import _cache_native_target_graph
 
         _cache_native_target_graph(

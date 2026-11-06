@@ -21,7 +21,9 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from hipengine.runtime.gguf_target_graph_alias import native_target_graph_alias
+from hipengine.runtime.gguf_target_graph_alias import (
+    clear_native_target_graph_aliases, native_target_graph_alias, set_native_target_graph_alias,
+)
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import (
@@ -1798,25 +1800,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             for key, value in tuple(cache.items()):
                 if value is self:
                     cache.pop(key, None)
-        for cache_name in (
-            "_native_spec_b1_target_graph",
-            "_native_spec_b2_target_graph",
-            "_native_spec_b3_target_graph",
-            "_native_spec_b4_target_graph",
-            "_native_spec_b5_target_graph",
-            "_native_spec_b6_target_graph",
-            "_native_spec_b7_target_graph",
-            "_native_spec_b1_target_graph_n2",
-            "_native_spec_b2_target_graph_n2",
-            "_native_spec_b3_target_graph_n2",
-            "_native_spec_b4_target_graph_n2",
-            "_native_spec_b5_target_graph_n2",
-            "_native_spec_b6_target_graph_n2",
-            "_native_spec_b7_target_graph_n2",
-            *(f"_native_spec_b{budget}_target_graph_n2_sampled" for budget in range(1, 8)),
-        ):
-            if getattr(self.session, cache_name, None) is self:
-                setattr(self.session, cache_name, None)
+        clear_native_target_graph_aliases(self.session, self)
 
     def __enter__(self) -> "Qwen35GGUFNativeB2TargetGraph":
         return self
@@ -2876,10 +2860,6 @@ def verify_qwen35_gguf_native_b2_target(
         if not fallback:
             raise NativeSpecTargetGraphUnsupportedError(reason)
         return session.verify_target_block(input_token_ids, **eager_kwargs)
-    cache_suffix = "_n2" if device_accept_commit else ""
-    if sampled_accept:
-        cache_suffix = f"{cache_suffix}_sampled"
-    cache_name = f"_native_spec_b{rows - 1}_target_graph{cache_suffix}"
     cache_key = (
         rows - 1,
         bool(device_accept_commit),
@@ -2896,7 +2876,9 @@ def verify_qwen35_gguf_native_b2_target(
     cache = _native_target_graph_cache(session)
     graph = cache.get(cache_key)
     if graph is None and int(context_limit) == short_alias_limit:
-        graph = getattr(session, cache_name, None)
+        graph = native_target_graph_alias(
+            session, rows - 1, device_accept=device_accept_commit, sampled=sampled_accept,
+        )
     if graph is not None and not graph.compatible_with(
         session,
         context_limit=int(context_limit),
@@ -2942,7 +2924,9 @@ def verify_qwen35_gguf_native_b2_target(
             )
             _cache_native_target_graph(session, cache_key, graph)
             if int(context_limit) == short_alias_limit:
-                setattr(session, cache_name, graph)
+                set_native_target_graph_alias(
+                    session, rows - 1, graph, device_accept=device_accept_commit, sampled=sampled_accept,
+                )
     except NativeSpecTargetGraphUnsupportedError as exc:
         session.last_native_spec_target_fallback_reason = str(exc)
         if not fallback:
