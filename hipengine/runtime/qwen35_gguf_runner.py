@@ -29396,11 +29396,11 @@ class Qwen35GGUFResidentSession:
             verify_f32_post_norm=verify_f32_post_norm,
         )
         setattr(self, cache_name, graph)
-        cache = getattr(self, "_native_spec_target_graphs", None)
-        if not isinstance(cache, dict):
-            cache = {}
-            setattr(self, "_native_spec_target_graphs", cache)
-        cache[(budget, True, int(graph.context_limit), bool(sampled_accept))] = graph
+        from hipengine.runtime.gguf_native_spec_cycle import _cache_native_target_graph
+
+        _cache_native_target_graph(
+            self, (budget, True, int(graph.context_limit), bool(sampled_accept)), graph,
+        )
         return True
 
     def verify_target_block_native_cycle(
