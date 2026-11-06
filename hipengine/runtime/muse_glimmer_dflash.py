@@ -159,11 +159,15 @@ class MuseGlimmerDFlashDrafter:
 
     def _linear(self, x: int, name: str, out: int, rows: int, inf: int, outf: int,
                 f32_out: bool = False, f32_in: bool = False) -> None:
+        # The drafter only proposes; correctness comes from the target verify,
+        # so the draft may use the fast reassociating WMMA prefill family for
+        # its multi-row block (changed arithmetic is acceptable here).
         launch_gguf_linear(
             self._weight(name), x, out, rows, inf, outf,
             activation_dtype="f32" if f32_in else "bf16",
             output_dtype="f32" if f32_out else "bf16",
             backend=self.backend, runtime=self.runtime,
+            use_wmma_prefill=True, use_q4_pack8_wmma=True,
         )
 
     # -- lifecycle ---------------------------------------------------------
@@ -370,6 +374,7 @@ class MuseGlimmerDFlashDrafter:
             self.target_weights.weight("output.weight"), self.normed.ptr,
             self.logits_bf16.ptr, tokens, h, self.vocab_size,
             output_dtype="bf16", backend=self.backend, runtime=rt,
+            use_wmma_prefill=True, use_q4_pack8_wmma=True,
         )
         from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
 
