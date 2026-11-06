@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import os
 from pathlib import Path
 
 import pytest
@@ -9,9 +10,10 @@ import pytest
 from hipengine.kvcache.dms_capture import DMSCaptureWriter, load_dms_capture_manifest
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION, qwen35_gguf_config_from_metadata
+from hipengine.models.qwen35_dms import capture_qwen35_dms_prefill
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
-MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
+MODEL = Path(os.environ.get("HIPENGINE_DMS_CAPTURE_TEST_MODEL", "/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf"))
 pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
 
 
@@ -69,13 +71,7 @@ def test_exact_gguf_prefill_streams_dms_hidden_qk_chunks(tmp_path: Path) -> None
         use_wmma_prefill=True,
         use_gemv_decode=True,
     ) as session:
-        result = session.prefill(
-            list(token_ids),
-            use_bulk=True,
-            bulk_attention_mode="bulk",
-            return_logits=True,
-            dms_capture=writer,
-        )
+        result = capture_qwen35_dms_prefill(session, token_ids, sink=writer)
     writer.finish_sequence()
     manifest = load_dms_capture_manifest(writer.finalize(), verify_shards=True)
 

@@ -7,7 +7,30 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from typing import TYPE_CHECKING, Any
+
 from hipengine.kvcache.dms import DMSRetrofitConfig
+
+if TYPE_CHECKING:
+    from hipengine.kvcache.dms_capture import DMSCaptureSink
+
+
+def capture_qwen35_dms_prefill(
+    session: Any,
+    token_ids: Sequence[int],
+    *,
+    sink: DMSCaptureSink,
+) -> Any:
+    """Export offline hidden/Q/K chunks and teacher logits to a borrowed sink.
+
+    The caller begins/finishes sequences and finalizes the sink. This function
+    neither closes it on failure nor changes the serving collector callback.
+    The resident executor validates capture stage, layers and tensor geometry.
+    """
+    return session.prefill(
+        list(token_ids), use_bulk=True, bulk_attention_mode="bulk",
+        return_logits=True, dms_capture=sink,
+    )
 
 
 @dataclass(frozen=True, slots=True)

@@ -853,25 +853,6 @@ tests. Run `tests/test_unit_qwen35_gguf_decode_graph.py`,
 `tests/test_unit_qwen35_gguf_decode_graph_kv_floor.py`,
 `tests/test_unit_qwen35_gguf_bench_metadata.py` and `tests/test_unit_gguf_mtp_bench_metrics.py`.
 
-### R0278 — Offline DMS capture API ownership
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `prefill(..., dms_capture=...)`, `_ExternalDMSDevicePrefillCollector`,
-`capture_device_chunk`.
-
-Done when: Decision needed: expose offline export under a model-plugin-owned capture API, or retire that
-offline API with its CLI and training/label consumers. Keep the serving device collector and its
-callback path. Do not remove the shared keyword/helper merely because the offline sink synchronizes.
-**Clearing action:** if migrating, move `scripts/qwen38_dms_capture.py` and
-`tests/test_live_dms_capture_gguf_hip.py` together, preserving input-stage, layer/shape validation,
-teacher logits, checksums and sink ownership. Run `tests/test_unit_dms_capture.py`,
-`tests/test_unit_qwen38_dms_capture_script.py` and the live capture test with a local compatible
-model; verify an actual capture manifest and its shards. Then exercise the device collector through
-public DMS generation using `tests/test_live_dms_public_serving.py`, with an explicitly labeled
-synthetic sidecar where trained artifacts are absent. Verify no new synchronous offline export in
-serving and correct close/cancellation behavior.
-
 ### R0279 — General compact-DMS undo beyond append-only cycles
 
 Owner: `hipengine/runtime/qwen35_gguf_mtp.py`.

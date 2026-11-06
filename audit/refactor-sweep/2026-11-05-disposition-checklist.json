@@ -1292,11 +1292,12 @@
       "ledger_line": 897,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:4966-4987 accepts offline sink and 19079-19107 separately wires device collector."
+        "Model-owned offline capture entry point migrates CLI/live fixture while retaining shared serving callback and borrowed sink ownership.10 host tests pass.",
+        "Live capture validates16 shards; three public DMS cancel/refill/HTTP cases pass on compatible geometry (not trained-quality evidence). worklog/entries/20261106T032706.398036Z-lhl-r0278-capture-api-e4a141.md"
       ],
-      "next_action": "Map capture consumers and expose offline export through model-owned API while preserving serving collector; add API ownership and actual manifest/shard validation.",
+      "next_action": "None; retain runtime collector keyword for serving/device consumers.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

@@ -1,4 +1,5 @@
 """Public compact DMS generation, interruption, and HTTP ownership checks."""
+import os
 from pathlib import Path
 import pytest
 
@@ -14,7 +15,7 @@ def test_public_dms_generation_cancel_refill_and_http(hip_test_target_arch, pref
     from hipengine.server.api import ServerConfig, create_app
     from fastapi.testclient import TestClient
 
-    model = Path('/models/gguf/Qwen3.8-27B-Q4_K_M.gguf')
+    model = Path(os.environ.get('HIPENGINE_DMS_CAPTURE_TEST_MODEL', '/models/gguf/Qwen3.8-27B-Q4_K_M.gguf'))
     metadata = Path('/models/hf/Qwen3.8-27B-Q4_K_M-DMS-W8192/dms_metadata.json')
     if not model.is_file() or not metadata.is_file():
         pytest.skip('local GGUF and external DMS sidecar required')

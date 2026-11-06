@@ -328,6 +328,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             compiler_version=compiler_version,
         ),
     )
+    from hipengine.models.qwen35_dms import capture_qwen35_dms_prefill
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
     with Qwen35GGUFResidentSession(
@@ -346,12 +347,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 category=sequence.category,
                 provenance=sequence.provenance,
             )
-            session.prefill(
-                list(sequence.token_ids),
-                use_bulk=True,
-                bulk_attention_mode="bulk",
-                return_logits=True,
-                dms_capture=writer,
+            capture_qwen35_dms_prefill(
+                session, sequence.token_ids, sink=writer,
             )
             writer.finish_sequence()
     capture_manifest = writer.finalize()
