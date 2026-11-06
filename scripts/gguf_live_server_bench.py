@@ -422,6 +422,18 @@ def _temporary_environment(updates: Mapping[str, str]) -> Iterator[None]:
                 os.environ[key] = value
 
 
+@contextmanager
+def _temporary_packed_decode(runner: Any, enabled: bool) -> Iterator[None]:
+    """Select the idle benchmark runner before admitting this sample's requests."""
+    generator = runner.generator
+    prior = generator.ar_packed_decode
+    generator.ar_packed_decode = bool(enabled)
+    try:
+        yield
+    finally:
+        generator.ar_packed_decode = prior
+
+
 def _run_reference(session: Any, prompt: Sequence[int], max_tokens: int) -> _ReferenceRun:
     session.reset()
     prefill_started = time.perf_counter()
@@ -607,12 +619,11 @@ def _run_http_sample(
     memory_before = _memory_snapshot(f"before_{config.name}", runner)
     capture_state["label"] = f"{config.name}:{run_index}"
     route_env = {
-        "HIPENGINE_GGUF_AR_PACKED_DECODE": "1" if config.packed_decode else "0",
         "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
     }
     traces: list[_HTTPTrace] = []
     live_trigger: dict[str, Any] | None = None
-    with _temporary_environment(route_env):
+    with _temporary_packed_decode(runner, config.packed_decode), _temporary_environment(route_env):
         with concurrent.futures.ThreadPoolExecutor(max_workers=rows) as executor:
             if live_initial_rows is None:
                 barrier = threading.Barrier(rows + 1)

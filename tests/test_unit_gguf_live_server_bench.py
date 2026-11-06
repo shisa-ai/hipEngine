@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -22,9 +23,33 @@ from scripts.gguf_live_server_bench import (
     _scaling_summary,
     _stats,
     _wait_for_live_admission_trigger,
+    _temporary_packed_decode,
     build_parser,
     run,
 )
+
+
+@pytest.mark.parametrize("selected", [False, True])
+@pytest.mark.parametrize("raises", [False, True])
+def test_live_server_packed_choice_is_owner_bound_and_restored(monkeypatch, selected, raises):
+    from concurrent.futures import ThreadPoolExecutor
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
+
+    generator = object.__new__(Qwen35GGUFBringupGenerator)
+    generator.ar_packed_decode = None
+    runner = SimpleNamespace(generator=generator)
+    ambient = "0" if selected else "1"
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", ambient)
+    try:
+        with _temporary_packed_decode(runner, selected):
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                assert executor.submit(generator._ar_packed_decode_enabled).result() is selected
+            assert os.environ["HIPENGINE_GGUF_AR_PACKED_DECODE"] == ambient
+            if raises:
+                raise RuntimeError("sample failed")
+    except RuntimeError as error:
+        assert raises and str(error) == "sample failed"
+    assert generator.ar_packed_decode is None
 
 
 def test_live_server_bench_accepts_both_gfx11_backends() -> None:
