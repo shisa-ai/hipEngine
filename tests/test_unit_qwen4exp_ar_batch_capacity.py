@@ -105,10 +105,16 @@ def test_retired_rollback_keeps_shared_staging_policy(monkeypatch) -> None:
         explicit.close()
 
 
-def test_batch_slot_extent_is_capped(monkeypatch) -> None:
-    assert batch_slot_positions(2048) == 2048
-    assert batch_slot_positions(262144) == QWEN4_EXP_BATCH_SLOT_POSITIONS
-    assert batch_slot_positions(QWEN4_EXP_BATCH_SLOT_POSITIONS) == QWEN4_EXP_BATCH_SLOT_POSITIONS
+@pytest.mark.parametrize(
+    "requested,expected",
+    [(2048, 2048),
+     (QWEN4_EXP_BATCH_SLOT_POSITIONS - 1, QWEN4_EXP_BATCH_SLOT_POSITIONS - 1),
+     (QWEN4_EXP_BATCH_SLOT_POSITIONS, QWEN4_EXP_BATCH_SLOT_POSITIONS),
+     (QWEN4_EXP_BATCH_SLOT_POSITIONS + 1, QWEN4_EXP_BATCH_SLOT_POSITIONS),
+     (262144, QWEN4_EXP_BATCH_SLOT_POSITIONS)],
+)
+def test_batch_slot_extent_is_capped(requested, expected) -> None:
+    assert batch_slot_positions(requested) == expected
 
 
 def test_capacity_policy_is_per_instance_and_leaves_the_class_bound(monkeypatch) -> None:
