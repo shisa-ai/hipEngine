@@ -1774,7 +1774,7 @@
       "evidence": [
         "hipengine/runtime/qwen35_gguf_runner.py:9220-9221,11036-11040 reads cooperative router and persistent counter independently."
       ],
-      "next_action": "Publish actual router variant/counter ownership in construction plan, migrate profile/gate metadata, then remove process readers without changing variant math.",
+      "next_action": "Construction snapshot implemented a406ed309; c1/perf/control/batch callers bind owner and c1 metadata separates requests from launch evidence. 100 host tests and public persistent c1 route/repeat/cleanup pass. Finish remaining metadata and adapters plus graph/fallback/primitive ownership before reader retirement; do not repeat default public smoke.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

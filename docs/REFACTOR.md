@@ -1230,6 +1230,16 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 
 Scope: `HIPENGINE_GGUF_ROUTER_F32W_COOP`, `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER`.
 
+**Progress:** c1 numerical/performance, control-smoke and batch comparison callers now bind
+resident-runner choices explicitly (`d9acff4e3`, `5ffc4f79e`, `af3d92aab`). C1 metadata separates
+requested owner/counter selection from launch evidence (`219943792`). Construction snapshots a
+frozen router plan with explicit comparison precedence (`a406ed309`); 100 focused host tests pass.
+Public gfx1151 c1 traces 360 successful persistent cooperative launches per call, exact repeats
+and zero tracked allocations after close (`9ac1d56a4`, `a406ed309`).
+
+Remaining: finish metadata consumers and legacy adapters, verify graph/fallback ownership and
+primitive parity before reader retirement. Do not repeat completed default c1 route smoke.
+
 Done when: Remaining work: publish the actual selected router variant and counter ownership in a
 construction-time plan consumed by the runner, while preserving strict/production semantics, direct
 defaults, diagnostic on/off requests and the exact unfused fallback. Migrate profile binders and

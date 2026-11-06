@@ -1060,8 +1060,8 @@ def _resolve_gguf_router_plan(owner) -> GGUFRouterPlan:
 def _layer_ffn_flags(runner) -> _layer_ffn.FfnFlags:
     """The FFN predicates, each a thunk over the owner or ambient policy.
 
-    A profile-bound runner carries its router decision explicitly; an unbound
-    runner (``None``) keeps the historical per-call diagnostic environment read.
+    A constructed runner snapshots ambient router input once. Explicit comparison
+    owner fields override that plan; unconstructed fixtures retain ambient input.
     """
 
     env_flags = {
@@ -3272,8 +3272,8 @@ class Qwen35GGUFFullStackRunner:
     _verifier_prefill_gdn_capture_frozen: bool = field(
         default=False, init=False, repr=False
     )
-    # Owner-resolved router policy. ``None`` is the unbound/direct diagnostic
-    # path, which keeps the historical per-call environment read.
+    # Frozen default router plan plus explicit comparison overrides. ``None``
+    # selects the construction snapshot, not a fresh environment read.
     router_plan: GGUFRouterPlan | None = field(default=None, init=False)
     router_f32w_coop: bool | None = field(default=None, init=False)
     router_f32w_persistent_counter: bool | None = field(default=None, init=False)
@@ -3372,9 +3372,8 @@ class Qwen35GGUFFullStackRunner:
         # The verifier capture mode selects the captured-row producer; freeze it
         # before any weight, session or scratch owner exists.
         self._freeze_verifier_prefill_gdn_capture()
-        # Owner-bound router and rowtile decisions are construction-owned. An
-        # unbound owner keeps ``None`` so the direct diagnostic environment and
-        # packed-decode session resolve exactly as before.
+        # Freeze router defaults before execution; explicit profile/diagnostic
+        # fields retain precedence. Rowtile still has its separate legacy adapter.
         self.router_f32w_coop = (
             None
             if getattr(self, "target_router_f32w_coop", None) is None
