@@ -1784,9 +1784,15 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `set_fused_selected_silu_pack(...)`, `scripts/laguna_fused_silu_pack_ab.py`.
 
-**Blocker:** retire the session setter with the live fused/unfused comparison, not by silently
-making both arms fused. The local Laguna artifact resource blocker described in R0313–R0320 also
-prevents public validation here.
+**Host migration complete:** `fused_selected_silu_pack_diagnostic` scopes the A/B
+harness's fused/unfused selection through complete-state capture and restores it before
+close, including failure. The persistent setter is removed; enabled capability and strict
+unfused primitives are unchanged. Validation: 198 focused host tests and both synthetic
+full Q4/Q6 MoE oracle cases pass on gfx1151. See
+`worklog/entries/20261106T122512.446789Z-lhl-r0323-silu-scope-d39c09.md`.
+
+**Remaining dependency:** public compatible/fallback-shape selection, output and teardown
+checks need an accessible Laguna checkpoint; configured local artifacts are absent.
 
 Done when: migrate the A/B caller to explicit composite/primitive ownership and retain its
 complete-state comparisons. Run fused-SiLU comparison, selected-MMQ and runner contracts plus

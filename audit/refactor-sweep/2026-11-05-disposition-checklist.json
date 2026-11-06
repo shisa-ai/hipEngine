@@ -2583,11 +2583,11 @@
       "ledger_line": 1993,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "hipengine/runtime/laguna_gguf_runner.py:4139 retains fused selected-SiLU pack setter."
       ],
-      "next_action": "Move fused/unfused comparison to composite/primitive ownership with state parity and exception restore; keep default capability and strict unfused chain.",
+      "next_action": "Host migration completed 399c70bc8: owner-scoped fused/unfused A/B including all state digests, nested/error restoration, setter retired; default capability and strict unfused chain unchanged. 198 focused host tests and 2 synthetic full Q4/Q6 gfx1151 MoE cases pass. Remaining public compatible/fallback selection/output/cleanup requires accessible Laguna checkpoint; configured artifacts absent per R0341. Do not repeat completed host migration.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
