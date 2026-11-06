@@ -68,7 +68,6 @@ _EXACT_ENV: dict[str, str | None] = {
     "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
     "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
     "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
-    "HIPENGINE_GGUF_AR_PACKED_DECODE": "1",
     # Validate the package registry default rather than an external override.
     "HIPENGINE_PREFILL_DECODE_POLICY": None,
     "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS": None,
@@ -1039,6 +1038,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         llm = LLM(
             model,
             backend=str(args.backend),
+            ar_packed_decode=True,
             max_active_requests=int(args.max_active_requests),
         )
         try:

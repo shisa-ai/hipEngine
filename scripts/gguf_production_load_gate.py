@@ -94,7 +94,6 @@ _EXACT_ENV = {
     "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
     "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
     "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
-    "HIPENGINE_GGUF_AR_PACKED_DECODE": "1",
 }
 _COUNTER_METRICS = frozenset(
     {
@@ -1961,6 +1960,7 @@ def _llm_construction_kwargs(
         "model": model,
         "backend": str(args.backend),
         "quant": str(args.quant),
+        "ar_packed_decode": True,
         "max_active_requests": int(args.max_active_requests),
     }
 

@@ -455,6 +455,7 @@ def test_load_gate_passes_declared_quant_and_records_fp16_state_env() -> None:
         "model": args.model,
         "backend": "hip_gfx1151",
         "quant": "gguf_q4_k_s",
+        "ar_packed_decode": True,
         "max_active_requests": 8,
     }
     assert "HIPENGINE_GGUF_FP16_RECURRENT_STATE" in _PROVENANCE_ENV_KEYS
