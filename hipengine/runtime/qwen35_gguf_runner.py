@@ -16820,17 +16820,19 @@ class Qwen35GGUFResidentSession:
             if closed:
                 return
             assert descriptor is not None
-            free(descriptor, runtime=runtime)
-            for table in reversed(tuple(pointer_tables.values())):
-                free(table, runtime=runtime)
-            if use_vmm:
-                # Every plane arena is closed exactly once through the current
-                # backing's views; growth reused the same owners.
-                _free_qwen35_gguf_kv_chunk(backing, runtime=runtime)
-            else:
-                for chunk in reversed(backings):
-                    _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
             closed = True
+            failures: list[BaseException] = []
+            _free_quietly(descriptor, failures)
+            for table in reversed(tuple(pointer_tables.values())):
+                _free_quietly(table, failures)
+            chunks = (backing,) if use_vmm else tuple(reversed(backings))
+            for chunk in chunks:
+                try:
+                    _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
+                except BaseException as error:
+                    failures.append(error)
+            if failures:
+                raise BaseExceptionGroup("global KV pool storage close failed", failures)
 
         page_bytes = _qwen35_gguf_kv_page_bytes(cfg, layout)
         fingerprint = (

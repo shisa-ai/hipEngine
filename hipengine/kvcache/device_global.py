@@ -961,8 +961,10 @@ class GlobalDeviceKVPool:
                     "cannot close global device KV pool with retained or pinned pages"
                 )
             self.global_pool.assert_conserved()
-            self._close_storage()
-            self._closed = True
+            try:
+                self._close_storage()
+            finally:
+                self._closed = True
 
     @staticmethod
     def _workspace_lease_id(key: str) -> str:

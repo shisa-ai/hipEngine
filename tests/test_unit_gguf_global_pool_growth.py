@@ -13,10 +13,13 @@ from tests.test_unit_gguf_packed_workspace_stability import (
 )
 
 
-def test_runtime_growth_preserves_every_previous_device_page_pointer(monkeypatch):
+@pytest.mark.parametrize('close_failure', [False, True])
+def test_runtime_growth_preserves_every_previous_device_page_pointer(monkeypatch, close_failure):
     next_pointer = 0x100000
     uploaded = {}
     live = set()
+    closing = False
+    attempts = []
 
     def malloc(nbytes, **kwargs):
         nonlocal next_pointer
@@ -26,6 +29,10 @@ def test_runtime_growth_preserves_every_previous_device_page_pointer(monkeypatch
         return buffer
 
     def free(buffer, **kwargs):
+        if closing:
+            attempts.append(buffer.ptr)
+            if close_failure and len(attempts) == 1:
+                raise RuntimeError('descriptor free failed')
         live.remove(buffer.ptr)
 
     def upload(buffer, array, nbytes=None, **kwargs):
@@ -58,8 +65,20 @@ def test_runtime_growth_preserves_every_previous_device_page_pointer(monkeypatch
                                  for page in range(pool.current_pages))
                 assert tuple(table) == expected
     finally:
+        closing = True
+        owned = set(live)
+        if close_failure:
+            with pytest.raises(BaseExceptionGroup, match='global KV pool storage close failed'):
+                pool.close()
+        else:
+            pool.close()
+        assert set(attempts) == owned
+        assert len(attempts) == len(owned)
         pool.close()
-    assert not live
+        assert len(attempts) == len(owned)
+        with pytest.raises(RuntimeError, match='closed'):
+            pool.grow(1)
+    assert live == ({attempts[0]} if close_failure else set())
 
 
 @pytest.mark.parametrize('borrowed', [False, True])
