@@ -1689,10 +1689,13 @@ def create_qwen35_gguf_moe_mtp2_adapter(
     adapter.production_physical_q6_rowtile = adapter.physical_target_rows.q6_rowtiles
     from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
 
-    adapter.physical_target_arithmetic = getattr(
-        owner.generator,
-        "physical_target_arithmetic",
-        PhysicalTargetArithmeticPlan(True, True, True),
+    adapter.physical_target_arithmetic = (
+        adapter.physical_target_plan.arithmetic
+        if adapter.physical_target_plan is not None else getattr(
+            owner.generator,
+            "physical_target_arithmetic",
+            PhysicalTargetArithmeticPlan(True, True, True),
+        )
     )
     adapter.target_key = "qwen_moe_gguf"
     adapter.provider_key = "qwen_nextn_moe"

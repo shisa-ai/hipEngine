@@ -1283,6 +1283,23 @@ def test_moe_adapter_factory_keeps_c1_and_selects_batched_owner(capacity, bound,
     assert c2.policy_prefix == "moe-nextn"
 
 
+def test_moe_factory_prefers_unified_arithmetic_over_legacy_view():
+    from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
+    from hipengine.generation.physical_target_rows import bind_physical_target_plan
+
+    generator = SimpleNamespace(backend="hip_gfx1151", execution_profile="production")
+    arithmetic = PhysicalTargetArithmeticPlan(False, True, False)
+    bind_physical_target_plan(
+        generator, "hip_gfx1151", "production", arithmetic=arithmetic,
+    )
+    generator.physical_target_arithmetic = PhysicalTargetArithmeticPlan()
+    adapter = create_qwen35_gguf_moe_mtp2_adapter(
+        SimpleNamespace(capacity=2, generator=generator), enabled=True,
+        target_verify_mode="native", candidate_budget=2, quant="gguf_q4_k_m",
+    )
+    assert adapter.physical_target_arithmetic is arithmetic
+
+
 def test_builtin_registry_exposes_distinct_dense_and_moe_factories() -> None:
     register_builtin_gguf_mtp2_adapters()
 
