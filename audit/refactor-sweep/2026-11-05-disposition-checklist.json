@@ -2875,11 +2875,13 @@
       "ledger_line": 2257,
       "owner": "`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py:39-40,193-203 keeps two/four-wave schedule precedence."
+        "Retain named two/four-wave comparisons, request restoration and owned-f16w interfaces; no dispatch/default/ceiling changes.",
+        "15 host policy/build/wrapper, 53 dispatch/stream and 12 GPU exact-reference tests pass.",
+        "worklog/entries/20261106T000036.769496Z-lhl-r0281-q8-waves-def250.md"
       ],
-      "next_action": "Move both schedule comparisons to explicit prefill owner with wrapper/registry/f16w consumers and restore/cache tests; no incidental ceiling or math change.",
+      "next_action": "None; backend ceilings and kernel replacements remain separate from interface retention.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

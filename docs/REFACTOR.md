@@ -1894,29 +1894,6 @@ confirm public chain routing stays unchanged. The corresponding GGUF root/siblin
 is separately owned by `scripts/gguf_mtp_bench.py`; its supported-comparison disposition is recorded
 in `worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md`.
 
-### R0281-Q8-WAVES — Dense T16 prefill schedule policy
-
-Owner: `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py`.
-
-Scope: `hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_t16_prefill.py`;
-`HIPENGINE_GGUF_Q8_T16_PREFILL_4WAVE`, `HIPENGINE_GGUF_Q8_T16_PREFILL_2WAVE`.
-
-**Decision needed:** retain both named schedule comparisons or move them into an explicit prefill
-policy while preserving direct numerical oracles. Decide any backend ceiling or kernel replacement
-separately. A release window and the historical two-wave long-context regression do not determine
-the usefulness or current behavior of the four-wave, decoding or `f16w` siblings.
-
-Done when: migrate both selectors and their precedence, wrapper and registry bindings,
-request context restoration, Qwen/Gemma consumers, direct microbench callers, `f16w`
-ownership/fallback and result provenance together. Run the no-GPU policy/build/wrapper nodes in
-`tests/test_gpu_gguf_q8_0_t16_wmma_prefill.py`, `tests/test_unit_gguf_q8_t16_f16w_dispatch.py`,
-`tests/test_unit_qwen35_gguf_aotriton_stream.py` and backend alias tests. If execution changes, run
-the CPU-reference, two-/four-wave and `f16w` device parity nodes plus
-`tests/test_gpu_gemma4_dense_wmma_range.py`; exercise Qwen and Gemma through `LLM.generate()`,
-tracing actual schedules, sidecars, partial tiles, request reset/reuse and cleanup. Cover lengths
-below, above and away from each changed ceiling. Arithmetic changes need their execution-profile
-gate; any performance claim needs a same-host matched protocol.
-
 ### R0281-ROUTER-TILES — Laguna/Gemma router comparison ownership
 
 Owner: `hipengine/runtime/laguna_moe.py`.
