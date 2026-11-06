@@ -12,6 +12,13 @@ from hipengine.runtime import gguf_linear as linear
 def test_common_prefill_scopes_enter_in_order_and_unwind(monkeypatch, fail_at):
     session = object.__new__(runner.Qwen35GGUFResidentSession)
     session.runner = object()
+    from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner, own_launch_decision
+    from dataclasses import dataclass
+    @dataclass(frozen=True)
+    class Decision:
+        registry_generation: int = 1
+    session.launch_decision_owner = LaunchDecisionOwner()
+    decision = Decision()
     events = []
     entered = []
 
@@ -46,6 +53,8 @@ def test_common_prefill_scopes_enter_in_order_and_unwind(monkeypatch, fail_at):
 
     def execute():
         with session._prefill_route_sessions():
+            assert own_launch_decision(decision) is decision
+            assert own_launch_decision(Decision()) is decision
             assert linear._bulk_prefill_ffn_enabled.get() is True
             assert entered == ["q4", "f16", "wide", "q6", "iq"]
             events.append(("body", "body"))
@@ -57,6 +66,8 @@ def test_common_prefill_scopes_enter_in_order_and_unwind(monkeypatch, fail_at):
     else:
         with pytest.raises(RuntimeError, match="injected"):
             execute()
+    peer = Decision()
+    assert own_launch_decision(peer) is peer
     assert linear._bulk_prefill_ffn_enabled.get() is False
     assert [name for action, name in events if action == "exit"] == list(reversed(entered))
     assert [name for action, name in events if action == "enter"] == (

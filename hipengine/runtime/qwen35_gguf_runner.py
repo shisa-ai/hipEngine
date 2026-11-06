@@ -20192,6 +20192,7 @@ class Qwen35GGUFResidentSession:
                 gpu_stage_recorder.mark("packed_verify_gpu_embedding")
             block_wmma_prefill = bool(job_list[0].get("use_wmma_prefill", True))
             with (
+                launch_decision_session(getattr(self, "launch_decision_owner", None)),
                 wmma_prefill_session(block_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
                 target_verifier_rowtile_session(True),
@@ -20905,6 +20906,7 @@ class Qwen35GGUFResidentSession:
                 and self.runner._rounded_add_rmsnorm_fn(rows=rows) is not None
             )
             with (
+                launch_decision_session(getattr(self, "launch_decision_owner", None)),
                 wmma_prefill_session(block_wmma_prefill),
                 gemv_decode_session(self.use_gemv_decode),
                 native_batch_decode_session(bulk_attention_mode == "native"),
