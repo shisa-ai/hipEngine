@@ -69,13 +69,13 @@ class _TargetGenerator:
     def _open_session_locked(self) -> _TargetSession:
         return self.session
 
-    def _prepare_request(self, request: GenerationRequest) -> tuple[int, ...]:
+    def _prepare_request(self, request: GenerationRequest) -> tuple[tuple[int, ...], dict]:
         if len(request.prompts) != 1:
             raise ValueError("exactly one prompt")
         prompt = request.prompts[0]
         if isinstance(prompt, str):
             raise TypeError("test target accepts token IDs")
-        return tuple(int(token) for token in prompt)
+        return tuple(int(token) for token in prompt), {}
 
 
 class _Drafter:
@@ -188,6 +188,135 @@ def _identity_tree(tmp_path: Path):
     (snapshot / "config.json").write_text("{}", encoding="utf-8")
     (snapshot / "model.safetensors").symlink_to(blob)
     return model, cache, snapshot
+
+
+def test_laguna_dflash_children_are_private_and_bounded(tmp_path, monkeypatch):
+    import hipengine.generation.laguna_dflash as module
+
+    model, cache, snapshot = _identity_tree(tmp_path)
+    target = _TargetGenerator(model, cache)
+    sessions = []
+    events = []
+    _Cycle.events = events
+    _Drafter.events = events
+    _TargetSession.events = events
+
+    def open_session():
+        session = _TargetSession()
+        sessions.append(session)
+        return session
+
+    target._open_session_locked = open_session
+    monkeypatch.setattr(module, "LagunaDFlashResidentDrafter", _Drafter)
+    monkeypatch.setattr(module, "LagunaDFlashResidentCycle", _Cycle)
+    provider = module.LagunaDFlashTextProvider(
+        target, SpeculativeProviderConfig("dflash", snapshot, 4))
+    first = provider.create_child(_request())
+    second = provider.create_child(_request())
+    assert target.prepared == 0
+    assert not sessions
+    assert first.advance() is None
+    assert events.count("prefill") == 1
+    assert second.advance() is None
+    assert sessions[0] is not sessions[1]
+    first.close(reason="cancel")
+    assert sessions[0].closed
+    assert not sessions[1].closed
+    assert second.advance() is None
+    assert events.count("prefill") == 3
+    output = second.advance()
+    assert output.generated_token_ids == (10, 11, 24)
+    assert output.text == "AB"
+    second.close(reason="completed")
+    second.close(reason="shutdown")
+    assert events.count("cycle_close") == 2
+    assert all(session.closed for session in sessions)
+    provider.close()
+
+
+def test_laguna_dflash_bounded_provider_through_service(tmp_path, monkeypatch):
+    import hipengine.generation.laguna_dflash as module
+    from hipengine.generation.engine_loop import SubmitPollTextGenerator
+    from hipengine.generation.engine_service import EngineService
+    from hipengine.generation.laguna_gguf import LagunaGGUFGenerator
+
+    class Target(_TargetGenerator):
+        supports_speculative = True
+        supports_speculative_mtp = False
+        create_generic_speculative_child = LagunaGGUFGenerator.create_generic_speculative_child
+        generate_speculative_detailed = LagunaGGUFGenerator.generate_speculative_detailed
+
+        def close(self):
+            self._speculative_provider.close()
+            self._closed = True
+
+    model, cache, snapshot = _identity_tree(tmp_path)
+    target = Target(model, cache)
+    threads = []
+    sessions = []
+
+    def open_session():
+        threads.append(threading.get_ident())
+        session = _TargetSession()
+        sessions.append(session)
+        return session
+
+    target._open_session_locked = open_session
+    monkeypatch.setattr(module, "LagunaDFlashResidentDrafter", _Drafter)
+    monkeypatch.setattr(module, "LagunaDFlashResidentCycle", _Cycle)
+    target._speculative_provider = module.LagunaDFlashTextProvider(
+        target, SpeculativeProviderConfig("dflash", snapshot, 4))
+    adapter = SubmitPollTextGenerator(target, capacity=2)
+    service = EngineService(adapter, idle_wait_seconds=0.001)
+    try:
+        outputs = service.generate_speculative_detailed(
+            _request(prompts=((7, 8), (9, 8))))
+        assert [output.generated_token_ids for output in outputs] == [(10, 11, 24)] * 2
+        chunks = tuple(service.stream_speculative_detailed(_request()))
+        assert chunks[-1].generated_token_ids == outputs[0].generated_token_ids
+        assert set(threads) == {service.driver_thread_id}
+        assert len({id(session) for session in sessions}) == 3
+        assert all(session.closed for session in sessions)
+        assert not adapter._generic_speculative_children
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("failure", ["drafter", "cycle", "prefill"])
+def test_laguna_dflash_child_setup_failure_releases_private_owners(
+    tmp_path, monkeypatch, failure,
+):
+    import hipengine.generation.laguna_dflash as module
+
+    model, cache, snapshot = _identity_tree(tmp_path)
+    target = _TargetGenerator(model, cache)
+    events = []
+    _TargetSession.events = events
+    _Drafter.events = events
+    _Cycle.events = events
+    monkeypatch.setattr(module, "LagunaDFlashResidentDrafter", _Drafter)
+    monkeypatch.setattr(module, "LagunaDFlashResidentCycle", _Cycle)
+    provider = module.LagunaDFlashTextProvider(
+        target, SpeculativeProviderConfig("dflash", snapshot, 4))
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("injected child failure")
+
+    if failure == "drafter":
+        monkeypatch.setattr(module, "LagunaDFlashResidentDrafter", fail)
+    elif failure == "cycle":
+        monkeypatch.setattr(module, "LagunaDFlashResidentCycle", fail)
+    else:
+        monkeypatch.setattr(_Cycle, "prefill", fail)
+    child = provider.create_child(_request())
+    with pytest.raises(RuntimeError, match="injected child failure"):
+        child.advance()
+    child.close(reason="error")
+    assert target.session.closed
+    assert events.count("target_close") == 1
+    assert events.count("drafter_close") == (failure != "drafter")
+    assert events.count("cycle_close") == (failure == "prefill")
+    provider.close()
 
 
 def test_laguna_dflash_provider_binds_identities_and_reports_rejected_economics(

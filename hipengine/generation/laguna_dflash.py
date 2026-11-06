@@ -131,6 +131,10 @@ class LagunaDFlashTextProvider:
             LAGUNA_DFLASH_TARGET_SHA256
         )
 
+    def create_child(self, request: GenerationRequest) -> "_LagunaDFlashChild":
+        self._check_open()
+        return _LagunaDFlashChild(self, request)
+
     def capabilities(self) -> dict[str, Any]:
         return {
             "provider": self.provider_name,
@@ -350,7 +354,8 @@ class LagunaDFlashTextProvider:
                 "Laguna DFlash supports raw greedy BF16 c=1 only; "
                 f"unsupported request fields: {', '.join(blockers)}"
             )
-        return self.target._prepare_request(request)
+        prompt_ids, _timing = self.target._prepare_request(request)
+        return prompt_ids
 
     def _token_steps(
         self,
@@ -629,6 +634,115 @@ class LagunaDFlashTextProvider:
             except BaseException as exc:  # pragma: no cover - defensive cleanup
                 errors.append(exc)
         if errors and not suppress_errors:
+            raise errors[0]
+
+
+class _LagunaDFlashChild:
+    """Request-private state; admission performs no model work."""
+
+    def __init__(self, provider: LagunaDFlashTextProvider, request: GenerationRequest):
+        self.provider = provider
+        self.request = request
+        self.prompt_ids: tuple[int, ...] | None = None
+        self.generated: list[int] = []
+        self.session = None
+        self.drafter = None
+        self.cycle = None
+        self.prefilled = 0
+        self.prefill_seconds = 0.0
+        self.counters = _DFlashCounters()
+        self.root: int | None = None
+        self.started: float | None = None
+        self.closed = False
+
+    def advance(self) -> GenerationOutput | None:
+        if self.closed:
+            raise RuntimeError("Laguna DFlash child is closed")
+        provider = self.provider
+        with provider.target._lock:
+            provider._check_open()
+            raise_if_generation_deadline_expired(self.request)
+            if self.started is None:
+                self.started = time.perf_counter()
+                self.prompt_ids = provider._prepare_request(self.request)
+            assert self.prompt_ids is not None
+            if self.request.max_tokens == 0:
+                return self._output(FinishDetails(
+                    reason="length", length_limit=0, sampler_mode="greedy_fast"))
+            if self.cycle is None:
+                provider.target._prepare_locked()
+                self.session = provider.target._open_session_locked()
+                self.drafter = LagunaDFlashResidentDrafter(
+                    self.session, provider.drafter_model,
+                    candidate_budget=LAGUNA_DFLASH_CANDIDATE_BUDGET,
+                    top_k=1, max_append_rows=64,
+                )
+                self.cycle = LagunaDFlashResidentCycle(self.session, self.drafter)
+            if self.prefilled < len(self.prompt_ids):
+                started = time.perf_counter()
+                result = self.cycle.prefill((self.prompt_ids[self.prefilled],))
+                self.session.runtime.device_synchronize()
+                self.prefill_seconds += time.perf_counter() - started
+                self.prefilled += 1
+                if self.prefilled < len(self.prompt_ids):
+                    return None
+                visible = (int(result.next_token_id),)
+                self.root = visible[0]
+            else:
+                started = time.perf_counter()
+                result = self.cycle.run_cycle(
+                    self.root,
+                    remaining_decode=int(self.request.max_tokens) - len(self.generated),
+                    stop_token_ids=provider._cycle_stop_token_ids(self.request),
+                )
+                self.session.runtime.device_synchronize()
+                self.counters = self.counters.add_cycle(
+                    result, wall_seconds=time.perf_counter() - started)
+                visible = tuple(int(token) for token in result.visible_output_ids)
+                if not visible or len(visible) > int(self.request.max_tokens) - len(self.generated):
+                    raise RuntimeError("Laguna DFlash cycle emitted an invalid visible-output count")
+                self.root = result.target_result.next_token_id
+            for token in visible:
+                self.generated.append(token)
+                finish = _laguna_finish_details(
+                    self.generated, tokenizer=provider.target.tokenizer, request=self.request)
+                if finish is not None:
+                    return self._output(finish)
+            if self.root is None:
+                raise RuntimeError("Laguna DFlash cycle ended without a terminal finish")
+            return None
+
+    def _output(self, finish: FinishDetails) -> GenerationOutput:
+        provider = self.provider
+        visible = _visible_generated_ids(
+            self.generated, finish, tokenizer=provider.target.tokenizer)
+        telemetry = provider._telemetry(
+            self.prompt_ids, self.generated, finish=finish,
+            prefill_seconds=self.prefill_seconds, counters=self.counters)
+        output = GenerationOutput(
+            text=provider.target.tokenizer.decode(visible),
+            generated_token_ids=tuple(self.generated), finish_details=finish,
+            telemetry=_with_total_timing(telemetry, self.started),
+        )
+        provider._record_output(output, self.prompt_ids, self.request)
+        return output
+
+    def close(self, *, reason: str) -> None:
+        del reason
+        if self.closed:
+            return
+        self.closed = True
+        errors = []
+        with self.provider.target._lock:
+            for name in ("cycle", "drafter", "session"):
+                owner = getattr(self, name)
+                setattr(self, name, None)
+                if owner is not None:
+                    try:
+                        owner.close()
+                    except Exception as exc:
+                        errors.append(exc)
+        if errors:
             raise errors[0]
 
 

@@ -180,6 +180,11 @@ class LagunaGGUFGenerator:
         provider = self._speculative_provider
         return {} if provider is None else dict(provider.capabilities())
 
+    @property
+    def create_generic_speculative_child(self):
+        provider = self._speculative_provider
+        return None if provider is None else getattr(provider, "create_child", None)
+
     def generate_speculative_detailed(
         self,
         request: GenerationRequest,
