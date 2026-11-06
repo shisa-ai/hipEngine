@@ -3147,27 +3147,6 @@ cancellation/reuse and selected kernel attribution before retiring the context. 
 three-repeat performance gate still governs a claimed promotion or rejection. A losing candidate may
 be removed only after checking live consumers and preserving strict fallbacks.
 
-### R0192 — Public validation after obsolete MoE C2 prototype removal
-
-Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
-
-Scope: `Qwen35GGUFMTP2Adapter`.
-
-Public gfx1151 production C2 generation now confirms packed physical target calls,
-accepted and rejected proposals, and the intended arithmetic-plan binding. Group stream
-close produces accepted disconnect cancellations for both requests, followed by healthy
-C2 reuse and zero tracked allocations after close. See
-[plan engagement](../worklog/entries/20261106T104328.194555Z-lhl-r0193-public-plan-3d6d60.md)
-and [disconnect attribution](../worklog/entries/20261106T104953.816152Z-lhl-r0192-cancel-attribution-f685eb.md).
-Exact device rollback-state parity remains separate. Internal service handles using public
-LLM eligibility resolution now confirm accepted single-child cancellation while a peer is
-live, replacement admission, and packed target calls for both survivor and replacement;
-see [packed peer check](../worklog/entries/20261106T105502.830749Z-lhl-r0192-packed-peer-46059f.md).
-
-Done when: complete the public single-row cancellation/refill surface with independent peer
-progress. Preserve complete C1 legacy cycles and explicit
-refusals for unsupported direct staged calls.
-
 ### R0193 — Replace MoE numerical-scope transport without changing arithmetic
 
 Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.

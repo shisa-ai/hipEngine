@@ -4896,11 +4896,11 @@
       "ledger_line": 4060,
       "owner": "`hipengine/generation/qwen35_gguf_mtp2.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/generation/qwen35_gguf_mtp2.py retains batched MoE NextN adapter; current local Qwen3.6-35B-A3B GGUF exists."
+        "worklog/entries/20261106T110443.235839Z-lhl-r0192-closure-9d30fb.md maps packed public grouping/rejects, disconnect/reuse, packed peer/refill, public token cancellation, C1 legacy cycles and direct refusal coverage."
       ],
-      "next_action": "Inspect remaining public C2 evidence and run cancellation/reject/refill/peer-progress with actual physical provider grouping, preserving C1 legacy cycles.",
+      "next_action": "None for R0192. Lifecycle packet complete; removed ledger section. Exact-state/selector arithmetic requirements remain separately in R0191/R0193/R0194/R0195.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "validation_only",
