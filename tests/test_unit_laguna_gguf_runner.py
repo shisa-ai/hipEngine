@@ -1468,6 +1468,10 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch,
     assert session.prefill_cached_meta is True
     assert session.prefill_global_qrow6 is True
     assert session.prefill_dense_initial is True
+    assert session.cached_prefill_policy.kv_preappend is session.prefill_kv_preappend
+    assert session.cached_prefill_policy.cached_meta is kv_kwargs["prefill_cached_meta"]
+    assert session.cached_prefill_policy.global_qrow6 is kv_kwargs["prefill_global_qrow6"]
+    assert session.cached_prefill_policy.dense_initial is kv_kwargs["prefill_dense_initial"]
     assert session.q6_compact_activation is True
     assert session.q6_half_row_activation is True
     assert session.q6_skip_padded_activation is True

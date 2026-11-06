@@ -119,6 +119,7 @@ from hipengine.runtime.laguna_moe import (
     run_laguna_moe_rows,
     validate_laguna_moe_layer,
 )
+from hipengine.runtime.laguna_prefill_policy import resolve_laguna_cached_prefill_policy
 from hipengine.runtime.laguna_rope import (
     LagunaDeviceRoPETables,
     launch_laguna_head_rmsnorm_rope,
@@ -3401,42 +3402,15 @@ class LagunaGGUFResidentSession:
         self.use_activation_pack_reuse = resolve_laguna_activation_pack_reuse(
             self.backend
         )
-        self.prefill_kv_preappend = bool(
-            backend_package_capability(
-                self.backend,
-                "LAGUNA_PREFILL_KV_PREAPPEND",
-                False,
-            )
-            if prefill_kv_preappend is None
-            else prefill_kv_preappend
+        self.cached_prefill_policy = resolve_laguna_cached_prefill_policy(
+            self.backend, kv_preappend=prefill_kv_preappend,
+            cached_meta=prefill_cached_meta, global_qrow6=prefill_global_qrow6,
+            dense_initial=prefill_dense_initial,
         )
-        self.prefill_cached_meta = bool(
-            backend_package_capability(
-                self.backend,
-                "LAGUNA_PREFILL_CACHED_META",
-                False,
-            )
-            if prefill_cached_meta is None
-            else prefill_cached_meta
-        )
-        self.prefill_global_qrow6 = bool(
-            backend_package_capability(
-                self.backend,
-                "LAGUNA_PREFILL_GLOBAL_QROW6",
-                False,
-            )
-            if prefill_global_qrow6 is None
-            else prefill_global_qrow6
-        )
-        self.prefill_dense_initial = bool(
-            backend_package_capability(
-                self.backend,
-                "LAGUNA_PREFILL_DENSE_INITIAL",
-                False,
-            )
-            if prefill_dense_initial is None
-            else prefill_dense_initial
-        )
+        self.prefill_kv_preappend = self.cached_prefill_policy.kv_preappend
+        self.prefill_cached_meta = self.cached_prefill_policy.cached_meta
+        self.prefill_global_qrow6 = self.cached_prefill_policy.global_qrow6
+        self.prefill_dense_initial = self.cached_prefill_policy.dense_initial
         self.prefill_attention_hipblaslt = bool(
             backend_package_capability(
                 self.backend,
