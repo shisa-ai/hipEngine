@@ -483,12 +483,6 @@ def _q6_layout_overrides(args: argparse.Namespace) -> dict[str, bool | None]:
         "q6_qmicro_permute": args.q6_qmicro_permute,
         "q6_qmicro_planar": planar,
     }
-    if planar is False:
-        overrides.update(
-            q6_wmma_prefetch_weight=False,
-            q6_wmma_prefetch_activation=False,
-            q6_precomputed_activation_sums=False,
-        )
     return overrides
 
 

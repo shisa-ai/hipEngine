@@ -2966,9 +2966,6 @@ class LagunaGGUFResidentSession:
         q6_skip_padded_activation: bool | None = None,
         q6_qmicro_permute: bool | None = None,
         q6_qmicro_planar: bool | None = None,
-        q6_wmma_prefetch_weight: bool | None = None,
-        q6_wmma_prefetch_activation: bool | None = None,
-        q6_precomputed_activation_sums: bool | None = None,
         q4_precomputed_activation_sums: bool | None = None,
         moe_branch_concurrency: bool | None = None,
         moe_decode_branch_concurrency: bool | None = None,
@@ -3615,21 +3612,18 @@ class LagunaGGUFResidentSession:
                 "LAGUNA_Q6_WMMA_PREFETCH_WEIGHT",
                 False,
             )
-            if q6_wmma_prefetch_weight is None
-            else q6_wmma_prefetch_weight
         )
         if self.q6_wmma_prefetch_weight and not self.q6_qmicro_planar:
             raise ValueError(
                 "Q6 WMMA weight prefetch requires planar qmicro"
             )
         self.q6_wmma_prefetch_activation = bool(
-            backend_package_capability(
+            self.q6_wmma_prefetch_weight
+            and backend_package_capability(
                 self.backend,
                 "LAGUNA_Q6_WMMA_PREFETCH_ACTIVATION",
                 False,
             )
-            if q6_wmma_prefetch_activation is None
-            else q6_wmma_prefetch_activation
         )
         if (
             self.q6_wmma_prefetch_activation
@@ -3639,13 +3633,12 @@ class LagunaGGUFResidentSession:
                 "Q6 WMMA activation prefetch requires weight prefetch"
             )
         self.q6_precomputed_activation_sums = bool(
-            backend_package_capability(
+            self.q6_wmma_prefetch_activation
+            and backend_package_capability(
                 self.backend,
                 "LAGUNA_Q6_PRECOMPUTED_ACTIVATION_SUMS",
                 False,
             )
-            if q6_precomputed_activation_sums is None
-            else q6_precomputed_activation_sums
         )
         if (
             self.q6_precomputed_activation_sums

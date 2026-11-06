@@ -130,9 +130,12 @@ def test_session_layout_selection_adopts_resident_before_backend_default(monkeyp
         session.__init__(
             "/synthetic/laguna.gguf", backend=backend, runtime=object(),
             resident_weights=weights, q6_qmicro=override, q6_qmicro_planar=planar_override,
-            q6_wmma_prefetch_activation=False, q6_precomputed_activation_sums=False,
         )
     assert (session.q6_qmicro, session.q6_qmicro_planar) == expected
+    prefetch = expected[1] and backend == "hip_gfx1151"
+    assert session.q6_wmma_prefetch_weight is prefetch
+    assert session.q6_wmma_prefetch_activation is prefetch
+    assert session.q6_precomputed_activation_sums is prefetch
     assert session.weights is None
     assert session._closed
 
