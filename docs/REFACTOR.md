@@ -3231,19 +3231,3 @@ BF16 long-context and no-mirror INT8 global-adapter gates on both gfx1100 and gf
 graph-pointer, lifecycle, cancellation, pressure, SLO and production load. Only after remaining
 registered packages migrate may compatibility fixtures retire. Registered strict/unfused/serial
 numerical fallbacks remain independent of allocator cleanup.
-
-### R0210 — Consolidate private packed allocation after page-map repair
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `_GGUFPackedTargetState.page_ids`, `copy_segments()`.
-
-**Deferred allocation consolidation:** inventory every private-chunk producer and fallback, migrate
-them to lease-backed allocation, then remove private allocation from `_GGUFPackedTargetState`. Do
-not treat arbitrary-page graph execution as blocked on a future metadata kernel. Preserve
-invalidation on pool growth/shrink for self-owning and borrowed sessions before pointers move, and
-discard-storage release on failed capture and close.
-
-Done when: Verify non-identity masked graph replay/commit, identity controls, allocation failure, pool
-growth/shrink, public packed generation and balanced teardown before deleting the fallback. Keep
-authoritative map ownership separate from allocation policy.

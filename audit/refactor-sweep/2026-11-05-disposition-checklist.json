@@ -5090,12 +5090,11 @@
       "ledger_line": 4199,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "worklog/entries/20261106T043511.163461Z-lhl-r0210-inventory-9e1ed3.md",
-        "Pool-backed missing-eager, appended-chunk, confined placement/growth and mixed-map replacement implemented through 34fc24c17; charge ownership 2a9eaa40d; binding failure cleanup 73c8fd2db. Actual gfx1151 graph page-map gate: 7 pass."
+        "worklog/entries/20261106T050310.369818Z-lhl-r0210-close-8a05f6.md"
       ],
-      "next_action": "Give no-pool direct sessions a compatible lease/storage owner and migrate remaining private fallback before deleting it. Private allocation charge acquisition is isolated; pool-backed placement is implemented. Preserve resource refusal, graph invalidation and direct strict fixtures.",
+      "next_action": "None. State allocation policy migrated to storage adapter and standalone lease owner; direct/no-pool storage capability preserved.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -5104,7 +5103,7 @@
           "worklog/entries/20261030T093459.888159Z-cleanup-cleanup-r0210-final-a79dd4.md (prior scoped implementation review and validation record; read during this audit)"
         ]
       },
-      "inspection_limits": "Parent static current-source inspection; reviewer failed authentication before work. No numerical/public run accepted for these dispositions; exact protocol/resource gaps are explicit next actions."
+      "inspection_limits": "Actual gfx1151 public packed graph capture/replay plus lifecycle teardown, real non-identity metadata graph checks, CPU failure and owning/borrowed mutation coverage. No performance claim."
     }
   ],
   "inspection_summary": {
