@@ -1701,11 +1701,12 @@
       "ledger_line": 1232,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/generation/qwen35_gguf.py:4368 retains direct serving-slots compatibility loop."
+        "worklog/entries/20261106T040736.978153Z-lhl-r0281-ar-loop-close-5c4da7.md",
+        "Shared flush owner and both diagnostic loops extracted; helper callers migrated. 200 affected tests pass, 1 skipped. Public resident interruption/refill/completed streaming and allocation teardown pass with direct loops rejected."
       ],
-      "next_action": "Shared flush owner committed 6a37905be; native greedy diagnostic d38f9ddf8; AR orchestration/cycle/token/launch/prefill bodies moved through da6bf9873. Resident AST has no AR helper or native greedy references. Migrate direct diagnostic callers and unnecessary forwarding wrappers; finish actual public cancellation/streaming checks before ledger closure.",
+      "next_action": "None; ledger section removed. Compatibility forwarding methods remain consumed by direct-generator routing and test hooks, not resident scheduling.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

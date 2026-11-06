@@ -1165,25 +1165,6 @@ allocation pair on one weight, matching short greedy output and clean tracked
 allocation teardown. This is local lifecycle evidence, not a full model-quality
 or cross-backend parity claim.
 
-### R0281-AR-LOOP — Direct GGUF compatibility loop and shared flush helpers
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `_generate_ar_serving_slots()`, `Qwen35GGUFBringupGenerator.generate_detailed()`.
-
-Done when: Decision needed: retire both direct-generator batched compatibility loops, or move them to an
-explicit diagnostic adapter with their callers. Then extract only the loop-specific methods; first
-give the shared flush operations an owner that both routes can consume. No release-window note
-proves these dependencies have migrated. **Clearing action:** preserve the resident bypass sentinel
-in
-`tests/test_live_generation_qwen35_gguf_sampling.py::test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions`,
-which rejects both direct loops with `native_batch_decode=True`, then migrate the direct tests and
-check uniform/ragged prompts, widths below and above eight, shrinking/EOS, unsupported packed
-prefill/decode, dirty-owner flush and error cleanup. Preserve the older path's physical compaction,
-readmission and eager/graph checks or migrate them to equivalent diagnostics. Keep resident
-session-route selection independent of compatibility-loop removal. Exercise public
-`LLM.generate_detailed()` plus submit/poll cancellation and streaming after extraction.
-
 ### R0281-CONV — Convolution schedule selector and isolation profiles
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
