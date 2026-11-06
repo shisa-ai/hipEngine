@@ -4451,94 +4451,9 @@ class Qwen35GGUFBringupGenerator:
         *,
         plan: Any,
     ) -> list[GenerationOutput]:
-        encoded_prompts: dict[int, list[int]] = {}
-        tokenize_ms_by_request: dict[int, float] = {}
-        for row_index, prompt in enumerate(request.prompts):
-            raise_if_generation_deadline_expired(request)
-            prompt_ids, tokenize_ms_by_request[row_index] = _encode_prompt_timed(
-                self.tokenizer,
-                prompt,
-            )
-            if not prompt_ids:
-                raise ValueError("GGUF prompt tokenization produced no token IDs")
-            encoded_prompts[row_index] = prompt_ids
+        from hipengine.generation.gguf_ar_batch_diagnostic import generate_ar_serving_slots
 
-        slots: list[_GGUFARServingSlot] = []
-        try:
-            slots = self._open_ar_serving_slots(
-                shared_runner,
-                encoded_prompts,
-                tokenize_ms_by_request,
-                request,
-            )
-            self._run_ar_serving_slots(slots, request)
-            outputs: list[GenerationOutput] = []
-            prompt_rows_by_request: dict[int, list[int]] = {}
-            generated_ids_by_request: dict[int, list[int]] = {}
-            token_logprobs_by_request: dict[int, list[TokenLogprob]] = {}
-            for slot in sorted(slots, key=lambda item: item.request_id):
-                row_timing = dict(slot.timing)
-                generated_ids = list(slot.generated_ids)
-                prompt_rows_by_request[slot.request_id] = list(slot.prompt_ids)
-                generated_ids_by_request[slot.request_id] = generated_ids
-                token_logprobs_by_request[slot.request_id] = []
-                decode_text_start = time.perf_counter()
-                text = self.tokenizer.decode(generated_ids)
-                _timing_set(row_timing, "decode_text_ms", decode_text_start)
-                outputs.append(
-                    GenerationOutput(
-                        text=text,
-                        generated_token_ids=generated_ids,
-                        finish_details=_gguf_finish_details(generated_ids, self.tokenizer, request),
-                        telemetry=_gguf_telemetry(
-                            slot.prompt_ids,
-                            generated_ids,
-                            request,
-                            row_index=slot.request_id,
-                            timing=row_timing,
-                            execution_path="gguf_packed_ar_server_decode",
-                            native_compact_prefill=slot.native_compact_prefill,
-                            native_caware_decode=slot.native_decode_steps > 0,
-                            serial_decode_fallback=slot.serial_decode_steps > 0,
-                            native_sampler_rows=False,
-                        ),
-                    )
-                )
-            batch_id = _new_gguf_timing_batch_id("ar")
-            outputs = _with_batch_timing_ownership(outputs, batch_id=batch_id)
-            self.last_generation_outputs = tuple(outputs)
-            native_compact_prefill = bool(slots) and all(slot.native_compact_prefill for slot in slots)
-            native_decode_steps = max((slot.native_decode_steps for slot in slots), default=0)
-            serial_decode_fallback = any(slot.serial_decode_steps > 0 for slot in slots)
-            self.last_batch_generation = _gguf_last_batch_generation(
-                self.tokenizer,
-                request,
-                plan,
-                prompt_rows_by_request,
-                generated_ids_by_request,
-                token_logprobs_by_request,
-                outputs=self.last_generation_outputs,
-                execution_path="gguf_packed_ar_server_decode",
-                native_compact_prefill=native_compact_prefill,
-                native_decode_steps=native_decode_steps,
-                native_caware_decode=native_decode_steps > 0,
-                serial_decode_fallback=serial_decode_fallback,
-            )
-            self.last_batch_generation.update(
-                {
-                    "batch_id": batch_id,
-                    "group_rows": len(outputs),
-                    "timing_scope": "batch",
-                    "timing_owner": True,
-                }
-            )
-            self._close_ar_serving_slots(slots, reuse=True)
-            slots = []
-            return outputs
-        except Exception:
-            if slots:
-                self._close_ar_serving_slots(slots, reuse=False)
-            raise
+        return generate_ar_serving_slots(self, shared_runner, request, plan=plan)
 
     def _open_ar_serving_slots(
         self,
