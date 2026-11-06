@@ -2929,9 +2929,15 @@ width/depth and prompt-width policy plus the last padding decision and its reaso
 See [`prompt-owner checkpoint`](../worklog/entries/20261106T095747.652410Z-lhl-r0195-prompt-owner-934411.md),
 [`policy contract`](../worklog/entries/20261106T095934.807046Z-lhl-r0195-policy-contract-cb3fdb.md)
 and [`padding attribution`](../worklog/entries/20261106T100045.077441Z-lhl-r0195-shape-contract-6f075c.md).
-These reports describe policy and planning, not actual kernel dispatch. Integration
-into the profile-resolved physical-target manifest and public output/state
-validation remain outstanding.
+These reports describe policy and planning, not actual kernel dispatch.
+Profile construction now combines those snapshots in one immutable
+`PhysicalTargetPlan`; adapters consume it while legacy fields remain compatibility
+views. See [`unified plan`](../worklog/entries/20261106T101816.788220Z-lhl-r0195-unified-plan-30cfe8.md).
+Public gfx1151 production and strict width 1–4 probes confirm same-width token
+repeatability, packed shape accounting and clean teardown, not exact state parity.
+The general registry manifest schema is unchanged. Exact device state/offset/
+selector coverage, shape misses and wider gfx1100 device validation remain
+outstanding.
 Reuse RF-1/RF-10 ownership rather than add a parallel selector. Retire the two rollback flags
 only with explicit coverage of their replacement policies and diagnostic controls.
 
