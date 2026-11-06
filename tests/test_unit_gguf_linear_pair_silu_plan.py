@@ -491,6 +491,33 @@ def test_pair_silu_plan_executes_exact_operands(
     assert events[0][2] == expected_args
 
 
+def test_pair_silu_decision_rebinds_without_resident_references(monkeypatch):
+    weight_a = _Weight('a', Q4_PACK8_DECODE.quant, decode_tiles=True)
+    weight_b = _Weight('b', Q4_PACK8_DECODE.quant, decode_tiles=True)
+    _patch(monkeypatch, dispatch_a=_dispatch(Q4_PACK8_DECODE),
+           dispatch_b=_dispatch(Q4_PACK8_DECODE))
+    plan = _resolve(weight_a, weight_b, rows=1)
+    decision = plan.decision
+    assert 'operands' not in decision.__dataclass_fields__
+    replacement_a = _Weight('a', Q4_PACK8_DECODE.quant, decode_tiles=True)
+    replacement_b = _Weight('b', Q4_PACK8_DECODE.quant, decode_tiles=True)
+    rebound = decision.bind((
+        gguf_linear_module._GGUFPairSiluOperand(replacement_a),
+        gguf_linear_module._GGUFPairSiluOperand(replacement_b),
+    ))
+    assert rebound.decision == decision
+    assert rebound.operands[0].weight is replacement_a
+    events = []
+    assert _execute(rebound, replacement_a, replacement_b, events=events,
+                    monkeypatch=monkeypatch)
+    with pytest.raises(ValueError, match='owner changed'):
+        _execute(rebound, weight_a, weight_b, events=[], monkeypatch=monkeypatch)
+    incompatible = _Weight('a', 'different_quant', decode_tiles=True)
+    with pytest.raises(ValueError, match='operand 0.*contract'):
+        decision.bind((gguf_linear_module._GGUFPairSiluOperand(incompatible),
+                       rebound.operands[1]))
+
+
 def test_pair_silu_plan_rejects_registry_change(monkeypatch):
     weight_a = _Weight('a', Q4_PACK8_DECODE.quant, decode_tiles=True)
     weight_b = _Weight('b', Q4_PACK8_DECODE.quant, decode_tiles=True)

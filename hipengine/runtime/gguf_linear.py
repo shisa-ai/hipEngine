@@ -8075,14 +8075,14 @@ class _GGUFPairSiluOperand:
 
 
 @dataclass(frozen=True)
-class _GGUFPairSiluPlan:
-    """Private, launch-local plan for one fused gate/up pair."""
+class _GGUFPairSiluDecision:
+    """Immutable fused-pair policy without resident weight ownership."""
 
     backend: str
     rows: int
     in_features: int
     out_features: int
-    operands: tuple[_GGUFPairSiluOperand, _GGUFPairSiluOperand]
+    operand_contracts: tuple[_GGUFPairOperandContract, _GGUFPairOperandContract]
     operation: str | None
     pair_key: KernelKey | None
     operand_mode: str | None
@@ -8100,6 +8100,41 @@ class _GGUFPairSiluPlan:
     r28_enabled: bool | None
     fallback_reason: str | None
     registry_generation: int
+
+    def bind(
+        self, operands: tuple[_GGUFPairSiluOperand, _GGUFPairSiluOperand],
+    ) -> _GGUFPairSiluPlan:
+        if len(operands) != 2:
+            raise ValueError("GGUF pair-SiLU binding needs exactly two operands")
+        for index, (operand, contract) in enumerate(
+            zip(operands, self.operand_contracts, strict=True)
+        ):
+            current = _GGUFPairOperandContract(
+                layout=str(operand.weight.spec.layout),
+                quant_key=str(operand.weight.spec.quant_key),
+                out_features=self.out_features,
+            )
+            if current != contract:
+                raise ValueError(f"GGUF pair-SiLU binding operand {index} contract changed")
+        return _GGUFPairSiluPlan(
+            **{name: getattr(self, name)
+               for name in _GGUFPairSiluDecision.__dataclass_fields__},
+            operands=operands,
+        )
+
+
+@dataclass(frozen=True)
+class _GGUFPairSiluPlan(_GGUFPairSiluDecision):
+    """Launch-local decision bound to exact resident operands."""
+
+    operands: tuple[_GGUFPairSiluOperand, _GGUFPairSiluOperand]
+
+    @property
+    def decision(self) -> _GGUFPairSiluDecision:
+        return _GGUFPairSiluDecision(
+            **{name: getattr(self, name)
+               for name in _GGUFPairSiluDecision.__dataclass_fields__}
+        )
 
 
 def _resolve_gguf_linear_pair_silu_plan(
@@ -8148,12 +8183,18 @@ def _resolve_gguf_linear_pair_silu_plan(
         chunks: tuple[tuple[int, int], ...] = (),
         fallback_reason: str | None = None,
     ) -> _GGUFPairSiluPlan:
-        return _GGUFPairSiluPlan(
+        return _GGUFPairSiluDecision(
             backend=resolved_backend,
             rows=rows,
             in_features=in_features,
             out_features=out_features,
-            operands=operands,
+            operand_contracts=tuple(
+                _GGUFPairOperandContract(
+                    layout=str(operand.weight.spec.layout),
+                    quant_key=str(operand.weight.spec.quant_key),
+                    out_features=out_features,
+                ) for operand in operands
+            ),
             operation=operation,
             pair_key=pair_key,
             operand_mode=operand_mode,
@@ -8171,7 +8212,7 @@ def _resolve_gguf_linear_pair_silu_plan(
             r28_enabled=r28_enabled,
             fallback_reason=fallback_reason,
             registry_generation=generation(),
-        )
+        ).bind(operands)
 
     dispatch_a = resolve_gguf_linear_dispatch(
         weight_a,
