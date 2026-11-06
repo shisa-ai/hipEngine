@@ -9,7 +9,7 @@ from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 from hipengine.kernels.registry import KernelKey, is_registered
-from scripts.laguna_swa_issue_diagnostic import swa_issue_comparison
+from scripts.laguna_swa_issue_diagnostic import swa_issue_arm, swa_issue_comparison
 from scripts import laguna_long_context_profile as profiler
 
 
@@ -71,8 +71,8 @@ def test_named_swa_comparison_reaches_its_two_registered_routes(owner, setter, e
     before = vars(cache).copy()
     with swa_issue_comparison(owner, args):
         for enabled in (False, True):
-            getattr(owner, setter)(enabled)
-            assert cache.attend(1, 10, 20, gate_ptr=30, gated_out_ptr=40)
+            with swa_issue_arm(owner, args, candidate=enabled):
+                assert cache.attend(1, 10, 20, gate_ptr=30, gated_out_ptr=40)
     assert vars(cache) == before
     if position >= 511:
         assert selected == ["swa_context_fused_exact_gated_" + variant + "_spans" for variant in expected]
@@ -98,6 +98,25 @@ def test_swa_issue_scope_restores_nested_policies_and_failed_body(owner, failure
             assert failure and str(error) == "synthetic comparison failure"
         assert vars(cache) == outer
     assert vars(cache) == before
+
+
+@pytest.mark.parametrize("candidate", [False, True])
+@pytest.mark.parametrize("failure", [False, True])
+def test_swa_arm_restores_nested_stage_and_failed_exit(owner, candidate, failure):
+    args = SimpleNamespace(compare_swa_mixed32_exp16=True)
+    before = vars(owner.kv_cache).copy()
+    try:
+        with swa_issue_arm(owner, args, candidate=candidate):
+            assert owner.kv_cache.swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512 is candidate
+            outer = vars(owner.kv_cache).copy()
+            with swa_issue_arm(owner, args, candidate=not candidate):
+                assert owner.kv_cache.swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512 is not candidate
+            assert vars(owner.kv_cache) == outer
+            if failure:
+                raise RuntimeError("synthetic arm failure")
+    except RuntimeError as error:
+        assert failure and str(error) == "synthetic arm failure"
+    assert vars(owner.kv_cache) == before
 
 
 def test_unrequested_swa_diagnostic_does_not_need_or_change_cache():

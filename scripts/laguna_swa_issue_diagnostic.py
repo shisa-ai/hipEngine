@@ -39,6 +39,19 @@ def comparison_name(args):
 
 
 @contextmanager
+def swa_issue_arm(owner, args, *, candidate):
+    """Restore the selected issue stage after one profiler comparison arm."""
+    name = comparison_name(args)
+    if name is None:
+        yield
+        return
+    prefix = next(prefix for stage, prefix in _STAGES if stage == name)
+    with swa_issue_comparison(owner, args):
+        setattr(owner.kv_cache, prefix + _SUFFIX, bool(candidate))
+        yield
+
+
+@contextmanager
 def swa_issue_comparison(owner, args):
     """Hold prerequisites on and successors off, restoring every touched field."""
     name = comparison_name(args)

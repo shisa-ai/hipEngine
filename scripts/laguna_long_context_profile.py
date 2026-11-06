@@ -28,7 +28,7 @@ from scripts.laguna_global_issue_diagnostic import (
     global_issue_arm,
 )
 from scripts.laguna_moe_tail_diagnostic import unfused_moe_tail
-from scripts.laguna_swa_issue_diagnostic import comparison_name as swa_issue_comparison_name, swa_issue_comparison
+from scripts.laguna_swa_issue_diagnostic import comparison_name as swa_issue_comparison_name, swa_issue_arm, swa_issue_comparison
 from scripts.laguna_prefill_profile import _profile_token_stream
 from scripts.laguna_target_ar_bench import (
     DEFAULT_CACHE,
@@ -1097,18 +1097,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.kv_cache.swa_gqa3_vstage64_vec16_direct_fixed512 = (
                             mode == "candidate"
                         )
-                    if args.compare_swa_assume_exp:
-                        owner.set_decode_swa_assume_exp(mode == "candidate")
-                    if args.compare_swa_mixed32:
-                        owner.set_decode_swa_mixed32(mode == "candidate")
-                    if args.compare_swa_mixed32_exp4:
-                        owner.set_decode_swa_mixed32_exp4(mode == "candidate")
-                    if args.compare_swa_mixed32_exp8:
-                        owner.set_decode_swa_mixed32_exp8(mode == "candidate")
-                    if args.compare_swa_mixed32_exp16:
-                        owner.set_decode_swa_mixed32_exp16(mode == "candidate")
-                    if args.compare_swa_mixed32_exp32:
-                        owner.set_decode_swa_mixed32_exp32(mode == "candidate")
+                    if swa_issue_comparison_name(args) is not None:
+                        decode_scopes.close()
+                        decode_scopes.enter_context(
+                            swa_issue_arm(owner, args, candidate=mode == "candidate")
+                        )
                     if args.compare_global_fixedshape_reduce:
                         owner.kv_cache.global_split_fixedshape_reduce = (
                             mode == "candidate"
