@@ -122,7 +122,7 @@ def test_global_scope_restores_nested_policies_and_failed_body(owner, failure):
         outer = vars(cache).copy()
         try:
             with global_issue_comparison(owner, SimpleNamespace(compare_global_assume_exp=True)):
-                assert not cache.global_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape
+                assert cache._global_issue_reference_variant.endswith("gqa2_vstage64_vec16_direct_fixedshape_spans")
                 with global_issue_arm(owner, SimpleNamespace(compare_global_assume_exp=True), candidate=True):
                     if failure:
                         raise RuntimeError("synthetic comparison failure")
@@ -137,13 +137,15 @@ def test_global_scope_restores_nested_policies_and_failed_body(owner, failure):
 def test_global_arm_restores_each_stage_on_exit(owner, name, control, candidate, failure):
     args = SimpleNamespace(**{"compare_global_" + name: True})
     before = vars(owner.kv_cache).copy()
-    field = "global_" + candidate
+    expected = "global_context_fused_exact_gated_" + candidate + "_spans"
+    production = {key: value for key, value in before.items() if key != "_global_issue_reference_variant"}
     try:
         with global_issue_arm(owner, args, candidate=True):
-            assert getattr(owner.kv_cache, field)
+            assert owner.kv_cache._global_issue_reference_variant == expected
+            assert {key: value for key, value in vars(owner.kv_cache).items() if key != "_global_issue_reference_variant"} == production
             outer = vars(owner.kv_cache).copy()
             with global_issue_arm(owner, args, candidate=False):
-                assert not getattr(owner.kv_cache, field)
+                assert owner.kv_cache._global_issue_reference_variant != expected
             assert vars(owner.kv_cache) == outer
             if failure:
                 raise RuntimeError("synthetic arm failure")

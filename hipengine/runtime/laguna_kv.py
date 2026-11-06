@@ -473,6 +473,7 @@ class LagunaKVCache:
                 raise ValueError(
                     "Laguna ctx4096 operand prefetch must be 1, 4, 8, or 16"
                 )
+        self._global_issue_reference_variant: str | None = None
         self.global_fused_fixedshape = bool(global_fused_fixedshape)
         self.global_gqa2_vstage64_fixedshape = bool(
             global_gqa2_vstage64_fixedshape
@@ -1625,6 +1626,15 @@ class LagunaKVCache:
                 variant = (
                     "global_context_allwave_gqa6_tile1024_dense_prefix_spans"
                 )
+            reference = self._global_issue_reference_variant
+            if state.attention_type == FULL_ATTENTION and use_gated and reference is not None:
+                if state.capacity == 4096 and state.q_heads == 48:
+                    variant = (
+                        reference if live_count <= _GLOBAL_FUSED_MAX_SCAN
+                        else "global_context_fused_exact_gated_gqa1_fixedshape_spans"
+                    )
+                else:
+                    variant = "global_context_split_exact_gated_spans"
             fn = self._resolve("laguna_attention_decode", variant)
             gated_args = (
                 (int(gate_ptr), int(gated_out_ptr)) if use_gated else ()

@@ -3,24 +3,18 @@
 from contextlib import contextmanager
 
 
-_SUFFIX = "_vstage64_vec16_direct_assume_exp_fixedshape"
 _STAGES = (
     ("compare_global_assume_exp", "global_gqa2"),
     ("compare_global_exp32", "global_gqa2_exp32"),
     ("compare_global_mixed32", "global_mixed32_exp32"),
 )
-_SUCCESSORS = (
-    "global_mixed32_exp32_producer_max",
-    "global_mixed32_exp32_producer_max_dpp_qk",
-    "global_mixed32_exp32_producer_max_dpp_qk_probability_vec4",
-    "global_mixed32_exp32_producer_max_dpp_qk_probability_vec4_prenorm",
-    "global_mixed32_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm",
-    "global_mixed40_local512_exp32_producer_max_dpp_qk_probability_vec4_prenorm",
-)
-_PREREQUISITES = (
-    "global_split_fixedshape_reduce", "global_fused_fixedshape",
-    "global_gqa2_vstage64_fixedshape", "global_gqa2_vstage64_vec16_fixedshape",
-    "global_gqa2_vstage64_vec16_direct_fixedshape",
+
+
+_VARIANTS = (
+    "global_context_fused_exact_gated_gqa2_vstage64_vec16_direct_fixedshape_spans",
+    "global_context_fused_exact_gated_gqa2_vstage64_vec16_direct_assume_exp_fixedshape_spans",
+    "global_context_fused_exact_gated_gqa2_exp32_vstage64_vec16_direct_assume_exp_fixedshape_spans",
+    "global_context_fused_exact_gated_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixedshape_spans",
 )
 
 
@@ -33,20 +27,20 @@ def comparison_name(args):
 
 @contextmanager
 def global_issue_arm(owner, args, *, candidate):
-    """Select one comparison arm and restore its stage field on exit."""
+    """Select an explicit registered reference without changing production flags."""
     name = comparison_name(args)
     if name is None:
         yield
         return
-    prefix = next(prefix for stage, prefix in _STAGES if stage == name)
     with global_issue_comparison(owner, args):
-        setattr(owner.kv_cache, prefix + _SUFFIX, bool(candidate))
+        index = next(index for index, stage in enumerate(_STAGES) if stage[0] == name)
+        owner.kv_cache._global_issue_reference_variant = _VARIANTS[index + bool(candidate)]
         yield
 
 
 @contextmanager
 def global_issue_comparison(owner, args):
-    """Hold predecessors on and successors off, restoring every touched field."""
+    """Scope the control reference while leaving production cache policy intact."""
     name = comparison_name(args)
     if name is None:
         yield
@@ -55,14 +49,9 @@ def global_issue_comparison(owner, args):
     if cache is None or not cache.split_gate_fusion or cache.global_split_min_live is None:
         raise ValueError("global issue comparison requires gated split attention")
     index = next(index for index, stage in enumerate(_STAGES) if stage[0] == name)
-    policy = dict.fromkeys(_PREREQUISITES, True)
-    policy.update({prefix + _SUFFIX: stage < index for stage, (_, prefix) in enumerate(_STAGES)})
-    policy.update(dict.fromkeys((prefix + _SUFFIX for prefix in _SUCCESSORS), False))
-    previous = {key: getattr(cache, key) for key in policy}
+    previous = cache._global_issue_reference_variant
     try:
-        for key, value in policy.items():
-            setattr(cache, key, value)
+        cache._global_issue_reference_variant = _VARIANTS[index]
         yield
     finally:
-        for key, value in previous.items():
-            setattr(cache, key, value)
+        cache._global_issue_reference_variant = previous
