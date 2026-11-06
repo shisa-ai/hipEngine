@@ -2399,8 +2399,10 @@ Scope: `_evict_prefix_snapshot`, `discard_prefix_checkpoint`;
 **Current implementation:** retained trimming counts the union of target/provider device
 owners, including target arena padding, and reviews provider capture/replacement. Idle arena
 pools consume remaining allowance; quarantine is charged but never reclaimed before retirement.
-Host KV bytes are reported separately. Independent provider count remains bounded; its replacement
-and host-memory policy are unfinished.
+Provider host KV has an independent byte allowance of the same configured size.
+Independent provider entry count remains bounded; its replacement is unfinished.
+Capture/overwrite host-bound regression and public live-accounting evidence are recorded in
+`worklog/entries/20261106T015317.527256Z-lhl-r0509-host-validation-94030c.md`.
 
 Public pressure checks show low-budget miss versus normal-budget 512-token reuse, speculative
 cycles and zero tracked allocations after close. Their output tokens differ, so this is lifecycle

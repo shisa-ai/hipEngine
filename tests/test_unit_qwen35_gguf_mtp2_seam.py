@@ -6484,6 +6484,42 @@ def _prefix_capture_adapter(monkeypatch, executor, *, capacity=2, block_size=4):
     return adapter
 
 
+def test_prefix_capture_overwrite_applies_owner_host_bound(monkeypatch):
+    """Capture and replacement both run host trimming, without losing target state."""
+    executor = _PrefixCaptureExecutor()
+    payloads = []
+
+    def snapshot(*args, **kwargs):
+        payload = SimpleNamespace(nbytes=0, host_nbytes=40 if not payloads else 100)
+        payloads.append(payload)
+        return payload
+
+    monkeypatch.setattr(executor, "snapshot_prefix_state", snapshot)
+    adapter = _prefix_capture_adapter(monkeypatch, executor)
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+    owner = object.__new__(Qwen35GGUFResidentModelRunner)
+    owner._mtp2_adapter = adapter
+    owner._prefix_state_snapshots = {
+        tuple(range(100, 108)): SimpleNamespace(
+            snapshot=SimpleNamespace(nbytes=10), retained=True)}
+    owner._prefix_retained_state_bytes_limit = 50
+    owner._prefix_retained_limit = 2
+    owner._prefix_snapshot_limit = 2
+    adapter.owner = owner
+    provider = SimpleNamespace(executor=executor)
+    target = SimpleNamespace(runtime=SimpleNamespace())
+    rows = np.arange(40, dtype=np.float32).reshape(10, 4)
+    for _ in range(2):
+        adapter._catch_up_provider(provider, 7, tuple(range(100, 110)), rows, target)
+    store = adapter._prefix_checkpoint_store_instance
+    assert store.host_nbytes == 0
+    assert len(store) == 0
+    assert executor.released == payloads
+    assert store.stats().replaced == 1
+    assert store.stats().evicted == 1
+    assert tuple(owner._prefix_state_snapshots) == (tuple(range(100, 108)),)
+
+
 def test_prefix_checkpoint_capture_takes_one_snapshot_at_the_aligned_boundary(
     monkeypatch,
 ) -> None:
