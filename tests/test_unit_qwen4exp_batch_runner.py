@@ -865,6 +865,36 @@ def test_admission_resets_the_index_owner_generation(monkeypatch) -> None:
     assert int(index_state.pooled_count_host[1]) == 0
 
 
+@pytest.mark.parametrize("position", [1, 256, 300, 512])
+def test_block_table_copy_plan_preserves_prefix(position) -> None:
+    from hipengine.runtime.qwen4_exp_batch_runner import _block_table_copy_plan
+
+    plan = _block_table_copy_plan(
+        source_blocks=(7, 9), destination_blocks=(2, 3),
+        position=position, block_size=256,
+        operands=((10000, 20000, 2), (30000, 40000, 4)),
+    )
+    expected = []
+    for logical in range((position + 255) // 256):
+        rows = min(256, position - logical * 256)
+        for source, destination, row_bytes in ((10000, 20000, 2), (30000, 40000, 4)):
+            expected.append((destination + (2, 3)[logical] * 256 * row_bytes,
+                             source + (7, 9)[logical] * 256 * row_bytes,
+                             rows * row_bytes))
+    assert plan == tuple(expected)
+
+
+@pytest.mark.parametrize("source,destination", [((7,), (2, 3)), ((7, 9), (2,)), ((7, -1), (2, 3))])
+def test_block_table_copy_plan_rejects_invalid_mapping(source, destination) -> None:
+    from hipengine.runtime.qwen4_exp_batch_runner import _block_table_copy_plan
+
+    with pytest.raises(ValueError):
+        _block_table_copy_plan(
+            source_blocks=source, destination_blocks=destination,
+            position=300, block_size=256, operands=((10000, 20000, 2),),
+        )
+
+
 def test_import_copies_each_block_prefix_from_its_own_physical_block(
     monkeypatch,
 ) -> None:

@@ -196,6 +196,37 @@ class _StepOwners:
     index: tuple[Qwen4ExpBatchQsaIndexRowPlan, ...]
 
 
+def _block_table_copy_plan(
+    *, source_blocks: Sequence[int], destination_blocks: Sequence[int],
+    position: int, block_size: int,
+    operands: Sequence[tuple[int, int, int]],
+) -> tuple[tuple[int, int, int], ...]:
+    """Plan destination/source/byte-count copies without copying unwritten tails."""
+
+    position = operator.index(position)
+    block_size = operator.index(block_size)
+    if position < 0 or block_size <= 0:
+        raise ValueError("copy prefix must be nonnegative and block size positive")
+    count = (position + block_size - 1) // block_size
+    if len(source_blocks) < count or len(destination_blocks) < count:
+        raise ValueError("block tables do not cover the copy prefix")
+    copies = []
+    for logical in range(count):
+        source_block = operator.index(source_blocks[logical])
+        destination_block = operator.index(destination_blocks[logical])
+        if source_block < 0 or destination_block < 0:
+            raise ValueError("copy block ids must be nonnegative")
+        rows = min(block_size, position - logical * block_size)
+        for source, destination, row_bytes in operands:
+            row_bytes = operator.index(row_bytes)
+            if row_bytes <= 0:
+                raise ValueError("copy row size must be positive")
+            copies.append((int(destination) + destination_block * block_size * row_bytes,
+                           int(source) + source_block * block_size * row_bytes,
+                           rows * row_bytes))
+    return tuple(copies)
+
+
 def _release_owners(owners: list[object], runtime: HipRuntime) -> None:
     """Free buffers and close owners from the end, leaving a failure pending."""
 
@@ -1935,37 +1966,27 @@ class Qwen4ExpGGUFBatchRunner:
         attention_states = self._require_attention_states()
         attention = attention_states[0]
         row_bytes = attention.kv_heads * attention.head_dim * DType.BF16.itemsize
-        block_bytes = attention.block_size * row_bytes
         slot_blocks = self._block_host[slot]
+        copy_plans = []
         for layer, state in enumerate(source_attention):
             destination_attention = attention_states[layer]
             index_state = self.index_states[layer]
             index_row_bytes = index_state.index_dim * DType.FP32.itemsize
-            index_block_bytes = index_state.block_size * index_row_bytes
-            rows_left = position
-            for logical in range(needed_blocks):
-                rows_in_block = min(self.block_size, rows_left)
-                rows_left -= rows_in_block
-                source_block = int(source_blocks[layer][logical])
-                destination_block = int(slot_blocks[logical])
-                for source_cache, destination_cache in (
-                    (state.key_cache, destination_attention.key_cache),
-                    (state.value_cache, destination_attention.value_cache),
-                ):
-                    self.runtime.memcpy(
-                        destination_cache.ptr
-                        + destination_block * block_bytes,
-                        source_cache.ptr + source_block * block_bytes,
-                        rows_in_block * row_bytes,
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                    )
+            copy_plans.append(_block_table_copy_plan(
+                source_blocks=source_blocks[layer][:needed_blocks],
+                destination_blocks=slot_blocks[:needed_blocks],
+                position=position, block_size=self.block_size,
+                operands=(
+                    (state.key_cache.ptr, destination_attention.key_cache.ptr, row_bytes),
+                    (state.value_cache.ptr, destination_attention.value_cache.ptr, row_bytes),
+                    (source_index[layer].raw_keys.ptr, index_state.raw_keys.ptr, index_row_bytes),
+                ),
+            ))
+        # Validate every layer's mapping before the first device write.
+        for index_state, copies in zip(self.index_states, copy_plans, strict=True):
+            for destination, source, nbytes in copies:
                 self.runtime.memcpy(
-                    index_state.raw_keys.ptr
-                    + destination_block * index_block_bytes,
-                    source_index[layer].raw_keys.ptr
-                    + source_block * index_block_bytes,
-                    rows_in_block * index_row_bytes,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    destination, source, nbytes, HipMemcpyKind.DEVICE_TO_DEVICE,
                 )
             # Pooled keys are re-derived by the next selection, not copied.
             index_state.cursor_host[slot] = position

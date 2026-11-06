@@ -2954,11 +2954,11 @@ Owner: `hipengine/generation/qwen4_exp_ar_batch.py`.
 
 Scope: `import_prefilled`; `_owners`; `_positions`.
 
-**Deferred copy design:** replace `import_prefilled` host per-block copies with an explicit
-source/destination block-table copy operation. Preserve every per-block prefix bound: copying an
-unwritten source tail into a new request is incorrect. Preserve QSA key/value/index, GDN state and
-PLE history ownership. Import happens once per admission, not per decode tick; profile that boundary
-before claiming a benefit from a new kernel.
+**Copy-plan extraction implemented:** `import_prefilled` builds explicit source/destination
+block-table copy plans for QSA keys, values and index keys before the first device write. Plans
+preserve each block's valid prefix; GDN and PLE copies retain their existing ownership. Execution
+still uses host-issued device-to-device copies. A batched device operation remains separate work;
+profile the import boundary before claiming a benefit from a new kernel.
 
 **Deferred admission design:** unify the runner's `_owners`/`_positions` mirrors, owner `prepare`
 row order and `Qwen4ExpARBatchOwner._leases` under one admission object. Preserve physical-slot
