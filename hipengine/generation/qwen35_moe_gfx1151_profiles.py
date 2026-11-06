@@ -204,23 +204,14 @@ def _binder(
 ) -> None:
     """Bind the profile cold-path policy before any decode runs."""
 
-    from hipengine.generation.physical_target_rows import (
-        resolve_physical_target_rows, resolve_physical_width_depths,
-        resolve_physical_prompt_policies,
-    )
-    generator.physical_target_prompt_policies = resolve_physical_prompt_policies(
-        str(resolved.manifest["backend"]),
-    )
-    generator.physical_target_width_depths = resolve_physical_width_depths(
-        str(resolved.manifest["backend"]), resolved.profile.value,
-    )
-    generator.physical_target_rows = resolve_physical_target_rows(
-        str(resolved.manifest["backend"]), resolved.profile.value,
-    )
+    from hipengine.generation.physical_target_rows import bind_physical_target_plan
     from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner
     from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
 
-    generator.physical_target_arithmetic = PhysicalTargetArithmeticPlan(True, True, True)
+    bind_physical_target_plan(
+        generator, str(resolved.manifest["backend"]), resolved.profile.value,
+        arithmetic=PhysicalTargetArithmeticPlan(True, True, True),
+    )
     generator.launch_decision_owner = LaunchDecisionOwner()
     _apply_profile_policy(
         generator, cooperative=cooperative, rowtile_floor=rowtile_floor

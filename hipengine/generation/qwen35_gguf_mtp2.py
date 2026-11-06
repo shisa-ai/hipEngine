@@ -738,7 +738,9 @@ def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, 
     file_type_name = str(getattr(weights, "file_type_name", "") or "")
     profile = getattr(generator, "execution_profile", None)
     profile = str(getattr(profile, "value", profile) or "")
-    policies = getattr(generator, "physical_target_prompt_policies", None)
+    plan = getattr(generator, "physical_target_plan", None)
+    policies = (plan.prompt_policies if plan is not None else
+                getattr(generator, "physical_target_prompt_policies", None))
     if policies is None:
         policies = backend_package_capability(
             str(getattr(generator, "backend", "")),
@@ -776,7 +778,9 @@ from hipengine.generation.physical_target_rows import (
 def _physical_width_depths(generator: Any) -> tuple[tuple[int, int], ...]:
     """Use the profile-owned table, resolving direct callers at construction."""
 
-    bound = getattr(generator, "physical_target_width_depths", None)
+    plan = getattr(generator, "physical_target_plan", None)
+    bound = (plan.width_depths if plan is not None else
+             getattr(generator, "physical_target_width_depths", None))
     if bound is not None:
         return bound
     profile_value = getattr(generator, "execution_profile", None)
@@ -853,15 +857,20 @@ class Qwen35GGUFMTP2Adapter:
         self.provider_key = "qwen_nextn_dense"
         from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
 
-        self.physical_target_arithmetic = getattr(
-            self.generator, "physical_target_arithmetic", PhysicalTargetArithmeticPlan()
+        self.physical_target_plan = getattr(self.generator, "physical_target_plan", None)
+        self.physical_target_arithmetic = (
+            self.physical_target_plan.arithmetic if self.physical_target_plan is not None
+            else getattr(self.generator, "physical_target_arithmetic", PhysicalTargetArithmeticPlan())
         )
         self.policy_prefix = "dense-nextn"
         profile = getattr(self.generator, "execution_profile", None)
         profile = getattr(profile, "value", profile)
         from hipengine.generation.physical_target_rows import resolve_physical_target_rows
 
-        rows_plan = getattr(self.generator, "physical_target_rows", None)
+        rows_plan = (
+            self.physical_target_plan.rows if self.physical_target_plan is not None
+            else getattr(self.generator, "physical_target_rows", None)
+        )
         if rows_plan is None:
             rows_plan = resolve_physical_target_rows(
                 str(getattr(self.generator, "backend", "")), str(profile),

@@ -104,6 +104,26 @@ def test_prompt_policy_rejects_out_of_bounds_widths(monkeypatch, raw):
         module.resolve_physical_prompt_policies("test_backend")
 
 
+def test_bound_plan_is_immutable_and_authoritative_for_widths(monkeypatch):
+    from types import SimpleNamespace
+    import hipengine.generation.physical_target_rows as module
+    from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
+    from hipengine.generation.qwen35_gguf_mtp2 import _physical_width_depths
+
+    monkeypatch.setattr(module, "backend_package_capability", lambda *args: {})
+    owner = SimpleNamespace()
+    module.bind_physical_target_plan(
+        owner, "", "strict", arithmetic=PhysicalTargetArithmeticPlan(),
+    )
+    plan = owner.physical_target_plan
+    owner.physical_target_width_depths = ((8, 7),)
+    assert _physical_width_depths(owner) == plan.width_depths
+    assert owner.physical_target_rows is plan.rows
+    assert owner.physical_target_arithmetic is plan.arithmetic
+    with pytest.raises(FrozenInstanceError):
+        plan.profile = "production"
+
+
 def test_prompt_policy_snapshot_is_deeply_immutable(monkeypatch):
     import hipengine.generation.physical_target_rows as module
 

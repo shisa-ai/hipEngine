@@ -55,23 +55,14 @@ def _env_bool(name: str, raw: str) -> bool:
 
 
 def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
-    from hipengine.generation.physical_target_rows import (
-        resolve_physical_target_rows, resolve_physical_width_depths,
-        resolve_physical_prompt_policies,
-    )
-    generator.physical_target_prompt_policies = resolve_physical_prompt_policies(
-        str(resolved.manifest["backend"]),
-    )
-    generator.physical_target_width_depths = resolve_physical_width_depths(
-        str(resolved.manifest["backend"]), resolved.profile.value,
-    )
-    generator.physical_target_rows = resolve_physical_target_rows(
-        str(resolved.manifest["backend"]), resolved.profile.value,
-    )
+    from hipengine.generation.physical_target_rows import bind_physical_target_plan
     from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner
     from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
 
-    generator.physical_target_arithmetic = PhysicalTargetArithmeticPlan()
+    bind_physical_target_plan(
+        generator, str(resolved.manifest["backend"]), resolved.profile.value,
+        arithmetic=PhysicalTargetArithmeticPlan(),
+    )
     generator.launch_decision_owner = LaunchDecisionOwner()
     generator.use_q6_dp4a_grouped = False
     generator.target_fp16_recurrent_state = False

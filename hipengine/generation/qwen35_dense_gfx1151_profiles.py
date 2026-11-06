@@ -50,22 +50,13 @@ def _binder(
     q4_verifier_rowtile: bool,
 ) -> None:
     from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner
-    from hipengine.generation.physical_target_rows import (
-        resolve_physical_target_rows, resolve_physical_width_depths,
-        resolve_physical_prompt_policies,
-    )
-    generator.physical_target_prompt_policies = resolve_physical_prompt_policies(
-        str(resolved.manifest["backend"]),
-    )
-    generator.physical_target_width_depths = resolve_physical_width_depths(
-        str(resolved.manifest["backend"]), resolved.profile.value,
-    )
+    from hipengine.generation.physical_target_rows import bind_physical_target_plan
     from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
 
-    generator.physical_target_rows = resolve_physical_target_rows(
-        str(resolved.manifest["backend"]), resolved.profile.value,
+    bind_physical_target_plan(
+        generator, str(resolved.manifest["backend"]), resolved.profile.value,
+        arithmetic=PhysicalTargetArithmeticPlan(),
     )
-    generator.physical_target_arithmetic = PhysicalTargetArithmeticPlan()
     generator.launch_decision_owner = LaunchDecisionOwner()
     # Rowtile and recurrent-state decisions are frozen on the generator before
     # any resident session exists. The environment remains the unbound/direct

@@ -82,6 +82,13 @@ def test_manifest_identity_stays_on_each_generator(order, ambient, monkeypatch):
             "hip_gfx1151", profile.value,
         )
         owners.append((generator, resolved))
+        plan = generator.physical_target_plan
+        assert plan.rows is generator.physical_target_rows
+        assert plan.arithmetic is generator.physical_target_arithmetic
+        assert plan.width_depths == generator.physical_target_width_depths
+        assert plan.prompt_policies is generator.physical_target_prompt_policies
+        assert plan.backend == "hip_gfx1151"
+        assert plan.profile == profile.value
         assert os.environ.get(name) == ambient
         for owner, expected in reversed(owners):
             assert owner.execution_profile_manifest_sha256 == expected.manifest_sha256

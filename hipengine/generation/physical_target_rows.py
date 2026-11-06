@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 
+from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
 from hipengine.kernels.backends import backend_package_capability
 
 
@@ -99,6 +100,32 @@ class PhysicalTargetRowsPlan:
             "q5_rowtiles": self.q5_rowtiles,
             "q6_rowtiles": self.q6_rowtiles,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class PhysicalTargetPlan:
+    backend: str
+    profile: str
+    rows: PhysicalTargetRowsPlan
+    arithmetic: PhysicalTargetArithmeticPlan
+    width_depths: tuple[tuple[int, int], ...]
+    prompt_policies: Mapping
+
+
+def bind_physical_target_plan(generator, backend: str, profile: str, *, arithmetic) -> None:
+    """Publish one construction-owned plan and its compatibility views."""
+
+    plan = PhysicalTargetPlan(
+        backend, profile,
+        resolve_physical_target_rows(backend, profile), arithmetic,
+        resolve_physical_width_depths(backend, profile),
+        resolve_physical_prompt_policies(backend),
+    )
+    generator.physical_target_plan = plan
+    generator.physical_target_rows = plan.rows
+    generator.physical_target_arithmetic = plan.arithmetic
+    generator.physical_target_width_depths = plan.width_depths
+    generator.physical_target_prompt_policies = plan.prompt_policies
 
 
 def resolve_physical_target_rows(backend: str, profile: str) -> PhysicalTargetRowsPlan:
