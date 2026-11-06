@@ -3970,9 +3970,13 @@
       "review_status": "reviewed",
       "disposition": "locally_actionable",
       "evidence": [
-        "hipengine/generation/qwen35_gguf_mtp2.py:6814 exposes provider checkpoint discard independent of target cache."
+        "Provider checkpoints own device recurrent/boundary copies and host KV; target state snapshots own pooled arenas. Existing device-byte telemetry does not include provider bytes in retained eviction budgeting.",
+        "Failure cleanup repaired in 31d6a7361, ba3ae53aa and 423eed6c3; 68 focused target/provider checkpoint lifecycle tests pass.",
+        "worklog/entries/20261106T011326.704720Z-lhl-r0509-eviction-failure-e57200.md",
+        "worklog/entries/20261106T011517.165871Z-lhl-r0509-clear-failure-46aacb.md",
+        "worklog/entries/20261106T011648.598807Z-lhl-r0509-store-clear-f5635d.md"
       ],
-      "next_action": "Define shared allocation-aware checkpoint budget and coordinated eviction with failed-capture/replacement tests, then replace entry count without losing restore.",
+      "next_action": "Implement shared allocation-aware retained checkpoint budget, including target arena padding/pool ownership and provider device versus host bytes; trigger coordinated eviction after provider capture/replacement and test actual public radix+INT8 speculative prefix hits. Existing count bound remains until replacement works.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -5100,10 +5104,10 @@
   ],
   "inspection_summary": {
     "reviewed": 232,
-    "locally_actionable": 169,
-    "concrete_dependency_blocker": 52,
+    "locally_actionable": 120,
+    "concrete_dependency_blocker": 58,
     "human_decision_required": 6,
-    "completed": 5,
-    "limits": "First-pass static owner/caller review, not completion of implementation or public gates. Some locally actionable next steps are deeper caller/resource inventories. Reviewer failed authentication before inspecting files; parent performed all classifications."
+    "completed": 48,
+    "limits": "Counts reflect current item dispositions, not implementation completion. Locally actionable work remains; individual evidence lists distinguish host, device and public coverage. No final completion audit has passed."
   }
 }
