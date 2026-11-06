@@ -323,6 +323,24 @@ def test_laguna_dflash_child_setup_failure_releases_private_owners(
     provider.close()
 
 
+def test_laguna_dflash_child_zero_budget_allocates_no_model_state(tmp_path):
+    import hipengine.generation.laguna_dflash as module
+
+    model, cache, snapshot = _identity_tree(tmp_path)
+    target = _TargetGenerator(model, cache)
+    provider = module.LagunaDFlashTextProvider(
+        target, SpeculativeProviderConfig("dflash", snapshot, 4))
+    child = provider.create_child(_request(max_tokens=0))
+    output = child.advance()
+    assert output.generated_token_ids == ()
+    assert output.finish_details.reason == "length"
+    assert target.prepared == 0
+    assert child.session is None
+    child.close(reason="completed")
+    assert not target.session.closed
+    provider.close()
+
+
 def test_laguna_dflash_provider_binds_identities_and_reports_rejected_economics(
     tmp_path,
 ) -> None:
