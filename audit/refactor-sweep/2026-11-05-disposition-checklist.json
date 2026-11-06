@@ -4643,11 +4643,12 @@
       "ledger_line": 3828,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/gguf_linear.py:1312,6384,7388,7952 defines launch-local triple/residual/pair/SiLU plans."
+        "001f765f9 closes the ledger planning entry; worklog/entries/20261106T063444.748219Z-lhl-rf10-closure-d4c7f9.md maps each requirement to implementation and validation.",
+        "Owner-bound decisions preserve live resource resolution; 85 focused tests, 3 gfx1151 graph replay tests and public cancellation/reuse with zero allocator bytes after close."
       ],
-      "next_action": "Bind pointer-free reusable decisions to resolved profile owner while preserving per-launch fallback and scratch generation checks; do not cache device operands across owners.",
+      "next_action": "None for RF-10; RF-1 policy migration and R0188 provider retirement remain separate open items.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
