@@ -482,10 +482,33 @@ def _gguf_prefix_gapped_fast_route_available(lease: Any, context_tokens: int) ->
     runner = getattr(session, "runner", None)
     if runner is None:
         return False
-    return _gguf_gapped_slot_local_fast_route_available(
+    if not _gguf_gapped_slot_local_fast_route_available(
         backend=str(getattr(runner, "backend", "")),
         context_tokens=int(context_tokens),
         kv_width=int(getattr(runner, "kv_width", 0)),
+    ):
+        return False
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _gguf_gapped_head_major_capacity,
+        _gguf_head_major_pair_fits_memory,
+    )
+
+    scratch = getattr(session, "_bulk_prefill_scratch", None)
+    if (
+        getattr(scratch, "head_major_key_cache", None) is not None
+        and getattr(scratch, "head_major_value_cache", None) is not None
+        and int(getattr(scratch, "head_major_kv_capacity", 0)) >= int(context_tokens)
+    ):
+        return True
+    capacity = _gguf_gapped_head_major_capacity(
+        context_tokens=int(context_tokens), kv_width=int(runner.kv_width),
+    )
+    cached = getattr(session, "_gapped_head_major_cache", None)
+    if cached is not None and int(cached[0]) >= capacity:
+        return True
+    return _gguf_head_major_pair_fits_memory(
+        runtime=getattr(session, "runtime", None),
+        nbytes=capacity * int(runner.kv_width) * 4,
     )
 
 

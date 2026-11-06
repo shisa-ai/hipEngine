@@ -18,6 +18,35 @@ from hipengine.kvcache import DeviceChunkedKVPool
 from hipengine.runtime.qwen35_gguf_graph_lifetime import Qwen35GGUFGraphLifetime
 
 
+@pytest.mark.parametrize("free_bytes,expected", [(1024, False), (16 * 1024**3, True)])
+def test_gapped_fast_route_accounts_for_rounded_allocation_headroom(monkeypatch, free_bytes, expected):
+    monkeypatch.setattr(qwen35_gguf_generation, "_gguf_gapped_slot_local_fast_route_available", lambda **kw: True)
+    lease = SimpleNamespace(session=SimpleNamespace(
+        runner=SimpleNamespace(backend="hip_gfx1100", kv_width=1024),
+        runtime=SimpleNamespace(mem_get_info=lambda: (free_bytes, 16 * 1024**3)),
+    ))
+    assert qwen35_gguf_generation._gguf_prefix_gapped_fast_route_available(lease, 4097) is expected
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_gapped_fast_route_reuses_existing_pair_under_low_headroom(monkeypatch, cached):
+    monkeypatch.setattr(qwen35_gguf_generation, "_gguf_gapped_slot_local_fast_route_available", lambda **kw: True)
+    session = SimpleNamespace(
+        runner=SimpleNamespace(backend="hip_gfx1100", kv_width=1024),
+        runtime=SimpleNamespace(mem_get_info=lambda: (1, 1)),
+    )
+    if cached:
+        session._gapped_head_major_cache = (8192, object(), object())
+    else:
+        session._bulk_prefill_scratch = SimpleNamespace(
+            head_major_key_cache=object(), head_major_value_cache=object(),
+            head_major_kv_capacity=5000,
+        )
+    assert qwen35_gguf_generation._gguf_prefix_gapped_fast_route_available(
+        SimpleNamespace(session=session), 4097,
+    )
+
+
 class _FakePrefixSnapshot:
     def __init__(self, *, source_slot_id: int, position: int, block_ids: tuple[int, ...]) -> None:
         self.source_slot_id = int(source_slot_id)
@@ -2104,7 +2133,7 @@ def test_gapped_placement_takes_a_long_suffix_when_the_gather_route_is_fast(
     block table and runs the same AOTriton attention the contiguous route
     uses, so a gapped hit no longer pays the paged-route penalty the suffix
     budget guarded against. The decline below only binds when that fast
-    route is unavailable (kill-switch, no head-major KV, oversized context).
+    route is unavailable (kill-switch, no copy kernel, insufficient headroom).
     """
 
     monkeypatch.setenv("HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX", "64")
