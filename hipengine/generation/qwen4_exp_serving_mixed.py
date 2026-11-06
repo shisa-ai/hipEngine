@@ -220,7 +220,7 @@ class Qwen4ExpServingMixed:
                  **{f'qwen4exp.draft.{id(row.draft)}': 1 for row in spec}},
                 lifetime=ClaimLifetime.TRANSACTION,
             ),
-            pre_target_cursors=tuple(int(batch._positions[self._ar_batch._leases[row.request_id].slot]) for row in rows),
+            pre_target_cursors=tuple(batch.position(self._ar_batch._leases[row.request_id].slot) for row in rows),
             pre_rng_counters=tuple(0 if state is None else state.rng_draw_count for state, _, _, _ in checkpoints),
             target_transaction_mode=plan.target_transaction_mode, target_owner=f'qwen4exp.mixed.{id(batch)}',
             target_checkpoint_ids=tuple(f'{plan.cycle_id}:{row.request_id}' for row in rows),
@@ -265,7 +265,7 @@ class Qwen4ExpServingMixed:
             for row, count in zip(rows, plan.candidate_counts, strict=True):
                 self._check_request_live(row)
                 lease = self._ar_batch._leases[row.request_id]
-                position = int(batch._positions[lease.slot])
+                position = batch.position(lease.slot)
                 if row.mixed_mtp:
                     prepare_vocab = getattr(row.draft, 'prepare_draft_vocabulary', None)
                     if count and callable(prepare_vocab):

@@ -72,6 +72,12 @@ def _batch(*, ple=False, slots=SLOTS):
         if batch._owners[slot] != token:
             raise ValueError('stale owner')
 
+    batch.owner_of = lambda slot: batch._owners[slot]
+    batch.position = lambda slot: int(batch._positions[slot])
+    def publish_position(slot, owner, position):
+        require_owner(slot, owner)
+        batch._positions[slot] = position
+    batch.publish_position = publish_position
     batch._require_open = require_open
     batch._require_slot = require_slot
     batch._require_owner = require_owner

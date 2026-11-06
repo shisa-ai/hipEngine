@@ -925,6 +925,21 @@ def test_block_table_copy_plan_rejects_invalid_mapping(source, destination) -> N
         )
 
 
+def test_publish_position_rejects_stale_owner_and_capacity_before_mutation() -> None:
+    runner = _fake_runner(slots=2)
+    owner = runner.admit(0)
+    runner.publish_position(0, owner, 7)
+    assert runner.position(0) == 7
+    with pytest.raises((ValueError, RuntimeError)):
+        runner.publish_position(0, owner + 1, 8)
+    with pytest.raises(ValueError):
+        runner.publish_position(0, owner, runner.max_positions + 1)
+    assert runner.position(0) == 7
+    runner.release(0, owner)
+    with pytest.raises((ValueError, RuntimeError)):
+        runner.publish_position(0, owner, 8)
+
+
 def test_import_copies_each_block_prefix_from_its_own_physical_block(
     monkeypatch,
 ) -> None:

@@ -126,7 +126,7 @@ class Qwen4ExpMixedTargetPass:
             raise
 
     def _owner(self, slot):
-        return self.batch._owners[slot]
+        return self.batch.owner_of(slot)
 
     def _validate(self):
         self.batch._require_open()
@@ -138,7 +138,7 @@ class Qwen4ExpMixedTargetPass:
             self.batch._require_slot(request.slot)
             self.batch._require_owner(request.slot, request.owner_token)
             self.batch._require_healthy(request.slot)
-            if int(self.batch._positions[request.slot]) != request.start_position:
+            if self.batch.position(request.slot) != request.start_position:
                 raise ValueError('mixed target layout start does not match the live slot cursor')
             if self.batch._ple_layers:
                 self._require_ple_hash_cursor(request)
@@ -470,7 +470,9 @@ class Qwen4ExpMixedTargetPass:
                     run, accepted_counts, index_state=self.batch.index_states[index], owner_of=self._owner,
                 )
             for request, row in zip(self.layout.requests, plan.commit_rows, strict=True):
-                self.batch._positions[request.slot] = self.layout.rows[row].position + 1
+                self.batch.publish_position(
+                    request.slot, request.owner_token, self.layout.rows[row].position + 1,
+                )
                 if self.ple:
                     self.batch._ple_hash_states[request.slot] = self.hash_snapshots[row]
         except BaseException as error:
@@ -503,7 +505,7 @@ class Qwen4ExpMixedTargetPass:
             self.batch._require_slot(request.slot)
             self.batch._require_owner(request.slot, request.owner_token)
             self.batch._require_healthy(request.slot)
-            if int(self.batch._positions[request.slot]) != request.start_position:
+            if self.batch.position(request.slot) != request.start_position:
                 raise ValueError('mixed target live position changed before commit')
         # ``_require_commit_owner`` and ``_commit_counters`` are the read-only half
         # of ``commit_qwen4_exp_mixed_qsa_attention``: reusing them here means this

@@ -218,6 +218,8 @@ def _batch(device: _FakeDevice, *, config=None, slots: int = 3):
     batch._require_open = require_open
     batch._require_slot = require_slot
     batch._require_owner = require_owner
+    batch.owner_of = lambda slot: batch._owners[slot]
+    batch.position = lambda slot: int(batch._positions[slot])
     batch._require_healthy = lambda slot: None
     batch.blocks_for_positions = lambda positions: (int(positions) + 255) // 256
     batch.mixed_target_scratch = MethodType(

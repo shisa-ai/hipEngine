@@ -79,6 +79,7 @@ def _cycle_fixture(monkeypatch, *, truth=(12, 29, 31, 18), ar_max_tokens=8):
     rows[0].mixed_root_hidden = np.zeros(4)
     rows[0].draft = draft
     batch = SimpleNamespace(_positions=[2, 2])
+    batch.position = lambda slot: int(batch._positions[slot])
     owner = SimpleNamespace(runner=batch, _leases={1: SimpleNamespace(slot=0, owner=1),
                                                  2: SimpleNamespace(slot=1, owner=2)})
     from hipengine.generation.qwen4_exp_gguf import _token_finish

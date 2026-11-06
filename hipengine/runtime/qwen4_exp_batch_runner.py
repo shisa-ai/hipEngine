@@ -1620,6 +1620,23 @@ class Qwen4ExpGGUFBatchRunner:
         self._require_admitted(parsed)
         return int(self._positions[parsed])
 
+    def publish_position(self, slot: int, owner: int, position: int) -> None:
+        """Publish a committed cursor only for the current physical admission."""
+
+        self._require_open()
+        parsed = self._require_slot(slot)
+        self._require_owner(parsed, owner)
+        self._require_healthy(parsed)
+        if isinstance(position, (bool, np.bool_)):
+            raise ValueError("position must be an integer")
+        try:
+            cursor = operator.index(position)
+        except TypeError:
+            raise ValueError("position must be an integer") from None
+        if not 0 <= cursor <= min(self.max_positions, self.slot_capacity(parsed)):
+            raise ValueError("committed position exceeds the slot capacity")
+        self._positions[parsed] = cursor
+
     @property
     def ple_hash_states(self) -> Mapping[int, PLEHashState]:
         """Per-slot PLE n-gram history, keyed by physical slot."""
