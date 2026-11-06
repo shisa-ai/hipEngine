@@ -6437,15 +6437,8 @@ _GGUF_RESIDUAL_FALLBACK_OWNER_UNAVAILABLE = "owner_unavailable"
 
 
 @dataclass(frozen=True)
-class _GGUFResidualLaunchPlan:
-    """Typed, pointer-free, launch-local plan for one rounded-BF16 residual.
-
-    The plan owns the selected operation, registry keys and exact resident
-    weight object. Device pointer values, tile-allocation choices, resolved
-    callables and scratch are bound only during execution. The plan is private
-    and launch-local: the public launcher resolves and executes it immediately,
-    without caching it across launches or execution-profile changes.
-    """
+class _GGUFResidualDecision:
+    """Immutable residual operation selection without resident ownership."""
 
     backend: str
     rows: int
@@ -6453,8 +6446,6 @@ class _GGUFResidualLaunchPlan:
     out_features: int
     layout: str
     quant_key: str
-    owner_slot: str | None
-    owner_weight: GGUFDeviceWeight
     operation: str | None
     normal_key: KernelKey | None
     fused_key: KernelKey | None
@@ -6479,9 +6470,35 @@ class _GGUFResidualLaunchPlan:
         object.__setattr__(self, "out_features", int(self.out_features))
         object.__setattr__(self, "layout", str(self.layout))
         object.__setattr__(self, "quant_key", str(self.quant_key))
+        object.__setattr__(self, "registry_generation", int(self.registry_generation))
+
+    def bind(self, weight: GGUFDeviceWeight) -> _GGUFResidualLaunchPlan:
+        return _GGUFResidualLaunchPlan(
+            **{name: getattr(self, name)
+               for name in _GGUFResidualDecision.__dataclass_fields__},
+            owner_slot=getattr(weight.spec, 'slot_path', None),
+            owner_weight=weight,
+        )
+
+
+@dataclass(frozen=True)
+class _GGUFResidualLaunchPlan(_GGUFResidualDecision):
+    """Launch-local residual decision bound to one exact resident weight."""
+
+    owner_slot: str | None
+    owner_weight: GGUFDeviceWeight
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
         if self.owner_slot is not None:
             object.__setattr__(self, "owner_slot", str(self.owner_slot))
-        object.__setattr__(self, "registry_generation", int(self.registry_generation))
+
+    @property
+    def decision(self) -> _GGUFResidualDecision:
+        return _GGUFResidualDecision(**{
+            name: getattr(self, name)
+            for name in _GGUFResidualDecision.__dataclass_fields__
+        })
 
 
 def _linear_residual_variant(variant: str) -> str | None:
@@ -6641,9 +6658,6 @@ def _resolve_gguf_linear_residual_plan(
 
     layout = str(weight.spec.layout)
     quant_key = str(weight.spec.quant_key)
-    owner_slot = getattr(getattr(weight, "spec", None), "slot_path", None)
-    if owner_slot is not None:
-        owner_slot = str(owner_slot)
     resolved_backend = _weight_backend(weight, backend=backend)
 
     def _plan(
@@ -6656,15 +6670,13 @@ def _resolve_gguf_linear_residual_plan(
         sidecar_variant: str | None = None,
         fallback_reason: str | None = None,
     ) -> _GGUFResidualLaunchPlan:
-        return _GGUFResidualLaunchPlan(
+        return _GGUFResidualDecision(
             backend=resolved_backend,
             rows=rows,
             in_features=in_features,
             out_features=out_features,
             layout=layout,
             quant_key=quant_key,
-            owner_slot=owner_slot,
-            owner_weight=weight,
             operation=operation,
             normal_key=normal_key,
             fused_key=fused_key,
@@ -6673,7 +6685,7 @@ def _resolve_gguf_linear_residual_plan(
             sidecar_variant=sidecar_variant,
             fallback_reason=fallback_reason,
             registry_generation=generation(),
-        )
+        ).bind(weight)
 
     if rows > 4:
         # Bulk residual fusion is currently a dense-BF16 WMMA composite. Fail

@@ -332,6 +332,9 @@ def test_residual_plan_small_rows_uses_tiles_and_reports_missing_workspace() -> 
     assert plan.normal_key == primitive
     assert plan.fused_key == fused
     assert plan.allocation_name == "tiles"
+    assert not hasattr(plan.decision, 'owner_weight')
+    assert not hasattr(plan.decision, 'owner_slot')
+    assert plan.decision.bind(weight) == plan
     assert _execute(plan, weight, stream=10)
     assert calls == [
         (
@@ -340,6 +343,10 @@ def test_residual_plan_small_rows_uses_tiles_and_reports_missing_workspace() -> 
             {"stream": 10, "runtime": "runtime-sentinel"},
         )
     ]
+
+    removed = weight.allocations.pop('tiles')
+    assert _execute(plan, weight) is False
+    weight.allocations['tiles'] = removed
 
     missing_tiles = _fake_weight(
         layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
