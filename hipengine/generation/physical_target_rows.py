@@ -87,6 +87,16 @@ class PhysicalTargetRowsPlan:
     q5_rowtiles: bool = False
     q6_rowtiles: bool = False
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "pad_counts": list(self.pad_counts),
+            "exact_counts": list(self.exact_counts),
+            "mixed_q6_rowtiles": self.mixed_q6_rowtiles,
+            "extra_q4_rowtiles": self.extra_q4_rowtiles,
+            "q5_rowtiles": self.q5_rowtiles,
+            "q6_rowtiles": self.q6_rowtiles,
+        }
+
 
 def resolve_physical_target_rows(backend: str, profile: str) -> PhysicalTargetRowsPlan:
     """Snapshot row capabilities and explicit diagnostic rollbacks once."""

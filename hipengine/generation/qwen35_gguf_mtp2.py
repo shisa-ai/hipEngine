@@ -3243,6 +3243,26 @@ class Qwen35GGUFMTP2Adapter:
                     _PHYSICAL_ACCEPT_MIN_ROWS,
                 )
             ),
+            "resolved_target_policy": {
+                "rows": (
+                    self.physical_target_rows.to_dict()
+                    if hasattr(self, "physical_target_rows") else None
+                ),
+                "arithmetic": (
+                    {
+                        "disable_f32_residual": self.physical_target_arithmetic.disable_f32_residual,
+                        "pairreuse": self.physical_target_arithmetic.pairreuse,
+                        "exact_linear": self.physical_target_arithmetic.exact_linear,
+                    }
+                    if hasattr(self, "physical_target_arithmetic") else None
+                ),
+                "width_depth_cells": [
+                    list(cell) for cell in getattr(self, "physical_width_depths", ())
+                ],
+                "prompt_streaming_widths": list(
+                    getattr(self, "physical_prompt_streaming_widths", ())
+                ),
+            },
             "last_partition": dict(
                 getattr(self, "_last_partition_contract", {})
             ),

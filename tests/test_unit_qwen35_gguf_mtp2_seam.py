@@ -430,6 +430,16 @@ def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c1_c4(mo
     assert adapter._physical_prompt_streaming_admitted(3) is True
     assert adapter._physical_prompt_streaming_admitted(4) is True
     assert adapter._physical_prompt_streaming_admitted(5) is False
+    contract = adapter.physical_width_contract()["resolved_target_policy"]
+    assert contract["prompt_streaming_widths"] == [1, 2, 3, 4]
+    assert contract["rows"]["exact_counts"] == list(adapter.production_exact_target_row_counts)
+    assert contract["arithmetic"] == {
+        "disable_f32_residual": False, "pairreuse": False, "exact_linear": False,
+    }
+    import json
+    assert json.loads(json.dumps(contract)) == contract
+    contract["rows"]["exact_counts"].append(999)
+    assert 999 not in adapter.physical_target_rows.exact_counts
     from hipengine.generation.physical_target_rows import resolve_physical_prompt_policies
     import hipengine.generation.qwen35_gguf_mtp2 as module
     owner.generator.physical_target_prompt_policies = resolve_physical_prompt_policies(
