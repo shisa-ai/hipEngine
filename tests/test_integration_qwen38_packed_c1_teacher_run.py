@@ -14,6 +14,7 @@ def test_contexts_use_resolved_adapter_flags_and_unwind(monkeypatch, fail):
     from contextlib import contextmanager
     from types import SimpleNamespace as NS
     from hipengine.generation import qwen35_gguf_mtp2 as m
+    from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
     from scripts.qwen38_packed_c1_teacher_run import target_contexts
     entered, exited = [], []
     generator = object()
@@ -22,7 +23,9 @@ def test_contexts_use_resolved_adapter_flags_and_unwind(monkeypatch, fail):
         assert kwargs['candidate_budget'] == 7
         return NS(production_physical_extra_rowtiles=True,
                   production_exact_target_row_counts=(5, 6, 7, 8),
-                  production_physical_q6_rowtile=True)
+                  production_physical_q6_rowtile=True,
+                  physical_target_arithmetic=PhysicalTargetArithmeticPlan(
+                      disable_f32_residual=True, pairreuse=False, exact_linear=True))
     monkeypatch.setattr(m, 'Qwen35GGUFMTP2Adapter', adapter)
     names = ('target_verifier_active_slots_session', 'q4_t16_physical_extra_rowtiles_session',
              'physical_exact_rowtiles_session', 'q5_t16_physical_rowtile_session',
@@ -46,6 +49,9 @@ def test_contexts_use_resolved_adapter_flags_and_unwind(monkeypatch, fail):
             assert flags['production_physical_extra_rowtiles'] is True
             assert flags['production_physical_q5_rowtile'] is False
             assert len(entered) == 10
+            assert flags['moe_physical_c2_numerics'] is True
+            assert flags['moe_physical_c2_pairreuse'] is False
+            assert flags['moe_physical_c2_exact_linear'] is True
             assert dict(entered)['target_verifier_active_slots_session'] == 1
             if fail:
                 raise RuntimeError('injected')

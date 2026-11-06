@@ -893,6 +893,9 @@ class Qwen35GGUFMTP2Adapter:
         self.quant = str(quant)
         self.target_key = "qwen_dense_gguf"
         self.provider_key = "qwen_nextn_dense"
+        from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
+
+        self.physical_target_arithmetic = PhysicalTargetArithmeticPlan()
         self.policy_prefix = "dense-nextn"
         profile = getattr(self.generator, "execution_profile", None)
         profile = getattr(profile, "value", profile)
@@ -5584,13 +5587,13 @@ class Qwen35GGUFMTP2Adapter:
                 )
             ),
             moe_physical_c2_numerics_session(
-                bool(getattr(self, "moe_physical_c2_numerics", False))
+                self.physical_target_arithmetic.disable_f32_residual
             ),
             moe_physical_c2_pairreuse_session(
-                bool(getattr(self, "moe_physical_c2_pairreuse", False))
+                self.physical_target_arithmetic.pairreuse
             ),
             moe_physical_c2_exact_linear_session(
-                bool(getattr(self, "moe_physical_c2_exact_linear", False))
+                self.physical_target_arithmetic.exact_linear
             ),
             target_verifier_wide_q6_shared4_leaf_session(
                 target_verifier_wide_q6_shared4_policy_enabled()

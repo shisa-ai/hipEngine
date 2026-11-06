@@ -31,15 +31,24 @@ def target_contexts(generator, budget):
         ('production_physical_q5_rowtile', m.q5_t16_physical_rowtile_session),
         ('production_physical_q6_rowtile', m.q6_t16_physical_rowtile_session),
         ('production_physical_q6_mixed_rowtiles', m.q6_t16_physical_mixed_rowtiles_session),
-        ('moe_physical_c2_numerics', m.moe_physical_c2_numerics_session),
-        ('moe_physical_c2_pairreuse', m.moe_physical_c2_pairreuse_session),
-        ('moe_physical_c2_exact_linear', m.moe_physical_c2_exact_linear_session),
     ]
     flags = {name: bool(getattr(adapter, name, False)) for name, _ in pairs}
+    arithmetic = adapter.physical_target_arithmetic
+    arithmetic_pairs = [
+        ('moe_physical_c2_numerics', arithmetic.disable_f32_residual,
+         m.moe_physical_c2_numerics_session),
+        ('moe_physical_c2_pairreuse', arithmetic.pairreuse,
+         m.moe_physical_c2_pairreuse_session),
+        ('moe_physical_c2_exact_linear', arithmetic.exact_linear,
+         m.moe_physical_c2_exact_linear_session),
+    ]
+    flags.update({name: value for name, value, _ in arithmetic_pairs})
     with ExitStack() as stack:
         stack.enter_context(m.target_verifier_active_slots_session(1))
         for name, context in pairs:
             stack.enter_context(context(flags[name]))
+        for _name, value, context in arithmetic_pairs:
+            stack.enter_context(context(value))
         stack.enter_context(m.target_verifier_wide_q6_shared4_leaf_session(False))
         yield dict(flags, exact_target_rows=list(adapter.production_exact_target_row_counts),
                    active_slots=1, wide_q6_shared4=False)

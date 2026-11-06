@@ -4,7 +4,17 @@ from __future__ import annotations
 
 import contextlib
 from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Iterator
+
+
+@dataclass(frozen=True, slots=True)
+class PhysicalTargetArithmeticPlan:
+    """Cold-resolved arithmetic choices for one physical target owner."""
+
+    disable_f32_residual: bool = False
+    pairreuse: bool = False
+    exact_linear: bool = False
 
 
 _q4_t16_physical_extra_rowtiles: ContextVar[bool] = ContextVar(
@@ -202,6 +212,7 @@ def moe_physical_c2_exact_linear_enabled() -> bool:
 
 
 __all__ = [
+    "PhysicalTargetArithmeticPlan",
     "moe_physical_c2_exact_linear_enabled",
     "moe_physical_c2_exact_linear_session",
     "moe_physical_c2_f32_residual_disabled",

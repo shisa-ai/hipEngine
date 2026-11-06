@@ -1681,9 +1681,13 @@ def create_qwen35_gguf_moe_mtp2_adapter(
     adapter.production_physical_extra_rowtiles = False
     adapter.production_physical_q5_rowtile = False
     adapter.production_physical_q6_rowtile = False
-    adapter.moe_physical_c2_numerics = True
-    adapter.moe_physical_c2_pairreuse = True
-    adapter.moe_physical_c2_exact_linear = True
+    from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
+
+    adapter.physical_target_arithmetic = PhysicalTargetArithmeticPlan(
+        disable_f32_residual=True,
+        pairreuse=True,
+        exact_linear=True,
+    )
     adapter.target_key = "qwen_moe_gguf"
     adapter.provider_key = "qwen_nextn_moe"
     adapter.policy_prefix = "moe-nextn"
