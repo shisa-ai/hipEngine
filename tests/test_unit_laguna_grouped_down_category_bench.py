@@ -108,6 +108,14 @@ def test_teacher_forced_second_session_failure_closes_first(monkeypatch):
     assert closed == ["first"]
 
 
+class _SelectedDiagnosticFixture:
+    @contextmanager
+    def selected_moe_diagnostic(self, **selected):
+        self.row["selected_gate_up_mode"] = selected["gate_up"]
+        self.row["selected_down_mode"] = selected["down"]
+        yield
+
+
 HORIZONS = (16, 32)
 
 
@@ -470,7 +478,7 @@ def test_cumulative_control_resolves_explicit_exact_and_shipping_lanes(
 ) -> None:
     calls: list[dict[str, object]] = []
 
-    class FakeSession:
+    class FakeSession(_SelectedDiagnosticFixture):
         def __init__(self, row: dict[str, object]) -> None:
             self.row = row
 
@@ -692,7 +700,7 @@ def test_prefill_350_resolves_complete_shipping_and_candidate_lanes(
 ) -> None:
     calls: list[dict[str, object]] = []
 
-    class FakeSession:
+    class FakeSession(_SelectedDiagnosticFixture):
         def __init__(self, row: dict[str, object]) -> None:
             self.row = row
 
@@ -957,10 +965,7 @@ def test_cumulative_lane_refuses_a_remapped_projection_route(monkeypatch) -> Non
             FakeSession(),
             benchmark._PREFILL_LANE_CONFIGURATIONS["prefill_350_candidate"],
         )
-    assert configured == [
-        ("selected_gate_up", "mmq128x32_d8_f32"),
-        ("selected_down", "mmq64x32_d4_f32"),
-    ]
+    assert configured == []
 
 
 def test_f16_wmma_comp_swa_category_requires_matching_compensated_screen(

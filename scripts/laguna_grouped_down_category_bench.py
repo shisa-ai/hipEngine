@@ -359,7 +359,11 @@ def _prefill_for_mode(
     if comparison.execution_mode == "f16_prefill":
         f16_mode = mode
     elif comparison.execution_mode == "cumulative_prefill":
-        f16_mode = _PREFILL_LANE_CONFIGURATIONS[mode].f16_prefill_mode
+        lane = _PREFILL_LANE_CONFIGURATIONS[mode]
+        with session.selected_moe_diagnostic(
+            gate_up=lane.selected_gate_up_mode, down=lane.selected_down_mode,
+        ), _f16_prefill_mode(lane.f16_prefill_mode):
+            return session.prefill(token_ids)
     if f16_mode is not None:
         with _f16_prefill_mode(f16_mode):
             return session.prefill(token_ids)
@@ -428,13 +432,8 @@ def _set_f16_prefill_mode(session: LagunaGGUFResidentSession, mode: str) -> str:
 def _configure_prefill_lane(
     session: LagunaGGUFResidentSession,
     lane: PrefillLaneConfiguration,
-    *,
-    select_moe: bool = True,
 ) -> None:
-    """Apply one frozen cumulative lane and refuse a silent route substitution."""
-    if select_moe:
-        session.set_selected_gate_up_mode(lane.selected_gate_up_mode)
-        session.set_selected_down_mode(lane.selected_down_mode)
+    """Apply non-MoE cumulative controls; execution scopes own gate/down selection."""
     resolved = _set_f16_prefill_mode(session, lane.f16_projection_mode)
     if resolved != lane.f16_projection_mode:
         raise ValueError(
@@ -484,7 +483,7 @@ def _oracle_for_candidate(
             with session.selected_moe_diagnostic(
                 gate_up=lane.selected_gate_up_mode, down=lane.selected_down_mode,
             ):
-                _configure_prefill_lane(session, lane, select_moe=False)
+                _configure_prefill_lane(session, lane)
                 yield
 
         with _f16_prefill_mode(lane.f16_prefill_mode):
