@@ -604,7 +604,6 @@ _GGUFSessionPoolKey = tuple[
     int,
     tuple[str, str, str, str],
 ]
-_GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
 _GGUF_AR_D2_COST_ARTIFACT_ENV = "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT"
 _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
@@ -889,10 +888,6 @@ def _gguf_ar_resolve_cost_table(
     _GGUF_AR_D2_COST_CACHE.clear()
     _GGUF_AR_D2_COST_CACHE[cache_key] = cost_table
     return cost_table
-
-
-def _gguf_ar_packed_prefill_enabled() -> bool:
-    return os.environ.get(_GGUF_AR_PACKED_PREFILL_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_single_row_block_table_prefill_required(session: object) -> bool:
@@ -1473,6 +1468,8 @@ class Qwen35GGUFBringupGenerator:
     target_verifier_prefill_gdn_capture: bool | None = None
     # Explicit packed-decode selection; None uses the enabled package default.
     ar_packed_decode: bool | None = None
+    # Explicit packed-prefill selection; None uses the enabled package default.
+    ar_packed_prefill: bool | None = None
     # Profile-owned cooperative F32 router policy. ``None`` selects the
     # runner's construction defaults.
     target_router_f32w_coop: bool | None = None
@@ -1822,6 +1819,9 @@ class Qwen35GGUFBringupGenerator:
             return {}
         return {"target_verifier_prefill_gdn_capture": bool(requested)}
 
+    def _ar_packed_prefill_enabled(self) -> bool:
+        return self.ar_packed_prefill is not False
+
     def _ar_packed_decode_enabled(self) -> bool:
         selected = self.ar_packed_decode
         return True if selected is None else bool(selected)
@@ -2027,7 +2027,7 @@ class Qwen35GGUFBringupGenerator:
         warm_prompt_lengths = sorted({min(prompt_len, 40), prompt_len})
         prefill_batch_available = callable(getattr(Qwen35GGUFResidentSession, "prefill_batch_native", None))
 
-        if max_batch <= 1 or not _gguf_ar_packed_prefill_enabled():
+        if max_batch <= 1 or not self._ar_packed_prefill_enabled():
             result["packed_ar_prefill_skipped"] = True
             result["packed_ar_prefill_reason"] = "batch_width_le_1_or_disabled"
             result["reason"] = "batch_width_le_1_or_disabled"
@@ -9628,7 +9628,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         if (
             len(work.request_ids) <= 1
             or len(work.request_ids) > self.packed_prefill_max_rows
-            or not _gguf_ar_packed_prefill_enabled()
+            or not self.generator._ar_packed_prefill_enabled()
         ):
             return frozenset()
         rows = [self._row(request_id) for request_id in work.request_ids]

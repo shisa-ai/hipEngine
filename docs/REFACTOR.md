@@ -1244,31 +1244,6 @@ requests and cleanup. Compare complete-wall and latency on the intended backend 
 policy before choosing a tuning result. Keep per-slot unsupported-shape fallback and request-local
 state isolation.
 
-### R0281-AR-PREFILL / R0309 — Packed prefill diagnostic control migration
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `scripts/gguf_concurrency_baseline.py`; `HIPENGINE_GGUF_AR_PACKED_PREFILL`.
-
-**Repeatability defect repaired:** the segmented recurrent writer's BF16 output
-aliased its live FP32 convolution input. Corrected scratch lifetimes prevent that
-overlap without changing arithmetic or disabling packed prefill. Public gfx1151
-Qwen3.6 UD-Q4_K_M production width-four short ragged requests now repeat across
-decode off/on/off/on with matching tokens and clean teardown. Repair and evidence:
-`worklog/entries/20261106T163959.712241Z-lhl-r0309-recurrent-alias-627a1a.md`.
-The explicit prefill control migration below remains open.
-
-Done when: Remaining work: give serial diagnostics an explicit prefill control and migrate
-warmup/compatibility/resident consumers coherently before retiring the env reader. Preserve packed
-arithmetic, unsupported-shape scalar fallback, final-slot masks, target hidden sinks and
-prompt-length accounting. **Clearing action:** run `tests/test_unit_gguf_packed_verify_layout.py`,
-`tests/test_unit_gguf_concurrency_baseline.py` and packed-prefill/warmup nodes in
-`tests/test_live_generation_qwen35_gguf_sampling.py`. A reader migration also needs public packed
-and explicit-serial requests with short/long/ragged prompts, selected route,
-final-output/hidden-seed accounting, repeated output and cleanup recorded. Do not re-run historical
-arithmetic promotion as a prerequisite for running the existing default; apply the numerical gates
-only to changed math.
-
 ### R0281-PARO-NATIVE — Provider graph and selected-commit control migration
 
 Owner: `hipengine/runtime/qwen35_paro_runner.py`.

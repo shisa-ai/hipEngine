@@ -51,10 +51,10 @@ def open_ar_serving_slots(
 
 def try_prefill_ar_serving_slots_batch(generator: Any, slots: list[Any], request: Any) -> bool:
     from hipengine.generation.qwen35_gguf import (
-        _gguf_ar_packed_prefill_enabled, _timing_add_ms, _timing_ms_since,
+        _timing_add_ms, _timing_ms_since,
     )
 
-    if len(slots) <= 1 or not _gguf_ar_packed_prefill_enabled():
+    if len(slots) <= 1 or not generator._ar_packed_prefill_enabled():
         return False
     chunks = generator._ar_serving_slot_chunks(slots)
     if any(len(chunk) <= 1 for chunk in chunks):

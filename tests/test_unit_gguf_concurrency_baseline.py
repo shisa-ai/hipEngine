@@ -30,11 +30,9 @@ def test_parse_concurrencies_requires_unique_positive_widths() -> None:
 
 def test_serial_execution_environment_disables_every_multirow_route() -> None:
     assert baseline._execution_environment("serial") == {
-        "HIPENGINE_GGUF_AR_PACKED_PREFILL": "0",
         "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
     }
     assert baseline._execution_environment("package") == {
-        "HIPENGINE_GGUF_AR_PACKED_PREFILL": "1",
         "HIPENGINE_GGUF_AR_STREAM_DECODE": "1",
     }
 
@@ -46,16 +44,21 @@ def test_execution_control_sets_owner_without_mutating_packed_environment(monkey
 
     owner = object.__new__(Qwen35GGUFBringupGenerator)
     owner.ar_packed_decode = None
+    owner.ar_packed_prefill = None
     llm = SimpleNamespace(_get_text_generator=lambda: SimpleNamespace(
         _runner=SimpleNamespace(generator=owner)))
     ambient = "0" if selected else "1"
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", ambient)
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", ambient)
     with pytest.raises(RuntimeError, match="sample failed"):
         with baseline._temporary_execution_control(llm, mode):
             assert owner._ar_packed_decode_enabled() is selected
+            assert owner._ar_packed_prefill_enabled() is selected
+            assert owner.ar_packed_prefill is selected
             assert os.environ["HIPENGINE_GGUF_AR_PACKED_DECODE"] == ambient
             raise RuntimeError("sample failed")
     assert owner.ar_packed_decode is None
+    assert owner.ar_packed_prefill is None
 
 
 def test_measurement_sample_uses_only_timing_owners_and_exact_denominators() -> None:

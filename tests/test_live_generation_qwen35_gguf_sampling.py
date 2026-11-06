@@ -5311,6 +5311,7 @@ def test_resident_ar_packed_prefill_survives_one_over_long_lane(monkeypatch) -> 
 
     owner = FakeOwner()
     runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
+    runner.generator = SimpleNamespace(_ar_packed_prefill_enabled=lambda: True)
     runner.packed_prefill_max_rows = 8
     runner._route_counts = Counter(native_full_prefill_rows=0)
     runner._row = lambda request_id: rows[int(request_id)]
@@ -5413,7 +5414,8 @@ def test_resident_packed_prefill_falls_back_when_the_slab_hits_the_context_bound
 
     owner = RefusingOwner()
     runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
-    runner.generator = SimpleNamespace(target_arch="hip_gfx1100", tokenizer=None)
+    runner.generator = SimpleNamespace(target_arch="hip_gfx1100", tokenizer=None,
+                                       _ar_packed_prefill_enabled=lambda: True)
     runner.packed_prefill_max_rows = 8
     runner._route_counts = Counter(native_full_prefill_rows=0, native_full_prefill_groups=0)
     runner._fallback_reasons = Counter()
@@ -5537,6 +5539,7 @@ def test_gguf_packed_prefill_without_native_owner_returns_a_container(monkeypatc
     runner.packed_prefill_max_rows = 8
     runner._route_counts = Counter(native_full_prefill_rows=0)
     runner._row = lambda request_id: rows[int(request_id)]
+    runner.generator = SimpleNamespace(_ar_packed_prefill_enabled=lambda: True)
     runner._packed_execution_owner = lambda session: OwnerWithoutNativeBatch()
     runner._begin_mtp2_prompt_streaming = lambda _rows: [None] * len(prompts)
     runner._finish_mtp2_prompt_streaming = lambda *args, **kwargs: None
@@ -5627,6 +5630,7 @@ def test_resident_ar_packed_prefill_groups_mixed_prompt_lengths(monkeypatch) -> 
 
     owner = FakeOwner()
     runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
+    runner.generator = SimpleNamespace(_ar_packed_prefill_enabled=lambda: True)
     runner.packed_prefill_max_rows = 8
     runner._route_counts = Counter(native_full_prefill_rows=0)
     runner._row = lambda request_id: rows[int(request_id)]
@@ -5976,6 +5980,7 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
     monkeypatch.delenv("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN", raising=False)
 
     generator = _generator()
+    generator.ar_packed_prefill = False
     generator.weight_index = _mtp_capable_weight_index()
     result = generator.prepare_request_scratch(
         max_prompt_tokens=4, max_batch_size=8, release_after_probe=False,
@@ -7877,7 +7882,7 @@ def test_gguf_scratch_probe_uses_sampling_intent_not_stale_startup_marker(
     monkeypatch, probe_mtp: bool,
 ) -> None:
     generator = _generator()
-    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "0")
+    generator.ar_packed_prefill = False
     monkeypatch.setenv(
         "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP", "0" if probe_mtp else "1",
     )

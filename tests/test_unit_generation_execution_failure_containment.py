@@ -215,7 +215,8 @@ def test_grouped_and_serial_prefill_consume_every_selected_scheduler_chunk(promp
         return [SimpleNamespace(token_id=777) for _ in sessions]
 
     runner = object.__new__(Qwen35GGUFResidentModelRunner)
-    runner.generator = SimpleNamespace(target_arch="gfx1100", dms_metadata_path=None)
+    runner.generator = SimpleNamespace(target_arch="gfx1100", dms_metadata_path=None,
+                                       _ar_packed_prefill_enabled=lambda: True)
     runner.packed_prefill_max_rows = 8
     runner._route_counts = Counter()
     runner._execution_stepped_request_ids = set()
@@ -813,6 +814,9 @@ class _ContainmentRuntime:
 
 class _ContainmentOwner:
     """Minimal host owner for the real GGUF resident runner."""
+
+    def _ar_packed_prefill_enabled(self):
+        return True
 
     backend = "hip_gfx1151"
     target_arch = "gfx1151"
