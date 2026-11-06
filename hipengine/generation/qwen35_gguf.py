@@ -2343,6 +2343,13 @@ class Qwen35GGUFBringupGenerator:
         )
         return policy != "off"
 
+    def scratch_probe_capacity_estimate(self, *, max_prompt_tokens: int) -> Any | None:
+        """Price a release-only scratch probe session, not a request session."""
+        prompt_len = max(1, min(128, int(max_prompt_tokens)))
+        return self.resident_capacity_estimate(
+            max_batch_size=1, requested_context_tokens=max(256, prompt_len + 3),
+        )
+
     def resident_capacity_estimate(
         self,
         *,

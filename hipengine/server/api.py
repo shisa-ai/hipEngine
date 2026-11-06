@@ -5608,6 +5608,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 scratch_probe_width_reduction = _startup_probe_width_reduction(
                     engine,
                     width=scratch_probe_batch_size,
+                    max_prompt_tokens=scratch_probe_prompt_tokens,
                 )
                 if scratch_probe_width_reduction is not None:
                     _LOGGER.warning(
@@ -11594,14 +11595,14 @@ def _startup_max_prompt_tokens(max_context_tokens: int | None) -> int | None:
     return max(1, int(max_context_tokens) - 1)
 
 
-def _startup_probe_width_reduction(engine: Any, *, width: int) -> dict[str, Any] | None:
+def _startup_probe_width_reduction(
+    engine: Any, *, width: int, max_prompt_tokens: int = 64,
+) -> dict[str, Any] | None:
     """Price a width-N startup probe before running it.
 
-    Every probe slot is its own resident session, and a resident session preallocates
-    its KV pages and packed workspace lease. The capacity estimator prices one
-    session, so nothing priced the multiplication a wider probe performs: the probe
-    asked for four slots, each slot's price fitted on its own, and the fourth
-    allocation failed after four HIP out-of-memory attempts.
+    Each probe slot owns a resident session. Use the backend's temporary-probe
+    price when available; otherwise price the full resident context. Multiply
+    the per-session price by the concurrent width before allocating.
 
     Returns ``None`` when the probe should run at the configured width. An engine that
     cannot be priced returns ``None`` too, and so does one whose estimate says no
@@ -11613,13 +11614,18 @@ def _startup_probe_width_reduction(engine: Any, *, width: int) -> dict[str, Any]
     if not callable(estimator):
         return None
     try:
-        headroom = estimator(max_batch_size=1, requested_context_tokens=None)
-        if headroom is None:
-            return None
-        session_context = int(getattr(headroom, "allocatable_context_tokens", 0) or 0)
-        if session_context <= 0:
-            return None
-        priced = estimator(max_batch_size=1, requested_context_tokens=session_context)
+        probe_estimator = getattr(engine, "scratch_probe_capacity_estimate", None)
+        priced = probe_estimator(max_prompt_tokens=max_prompt_tokens) if callable(probe_estimator) else None
+        if priced is not None:
+            session_context = int(getattr(priced, "requested_context_tokens", 0) or 0)
+        else:
+            headroom = estimator(max_batch_size=1, requested_context_tokens=None)
+            if headroom is None:
+                return None
+            session_context = int(getattr(headroom, "allocatable_context_tokens", 0) or 0)
+            if session_context <= 0:
+                return None
+            priced = estimator(max_batch_size=1, requested_context_tokens=session_context)
         if priced is None:
             return None
         per_session_bytes = int(getattr(priced, "requested_total_bytes", 0) or 0)

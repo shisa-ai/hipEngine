@@ -530,6 +530,27 @@ def test_startup_scratch_probe_prices_the_width_before_allocating_it() -> None:
     ]
 
 
+def test_startup_scratch_probe_prices_bounded_backend_sessions() -> None:
+    class BoundedProbeLLM(NarrowCapacityFakeLLM):
+        def scratch_probe_capacity_estimate(self, *, max_prompt_tokens):
+            assert max_prompt_tokens > 0
+            return SimpleNamespace(
+                requested_context_tokens=256,
+                requested_total_bytes=1024**3,
+                usable_bytes=8 * 1024**3,
+            )
+
+    fake = BoundedProbeLLM(outputs=["warm"])
+    app = create_app(ServerConfig(
+        model="fake-path", served_model_name="fake-model", max_active_requests=4,
+    ), llm=fake)
+    with TestClient(app) as client:
+        response = client.get("/ready")
+    assert response.status_code == 200
+    assert fake.scratch_prepares[0]["max_batch_size"] == 4
+    assert "width_reduction" not in response.json()["startup"]["checks"]["scratch_probe"]
+
+
 def test_startup_scratch_probe_keeps_the_configured_width_when_it_fits() -> None:
     """The preflight only reduces a width the machine cannot hold."""
 

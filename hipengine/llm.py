@@ -1483,6 +1483,14 @@ class LLM:
             release_after_probe=release_after_probe,
         )
 
+    def scratch_probe_capacity_estimate(self, *, max_prompt_tokens: int) -> Any | None:
+        """Price one temporary scratch-probe session when the backend supports it."""
+        generator = self._get_text_generator()
+        estimator = getattr(generator, "scratch_probe_capacity_estimate", None)
+        if not callable(estimator):
+            return None
+        return estimator(max_prompt_tokens=max_prompt_tokens)
+
     def resident_capacity_estimate(
         self,
         *,
