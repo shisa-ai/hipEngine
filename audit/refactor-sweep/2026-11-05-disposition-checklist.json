@@ -1137,7 +1137,7 @@
       "evidence": [
         "tests/test_unit_laguna_h6t_source_default.py:28-61,106-116 preserves variant-specific active-expert interfaces."
       ],
-      "next_action": "Inventory exact diagnostic consumers and normalize only redundant stable maps or record intentionally retained owners; preserve ABI distinctions. Public validation later requires Laguna weights and gfx1100.",
+      "next_action": "Stable active-expert ABI map normalized without changing any of its nine entries or insertion order; source selections unchanged. All H5Q/H5Z/H6D/H6F/H6I/H6P/H6Q/H6R comparison variants remain supported diagnostics. Source-default and affected policy tests pass. Finish the named public grouped-prefill validation with Laguna weights and HIP before closing R0258.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
