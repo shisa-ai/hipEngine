@@ -1856,10 +1856,21 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 Scope: `prefill_kv_preappend`, `prefill_cached_meta`, `prefill_global_qrow6`,
 `prefill_dense_initial`.
 
-**Blocker:** retire the public overrides with their live comparison callers, without conflating
-legacy flags and package-role policy. The same local Laguna artifact resource described in
-R0313–R0320 prevents public-route validation; this does not restrict execution or disable any
-default.
+**Construction and caller migration:** `LagunaCachedPrefillPolicy` resolves independent legacy
+choices once; resident construction accepts that immutable policy. All three cached-meta/qrow6/
+dense-initial A/B child constructors pass it explicitly, preserving unspecified backend defaults,
+fixed overrides and historical result readers. Package-role substitutions remain separate.
+Compatibility constructor overrides are still supported; conflicting policy plus overrides fail.
+
+**Validation:** 235 focused host contracts pass, including explicit-policy resident construction,
+KV forwarding and close. Maintained cached-preappend/source and bulk global/SWA wrap device
+comparisons pass on gfx1151. See
+`worklog/entries/20261106T140435.988093Z-lhl-r0321-device-b5271d.md`.
+
+**Remaining work:** migrate cache policy consumption before retiring compatibility fields/inputs;
+complete partial/eviction/verifier coverage and public selected-variant/state/cleanup matrix.
+Public model checks need the accessible Laguna artifact described in R0313–R0320. This dependency
+does not restrict execution or disable defaults.
 
 Done when: migrate session/cache construction and all three attention A/B callers
 together, preserving primitive comparisons and historical readers. Run cached-attention, runner,

@@ -2631,7 +2631,7 @@
       "evidence": [
         "hipengine/runtime/laguna_gguf_runner.py:2953-2956,3411-3445 retains four independent preappend/meta/qrow/dense controls."
       ],
-      "next_action": "Migrate three A/B callers and session/cache construction to explicit role policy without conflating flags and package maps; preserve append order.",
+      "next_action": "Immutable cached-prefill constructor policy and all three A/B child callers migrated in 176a6f071/1e8dcc92c; explicit resident lifecycle passes (1209ebf87), maintained gfx1151 source/wrap device cases pass (bc78f9a34). Migrate cache consumption before compatibility retirement and complete partial/eviction/verifier coverage. Public selected-state/cleanup matrix still needs accessible Laguna checkpoint; package-role maps remain separate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
