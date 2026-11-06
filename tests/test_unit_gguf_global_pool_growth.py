@@ -62,7 +62,9 @@ def test_runtime_growth_preserves_every_previous_device_page_pointer(monkeypatch
     assert not live
 
 
-def test_pool_growth_closes_a_self_owning_session_graphs(monkeypatch):
+@pytest.mark.parametrize('borrowed', [False, True])
+@pytest.mark.parametrize('mutation', ['grow', 'shrink'])
+def test_pool_mutation_closes_owner_session_graphs(monkeypatch, borrowed, mutation):
     """The factory's grow callback invalidates the session that owns the pool.
 
     ``create_global_device_kv_pool`` is called on the session that owns the
@@ -101,15 +103,30 @@ def test_pool_growth_closes_a_self_owning_session_graphs(monkeypatch):
     session.kv_storage_layout = 'uniform'
     assert not hasattr(session, '_resident_batch_owner')
 
+    owner = session
+    if borrowed:
+        owner = object.__new__(runner.Qwen35GGUFResidentSession)
+        session._resident_batch_owner = owner
     closed: list[str] = []
-    session._graph_lifetime().register(
-        SimpleNamespace(closed=False, close=lambda: closed.append('packed')),
-    )
+    graph = SimpleNamespace(closed=False)
+    def close():
+        closed.append('packed')
+        graph.closed = True
+    def register():
+        graph.closed = False
+        owner._graph_lifetime().register(graph)
 
+    graph.close = close
     pool = session.create_global_device_kv_pool(page_capacity=2, generation=1)
     try:
+        if mutation == 'shrink':
+            pool.grow(1)
+        register()
         assert closed == []
-        pool.grow(1)
+        if mutation == 'grow':
+            pool.grow(1)
+        else:
+            assert pool.shrink_idle(now_seconds=1.0) == 1
         assert closed == ['packed']
     finally:
         pool.close()
