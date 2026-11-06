@@ -12905,18 +12905,21 @@ def _wmma_prefill_dispatch(
             )
             return dispatch
         variant = dispatch.key.variant
+        candidate = KernelKey(
+            dispatch.key.backend, dispatch.key.layer, dispatch.key.quant,
+            f"wmma_{variant}",
+        )
+        _ensure_linear_kernel_registered(candidate)
+        if not is_registered(candidate):
+            _record_wmma_prefill_dispatch(
+                dispatch, rows=rows, variant_out=None,
+                reason="raw_wmma_kernel_unregistered",
+            )
+            return dispatch
         _record_wmma_prefill_dispatch(
-            dispatch, rows=rows, variant_out=f"wmma_{variant}", reason="engaged",
+            dispatch, rows=rows, variant_out=candidate.variant, reason="engaged",
         )
-        return GGUFLinearDispatch(
-            KernelKey(
-                dispatch.key.backend,
-                dispatch.key.layer,
-                dispatch.key.quant,
-                f"wmma_{variant}",
-            ),
-            "wmma_raw",
-        )
+        return GGUFLinearDispatch(candidate, "wmma_raw")
     if dispatch.abi == "t16":
         if not _dispatch_can_use_t16_wmma_prefill(dispatch, rows=rows, in_features=in_features):
             _record_wmma_prefill_dispatch(
