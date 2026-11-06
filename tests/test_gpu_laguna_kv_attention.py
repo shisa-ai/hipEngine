@@ -1276,18 +1276,23 @@ def test_laguna_dense_initial_policy_qualifies_complete_unmodified_tiles() -> No
         cache.free()
 
 
-def test_laguna_dense_initial_policy_falls_back_after_explicit_eviction() -> None:
+@pytest.mark.parametrize("explicit_policy", [False, True])
+def test_laguna_dense_initial_policy_falls_back_after_explicit_eviction(explicit_policy) -> None:
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+    from hipengine.runtime.laguna_prefill_policy import LagunaCachedPrefillPolicy
 
+    controls = ({"cached_prefill_policy": LagunaCachedPrefillPolicy(True, True, True, True)}
+                if explicit_policy else {
+                    "prefill_cached_meta": True, "prefill_global_qrow6": True,
+                    "prefill_dense_initial": True,
+                })
     runtime = _FakeRuntime()
     cache = allocate_laguna_kv_cache(
         _production_config(),
         context_length=512,
         backend="hip_gfx1151",
         runtime=runtime,
-        prefill_cached_meta=True,
-        prefill_global_qrow6=True,
-        prefill_dense_initial=True,
+        **controls,
     )
     variants: list[str] = []
 
