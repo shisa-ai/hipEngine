@@ -280,6 +280,23 @@ def test_gather_allocation_denial_preserves_cached_owner(
     assert getattr(session, "_gapped_head_major_cache", None) is (old if cached else None)
 
 
+def test_gather_common_budget_denial_keeps_cached_pair(monkeypatch):
+    scratch = replace(
+        _fake_slot_scratch(start=256, rows=2, blocks=8), head_major_kv_admitted=False,
+    )
+    old = (4096, DeviceBuffer(101, 8192), DeviceBuffer(102, 8192))
+    session = SimpleNamespace(
+        runner=SimpleNamespace(backend="hip_gfx1100"), _gapped_head_major_cache=old,
+    )
+    runtime = SimpleNamespace(mem_get_info=lambda: (1024, 2048))
+    monkeypatch.setattr(gguf_runner, "malloc", lambda *a, **k: pytest.fail("must preflight"))
+    result = gguf_runner._gguf_gapped_slot_head_major_scratch(
+        session, scratch, context_tokens=8192, kv_width=1024, runtime=runtime,
+    )
+    assert result is scratch
+    assert session._gapped_head_major_cache is old
+
+
 def test_gapped_slab_falls_back_when_the_kill_switch_is_off(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

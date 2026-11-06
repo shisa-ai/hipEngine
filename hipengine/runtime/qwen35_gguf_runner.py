@@ -10104,6 +10104,18 @@ def _gguf_aotriton_head_major_kv_scratch_nbytes(
     return int(total_bytes)
 
 
+def _gguf_head_major_pair_fits_memory(*, runtime: HipRuntime, nbytes: int) -> bool:
+    """Price optional scratch against current free memory before allocating."""
+    mem_get_info = getattr(runtime, "mem_get_info", None)
+    if not callable(mem_get_info):
+        return True
+    free_bytes, _ = mem_get_info()
+    return price_memory_admission(
+        free_bytes=int(free_bytes),
+        consumers=(MemoryConsumer("head_major_kv_scratch", int(nbytes)),),
+    ).admitted
+
+
 def _try_allocate_gguf_aotriton_head_major_kv_scratch(
     *,
     backend: str,
@@ -10124,7 +10136,7 @@ def _try_allocate_gguf_aotriton_head_major_kv_scratch(
         capacity_tokens=capacity_tokens,
         kv_width=kv_width,
     )
-    if total_bytes <= 0:
+    if total_bytes <= 0 or not _gguf_head_major_pair_fits_memory(runtime=runtime, nbytes=total_bytes):
         return None
     per_buffer_bytes = total_bytes // 2
     key_buffer: DeviceBuffer | None = None
@@ -12674,6 +12686,8 @@ def _gguf_gapped_slot_head_major_scratch(
         key_buffer, value_buffer = cached[1], cached[2]
     else:
         per_buffer_bytes = capacity * kv_width * DType.BF16.itemsize
+        if not _gguf_head_major_pair_fits_memory(runtime=runtime, nbytes=2 * per_buffer_bytes):
+            return layer_scratch
         key_buffer = None
         try:
             key_buffer = malloc(per_buffer_bytes, runtime=runtime)

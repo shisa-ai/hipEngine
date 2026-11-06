@@ -49,6 +49,18 @@ def test_head_major_sizing_and_allocator_agree_on_resource_admission(monkeypatch
         assert pair is None and allocated == []
 
 
+def test_head_major_allocation_respects_common_free_memory_budget(monkeypatch):
+    from types import SimpleNamespace
+    runtime = SimpleNamespace(mem_get_info=lambda: (1024, 2048))
+    allocated = []
+    monkeypatch.setattr(runner, "malloc", lambda *a, **kw: allocated.append(a))
+    pair = runner._try_allocate_gguf_aotriton_head_major_kv_scratch(
+        backend="hip_gfx1151", capacity_tokens=37, kv_width=128, runtime=runtime,
+    )
+    assert pair is None
+    assert allocated == []
+
+
 @pytest.mark.parametrize("cap_env,cap", [
     ("_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV", "36"),
     ("_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV", "18943"),
