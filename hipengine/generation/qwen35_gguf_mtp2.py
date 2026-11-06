@@ -1064,6 +1064,7 @@ class Qwen35GGUFMTP2Adapter:
         self._disabled_requests: set[int] = set()
         self._active_claims: ResourceClaimSet | None = None
         self._active_prompt_claims: ResourceClaimSet | None = None
+        self._prompt_claims_by_request: dict[int, ResourceClaimSet] = {}
         self._transaction_sequence = 0
         self._batch_accept_workspace: RuntimeWorkspace | None = None
         self._batch_accept_owner: TargetVerifyBufferOwner | None = None
@@ -1569,17 +1570,28 @@ class Qwen35GGUFMTP2Adapter:
         return not widths or int(request_count) in widths
 
     def prompt_activation_available(self) -> bool:
-        """Whether a new prompt activation can start on this tick.
+        """Prompt lifetimes may overlap; each activation owns provider slots.
 
-        ``begin_prompt_streaming`` mutates provider state, so it admits one
-        activation at a time. A chunked prefill holds that claim from its first
-        chunk to its final one, and a request whose first chunk runs without a
-        sink cannot prime a provider later in its prompt. The scheduler reads
-        this probe to defer a speculative row's first chunk instead of letting
-        it forfeit its draft provider.
+        Chunks are submitted serially on the target stream. A live prompt does
+        not exclude a later row from opening its own sink and provider slot.
         """
 
-        return self._active_prompt_claims is None
+        return True
+
+    def _retire_prompt_claims(self, request_ids: Sequence[int]) -> None:
+        claims = getattr(self, "_prompt_claims_by_request", {})
+        for request_id in request_ids:
+            claims.pop(int(request_id), None)
+        units: dict[str, int] = {}
+        for claim in claims.values():
+            for pool, amount in claim.units_by_pool().items():
+                units[pool] = units.get(pool, 0) + amount
+        self._active_prompt_claims = (
+            ResourceClaimSet.from_mapping(
+                "gguf-mtp2-prompts", units, lifetime=ClaimLifetime.WORK_ITEM,
+            )
+            if claims else None
+        )
 
     def begin_prompt_streaming(
         self,
@@ -1682,46 +1694,20 @@ class Qwen35GGUFMTP2Adapter:
                 row.mtp2_candidate_budget = 0
                 row.mtp2_prompt_fallback_reason = "target_context_k0"
             return None
-        if self._active_prompt_claims is not None:
-            # One prompt activation runs at a time: it mutates provider state
-            # that a second activation would interleave with. A chunked prefill
-            # holds its claim across ticks (see the non-final chunk path), so a
-            # second request arriving while another is mid-prompt is a normal
-            # scheduling outcome, not a broken invariant. Refuse only the rows
-            # that are not already streaming, and refuse only the *sink*: this
-            # row's prompt has already started, so it cannot open one later
-            # without leaving a partial hidden-row buffer, but its speculative
-            # intent is not this refusal's business. Whether it can speculate is
-            # decided by its priming source -- live provider state or a
-            # complete, current prompt buffer -- and _priming_source refuses the
-            # row when neither exists. Zeroing the budget here instead made a
-            # transient scheduling outcome permanent for the row's whole life.
-            for request_id in pending:
-                refused = self.owner._row(request_id)
-                refused.mtp2_prompt_fallback_reason = "prompt_activation_in_flight"
-                # The caller prefills a refused row's chunk without a sink, so
-                # this prompt runs without one from here on: a later chunk
-                # could only add a partial hidden-row buffer, which the
-                # catch-up walk cannot use. Refuse the sink for the rest of
-                # this prompt. The row's budget is deliberately untouched --
-                # whether it can speculate is decided by its priming source
-                # (see _priming_source), and a row deferred before its first
-                # chunk still activates normally on a later tick.
-                self._streaming_refused_requests.add(int(request_id))
-            if not streaming:
-                return None
-            return tuple(
-                self._prompt_streaming_sinks.get(request_id) for request_id in ids
+        if not hasattr(self, "_prompt_claims_by_request"):
+            self._prompt_claims_by_request = {}
+        for request_id, row in zip(pending, rows, strict=True):
+            self._prompt_claims_by_request[request_id] = ResourceClaimSet.from_mapping(
+                f"gguf-mtp2-prompt:{request_id}",
+                {
+                    "gguf_mtp2.prompt_rows": len(row.prompt_ids),
+                    "gguf_mtp2.carried_hidden_rows": 1,
+                    "gguf_mtp2.provider_request_slots": 1,
+                },
+                request_id=request_id,
+                lifetime=ClaimLifetime.WORK_ITEM,
             )
-        self._active_prompt_claims = ResourceClaimSet.from_mapping(
-            "gguf-mtp2-prompt:" + ",".join(str(request_id) for request_id in pending),
-            {
-                "gguf_mtp2.prompt_rows": sum(len(row.prompt_ids) for row in rows),
-                "gguf_mtp2.carried_hidden_rows": len(rows),
-                "gguf_mtp2.provider_request_slots": len(rows),
-            },
-            lifetime=ClaimLifetime.WORK_ITEM,
-        )
+        self._retire_prompt_claims(())
         missing = len(pending)
         group = (
             None
@@ -1754,11 +1740,11 @@ class Qwen35GGUFMTP2Adapter:
                     max_requests=provider_capacity,
                 )
             except BaseException:
-                self._active_prompt_claims = None
+                self._retire_prompt_claims(pending)
                 raise
             if not callable(getattr(provider.executor, "enqueue_prompt_rows", None)):
+                self._retire_prompt_claims(pending)
                 self.generator._release_mtp_draft_runner(pool_key, provider)
-                self._active_prompt_claims = None
                 for row in rows:
                     row.mtp2_prompt_fallback_reason = "provider_no_streaming_prompt_abi"
                 return None
@@ -1896,6 +1882,7 @@ class Qwen35GGUFMTP2Adapter:
                         group.request_ids.discard(request_id)
                         self._prompt_streaming_group_keys.pop(request_id, None)
                         created.remove(request_id)
+                        self._retire_prompt_claims((request_id,))
                         continue
                     sink_tokens, sink_start_position, sink_initial_hidden = restored
                 sink = _StreamingNextNPromptSink(
@@ -1925,13 +1912,11 @@ class Qwen35GGUFMTP2Adapter:
                 self._free_prompt_streaming_norm_buffer(request_id, target=None)
             if acquired and not group.request_ids:
                 self._provider_groups.pop(group.key, None)
-            self._active_prompt_claims = None
+            self._retire_prompt_claims(pending)
             raise
         if acquired and not group.request_ids:
             self._provider_groups.pop(group.key, None)
             self.generator._release_mtp_draft_runner(group.provider_pool_key, group.provider)
-        if not self._prompt_streaming_sinks:
-            self._active_prompt_claims = None
         return tuple(
             self._prompt_streaming_sinks.get(request_id) for request_id in ids
         )
@@ -2082,8 +2067,7 @@ class Qwen35GGUFMTP2Adapter:
                 if sink is not None:
                     sink.close()
                 self._free_prompt_streaming_norm_buffer(request_id, target=None)
-            if not self._prompt_streaming_sinks:
-                self._active_prompt_claims = None
+            self._retire_prompt_claims(ids)
 
     def _free_prompt_streaming_norm_buffer(
         self,
@@ -2143,8 +2127,7 @@ class Qwen35GGUFMTP2Adapter:
                     group.provider_pool_key,
                     group.provider,
                 )
-        if not self._prompt_streaming_sinks:
-            self._active_prompt_claims = None
+        self._retire_prompt_claims(request_ids)
 
     def observe_prefill_result(self, request_id: int, prompt_ids: Sequence[int], result: Any) -> None:
         rid = int(request_id)
@@ -6793,6 +6776,7 @@ class Qwen35GGUFMTP2Adapter:
         self._disabled_requests.clear()
         self._active_claims = None
         self._active_prompt_claims = None
+        getattr(self, "_prompt_claims_by_request", {}).clear()
         for request_id in tuple(
             getattr(self, "_prompt_streaming_norm_buffers", {})
         ):

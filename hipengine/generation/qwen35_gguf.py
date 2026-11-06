@@ -10612,28 +10612,13 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         return int(row.request_id) not in self._restorable_prefix_rows((row,))
 
     def prefill_needs_activation(self, request_id: int) -> bool:
-        """Whether this row's next chunk would open the prompt-activation claim.
+        """Whether prefill must reserve an exclusive activation position.
 
-        Only a row whose prompt has not started prefill needs the claim; a row
-        already carrying a sink is mid-activation and a row without speculative
-        intent never opens one. The scheduler uses this to admit at most one
-        claim-opening row per multi-row prefill item, because the serial prefill
-        path activates each row immediately before its own first chunk and a
-        second claim-opening row in the same item would forfeit its provider.
+        GGUF prompt sinks own independent request slots, so multiple first
+        chunks may share an item; provider admission owns their slot capacity.
         """
 
-        row = self._row(int(request_id))
-        if row.mtp2_candidate_budget <= 0:
-            return False
-        if row.prefix_reused_tokens:
-            # A restorable hit row opens a claim like any streaming row; a
-            # refused one never opens a sink at all.
-            return bool(
-                int(row.request_id) in self._restorable_prefix_rows((row,))
-                and row.prefill_tokens_seen == 0
-                and row.slot is None
-            )
-        return bool(row.prefill_tokens_seen == 0 and row.slot is None)
+        return False
 
     def _restorable_prefix_rows(
         self,

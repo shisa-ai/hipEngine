@@ -4183,9 +4183,10 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
         "gguf_mtp2.provider_request_slots": 2,
     }
     if split_finish:
-        claim = adapter._active_prompt_claims
+        claim = adapter._prompt_claims_by_request[8]
         adapter.finish_prompt_streaming((7,), success=True, stream=0)
-        assert adapter._active_prompt_claims is claim
+        assert adapter._prompt_claims_by_request == {8: claim}
+        assert adapter._active_prompt_claims.units_by_pool()["gguf_mtp2.provider_request_slots"] == 1
         assert set(adapter._prompt_streaming_sinks) == {8}
         adapter.finish_prompt_streaming((8,), success=True, stream=0)
     else:
@@ -4221,23 +4222,25 @@ def test_prompt_abort_holds_claim_until_last_sink_closes(first_ids):
     }
     adapter._prompt_streaming_group_keys = {}
     adapter._provider_groups = {}
-    claim = object()
-    adapter._active_prompt_claims = claim
+    adapter._prompt_claims_by_request = {
+        rid: mtp2_module.ResourceClaimSet.from_mapping(
+            f"prompt:{rid}", {"rows": 1}, request_id=rid,
+        ) for rid in (7, 8)
+    }
+    adapter._retire_prompt_claims(())
     adapter._abort_prompt_streaming(first_ids, stream=0)
     remaining = set((7, 8)) - set(first_ids)
     assert set(adapter._prompt_streaming_sinks) == remaining
-    assert adapter._active_prompt_claims is (claim if remaining else None)
+    assert set(adapter._prompt_claims_by_request) == remaining
+    assert bool(adapter._active_prompt_claims) == bool(remaining)
     adapter._abort_prompt_streaming(tuple(remaining), stream=0)
     assert adapter._active_prompt_claims is None
     assert sorted(closed) == [7, 8]
 
 
-def test_mtp2_prompt_activation_in_flight_refuses_only_new_rows(monkeypatch) -> None:
-    """A chunked prefill holds its claim across ticks; a second request is refused.
-
-    The refusal must be reported on the refused row instead of failing the
-    engine service, and it must not disturb the activation already streaming.
-    """
+@pytest.mark.parametrize("peer_failure", [False, True, "setup"])
+def test_mtp2_overlapping_prompt_activation_isolates_peers(monkeypatch, peer_failure) -> None:
+    """Separate openings retain independent sink and claim lifetimes."""
 
     runtime = SimpleNamespace()
     targets = {
@@ -4345,29 +4348,44 @@ def test_mtp2_prompt_activation_in_flight_refuses_only_new_rows(monkeypatch) -> 
     claim = adapter._active_prompt_claims
     assert claim is not None
 
-    # Request 8 arrives while 7's activation is open: refused, not fatal.
-    assert adapter.begin_prompt_streaming((8,), checkpoints={}) is None
-    assert rows[8].mtp2_prompt_fallback_reason == "prompt_activation_in_flight"
-    # The refusal is about the activation claim, not about row 8's eligibility:
-    # its speculative intent survives. The sink does not, because the caller
-    # prefills the refused row's chunk without one, so a later chunk could only
-    # add a partial hidden-row buffer.
-    assert rows[8].mtp2_candidate_budget == 3
-    assert 8 in adapter._streaming_refused_requests
-    assert rows[7].mtp2_prompt_fallback_reason is None
-    assert rows[7].mtp2_candidate_budget == 3
-    assert adapter._active_prompt_claims is claim
-    assert adapter._prompt_streaming_sinks[7] is sinks[0]
-    assert 8 not in adapter._prompt_streaming_sinks
-    assert acquisitions == ["provider"]
+    if peer_failure == "setup":
+        class FailingSink(Sink):
+            def __init__(self, **kwargs):
+                raise MemoryError("peer sink failed")
+        monkeypatch.setattr(mtp2_module, "_StreamingNextNPromptSink", FailingSink)
+        peer_claim = adapter._prompt_claims_by_request[7]
+        with pytest.raises(MemoryError, match="peer sink failed"):
+            adapter.begin_prompt_streaming((8,), checkpoints={})
+        assert adapter._prompt_claims_by_request == {7: peer_claim}
+        assert adapter._prompt_streaming_sinks == {7: sinks[0]}
+        assert adapter._provider_groups[(7,)].request_ids == {7}
+        adapter.finish_prompt_streaming((7,), success=True, stream=0)
+        assert adapter._active_prompt_claims is None
+        return
+    if peer_failure:
+        second = adapter.begin_prompt_streaming((8,), checkpoints={})
+        assert second is not None and second[0] is not None
+        assert adapter._prompt_streaming_sinks[7] is sinks[0]
+        adapter.finish_prompt_streaming((8,), success=False, stream=0)
+        assert adapter._prompt_streaming_sinks[7] is sinks[0]
+        assert 8 not in adapter._prompt_streaming_sinks
+        assert adapter._provider_groups[(7,)].request_ids == {7}
+        adapter.finish_prompt_streaming((7,), success=True, stream=0)
+        assert adapter._states[7].provider_group_key == (7,)
+        assert adapter._active_prompt_claims is None
+        return
 
-    # A mixed call keeps the streaming row and refuses only the new one.
+    second = adapter.begin_prompt_streaming((8,), checkpoints={})
+    assert second is not None and second[0] is not None
     mixed = adapter.begin_prompt_streaming((7, 8), checkpoints={})
-    assert mixed is not None and mixed[0] is sinks[0] and mixed[1] is None
+    assert mixed == (sinks[0], second[0])
+    assert adapter._active_prompt_claims.units_by_pool()["gguf_mtp2.provider_request_slots"] == 2
     assert acquisitions == ["provider"]
-
-    # Releasing the activation lets an untouched request activate normally.
+    peer_claim = adapter._prompt_claims_by_request[8]
     adapter.finish_prompt_streaming((7,), success=True, stream=0)
+    assert adapter._prompt_claims_by_request == {8: peer_claim}
+    assert adapter._prompt_streaming_sinks[8] is second[0]
+    adapter.finish_prompt_streaming((8,), success=True, stream=0)
     assert adapter._active_prompt_claims is None
     reopened = adapter.begin_prompt_streaming((9,), checkpoints={})
     assert reopened is not None and reopened[0] is not None
@@ -5842,15 +5860,15 @@ def test_ar_commit_is_ignored_for_a_released_or_unknown_row() -> None:
     assert row.mtp2_ar_step_reasons == {}
 
 
-def test_prompt_activation_available_tracks_the_active_claim() -> None:
-    """The scheduler probe is true exactly while no activation is in flight."""
+def test_prompt_activation_available_does_not_exclude_live_claims() -> None:
+    """Live prompt claims do not exclude another request's provider slot."""
 
     adapter = object.__new__(Qwen35GGUFMTP2Adapter)
     adapter._active_prompt_claims = None
     assert adapter.prompt_activation_available() is True
 
     adapter._active_prompt_claims = object()
-    assert adapter.prompt_activation_available() is False
+    assert adapter.prompt_activation_available() is True
 
 
 def test_prefill_activation_ready_defers_only_unstarted_speculative_rows() -> None:
@@ -5906,7 +5924,7 @@ def test_prefill_activation_ready_without_adapter_is_always_ready() -> None:
     assert runner.prefill_activation_ready(1) is True
 
 
-def test_prefill_needs_activation_marks_only_unstarted_speculative_rows() -> None:
+def test_prefill_needs_activation_allows_independent_prompt_slots() -> None:
     runner = object.__new__(Qwen35GGUFResidentModelRunner)
     runner._rows = {
         rid: SimpleNamespace(
@@ -5922,7 +5940,7 @@ def test_prefill_needs_activation_marks_only_unstarted_speculative_rows() -> Non
     runner._rows[3].mtp2_candidate_budget = 0
     runner._rows[4].prefix_reused_tokens = 128
 
-    assert runner.prefill_needs_activation(1) is True
+    assert runner.prefill_needs_activation(1) is False
     assert runner.prefill_needs_activation(2) is False
     assert runner.prefill_needs_activation(3) is False
     assert runner.prefill_needs_activation(4) is False
@@ -6475,26 +6493,13 @@ def test_terminal_zero_budget_cannot_reopen_prompt_sink_but_peer_can(reason):
     assert rows[1].mtp2_candidate_budget == 3
 
 
-def test_prompt_activation_contention_preserves_speculative_intent() -> None:
-    # Temporary contention is not a property of the row: the refusal is about the
-    # activation claim, and whether this row can speculate is decided by its
-    # priming source. Zeroing the budget here made a transient scheduling outcome
-    # permanent for the row's whole life.
+def test_prompt_streaming_refusal_preserves_speculative_intent() -> None:
+    # A prompt that already ran without a sink must not open a partial one.
     rid = 7
     row = _priming_gate_row(prompt_tokens=12, generated_tokens=0)
     adapter = _priming_gate_adapter(rows={rid: row}, prompt_hidden={})
-    adapter._active_prompt_claims = object()
-
-    assert adapter.begin_prompt_streaming((rid,)) is None
-    assert row.mtp2_prompt_fallback_reason == "prompt_activation_in_flight"
-    assert row.mtp2_candidate_budget == 3
-
-    # The sink itself is permanently refused for a prompt that already started:
-    # a later chunk must not open a mid-prompt sink that would leave a partial
-    # buffer behind. Intent still survives.
+    adapter._streaming_refused_requests.add(rid)
     row.prefill_tokens_seen = 5
-    assert adapter.begin_prompt_streaming((rid,)) is None
-    adapter._active_prompt_claims = None
     assert adapter.begin_prompt_streaming((rid,)) is None
     assert adapter._prompt_streaming_sinks == {}
     assert adapter._streaming_refused_requests == {rid}

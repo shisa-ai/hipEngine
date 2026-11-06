@@ -2327,6 +2327,12 @@ Owner: `hipengine/generation/engine_loop.py`.
 
 Scope: `prefill_activation_ready`, `prefill_needs_activation`.
 
+Prompt activation now owns request-scoped claims and may overlap another
+request's chunked prefill lifetime. Scheduler items admit multiple first chunks;
+provider slots and sinks retain independent completion/abort ownership. CPU
+coverage checks separate openings, peer setup failure, cancellation and claim
+retirement. Public GPU token/acceptance comparison remains outstanding.
+
 Done when: Deferred scheduler work: implement co-activation of chunked rows while preserving provider-slot
 ownership and failure isolation. Exercise unequal prompt lengths, different finish orders, partial
 failures and cancellation. Compare generated tokens and acceptance against independent
