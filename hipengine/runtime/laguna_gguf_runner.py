@@ -121,7 +121,8 @@ from hipengine.runtime.laguna_moe import (
 )
 from hipengine.runtime.laguna_prefill_policy import (
     LagunaCachedPrefillPolicy, resolve_laguna_cached_prefill_policy,
-    select_laguna_long_attention_route,
+    select_laguna_long_attention_route, LagunaLongAttentionPolicy,
+    resolve_laguna_long_attention_policy,
 )
 from hipengine.runtime.laguna_rope import (
     LagunaDeviceRoPETables,
@@ -2960,6 +2961,7 @@ class LagunaGGUFResidentSession:
         prefill_global_qrow6: bool | None = None,
         prefill_dense_initial: bool | None = None,
         prefill_attention_hipblaslt: bool | None = None,
+        long_attention_policy: LagunaLongAttentionPolicy | None = None,
         prefill_long_attention_hipblaslt: bool | None = None,
         prefill_block_attention_hipblaslt: bool | None = None,
         prefill_dense_contiguous_cache: bool | None = None,
@@ -3448,24 +3450,13 @@ class LagunaGGUFResidentSession:
                 False,
             )
         )
-        self.prefill_long_attention_hipblaslt = bool(
-            backend_package_capability(
-                self.backend,
-                "LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT",
-                False,
-            )
-            if prefill_long_attention_hipblaslt is None
-            else prefill_long_attention_hipblaslt
+        self.long_attention_policy = resolve_laguna_long_attention_policy(
+            self.backend, policy=long_attention_policy,
+            enabled=prefill_long_attention_hipblaslt,
+            bounded=prefill_block_attention_hipblaslt,
         )
-        self.prefill_block_attention_hipblaslt = bool(
-            backend_package_capability(
-                self.backend,
-                "LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT",
-                False,
-            )
-            if prefill_block_attention_hipblaslt is None
-            else prefill_block_attention_hipblaslt
-        )
+        self.prefill_long_attention_hipblaslt = self.long_attention_policy.enabled
+        self.prefill_block_attention_hipblaslt = self.long_attention_policy.bounded
         self.prefill_dense_contiguous_cache = bool(
             backend_package_capability(
                 self.backend,

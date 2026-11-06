@@ -44,6 +44,25 @@ def test_cached_prefill_policy_preserves_independent_overrides(monkeypatch, valu
         result.cached_meta = True
 
 
+def test_long_policy_identity_and_override_conflict(monkeypatch):
+    selected = policy.LagunaLongAttentionPolicy(True, False)
+    monkeypatch.setattr(policy, "backend_package_capability", lambda *args: pytest.fail("unexpected lookup"))
+    assert policy.resolve_laguna_long_attention_policy("peer", policy=selected) is selected
+    for field in ("enabled", "bounded"):
+        with pytest.raises(ValueError, match="legacy overrides"):
+            policy.resolve_laguna_long_attention_policy("peer", policy=selected, **{field: False})
+    with pytest.raises(TypeError, match="LagunaLongAttentionPolicy"):
+        policy.resolve_laguna_long_attention_policy("peer", policy=object())
+
+
+@pytest.mark.parametrize("enabled,bounded", tuple(product([None, False, True], repeat=2)))
+def test_long_policy_preserves_independent_backend_defaults(monkeypatch, enabled, bounded):
+    monkeypatch.setattr(policy, "backend_package_capability", lambda backend, key, default: "BLOCK" in key)
+    resolved = policy.resolve_laguna_long_attention_policy("peer", enabled=enabled, bounded=bounded)
+    assert resolved.enabled is (False if enabled is None else enabled)
+    assert resolved.bounded is (True if bounded is None else bounded)
+
+
 @pytest.mark.parametrize("rows", [17, 127, 128, 129, 256, 512, 1024, 2048])
 @pytest.mark.parametrize("start", [0, 4095, 4096, 4231])
 @pytest.mark.parametrize("enabled,bounded,short_route,full_attention", tuple(product([False, True], repeat=4)))

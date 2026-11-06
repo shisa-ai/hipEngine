@@ -38,6 +38,30 @@ def resolve_laguna_cached_prefill_policy(
     })
 
 
+@dataclass(frozen=True)
+class LagunaLongAttentionPolicy:
+    enabled: bool
+    bounded: bool
+
+
+def resolve_laguna_long_attention_policy(
+    backend: str, *, policy: LagunaLongAttentionPolicy | None = None,
+    enabled: bool | None = None, bounded: bool | None = None,
+) -> LagunaLongAttentionPolicy:
+    if policy is not None:
+        if not isinstance(policy, LagunaLongAttentionPolicy):
+            raise TypeError("long attention policy must be LagunaLongAttentionPolicy")
+        if enabled is not None or bounded is not None:
+            raise ValueError("long attention policy cannot be combined with legacy overrides")
+        return policy
+    return LagunaLongAttentionPolicy(
+        bool(backend_package_capability(backend, "LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT", False)
+             if enabled is None else enabled),
+        bool(backend_package_capability(backend, "LAGUNA_PREFILL_BLOCK_ATTENTION_HIPBLASLT", False)
+             if bounded is None else bounded),
+    )
+
+
 def select_laguna_long_attention_route(
     *, enabled: bool, bounded: bool, short_route: bool, full_attention: bool,
     rows: int, start: int, context_length: int, q_heads: int, kv_heads: int,

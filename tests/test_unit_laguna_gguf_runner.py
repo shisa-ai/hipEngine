@@ -1452,11 +1452,13 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch,
         assert events == ["weights"]
         return
 
-    from hipengine.runtime.laguna_prefill_policy import LagunaCachedPrefillPolicy
+    from hipengine.runtime.laguna_prefill_policy import LagunaCachedPrefillPolicy, LagunaLongAttentionPolicy
+    selected_long_policy = LagunaLongAttentionPolicy(True, True) if explicit_policy else None
     selected_policy = LagunaCachedPrefillPolicy(True, True, True, True) if explicit_policy else None
     session = runner_module.LagunaGGUFResidentSession(
         "/synthetic/laguna.gguf",
         cached_prefill_policy=selected_policy,
+        long_attention_policy=selected_long_policy,
         backend="hip_gfx1151",
         runtime=Runtime(),
         repacked_cache="/synthetic/laguna-repacked-v1",
@@ -1471,6 +1473,9 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch,
     assert session.prefill_kv_preappend is True
     if explicit_policy:
         assert session.cached_prefill_policy is selected_policy
+        assert session.long_attention_policy is selected_long_policy
+        assert session.prefill_long_attention_hipblaslt is True
+        assert session.prefill_block_attention_hipblaslt is True
     assert session.prefill_cached_meta is True
     assert session.prefill_global_qrow6 is True
     assert session.prefill_dense_initial is True
