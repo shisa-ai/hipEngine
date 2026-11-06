@@ -126,6 +126,41 @@ def test_q6_comparison_scope_keeps_sum_producer_and_consumer_consistent(mode, ex
     ) == initial
 
 
+@pytest.mark.parametrize("failure", [False, True])
+def test_rows64_comparison_restores_down_selection_before_close(monkeypatch, failure):
+    from scripts import laguna_q6_rows64_ab as rows64
+    child = object.__new__(LagunaGGUFResidentSession)
+    child.backend = "hip_gfx1151"
+    child.selected_gate_up_mode = "grouped_exact"
+    child.selected_down_mode = "grouped_exact"
+    events = []
+    mode = next(iter(rows64._MODES))
+
+    def prefill(tokens):
+        assert child.selected_down_mode == rows64._MODES[mode]
+        assert child.selected_gate_up_mode == "grouped_exact"
+        if failure:
+            raise RuntimeError("synthetic")
+        return SimpleNamespace(next_token_id=7)
+
+    def close():
+        assert child.selected_down_mode == "grouped_exact"
+        events.append("close")
+
+    child.prefill = prefill
+    child.close = close
+    child.runtime = SimpleNamespace(device_synchronize=lambda: None)
+    monkeypatch.setattr(rows64, "_child_session", lambda owner: child)
+    clock = iter((1.0, 2.0))
+    monkeypatch.setattr(rows64.time, "perf_counter", lambda: next(clock))
+    if failure:
+        with pytest.raises(RuntimeError, match="synthetic"):
+            rows64._run(object(), mode, [1, 2])
+    else:
+        assert rows64._run(object(), mode, [1, 2]) == (512.0, 7)
+    assert events == ["close"]
+
+
 def test_selected_moe_diagnostic_validates_before_mutation_and_restores():
     session = object.__new__(LagunaGGUFResidentSession)
     session.backend = "hip_gfx1151"
