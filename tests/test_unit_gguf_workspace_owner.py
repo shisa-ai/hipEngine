@@ -3,7 +3,36 @@ from types import SimpleNamespace
 
 import pytest
 
-from hipengine.runtime.qwen35_gguf_workspace import PackedWorkspaceOwner
+from hipengine.runtime.qwen35_gguf_workspace import (
+    PackedWorkspaceOwner, allocate_private_packed_backing,
+)
+
+
+@pytest.mark.parametrize('with_pool', [False, True])
+@pytest.mark.parametrize('failure', [False, True])
+def test_private_backing_transfers_charge_only_after_allocation(with_pool, failure):
+    events = []
+    pool = SimpleNamespace(
+        reserve_private_workspace=lambda size: events.append(('reserve', size)) or 'token',
+        release_private_workspace=lambda token: events.append(('release', token)),
+    ) if with_pool else None
+    backing = object()
+    def allocate():
+        events.append(('allocate',))
+        if failure:
+            raise MemoryError('injected')
+        return backing
+    if failure:
+        with pytest.raises(MemoryError, match='injected'):
+            allocate_private_packed_backing(pages=3, page_bytes=16, pool=pool, allocate=allocate)
+    else:
+        result, token = allocate_private_packed_backing(pages=3, page_bytes=16, pool=pool, allocate=allocate)
+        assert result is backing
+        assert token == ('token' if with_pool else None)
+    assert events == (
+        ([('reserve', 48)] if with_pool else []) + [('allocate',)]
+        + ([('release', 'token')] if with_pool and failure else [])
+    )
 
 
 def test_workspace_owner_counts_unique_buffers_and_releases_charges_after_storage():

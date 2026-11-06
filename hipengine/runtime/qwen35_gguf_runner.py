@@ -100,7 +100,10 @@ from hipengine.runtime.qwen35_gguf_prefill_plan import (
 from hipengine.runtime.qwen35_gguf_prefix_state import (
     Qwen35GGUFPrefixStateSnapshot, _GGUFPrefixSnapshotArenaPool,
 )
-from hipengine.runtime.qwen35_gguf_workspace import PackedWorkspaceOwner as _PackedWorkspaceState
+from hipengine.runtime.qwen35_gguf_workspace import (
+    PackedWorkspaceOwner as _PackedWorkspaceState,
+    allocate_private_packed_backing,
+)
 from hipengine.runtime.qwen35_gguf_state import (
     ResidentStateStorage, StateMemory, resident_state_field,
 )
@@ -2921,16 +2924,17 @@ class _GGUFPackedTargetState:
                     backing_kind = "pool_lease"
                     owned_buffers = tuple(state_buffers)
                 else:
-                    if kv_pool is not None:
-                        private_workspace_token = kv_pool.reserve_private_workspace(
-                            total_pages * _qwen35_gguf_kv_page_bytes(cfg, kv_layout)
-                        )
-                    kv_backing = _allocate_qwen35_gguf_kv_chunk(
-                        _kv_allocation_config(runner),
-                        runtime=runtime,
-                        start_block_id=0,
+                    kv_backing, private_workspace_token = allocate_private_packed_backing(
                         pages=total_pages,
-                        layout=kv_layout,
+                        page_bytes=_qwen35_gguf_kv_page_bytes(cfg, kv_layout),
+                        pool=kv_pool,
+                        allocate=lambda: _allocate_qwen35_gguf_kv_chunk(
+                            _kv_allocation_config(runner),
+                            runtime=runtime,
+                            start_block_id=0,
+                            pages=total_pages,
+                            layout=kv_layout,
+                        ),
                     )
                     page_ids = ()
                     backing_kind = "private"

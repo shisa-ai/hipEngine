@@ -5,6 +5,28 @@ from dataclasses import dataclass
 from typing import Callable
 
 
+def allocate_private_packed_backing(
+    *, pages: int, page_bytes: int, pool: object | None, allocate: Callable,
+) -> tuple[object, object | None]:
+    """Acquire budget and storage atomically for a private packed KV backing.
+
+    The returned token transfers to the packed storage owner, which releases it
+    after freeing the returned backing's buffers. No-pool diagnostics own only
+    the buffers. The allocator callback owns partial-buffer rollback.
+    """
+    token = None
+    if pool is not None:
+        token = pool.reserve_private_workspace(int(pages) * int(page_bytes))
+    try:
+        backing = allocate()
+    except BaseException:
+        if token is not None:
+            pool.release_private_workspace(token)
+        raise
+    return backing, token
+
+
+
 @dataclass
 class PackedWorkspaceOwner:
     """One buffer/charge owner shared by the batch session and its slot views."""
