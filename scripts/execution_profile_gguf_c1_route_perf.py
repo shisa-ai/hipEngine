@@ -28,6 +28,7 @@ from scripts.execution_profile_gguf_c1_route_gate import (
     KIND as QUALITY_KIND,
     STRICT_ENVIRONMENT,
     route_owner,
+    route_owner_metadata,
 )
 from scripts.gguf_gdn_semantic_gate import (
     DEFAULT_MODEL,
@@ -371,6 +372,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "classification": candidate.classification,
             "strict_environment": dict(STRICT_ENVIRONMENT),
             "candidate_environment": dict(candidate.environment),
+            "strict_owner": route_owner_metadata(STRICT_ENVIRONMENT),
+            "candidate_owner": route_owner_metadata(candidate.environment),
         },
         "quality_artifact": {
             "path": str(args.quality_artifact.resolve()),

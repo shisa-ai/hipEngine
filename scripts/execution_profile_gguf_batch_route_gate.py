@@ -1075,6 +1075,15 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "package_min_rows_capability": POLICY_MIN_ROWS_CAPABILITY,
             "package_min_rows_verified": package_min_rows,
             "candidate_environment": candidate_environment,
+            "router_owner": {
+                "owner": "shared resident runner",
+                "candidate": "cooperative_persistent" if (
+                    args.include_router_candidate or current_direct
+                    or route_profile in {ROUTE_PROFILE_Q8T16_PAIR, ROUTE_PROFILE_Q4_SELECTED_PAIR}
+                ) else "existing runner policy",
+                "strict": "separate_projections_topk" if args.include_router_candidate else "existing runner policy",
+                "engagement": "requested; requires launch trace",
+            },
             "selected_pair_diagnostic": selected_pair_diagnostic_metadata(route_profile),
             "strict_environment": {
                 POLICY_ENV: "0",
