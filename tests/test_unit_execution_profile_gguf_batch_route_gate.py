@@ -13,6 +13,24 @@ from scripts.execution_profile_gguf_batch_route_gate import (
 )
 
 
+def test_serial_admission_uses_strict_router_and_restores_shared_owner(monkeypatch):
+    from types import SimpleNamespace
+
+    owner = SimpleNamespace(router_f32w_coop=True, router_f32w_persistent_counter=True)
+    session = SimpleNamespace(runner=owner)
+    monkeypatch.setattr(gate, '_router_candidate_enabled', True)
+    calls = []
+    def admit(*args, **kwargs):
+        calls.append((owner.router_f32w_coop, owner.router_f32w_persistent_counter))
+    monkeypatch.setattr(gate, '_prefill_group_impl', admit)
+    gate._prefill_group([session, session], [], {}, {}, gdn_mode='exact')
+    assert calls == [(False, False)]
+    assert owner.router_f32w_coop is True
+    assert owner.router_f32w_persistent_counter is True
+    gate._prefill_group([session], [], {}, {}, gdn_mode='exact', packed_candidate=True)
+    assert calls[-1] == (True, True)
+
+
 def test_batch_candidate_binds_and_restores_shared_router_owner(monkeypatch):
     from types import SimpleNamespace
 

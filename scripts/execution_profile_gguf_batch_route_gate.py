@@ -434,6 +434,31 @@ def _prefill_group(
     gdn_mode: str,
     packed_candidate: bool = False,
 ) -> None:
+    # Serial admission is compared byte-for-byte to the strict teacher. Bind its
+    # router too; candidate decode owns a different scope after admission.
+    with contextlib.ExitStack() as scope:
+        if _router_candidate_enabled and not packed_candidate:
+            from scripts.execution_profile_gguf_c1_route_gate import route_owner
+            seen = set()
+            for session in sessions:
+                if id(session.runner) not in seen:
+                    seen.add(id(session.runner))
+                    scope.enter_context(route_owner(session, {
+                        ROUTER_COOP_ENV: "0", ROUTER_PERSISTENT_ENV: "0",
+                    }))
+        _prefill_group_impl(sessions, prompt_rows, prompt_tokens, strict,
+                            gdn_mode=gdn_mode, packed_candidate=packed_candidate)
+
+
+def _prefill_group_impl(
+    sessions: Sequence[Any],
+    prompt_rows: Sequence[Mapping[str, Any]],
+    prompt_tokens: Mapping[str, Sequence[int]],
+    strict: Mapping[str, Sequence[Mapping[str, object]]],
+    *,
+    gdn_mode: str,
+    packed_candidate: bool = False,
+) -> None:
     """Admit the group's prompts and calibrate against the strict trajectory.
 
     Serial admission requires byte-exact prefill logits. ``packed_candidate``
