@@ -358,33 +358,45 @@ def test_generic_speculative_multi_prompt_children_keep_public_order() -> None:
     assert snapshot["generic_speculative_children"] == 2
 
 
-def test_generic_only_bounded_child_advances_on_poll_not_admission() -> None:
-    class Driver(_GenericProviderDriver):
-        supports_speculative_mtp = False
-        supports_bounded_generic_speculative_children = True
+class _BoundedGenericDriver(_GenericProviderDriver):
+    supports_speculative_mtp = False
+    supports_bounded_generic_speculative_children = True
 
-        def submit_speculative_detailed(self, request):
-            self.submit_thread_ids.append(threading.get_ident())
-            request_id = self._next_request_id
-            self._next_request_id += 1
-            self._active[request_id] = request
-            return GenerationSubmission(request_ids=(request_id,), request=request,
-                max_ticks=1, work_kind="verify_chain",
-                execution_route="bounded_generic_test")
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.advance = threading.Event()
+        self.advance.set()
 
-        def poll(self, *, max_ticks=1):
-            assert max_ticks == 1
-            self.poll_thread_ids.add(threading.get_ident())
-            for request_id, request in self._active.items():
+    def submit_speculative_detailed(self, request):
+        self.submit_thread_ids.append(threading.get_ident())
+        if self.admission_error is not None:
+            raise self.admission_error
+        request_id = self._next_request_id
+        self._next_request_id += 1
+        self._active[request_id] = request
+        self.admitted.set()
+        return GenerationSubmission(
+            request_ids=(request_id,), request=request, max_ticks=1,
+            work_kind="verify_chain", execution_route="bounded_generic_test",
+        )
+
+    def poll(self, *, max_ticks=1):
+        assert max_ticks == 1
+        self.poll_thread_ids.add(threading.get_ident())
+        if self.advance.is_set():
+            for request_id in self._active:
                 if request_id not in self._outputs:
                     self.model_thread_ids.append(threading.get_ident())
                     self._outputs[request_id] = GenerationOutput(
                         text="generic", generated_token_ids=(17,),
-                        finish_details=FinishDetails(reason="length", length_limit=1))
+                        finish_details=FinishDetails(reason="length", length_limit=1),
+                    )
                     break
-            return ()
+        return ()
 
-    driver = Driver()
+
+def test_generic_only_bounded_child_advances_on_poll_not_admission() -> None:
+    driver = _BoundedGenericDriver()
     service = EngineService(driver, idle_wait_seconds=0.001)
     frontend = threading.get_ident()
     try:
@@ -397,6 +409,69 @@ def test_generic_only_bounded_child_advances_on_poll_not_admission() -> None:
         assert driver.model_thread_ids and frontend not in driver.model_thread_ids
         assert set(driver.model_thread_ids) == driver.poll_thread_ids
         assert service.live_loop_snapshot()["engine_service"]["active_children"] == 0
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("terminal", ["cancel", "deadline", "shutdown"])
+def test_generic_only_slow_child_allows_ar_and_retires(terminal) -> None:
+    import time
+
+    driver = _BoundedGenericDriver()
+    driver.advance.clear()
+    service = EngineService(driver, idle_wait_seconds=0.001)
+    token = GenerationCancellationToken()
+    request = replace(
+        _request("slow", cancellation_token=token),
+        deadline_at=time.monotonic() + 0.25 if terminal == "deadline" else None,
+    )
+    errors = []
+
+    def generate():
+        try:
+            service.generate_speculative_detailed(request)
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = threading.Thread(target=generate)
+    worker.start()
+    try:
+        assert driver.admitted.wait(timeout=5)
+        assert service.generate_detailed(_request("peer"))[0].text == "ar"
+        if terminal == "cancel":
+            token.cancel(FinishDetails(reason="cancelled", cancelled=True))
+        elif terminal == "shutdown":
+            service.close()
+        worker.join(timeout=5)
+        assert not worker.is_alive()
+        assert len(errors) == 1
+        assert driver.abort_reasons.keys() == {1}
+        assert driver.release_order.count(1) == 1
+        assert not driver._active
+        assert driver.mtp_spelling_calls == 0
+        assert not driver.whole_request_thread_ids
+        if terminal != "shutdown":
+            assert isinstance(errors[0], GenerationCancelled)
+            driver.advance.set()
+            assert service.generate_speculative_detailed(_request("reuse"))[0].text == "generic"
+    finally:
+        service.close()
+        worker.join(timeout=5)
+
+
+@pytest.mark.parametrize("failure", ["admission_error", "completion_error"])
+def test_generic_only_provider_error_allows_reuse(failure) -> None:
+    driver = _BoundedGenericDriver(**{failure: RuntimeError("provider failed")})
+    service = EngineService(driver, idle_wait_seconds=0.001)
+    try:
+        with pytest.raises(RuntimeError, match="provider failed"):
+            service.generate_speculative_detailed(_request("failure"))
+        assert not driver._active
+        assert service.live_loop_snapshot()["engine_service"]["active_children"] == 0
+        setattr(driver, failure, None)
+        assert service.generate_speculative_detailed(_request("reuse"))[0].text == "generic"
+        assert driver.mtp_spelling_calls == 0
+        assert not driver.whole_request_thread_ids
     finally:
         service.close()
 
