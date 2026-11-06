@@ -1191,10 +1191,13 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 Scope: `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE`, `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE`,
 `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE`.
 
-Done when: Decision needed: retain the controls as diagnostics or replace both on/off requests with an
-explicit scoped policy before removing their readers. The batch-route gate clears and restores these
-variables to exercise package policy; its capture metadata must migrate too. Preserve per-lane
-fallback kernels, backend defaults and the separate request-local small-row scope.
+Done when: migrate all on/off diagnostic callers to explicit scoped policy before removing
+the compatibility environment readers. `selected_pair_diagnostic(pair=..., down=...,
+q6_down=...)` overrides selection within one context; an unspecified field uses its
+request-local package floor. The batch-route gate now uses that scope without modifying
+these environment values and reports scoped policy separately from ambient metadata.
+Preserve per-lane fallback kernels, backend defaults and the separate request-local
+small-row scope.
 The three packed width scopes now use context-local token/reset storage rather than
 process globals; overlapping-thread and nested-failure tests cover isolation. Local
 public C8 MoE generation confirms all three package-floor scopes engage and restore

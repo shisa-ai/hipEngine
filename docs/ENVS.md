@@ -390,9 +390,9 @@ independent workload gates.
 | `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A` | unset | Diagnostic route | llama-compat selected-expert dp4a adapter; set by the llama-compat MTP environment map and read by the selected-caller contract. |
 | `HIPENGINE_GGUF_T16_SELECTED_DP4A` | unset | Diagnostic route | llama-compat T16 selected dp4a adapter; set by the llama-compat MTP environment map and read by the selected-caller contract. |
 | `HIPENGINE_GGUF_T16_DS4_PREFILL` | ignored | Retired diagnostic | No runtime reader. Regression tests pin stale values; standalone DS4 parity tests and microbench kernels remain available. |
-| `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE` | unset | Diagnostic route | T16 selected pair-reuse route selector (batch-route gate). |
-| `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE` | unset | Diagnostic route | T16 selected-down pair-reuse route selector. |
-| `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE` | unset | Diagnostic route | T16 selected Q6-down pair-reuse route selector. |
+| `HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE` | unset | Diagnostic route | T16 selected pair-reuse route selector. `selected_pair_diagnostic(pair=...)` takes precedence within its context; `None` uses the request-local package floor. The batch-route gate uses this scope without changing ambient values. |
+| `HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE` | unset | Diagnostic route | T16 selected-down pair-reuse route selector; scoped `selected_pair_diagnostic(down=...)` takes precedence, with `None` using the request-local package floor. |
+| `HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE` | unset | Diagnostic route | T16 selected Q6-down pair-reuse route selector; scoped `selected_pair_diagnostic(q6_down=...)` takes precedence, with `None` using the request-local package floor. |
 | `HIPENGINE_GGUF_IQ_DENSE_ROW_BATCH_DOWN` | retired | No runtime reader | Dense IQ uses the smallest covering slab through eight rows and slab eight above that. Explicit `row_batch` kernel arguments remain available for parity tests. |
 | `HIPENGINE_GGUF_IQ_GROUPED_PREFILL` | retired | No runtime reader | Grouped raw-IQ prefill is selected by assignment count and registered kernel capability. Stale values have no effect; direct selected fallback remains. |
 | `HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS` | true | Retained default with rollback opt-out | Fuses the MoE tail with the next layer's input RMSNorm; `0` restores the separate chain (set to `0` in the MoE-graph parity test). |
