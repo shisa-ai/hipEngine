@@ -1894,24 +1894,6 @@ confirm public chain routing stays unchanged. The corresponding GGUF root/siblin
 is separately owned by `scripts/gguf_mtp_bench.py`; its supported-comparison disposition is recorded
 in `worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md`.
 
-### R0281-SELECTED-PREFILL — Baseline, shared-X and pair32 ownership
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_Q4_T16_SELECTED_PREFILL_MODE`.
-
-**Decision needed:** retain the explicit comparison/rollback interfaces or migrate them into one
-scoped diagnostic policy while preserving the registered strict fallback. Retiring shared-X globally would also
-remove gfx1100's automatic route; changing that default is distinct from retiring diagnostics.
-
-Done when: coordinate gate/up and down maps, backend defaults, registration retries,
-raw/T16 allocation names, replay and isolation-profile callers. Run compact-MoE resolver/routing,
-selected-prefill A/B and profile tests and script help. Before changing execution, run raw-bit
-primitive parity for both activation dtypes and all supported down quants, plus public generation
-with short, partial-tile and longer prompts, reset/reuse and teardown. Any proposal to replace the
-gfx1151 automatic route with shared-X must address its recorded failure using the stall reference's
-bounded repeated-context protocol; passing pair32 does not clear another body's failure.
-
 ### R0281-ROWTILE-CONTROL — Scoped comparison ownership
 
 Owner: `hipengine/runtime/gguf_linear.py`.

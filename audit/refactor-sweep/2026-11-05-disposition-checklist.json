@@ -2971,11 +2971,13 @@
       "ledger_line": 2345,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:32870 retains selected-prefill mode name and live routing maps."
+        "Retain baseline/shared-X/pair32 comparison and rollback interfaces with strict fallback; no defaults or execution changes.",
+        "126 resolver/routing/A-B/profile tests pass; A/B script help succeeds.",
+        "worklog/entries/20261106T000940.914193Z-lhl-r0281-selected-prefill-a5fba9.md"
       ],
-      "next_action": "Move gate/up/down selection and comparison callers under one scoped owner, preserving gfx1100 automatic shared-X and gfx1151 containment.",
+      "next_action": "None; gfx1151 shared-X failure is not cleared by retaining comparison interfaces.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
