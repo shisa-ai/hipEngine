@@ -2827,6 +2827,34 @@ def test_packed_state_replaces_incompatible_eager_growth_with_one_chunk(monkeypa
     assert state.page_ids == (0, 1, 2, 3)
 
 
+def test_packed_replacement_binding_failure_releases_new_lease(monkeypatch):
+    layout = _lease_test_layout()
+    backing = _lease_test_backing(layout)
+    leases = []
+    released = []
+    def lease(key, count):
+        leases.append((key, count))
+        return (8, 9) if count == 2 else (10, 11, 12, 13)
+    def binding(pages):
+        if pages == (0, 1, 8, 9):
+            return None
+        raise RuntimeError('binding failed')
+    pool = SimpleNamespace(
+        backing=backing, workspace_pages=lambda key: (0, 1),
+        lease_workspace=lease, workspace_backing_for_pages=binding,
+        release_workspace=lambda key: released.append(key),
+    )
+    monkeypatch.setattr(gguf_runner, 'malloc', lambda *args, **kwargs: pytest.fail('private allocation'))
+    with pytest.raises(RuntimeError, match='binding failed'):
+        _GGUFPackedTargetState.allocate(
+            _lease_test_runner(), slot_count=2, max_sequence_length=512,
+            runtime=SimpleNamespace(), kv_layout=layout, kv_pool=pool,
+        )
+    assert [count for _, count in leases] == [2, 4]
+    assert released == [key for key, _ in leases]
+    assert len(set(released)) == 2
+
+
 def test_packed_state_binds_appended_chunk_with_local_page_offsets(monkeypatch):
     layout = _lease_test_layout()
     backing = _lease_test_backing(layout)
