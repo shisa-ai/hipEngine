@@ -10109,7 +10109,12 @@ def _gguf_head_major_pair_fits_memory(*, runtime: HipRuntime, nbytes: int) -> bo
     mem_get_info = getattr(runtime, "mem_get_info", None)
     if not callable(mem_get_info):
         return True
-    free_bytes, _ = mem_get_info()
+    try:
+        free_bytes, _ = mem_get_info()
+    except Exception:
+        # Optional pricing must not turn a query failure into session failure.
+        # The tracked allocator still handles actual resource denial below.
+        return True
     return price_memory_admission(
         free_bytes=int(free_bytes),
         consumers=(MemoryConsumer("head_major_kv_scratch", int(nbytes)),),

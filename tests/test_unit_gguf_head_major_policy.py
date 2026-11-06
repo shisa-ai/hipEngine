@@ -61,6 +61,28 @@ def test_head_major_allocation_respects_common_free_memory_budget(monkeypatch):
     assert allocated == []
 
 
+def test_head_major_memory_query_failure_keeps_best_effort_allocation(monkeypatch):
+    from types import SimpleNamespace
+
+    def unavailable():
+        raise RuntimeError("memory query unavailable")
+
+    runtime = SimpleNamespace(mem_get_info=unavailable)
+    buffers = []
+
+    def allocate(nbytes, **kwargs):
+        result = DeviceBuffer(4096 * (len(buffers) + 1), nbytes)
+        buffers.append(result)
+        return result
+
+    monkeypatch.setattr(runner, "malloc", allocate)
+    pair = runner._try_allocate_gguf_aotriton_head_major_kv_scratch(
+        backend="hip_gfx1151", capacity_tokens=37, kv_width=128, runtime=runtime,
+    )
+    assert pair == tuple(buffers)
+    assert len(buffers) == 2
+
+
 @pytest.mark.parametrize("cap_env,cap", [
     ("_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV", "36"),
     ("_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV", "18943"),
