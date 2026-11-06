@@ -66,6 +66,8 @@ class MuseGlimmerGGUFGenerator:
     _closed: bool = field(default=False, init=False, repr=False)
     _load_seconds: float | None = field(default=None, init=False, repr=False)
     last_generation_seconds: float | None = field(default=None, init=False, repr=False)
+    last_prefill_seconds: float | None = field(default=None, init=False, repr=False)
+    last_decode_seconds: float | None = field(default=None, init=False, repr=False)
 
     supports_speculative_mtp = False
     supports_stream_many = False
@@ -297,6 +299,8 @@ class MuseGlimmerGGUFGenerator:
         )
         sampler_mode = "greedy"
 
+        decode_started = time.perf_counter()
+        self.last_prefill_seconds = decode_started - started
         for step in range(request.max_tokens):
             raise_if_generation_deadline_expired(request)
             selection = select_token(
@@ -321,6 +325,7 @@ class MuseGlimmerGGUFGenerator:
             row_logits = np.asarray(session.decode_step(token_id), dtype=np.float32)
 
         text = self.tokenizer.decode(generated, skip_special=False)
+        self.last_decode_seconds = time.perf_counter() - decode_started
         self.last_generation_seconds = time.perf_counter() - started
         return GenerationOutput(
             text=text,

@@ -65,6 +65,8 @@ class MuseGlimmerDFlashTextProvider:
         self._closed = False
         self.counters = _CycleCounters()
         self.last_load_seconds: float | None = None
+        self.last_prefill_seconds: float | None = None
+        self.last_decode_seconds: float | None = None
 
     # -- attachment --------------------------------------------------------
     def _ensure_drafter(self):
@@ -191,6 +193,8 @@ class MuseGlimmerDFlashTextProvider:
                 return True
             return False
 
+        decode_started = time.perf_counter()
+        self.last_prefill_seconds = decode_started - started
         while len(generated) < request.max_tokens:
             raise_if_generation_deadline_expired(request)
             if length + n_draft + 1 > session.max_context:
@@ -253,6 +257,7 @@ class MuseGlimmerDFlashTextProvider:
                 break
 
         text = self.target.tokenizer.decode(generated, skip_special=False)
+        self.last_decode_seconds = time.perf_counter() - decode_started
         self.target.last_generation_seconds = time.perf_counter() - started
         return GenerationOutput(
             text=text,
