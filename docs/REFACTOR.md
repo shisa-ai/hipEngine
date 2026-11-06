@@ -1251,18 +1251,21 @@ Owner: `hipengine/generation/qwen35_gguf.py`.
 Scope: `scripts/gguf_concurrency_baseline.py`, `scripts/server_f1_concurrency_bench.py`,;
 `HIPENGINE_GGUF_AR_PACKED_DECODE`; `scripts/gguf_live_server_bench.py`.
 
-**Progress:** explicit generator `ar_packed_decode` choice precedes legacy input; resident
-scheduler forwards through its generator (`cf2402aa3`, `4673a4361`). Control/owner tests pass
-(57), and public gfx1151 concurrent generation traces packed widths [2,2,3], exact repeats and
-zero tracked allocations after close (`e2cfff758`). Explicit forced-off public transport is not
-yet established. Subprocess server launchers still use the environment and require an explicit
-transport, not a caller-thread-only scope.
+**Progress:** packed decode is selected through the generator-owned `ar_packed_decode`
+choice; `LLM(ar_packed_decode=...)` and server `--[no-]ar-packed-decode` carry it
+before worker construction. Baseline/live-server/production/sample gate callers
+are migrated. The process-wide reader and compatibility-loop import are removed.
+Focused control, baseline, launcher and live-host contracts: 257 passed, one skipped.
+Public gfx1151 constructor off/on/off generation produces packed widths [], [2,2,3], []
+with identical tested tokens, restored owner selection and zero tracked allocations
+on close. Decisions and artifacts are recorded in the R0281 AR transport/caller/
+reader-retirement worklogs.
 
-**Remaining work:** migrate the diagnostic callers to an explicit resolved execution control, or
-designate a separate serial oracle before retiring the process-wide env reader. Update test fixtures
-and effective-route metadata in the same unit. Preserve default packed execution, scalar
+**Remaining work:** finish public neighboring/unrelated logical-width and shrinking-group
+coverage before closing this entry. Preserve default packed execution, scalar
 unsupported-shape behavior, physical grouping and slot/state cleanup. This is distinct from
-R0281-AR-LOOP's direct compatibility-loop extraction; the resident scheduler also consumes the flag.
+R0281-AR-LOOP's direct compatibility-loop extraction; the resident scheduler uses the same
+explicit owner selection.
 
 Done when: run `tests/test_unit_gguf_ar_decode_control.py`,
 `tests/test_unit_gguf_concurrency_baseline.py`, `tests/test_unit_server_f1_concurrency_bench.py` and

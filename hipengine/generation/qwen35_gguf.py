@@ -604,7 +604,6 @@ _GGUFSessionPoolKey = tuple[
     int,
     tuple[str, str, str, str],
 ]
-_GGUF_AR_PACKED_DECODE_ENV = "HIPENGINE_GGUF_AR_PACKED_DECODE"
 _GGUF_AR_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_AR_PACKED_PREFILL"
 _GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
 _GGUF_AR_D2_COST_ARTIFACT_ENV = "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT"
@@ -826,10 +825,6 @@ def _target_arch_scoped_stream(method):
             yield from method(self, *args, **kwargs)
 
     return wrapper
-
-
-def _gguf_ar_packed_decode_enabled() -> bool:
-    return os.environ.get(_GGUF_AR_PACKED_DECODE_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 _GGUF_AR_D2_COST_CACHE: dict[tuple[object, ...], object] = {}
@@ -1476,7 +1471,7 @@ class Qwen35GGUFBringupGenerator:
     # Profile-owned verifier capture mode. ``None`` keeps the unbound/direct
     # diagnostic environment input, resolved once at session construction.
     target_verifier_prefill_gdn_capture: bool | None = None
-    # Explicit packed-decode diagnostic; None uses the legacy adapter during migration.
+    # Explicit packed-decode selection; None uses the enabled package default.
     ar_packed_decode: bool | None = None
     # Profile-owned cooperative F32 router policy. ``None`` selects the
     # runner's construction defaults.
@@ -1829,7 +1824,7 @@ class Qwen35GGUFBringupGenerator:
 
     def _ar_packed_decode_enabled(self) -> bool:
         selected = self.ar_packed_decode
-        return _gguf_ar_packed_decode_enabled() if selected is None else bool(selected)
+        return True if selected is None else bool(selected)
 
     def _target_router_policy_session_kwargs(self) -> dict[str, Any]:
         """Carry the owner-bound cooperative F32 router policy into every owner."""

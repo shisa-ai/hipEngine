@@ -2652,7 +2652,7 @@ def test_gguf_sampled_packed_unavailable_reports_model_serial_fallback(monkeypat
         )
         rows.append(row)
 
-    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+    runner.generator._ar_packed_decode_enabled = lambda: True
     runner._step_native_rows(rows)
 
     assert [call[0] for call in calls] == ["step_batch_native", "step", "step"]
@@ -3385,6 +3385,7 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
         active_mask=(True,) * 13,
     )
 
+    runner.generator = _generator()
     runner._step_native_rows(rows, work=work)
 
     assert calls == [
@@ -3575,7 +3576,7 @@ def test_gguf_resident_direct_int8_c4_uses_capability_qualified_packed_width(
         )
         for index in range(4)
     ]
-    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+    runner.generator._ar_packed_decode_enabled = lambda: True
 
     runner._step_native_rows(rows)
 
@@ -3654,7 +3655,7 @@ def test_gguf_resident_bf16_c4_uses_the_declared_standard_packed_width(
         )
         for index in range(4)
     ]
-    monkeypatch.delenv("HIPENGINE_GGUF_AR_PACKED_DECODE", raising=False)
+    runner.generator._ar_packed_decode_enabled = lambda: True
 
     runner._step_native_rows(rows)
 
@@ -4888,10 +4889,10 @@ def test_gguf_ar_packed_decode_can_be_disabled(monkeypatch) -> None:
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
-    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "0")
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "0")
 
     generator = _generator()
+    generator.ar_packed_decode = False
     generator.prepare()
     outputs = generator.generate_detailed(_request(prompts=("long", "long2"), max_tokens=3))
 
@@ -4965,9 +4966,9 @@ def test_gguf_ar_stream_decode_uses_async_slot_streams(monkeypatch) -> None:
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "1")
-    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "0")
 
     generator = _generator()
+    generator.ar_packed_decode = False
     generator.prepare()
     outputs = generator.generate_detailed(_request(prompts=("long", "long2"), max_tokens=3))
 
@@ -7951,6 +7952,7 @@ def test_shared_slot_runner_lowers_logical_width_to_registered_c2_groups(
         active_mask=(True,) * 5,
     )
 
+    runner.generator = _generator()
     runner._step_native_rows(rows, work=work)
 
     assert packed_calls == [((0, 1), 2), ((2, 3), 2)]
@@ -8033,6 +8035,7 @@ def test_shared_slot_runner_lowers_logical_width_to_registered_c4_c8_groups(
             for request_id in range(count)
         ]
 
+    runner.generator = _generator()
     runner._step_native_rows(
         _rows(6),
         work=WorkItem(
@@ -8126,6 +8129,7 @@ def test_resident_runner_follows_d2_composition_across_c1_to_c32(
         qwen35_gguf, "_gguf_ar_resolve_cost_table", lambda *a, **k: None
     )
 
+    runner.generator._ar_packed_decode_enabled = lambda: True
     for c in range(1, 33):
         rows = [
             SimpleNamespace(
@@ -8269,7 +8273,7 @@ def test_resident_runner_d2_artifact_env_loads_cost_table(monkeypatch) -> None:
         runner._last_physical_group_plan = {}
         runner._step_native_chunk = lambda rows, **kwargs: True
         runner._step_native_serial = lambda rows, **kwargs: None
-        monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+        runner.generator._ar_packed_decode_enabled = lambda: True
         runner._step_native_rows(
             [
                 SimpleNamespace(

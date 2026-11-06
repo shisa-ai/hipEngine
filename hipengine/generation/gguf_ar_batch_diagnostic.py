@@ -345,7 +345,6 @@ def step_ar_serving_slot_serial(generator: Any, slot: Any, request: Any) -> None
 
 def run_ar_serving_slots(generator: Any, slots: list[Any], request: Any) -> None:
     from hipengine.generation.qwen35_gguf import (
-        _gguf_ar_packed_decode_enabled,
         _timing_add_ms,
         _timing_ms_since,
     )
@@ -354,7 +353,7 @@ def run_ar_serving_slots(generator: Any, slots: list[Any], request: Any) -> None
         live_slots = [slot for slot in slots if not slot.done]
         cycle_start = time.perf_counter()
         handled = False
-        if _gguf_ar_packed_decode_enabled():
+        if generator._ar_packed_decode_enabled():
             handled = generator._try_step_ar_serving_slots_batch(live_slots, request)
         if not handled:
             handled = generator._try_step_ar_serving_slots_streams(live_slots, request)
