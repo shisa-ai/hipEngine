@@ -389,6 +389,29 @@ def test_pair_silu_plan_prefill_chunk_boundary(monkeypatch):
     assert at.chunks == ((7, 0), (2, 7))
 
 
+def test_owner_rechecks_live_sidecar_availability(monkeypatch):
+    from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner, launch_decision_session
+    _patch(monkeypatch, dispatch_a=_dispatch(Q4_PACK8_DECODE, "raw"),
+           dispatch_b=_dispatch(Q4_PACK8_DECODE, "raw"))
+    weights = (_Weight("a", "gguf_q4_k", decode_tiles=True),
+               _Weight("b", "gguf_q4_k", decode_tiles=True))
+    owner = LaunchDecisionOwner()
+    with launch_decision_session(owner):
+        sidecar = _resolve(*weights, rows=1)
+        assert sidecar.operand_mode == "decode_tiles_pair"
+        allocations = [weight.allocations.pop("decode_tiles") for weight in weights]
+        fallback = _resolve(*weights, rows=1)
+        assert fallback.operand_mode == "pack8_pack8"
+        for weight, allocation in zip(weights, allocations, strict=True):
+            weight.allocations["decode_tiles"] = allocation
+        restored = _resolve(*weights, rows=1)
+        assert restored.decision == sidecar.decision
+        assert len(owner) == 2
+    events = []
+    assert _execute(restored, *weights, events=events, monkeypatch=monkeypatch)
+    assert events[0][2][1:3] == (15, 115)
+
+
 def test_pair_silu_plan_sidecar_fallthrough_uses_exact_resource(monkeypatch):
     _patch(
         monkeypatch,
