@@ -3978,7 +3978,7 @@
         "Fresh/resumed INT8 token difference disappears with matched direct-INT8 source; no default change. Separate Japanese AR/MTP mismatch persists with cache off, strict, and BF16 KV.",
         "worklog/entries/20261106T021942.247074Z-lhl-r0509-dms-pressure-1825e3.md"
       ],
-      "next_action": "Replace independent provider entry count with owner-controlled bounds across dense and DMS, then finish same-prefix-reusing AR/MTP server exact-token gate; preserve observed Japanese mismatch as unresolved, not a cache accounting failure.",
+      "next_action": "Owner-budget replacement implemented in 13f49c2a4 with dense/DMS public hits and teardown. Finish same-prefix-reusing AR/MTP server exact-token gate; Japanese mismatch remains reproducible even with cache off and BF16. Keep explicit rollback until repaired.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -3997,9 +3997,10 @@
       "review_status": "reviewed",
       "disposition": "locally_actionable",
       "evidence": [
-        "hipengine/server/api.py:5637,11626 retains startup width reduction."
+        "hipengine/server/api.py:5637,11626 retains startup width reduction.",
+        "c23ff1a17/15aee224e/0b164add5/62d0d62b7/983f9be0b implement release-only bounded sessions and failure/cancellation cleanup; 552d89666 adds server probe pricing. 5bec4b425 records width-four AR startup and concurrent HTTP success under configured 4 GiB budget."
       ],
-      "next_action": "Implement temporary bounded-context probe sessions sharing immutable weights with priced bucket coverage and release before full request use.",
+      "next_action": "Actual low-free-memory validation remains distinct from configured budget. Complete MTP-enabled server probe run bg-617, then price any physical-pressure experiment before allocating; keep width guard and do not certify full-context/graph coverage.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4200,11 +4201,12 @@
       "ledger_line": 3368,
       "owner": "`hipengine/generation/engine_service.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "hipengine/generation/engine_service.py:664-746 has generic-child spelling but compatibility admission gate still wraps lifecycle."
+        "hipengine/generation/engine_loop.py implements bounded child admission/advance/retirement; hipengine/generation/laguna_gguf.py forwards to provider.create_child.",
+        "worklog/entries/20261106T075454.368851Z-lhl-r0011-laguna-children-d77b10.md and worklog/entries/20261106T075838.544970Z-lhl-r0011-real-deadline-fdc5ae.md record implementation and lifecycle evidence; current 24-test integration ownership file passes."
       ],
-      "next_action": "Implement bounded generic-only child driver contract and actual generic adapter tests before replacing compatibility rejection; preserve sole model-work driver.",
+      "next_action": "Actual-model public validation requires Laguna GGUF/repacked target and compatible DFlash drafter, absent from the local /models/gguf inventory. Supply those artifacts, then exercise loader/provider public generation and retirement. Do not repeat the implemented bounded child contract or synthetic lifecycle matrix; see worklog/entries/20261106T103737.875467Z-lhl-r0011-disposition-5f31b4.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4688,9 +4690,11 @@
       "review_status": "reviewed",
       "disposition": "locally_actionable",
       "evidence": [
-        "hipengine/generation/qwen35_gguf_mtp2.py:136-138,937-953 reads exact-row and mixed-Q6 physical policy."
+        "hipengine/generation/physical_target_rows.py freezes row, width/depth and prompt-policy inputs at profile construction; dense gfx1100/gfx1151 and MoE gfx1151 bind those values.",
+        "hipengine/generation/qwen35_gguf_mtp2.py reports resolved policy and submitted shape; hipengine/speculative/accounting.py publishes per-request shape reason counts.",
+        "worklog/entries/20261106T101031.447789Z-lhl-r0195-public-validation-e40769.md and worklog/entries/20261106T101255.547446Z-lhl-r0195-strict-validation-d24636.md record public gfx1151 production/strict widths 1-4 repeats and clean teardown, not state parity."
       ],
-      "next_action": "Represent exact rows/padding/partitions in existing profile-owned physical manifest and migrate diagnostic controls with offset/strict/fallback tests.",
+      "next_action": "Unified immutable PhysicalTargetPlan implemented in 6ad276ec5; frozen profile selection repaired in be2b0aa05. Exact state/offset/selector coverage including actual dispatch scope misses remains. Planning attribution matrix across C1-C8 and strict/production/batch-invariant passed in c76d5676b. Do not repeat completed owner transport or same-width token smoke; gfx1100 wider device validation is hardware-specific.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4730,7 +4734,7 @@
       "evidence": [
         "hipengine/generation/qwen4_exp_ar_batch.py:54-59 bounds slot positions at 65536."
       ],
-      "next_action": "Page per-position storage through block table, migrate selected-down profile policy and independently evaluate interference scheduling; preserve c1 long context.",
+      "next_action": "Page per-position storage through block table and independently evaluate interference scheduling; preserve c1 long context. Selected-down profile ownership already implemented in 17c5d6137 and reconciled in 0a53df6e5 (73 focused tests); public selected-route attribution passed in 24ff2080c with actual registered grouped blockscale guarded owner and clean teardown.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4752,7 +4756,7 @@
       "evidence": [
         "hipengine/generation/qwen4_exp_ar_batch.py:151-316 owns leases/admission and exposes import lifecycle."
       ],
-      "next_action": "Create explicit source/destination prefix-bounded copy and one atomic admission object across mirrors/leases; profile only before claiming import benefit.",
+      "next_action": "Prefix-bounded copy plans and shared admission records implemented. CPU clearing bundle: 99 passed; GPU bundle: 18 passed plus repaired pooled node passed. Actual-model public gfx1151 fixed-shape reuse passed (two imports, seven width-two steps per call, exact tokens, zero tracked allocations); default scheduling varied shape and tokens. Evidence: worklog/entries/20261106T102915.238841Z-lhl-r0007-public-admission-0fa288.md. Remaining work: profile host-issued import copies before choosing a batched device implementation; do not repeat completed admission validation.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
