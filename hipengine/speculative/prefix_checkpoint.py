@@ -47,7 +47,7 @@ class PrefixCheckpointStoreStats:
     """What the store has done, for the served diagnostics block."""
 
     entries: int
-    capacity: int
+    capacity: int | None
     stored: int
     hits: int
     misses: int
@@ -70,6 +70,9 @@ class _Entry:
 class PrefixCheckpointStore:
     """Bounded token-prefix-keyed store of provider prefix checkpoints.
 
+    A ``None`` capacity delegates the entry bound to the owner, which must
+    apply its byte budgets after each publication. Zero disables storage.
+
     ``release`` is called with the stored payload when an entry leaves the
     table. It must be safe to call from ``put``/``drop``/``clear`` (the
     provider's own release is idempotent) and must not raise for an
@@ -79,14 +82,14 @@ class PrefixCheckpointStore:
     def __init__(
         self,
         *,
-        capacity: int,
+        capacity: int | None,
         release: Callable[[Any], None],
     ) -> None:
-        if capacity < 0:
+        if capacity is not None and capacity < 0:
             raise ValueError("prefix checkpoint store capacity must be non-negative")
         if not callable(release):
             raise ValueError("prefix checkpoint store requires a release callback")
-        self._capacity = int(capacity)
+        self._capacity = None if capacity is None else int(capacity)
         self._release = release
         self._entries: OrderedDict[tuple[int, ...], _Entry] = OrderedDict()
         self._stored = 0
@@ -100,7 +103,7 @@ class PrefixCheckpointStore:
     # -- introspection ---------------------------------------------------
 
     @property
-    def capacity(self) -> int:
+    def capacity(self) -> int | None:
         return self._capacity
 
     @property
@@ -205,7 +208,7 @@ class PrefixCheckpointStore:
             self._release_entry(previous)
         self._entries[key] = _Entry(tokens=key, block_ids=blocks, payload=payload)
         self._stored += 1
-        while len(self._entries) > self._capacity:
+        while self._capacity is not None and len(self._entries) > self._capacity:
             _key, evicted = self._entries.popitem(last=False)
             self._evicted += 1
             self._release_entry(evicted)

@@ -32,6 +32,20 @@ def _store(capacity: int = 4) -> tuple[PrefixCheckpointStore, _Recorder]:
     return PrefixCheckpointStore(capacity=capacity, release=recorder), recorder
 
 
+def test_owner_budgeted_store_has_no_independent_entry_cap():
+    from types import SimpleNamespace
+    released = []
+    store = PrefixCheckpointStore(capacity=None, release=released.append)
+    for token in range(1, 8):
+        store.put((token,), (token,), SimpleNamespace(nbytes=10))
+    assert len(store) == 7
+    assert store.stats().capacity is None
+    assert store.trim_device_bytes(20) == 5
+    assert len(store) == 2
+    store.clear()
+    assert len(released) == 7
+
+
 def test_device_trim_counts_shared_owners_and_unpaired_payloads():
     from types import SimpleNamespace
     store, recorder = _store()

@@ -587,7 +587,6 @@ _GGUF_MTP_SERVER_VERIFY_MODE_ENV = "HIPENGINE_GGUF_MTP_VERIFY_MODE"
 # copy of that prefix's provider KV and recurrent state. Bounded capture keeps
 # MTP usable after a target radix hit; zero remains the memory/bisection rollback.
 _GGUF_MTP2_PREFIX_CHECKPOINT_ENTRIES_ENV = "HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES"
-_GGUF_MTP2_PREFIX_CHECKPOINT_DEFAULT_ENTRIES = 4
 # The prefix cache's block granularity. The trie stores whole blocks and the
 # snapshot path already keys on this same multiple, so the capture boundary is
 # the last full block rather than the prompt's end.
@@ -956,18 +955,18 @@ def _gguf_mtp_server_candidate_budget() -> int:
     return explicit
 
 
-def _gguf_mtp2_prefix_checkpoint_entries() -> int:
-    """Bound provider prefix checkpoints; zero disables capture explicitly."""
+def _gguf_mtp2_prefix_checkpoint_entries() -> int | None:
+    """Optional rollback entry cap; owner byte budgets bound default capture."""
 
     raw = os.environ.get(_GGUF_MTP2_PREFIX_CHECKPOINT_ENTRIES_ENV, "")
     if raw is None or str(raw).strip() == "":
-        return _GGUF_MTP2_PREFIX_CHECKPOINT_DEFAULT_ENTRIES
+        return None
     try:
         entries = int(str(raw).strip())
     except ValueError:
-        return _GGUF_MTP2_PREFIX_CHECKPOINT_DEFAULT_ENTRIES
+        return None
     if entries < 0:
-        return _GGUF_MTP2_PREFIX_CHECKPOINT_DEFAULT_ENTRIES
+        return None
     return entries
 
 
@@ -9696,7 +9695,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             else int(_GGUF_PREFIX_CACHE_BLOCK_TOKENS)
         )
         adapter.prefix_checkpoint_key = (
-            self._prefix_checkpoint_block_ids if capacity > 0 else None
+            self._prefix_checkpoint_block_ids if capacity is None or capacity > 0 else None
         )
         try:
             if os.environ.get("HIPENGINE_MTP2_TRACE_DECLINE", "").strip() not in {"", "0"}:

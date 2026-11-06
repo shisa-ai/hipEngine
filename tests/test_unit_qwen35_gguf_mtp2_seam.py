@@ -6690,7 +6690,7 @@ def test_runner_captures_provider_prefix_when_radix_is_enabled(monkeypatch) -> N
     monkeypatch.delenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", raising=False)
     runner._configure_mtp2_prefix_checkpoint_capture(adapter)
 
-    assert adapter.prefix_checkpoint_capacity > 0
+    assert adapter.prefix_checkpoint_capacity is None
     assert adapter.prefix_checkpoint_block_size == 256
     assert adapter.prefix_checkpoint_key(7, 256) == (1,)
 
@@ -6703,7 +6703,7 @@ def test_runner_captures_provider_prefix_when_radix_is_enabled(monkeypatch) -> N
     monkeypatch.setenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", "not-a-number")
     runner._configure_mtp2_prefix_checkpoint_capture(adapter)
 
-    assert adapter.prefix_checkpoint_capacity > 0
+    assert adapter.prefix_checkpoint_capacity is None
     assert adapter.prefix_checkpoint_key(7, 256) == (1,)
 
     monkeypatch.setenv("HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES", "0")

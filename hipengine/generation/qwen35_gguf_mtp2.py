@@ -1044,7 +1044,7 @@ class Qwen35GGUFMTP2Adapter:
         # size decides which boundary is worth taking, and the block ids are
         # what a later lookup validates. With no capacity or no key provider the
         # capture is off, which is the default until the runner wires them.
-        self.prefix_checkpoint_capacity: int = 0
+        self.prefix_checkpoint_capacity: int | None = 0
         self.prefix_checkpoint_block_size: int = 0
         self.prefix_checkpoint_key: Any = None
         self._prefix_checkpoint_store_instance: PrefixCheckpointStore | None = None
@@ -1897,7 +1897,7 @@ class Qwen35GGUFMTP2Adapter:
                     max_chunk_rows=capacity,
                     prefix_capture=(
                         capture_streamed_prefix
-                        if self.prefix_checkpoint_capacity > 0
+                        if self.prefix_checkpoint_capacity is None or self.prefix_checkpoint_capacity > 0
                         else None
                     ),
                     capture_boundary=self._prefix_checkpoint_boundary(
@@ -7277,8 +7277,10 @@ class Qwen35GGUFMTP2Adapter:
         store at all rather than one that would leak.
         """
 
-        capacity = int(getattr(self, "prefix_checkpoint_capacity", 0) or 0)
-        if capacity <= 0:
+        capacity = getattr(self, "prefix_checkpoint_capacity", 0)
+        if capacity is not None:
+            capacity = int(capacity)
+        if capacity is not None and capacity <= 0:
             return None
         store = getattr(self, "_prefix_checkpoint_store_instance", None)
         if store is not None:

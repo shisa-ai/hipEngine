@@ -2400,8 +2400,11 @@ Scope: `_evict_prefix_snapshot`, `discard_prefix_checkpoint`;
 including unpaired provider records and target arena padding. Idle arena pools consume
 remaining allowance; quarantine is charged but never reclaimed before retirement.
 Provider host KV has a separate allowance of the same configured size; DMS target cache
-snapshots consume that host allowance too. Independent provider entry count remains
-bounded; its replacement is unfinished. Capture/overwrite and public pressure evidence:
+snapshots consume that host allowance too. Default provider capture now uses owner
+byte budgets instead of an independent entry cap. Explicit positive caps and zero-disable
+remain rollback controls until same-route server parity is repaired. Implementation:
+`worklog/entries/20261106T022713.106769Z-lhl-r0509-owner-cap-ae5d66.md`.
+Capture/overwrite and public pressure evidence:
 `worklog/entries/20261106T021942.247074Z-lhl-r0509-dms-pressure-1825e3.md`.
 
 Public dense and DMS pressure checks exercise real 512-token reuse, speculative cycles
