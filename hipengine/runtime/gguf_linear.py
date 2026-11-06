@@ -7,7 +7,7 @@ import ctypes
 import os
 import warnings
 from contextvars import ContextVar, Token
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Any, Callable, Iterator, Mapping
 
@@ -1330,16 +1330,8 @@ class _GGUFTripleOperand:
 
 
 @dataclass(frozen=True)
-class _GGUFTripleLaunchPlan:
-    """Typed, pointer-free, launch-local plan for one same-input GGUF triple projection.
-
-    The plan owns the selected operation, resolved threads, operand contracts and
-    fallback reason. Raw device pointers and tile allocations stay out of the
-    plan; ``_execute_gguf_linear_triple_plan`` binds and revalidates them at
-    execution time. The plan is intentionally not exported and carries no
-    execution-profile owner: callers must re-resolve after a profile or registry
-    change rather than treating it as a reusable cross-owner policy object.
-    """
+class _GGUFTripleDecision:
+    """Immutable triple selection; owner slots are bound for each launch."""
 
     backend: str
     rows: int
@@ -1397,6 +1389,19 @@ class _GGUFTripleLaunchPlan:
         object.__setattr__(self, "threads", threads)
         object.__setattr__(self, "registry_generation", registry_generation)
 
+    def bind(
+        self, owner_slots: tuple[str | None, str | None, str | None],
+    ) -> _GGUFTripleLaunchPlan:
+        if len(owner_slots) != 3:
+            raise ValueError("GGUF triple binding needs exactly three owner slots")
+        return _GGUFTripleLaunchPlan(
+            **{name: getattr(self, name)
+               for name in _GGUFTripleDecision.__dataclass_fields__
+               if name != 'operands'},
+            operands=tuple(replace(operand, owner_slot=slot)
+                           for operand, slot in zip(self.operands, owner_slots, strict=True)),
+        )
+
     @property
     def fused(self) -> bool:
         return self.operation is not None
@@ -1412,6 +1417,20 @@ class _GGUFTripleLaunchPlan:
     @property
     def out_features_c(self) -> int:
         return self.operands[2].out_features
+
+
+@dataclass(frozen=True)
+class _GGUFTripleLaunchPlan(_GGUFTripleDecision):
+    """Launch-local triple decision with ordered owner-slot contracts."""
+
+    @property
+    def decision(self) -> _GGUFTripleDecision:
+        return _GGUFTripleDecision(
+            **{name: getattr(self, name)
+               for name in _GGUFTripleDecision.__dataclass_fields__
+               if name != 'operands'},
+            operands=tuple(replace(operand, owner_slot=None) for operand in self.operands),
+        )
 
 
 @dataclass(frozen=True)
@@ -10564,18 +10583,18 @@ def _resolve_gguf_linear_triple_plan(
         resolved_threads: int,
         fallback_reason: str | None,
     ) -> _GGUFTripleLaunchPlan:
-        return _GGUFTripleLaunchPlan(
+        return _GGUFTripleDecision(
             backend=resolved_backend,
             rows=rows,
             in_features=in_features,
-            operands=operands,
+            operands=tuple(replace(operand, owner_slot=None) for operand in operands),
             operation=operation,
             owner_key=owner_key,
             threads=resolved_threads,
             use_wmma_prefill=use_wmma,
             fallback_reason=fallback_reason,
             registry_generation=resolved_registry_generation,
-        )
+        ).bind(tuple(operand.owner_slot for operand in operands))
 
     if use_wmma and rows > 1 and (
         _dispatch_can_use_t16_wmma_prefill(dispatch_a, rows=rows, in_features=in_features)

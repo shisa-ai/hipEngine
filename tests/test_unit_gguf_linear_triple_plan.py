@@ -424,6 +424,20 @@ def test_triple_plan_owner_isolation_rejects_foreign_operands(monkeypatch) -> No
         _execute(plan, (q4, weights[1], weights[2]))
 
 
+def test_triple_decision_excludes_owner_slots_and_rebinds(monkeypatch) -> None:
+    _capture_triple(monkeypatch)
+    original = _q8_weights()
+    peer = _q8_weights(slots=tuple(f'layers.1.attn_{x}' for x in 'qkv'))
+    plan = _resolve(original)
+    other = _resolve(peer)
+    assert plan.decision == other.decision
+    assert all(operand.owner_slot is None for operand in plan.decision.operands)
+    rebound = plan.decision.bind(tuple(w.spec.slot_path for w in peer))
+    assert _execute(rebound, peer)
+    with pytest.raises(ValueError, match='plan owner'):
+        _execute(plan, peer)
+
+
 def test_triple_plan_rebinds_allocations_per_execution(monkeypatch) -> None:
     original = _q8_weights(tiles_ptrs=(14, 15, 16))
     calls = _capture_triple(monkeypatch)
