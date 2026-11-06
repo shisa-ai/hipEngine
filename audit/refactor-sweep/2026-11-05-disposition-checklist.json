@@ -2411,11 +2411,11 @@
       "ledger_line": 1854,
       "owner": "`hipengine/runtime/f16_weight_linear.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "hipengine/runtime/f16_weight_linear.py:23,108-114 reads source-F16 decode mode and backend capability."
       ],
-      "next_action": "Context-local decode strategy and profiler environment migration completed in 8a6893fc4. Generic-K leaf parity and alternate launch-width single/triple device dispatch passed on gfx1151 (full projection file: 50 passed; worklog 20261106T113231.562115Z-lhl-r0340-auto-device-73121d.md). Finish remaining compatibility-reader migration; actual-weight public Laguna generation/continuation/teardown depends on absent model artifact R0273.",
+      "next_action": "Model-independent work complete: scoped strategy/profiler migration, 50 projection device tests, 138 backend/shape/profiler host tests. Legacy env reader intentionally preserved for external compatibility; no internal profiler env caller remains. Provide Laguna artifact and run public LLM.generate() with variant attribution, continuation and cleanup (R0273).",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -2433,11 +2433,11 @@
       "ledger_line": 1871,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "hipengine/runtime/laguna_gguf_runner.py:2958,3474-3481 retains packed-output gate comparison."
       ],
-      "next_action": "Owner-local packed_attention_diagnostic and harness migration completed in d4e5763a2; redundant packed-output constructor override retired with 87 focused host tests. Remaining actual-weight paired full-state/public varied-length validation requires absent Laguna model artifact R0273/R0274; generic unpack/gate primitives and production defaults remain unchanged.",
+      "next_action": "Model-independent migration complete: owner-local scope, retired constructor override, 87 focused host tests. Provide Laguna artifact for paired full-state and public varied-length generation/continuation/teardown (R0273/R0274); generic primitives and production defaults unchanged.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -2517,11 +2517,11 @@
       "ledger_line": 1941,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "hipengine/runtime/laguna_gguf_runner.py:4202 keeps F16 boundary setter."
       ],
-      "next_action": "F16 boundary comparison migrated to restoring owner-local diagnostic in 481d5a9d0; persistent setter retired with 83 boundary/runner tests. Distinct fused/separate casts and fallback preserved. Actual-weight full-model/public validation requires absent Laguna model artifact R0313-R0320.",
+      "next_action": "Model-independent migration complete: restoring scope, retired persistent setter, 83 boundary/runner tests and gfx1151 fused-vs-separate boundary GPU bit parity passed. Provide Laguna artifact for full-model paired comparison and public compatible/fallback route validation (R0273/R0313-R0320).",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
