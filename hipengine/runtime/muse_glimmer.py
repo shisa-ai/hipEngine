@@ -56,8 +56,11 @@ from hipengine.loading.muse_glimmer_gguf import MuseGlimmerLoadedWeights
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_exact_rows
 
-#: Prefill chunk bound for the bring-up scratch and keep-mask sizing.
-DEFAULT_PREFILL_CHUNK = 512
+#: Prefill chunk bound for the bring-up scratch and keep-mask sizing. 1024
+#: rows amortize the Q4/Q6 WMMA prefill projections better than 512 on
+#: gfx1151 (1K prefill 327->339, 4K 293->305 tok/s with the WMMA attention);
+#: 2048 adds only ~2% at 4K for double the logits scratch.
+DEFAULT_PREFILL_CHUNK = 1024
 
 
 def _rope_tables_neox(
