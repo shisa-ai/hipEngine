@@ -3970,12 +3970,12 @@
       "review_status": "reviewed",
       "disposition": "locally_actionable",
       "evidence": [
-        "Retained target/provider allocation union, capture budget review, idle pool pricing and quarantine protection implemented; separate host/device diagnostic fields.",
-        "Public compact-INT8 pressure: low limit clean miss, normal limit 512-token reuse, cycles in both, zero tracked allocations after close; generated chains differ, so no parity pass.",
-        "Corrected server gate passes code/English but fails Japanese AR/MTP at index 23; same mismatch repeats with cache off.",
-        "worklog/entries/20261106T014443.162771Z-lhl-r0509-pressure-result-5a1eb1.md"
+        "Target/all-provider device-owner union and idle/quarantine allowance integrated; legacy sizes priced consistently. Provider host bytes bounded separately; DMS target snapshots consume shared host allowance.",
+        "Public dense low-budget miss and normal 512-token reuse, DMS normal and pressure replacement with 512-token hits; speculative cycles and zero tracked allocations on close.",
+        "Fresh/resumed INT8 token difference disappears with matched direct-INT8 source; no default change. Separate Japanese AR/MTP mismatch persists with cache off, strict, and BF16 KV.",
+        "worklog/entries/20261106T021942.247074Z-lhl-r0509-dms-pressure-1825e3.md"
       ],
-      "next_action": "Complete bounded host/provider-count replacement and matched-history numerical localization; preserve count bound and full server prefix-hit exact-token gate until passing, including overwrite/pressure/target eviction/release.",
+      "next_action": "Replace independent provider entry count with owner-controlled bounds across dense and DMS, then finish same-prefix-reusing AR/MTP server exact-token gate; preserve observed Japanese mismatch as unresolved, not a cache accounting failure.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

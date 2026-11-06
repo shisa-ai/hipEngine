@@ -2396,19 +2396,20 @@ Owner: `scripts/int8_mtp_prefix_gate.py`.
 Scope: `_evict_prefix_snapshot`, `discard_prefix_checkpoint`;
 `HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES`.
 
-**Current implementation:** retained trimming counts the union of target/provider device
-owners, including target arena padding, and reviews provider capture/replacement. Idle arena
-pools consume remaining allowance; quarantine is charged but never reclaimed before retirement.
-Provider host KV has an independent byte allowance of the same configured size.
-Independent provider entry count remains bounded; its replacement is unfinished.
-Capture/overwrite host-bound regression and public live-accounting evidence are recorded in
-`worklog/entries/20261106T015317.527256Z-lhl-r0509-host-validation-94030c.md`.
+**Current implementation:** trimming counts target and all provider device owners,
+including unpaired provider records and target arena padding. Idle arena pools consume
+remaining allowance; quarantine is charged but never reclaimed before retirement.
+Provider host KV has a separate allowance of the same configured size; DMS target cache
+snapshots consume that host allowance too. Independent provider entry count remains
+bounded; its replacement is unfinished. Capture/overwrite and public pressure evidence:
+`worklog/entries/20261106T021942.247074Z-lhl-r0509-dms-pressure-1825e3.md`.
 
-Public pressure checks show low-budget miss versus normal-budget 512-token reuse, speculative
-cycles and zero tracked allocations after close. Their output tokens differ, so this is lifecycle
-evidence, not numerical parity. The server gate also exposes Japanese AR/speculative divergence
-that repeats with caching off. See
-`worklog/entries/20261106T014443.162771Z-lhl-r0509-pressure-result-5a1eb1.md`.
+Public dense and DMS pressure checks exercise real 512-token reuse, speculative cycles
+and zero tracked allocations after close. Fresh/resumed INT8 token differences disappear
+when both paths select direct-INT8 prefill; default fresh prefill uses a transient BF16
+oracle instead. This diagnostic does not change the arithmetic default or establish its
+numerical quality. The separate Japanese AR/speculative mismatch reproduces with caching
+off, strict mode, and BF16 KV; it remains an unresolved server parity-gate failure.
 
 Done when: Keep the rollback until shared accounting and coordinated eviction are tested. Run
 `scripts/int8_mtp_prefix_gate.py` against a radix-enabled server: require real prefix hits, compact
