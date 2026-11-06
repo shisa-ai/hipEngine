@@ -12602,6 +12602,24 @@ def _gguf_gapped_gather_prefill_enabled() -> bool:
     return _env_flag(_GGUF_GAPPED_GATHER_ENV, True)
 
 
+def _gguf_gapped_head_major_capacity(*, context_tokens: int, kv_width: int) -> int:
+    """Resolve rounded gather capacity for sizing and allocation."""
+    if int(context_tokens) <= 0 or int(kv_width) <= 0:
+        return 0
+    capacity = min(
+        ((int(context_tokens) + 4095) // 4096) * 4096,
+        _env_int(
+            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
+            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
+        ),
+        _env_int(
+            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
+            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
+        ) // (2 * int(kv_width) * DType.BF16.itemsize),
+    )
+    return capacity if capacity >= int(context_tokens) else 0
+
+
 def _gguf_gapped_slot_local_fast_route_available(
     *,
     backend: str,
@@ -12628,22 +12646,9 @@ def _gguf_gapped_slot_local_fast_route_available(
         missing="none",
     ) is None:
         return False
-    context_tokens = int(context_tokens)
-    kv_width = int(kv_width)
-    if context_tokens <= 0 or kv_width <= 0:
-        return False
-    max_tokens = _env_int(
-        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
-        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
-    )
-    if max_tokens <= 0 or context_tokens > max_tokens:
-        return False
-    per_buffer_bytes = context_tokens * kv_width * DType.BF16.itemsize
-    max_bytes = _env_int(
-        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
-        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
-    )
-    return max_bytes > 0 and 2 * per_buffer_bytes <= max_bytes
+    return _gguf_gapped_head_major_capacity(
+        context_tokens=context_tokens, kv_width=kv_width,
+    ) > 0
 
 
 def _gguf_gapped_slot_head_major_scratch(
@@ -12674,17 +12679,8 @@ def _gguf_gapped_slot_head_major_scratch(
         kv_width=kv_width,
     ):
         return layer_scratch
-    bucket = 4096
-    capacity = min(
-        ((context_tokens + bucket - 1) // bucket) * bucket,
-        _env_int(
-            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
-            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
-        ),
-        _env_int(
-            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
-            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
-        ) // (2 * kv_width * DType.BF16.itemsize),
+    capacity = _gguf_gapped_head_major_capacity(
+        context_tokens=context_tokens, kv_width=kv_width,
     )
     cached = getattr(session, "_gapped_head_major_cache", None)
     if cached is not None and int(cached[0]) >= capacity:
