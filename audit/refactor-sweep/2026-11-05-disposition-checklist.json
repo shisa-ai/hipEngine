@@ -5062,7 +5062,7 @@
       "evidence": [
         "hipengine/kvcache/ remains dense/DMS allocator owner; current runner still binds base-pointer legacy paths."
       ],
-      "next_action": "Migrate chunk-local/base-pointer consumers and DMS transient ownership to page-table leases before factory/identity retirement; preserve same-arena snapshot ownership. Pool/chunk close draining and no-retry ownership repaired in cdb77edfe/0b88d04ea (140-test pool bundle, then 49-test chunk bundle). Actual ordinary/DMS growth and public-device checks remain separate.",
+      "next_action": "Continue chunk-local/base-pointer consumers and dense_pool DMS migration to page-table leases before factory/identity retirement; preserve same-arena snapshot ownership. Pool/chunk close draining repaired in cdb77edfe/0b88d04ea. Packed refusal release-once repair 7e697c143 (200 tests, public MoE drain); oracle drain 952e51ae9 and dedicated layer_outer transient lease owner 6d22bee90 (115 tests, real HIP and public DMS drain). Do not repeat completed layer_outer extraction. Remaining: dense_pool uses create_device_kv_pool at qwen35_gguf_runner.py; packed and request binders still require chunk-local base planes. Actual ordinary/DMS growth and cross-device public gates remain separate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

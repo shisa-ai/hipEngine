@@ -12,8 +12,11 @@ class DMSPrefillOracleLease:
         key = allocate(nbytes, runtime=runtime)
         try:
             value = allocate(nbytes, runtime=runtime)
-        except BaseException:
-            release(key, runtime=runtime)
+        except BaseException as error:
+            try:
+                release(key, runtime=runtime)
+            except BaseException as cleanup_error:
+                error.add_note(f"DMS prefill oracle rollback also failed: {cleanup_error!r}")
             raise
         return cls((key, value))
 
