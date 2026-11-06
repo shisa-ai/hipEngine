@@ -2827,6 +2827,44 @@ def test_packed_state_replaces_incompatible_eager_growth_with_one_chunk(monkeypa
     assert state.page_ids == (0, 1, 2, 3)
 
 
+@pytest.mark.parametrize('replacement_refused', [False, True])
+def test_packed_incompatible_growth_release_is_not_retried(replacement_refused):
+    from hipengine.runtime.gguf_packed_backing import select_packed_arena_backing
+
+    released = []
+    growth_calls = []
+
+    def release(key):
+        released.append(key)
+        raise RuntimeError('release failed')
+
+    def grow(pool, *, needed_pages):
+        growth_calls.append(needed_pages)
+        return ('growth', (8, 9)) if len(growth_calls) == 1 else ('replacement', (10, 11, 12, 13))
+
+    def bind(pages):
+        return None
+
+    pool = SimpleNamespace(
+        workspace_pages=lambda key: (0, 1),
+        workspace_backing_for_pages=bind,
+        release_workspace=release,
+    )
+    if replacement_refused:
+        # Let the first cleanup succeed so failure is in replacement refusal.
+        def release(key):
+            released.append(key)
+            if key == 'replacement':
+                raise RuntimeError('release failed')
+        pool.release_workspace = release
+    with pytest.raises(RuntimeError, match='release failed'):
+        select_packed_arena_backing(
+            pool, total_pages=4, layout=object(), eager_key='eager',
+            lease_growth=grow, on_shortfall=lambda count: None,
+        )
+    assert released == (['growth', 'replacement'] if replacement_refused else ['growth'])
+
+
 def test_packed_replacement_binding_failure_releases_new_lease(monkeypatch):
     layout = _lease_test_layout()
     backing = _lease_test_backing(layout)

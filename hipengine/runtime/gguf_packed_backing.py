@@ -74,8 +74,8 @@ def select_packed_arena_backing(
                 compatible = not callable(root_fits) or root_fits(tuple(pages[:total_pages]))
             if not compatible:
                 if growth_key is not None:
-                    pool.release_workspace(growth_key)
-                    growth_key = None
+                    release_key, growth_key = growth_key, None
+                    pool.release_workspace(release_key)
                 pages = None
                 if callable(bind):
                     replacement = lease_growth(pool, needed_pages=total_pages)
@@ -83,8 +83,8 @@ def select_packed_arena_backing(
                         growth_key, replacement_pages = replacement
                         binding = bind(tuple(replacement_pages))
                         if binding is None:
-                            pool.release_workspace(growth_key)
-                            growth_key = None
+                            release_key, growth_key = growth_key, None
+                            pool.release_workspace(release_key)
                         else:
                             pages = replacement_pages
                             backing, local_pages = binding
