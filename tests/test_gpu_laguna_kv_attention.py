@@ -2147,8 +2147,9 @@ def test_laguna_preappend_cached_qrow4_matches_current_source_qrow4() -> None:
         baseline.free()
 
 
+@pytest.mark.parametrize("rows", [2, 7, 8, 12])
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> None:
+def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap(rows) -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.memory import (
         copy_device_to_host,
@@ -2216,7 +2217,6 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
     )
     rng = np.random.default_rng(1207)
     seed_rows = 508
-    rows = 8
     keys = rng.normal(0.0, 0.12, size=(seed_rows + rows, 8, 128)).astype(np.float32)
     values = rng.normal(0.0, 0.12, size=(seed_rows + rows, 8, 128)).astype(np.float32)
     query_global = rng.normal(0.0, 0.12, size=(rows, 48, 128)).astype(np.float32)
@@ -2745,7 +2745,7 @@ def test_laguna_bulk_global_and_swa_prefill_match_serial_across_ring_wrap() -> N
             actual_swa_qrow4_sourcequal_online_odd,
             actual_swa_qrow4_online_odd,
         )
-        assert bulk.position == serial.position == wave32.position == qrow2.position == 515
+        assert bulk.position == serial.position == wave32.position == qrow2.position == seed_rows + rows - 1
 
         for layer_id in range(2):
             bulk_state = bulk.layer(layer_id)
