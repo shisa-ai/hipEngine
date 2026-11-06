@@ -4302,60 +4302,6 @@ class LagunaGGUFResidentSession:
         finally:
             self.use_selected_natural_tile8_decode = previous
 
-    def set_decode_swa_assume_exp(self, enabled: bool) -> None:
-        """Select exact domain-specialized SWA expf or its rollback."""
-
-        if self.kv_cache is None:
-            raise RuntimeError("Laguna KV cache is not available")
-        self.kv_cache.swa_gqa3_vstage64_vec16_direct_assume_exp_fixed512 = bool(
-            enabled
-        )
-
-    def set_decode_swa_mixed32(self, enabled: bool) -> None:
-        """Select the exact mixed 32-block SWA owner or production GQA3."""
-
-        if self.kv_cache is None:
-            raise RuntimeError("Laguna KV cache is not available")
-        self.kv_cache.swa_mixed32_vstage64_vec16_direct_assume_exp_fixed512 = (
-            bool(enabled)
-        )
-
-    def set_decode_swa_mixed32_exp4(self, enabled: bool) -> None:
-        """Select exact four-lane softmax exponent evaluation in mixed32."""
-
-        if self.kv_cache is None:
-            raise RuntimeError("Laguna KV cache is not available")
-        self.kv_cache.swa_mixed32_exp4_vstage64_vec16_direct_assume_exp_fixed512 = (
-            bool(enabled)
-        )
-
-    def set_decode_swa_mixed32_exp8(self, enabled: bool) -> None:
-        """Select exact eight-lane softmax exponent evaluation in mixed32."""
-
-        if self.kv_cache is None:
-            raise RuntimeError("Laguna KV cache is not available")
-        self.kv_cache.swa_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512 = (
-            bool(enabled)
-        )
-
-    def set_decode_swa_mixed32_exp16(self, enabled: bool) -> None:
-        """Select exact sixteen-lane softmax exponent evaluation in mixed32."""
-
-        if self.kv_cache is None:
-            raise RuntimeError("Laguna KV cache is not available")
-        self.kv_cache.swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512 = (
-            bool(enabled)
-        )
-
-    def set_decode_swa_mixed32_exp32(self, enabled: bool) -> None:
-        """Select exact wave-wide softmax exponent evaluation in mixed32."""
-
-        if self.kv_cache is None:
-            raise RuntimeError("Laguna KV cache is not available")
-        self.kv_cache.swa_mixed32_exp32_vstage64_vec16_direct_assume_exp_fixed512 = (
-            bool(enabled)
-        )
-
     @property
     def resident_nbytes(self) -> int:
         self._check_open()

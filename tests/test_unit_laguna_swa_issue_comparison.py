@@ -91,9 +91,9 @@ def test_swa_issue_scope_restores_nested_policies_and_failed_body(owner, failure
         try:
             with swa_issue_comparison(owner, SimpleNamespace(compare_swa_assume_exp=True)):
                 assert not cache.swa_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512
-                owner.set_decode_swa_assume_exp(True)
-                if failure:
-                    raise RuntimeError("synthetic comparison failure")
+                with swa_issue_arm(owner, SimpleNamespace(compare_swa_assume_exp=True), candidate=True):
+                    if failure:
+                        raise RuntimeError("synthetic comparison failure")
         except RuntimeError as error:
             assert failure and str(error) == "synthetic comparison failure"
         assert vars(cache) == outer
