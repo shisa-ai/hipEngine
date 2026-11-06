@@ -2966,7 +2966,6 @@ class LagunaGGUFResidentSession:
         q6_skip_padded_activation: bool | None = None,
         q6_qmicro_permute: bool | None = None,
         q6_qmicro_planar: bool | None = None,
-        q4_precomputed_activation_sums: bool | None = None,
         moe_branch_concurrency: bool | None = None,
         moe_decode_branch_concurrency: bool | None = None,
         moe_shared_after_router: bool | None = None,
@@ -3653,8 +3652,6 @@ class LagunaGGUFResidentSession:
                 "LAGUNA_Q4_PRECOMPUTED_ACTIVATION_SUMS",
                 False,
             )
-            if q4_precomputed_activation_sums is None
-            else q4_precomputed_activation_sums
         )
         self.selected_down_mode = resolve_laguna_selected_down_mode(self.backend)
         self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(self.backend)
