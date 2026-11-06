@@ -3163,11 +3163,13 @@
       "ledger_line": 2504,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/gguf_linear.py:1244-1246,2692-2715 still reads Q8 pair/floor/column controls."
+        "76a73d111 repairs concurrent execution-context isolation; retain supported diagnostic selectors and unchanged package policies/fallbacks.",
+        "399 host owner/dispatch tests, 168 suite/profiler tests and 133 local GPU tests pass. Public default/enabled packed comparison matches IDs and closes cleanly.",
+        "worklog/entries/20261106T003845.138412Z-lhl-r0291-rowtile-validation-44d5d0.md"
       ],
-      "next_action": "Migrate selectors/session globals into caller-owned plan with cache/binder/profiler provenance, preserving single/pair/triple fallbacks and singleton shape policy.",
+      "next_action": "None; no caller-plan rewrite, arithmetic promotion or untested hardware claim.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
