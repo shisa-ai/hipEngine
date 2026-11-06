@@ -5811,6 +5811,19 @@ def test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths(monkeypatch
     assert len([call for call in calls if call[0] == "close"]) == 6
     assert result["full_context_capacity_checked"] is False
     assert result["graph_context_buckets_warmed"] == []
+    for failure in (RuntimeError, KeyboardInterrupt):
+        for release in (True, False):
+            before = len([call for call in calls if call[0] == "close"])
+
+            def fail_prefill(*args, **kwargs):
+                raise failure("probe interrupted")
+
+            monkeypatch.setattr(FakeSession, "prefill_batch_native", fail_prefill)
+            with pytest.raises(failure, match="probe interrupted"):
+                generator.prepare_request_scratch(
+                    max_prompt_tokens=4, max_batch_size=2, release_after_probe=release,
+                )
+            assert len([call for call in calls if call[0] == "close"]) == before + 2
 
 
 def test_specdec2_streaming_prompt_missing_adapter_preserves_candidate_budget(

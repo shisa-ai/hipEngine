@@ -2027,7 +2027,7 @@ class Qwen35GGUFBringupGenerator:
                         result["packed_ar_prefill_reason"] = f"packed_prefill_unsupported_width_{width}"
                         result["reason"] = f"packed_prefill_unsupported_width_{width}"
                         unsupported = True
-                    except Exception:
+                    except BaseException:
                         for session in sessions:
                             session.close()
                         sessions = []
@@ -2149,7 +2149,7 @@ class Qwen35GGUFBringupGenerator:
                         result["packed_mtp_prefill_skipped"] = True
                         result["packed_mtp_prefill_reason"] = f"packed_prefill_unsupported_width_{width}"
                         unsupported = True
-                    except Exception:
+                    except BaseException:
                         for session in sessions:
                             session.close()
                         sessions = []
