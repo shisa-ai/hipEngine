@@ -235,9 +235,18 @@ class PrefixCheckpointStore:
         """Release every entry; return the number released."""
 
         count = len(self._entries)
-        for entry in self._entries.values():
-            self._release_entry(entry)
+        entries = tuple(self._entries.values())
         self._entries.clear()
+        failures: list[BaseException] = []
+        for entry in entries:
+            try:
+                self._release_entry(entry)
+            except BaseException as exc:
+                failures.append(exc)
+        if failures:
+            for extra in failures[1:]:
+                failures[0].add_note(f"additional checkpoint release failure: {extra!r}")
+            raise failures[0]
         return count
 
     # -- internals -------------------------------------------------------

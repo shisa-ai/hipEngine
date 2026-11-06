@@ -32,6 +32,22 @@ def _store(capacity: int = 4) -> tuple[PrefixCheckpointStore, _Recorder]:
     return PrefixCheckpointStore(capacity=capacity, release=recorder), recorder
 
 
+def test_clear_drains_later_payloads_after_release_failure() -> None:
+    released = []
+    def release(payload):
+        released.append(payload)
+        if payload == "first":
+            raise RuntimeError("release failed")
+    store = PrefixCheckpointStore(capacity=2, release=release)
+    store.put((1,), (10,), "first")
+    store.put((2,), (11,), "second")
+    with pytest.raises(RuntimeError, match="release failed"):
+        store.clear()
+    assert released == ["first", "second"]
+    assert len(store) == 0
+    assert store.clear() == 0
+
+
 def test_a_stored_prefix_round_trips_by_tokens_and_block_ids() -> None:
     store, recorder = _store()
     blob = object()
