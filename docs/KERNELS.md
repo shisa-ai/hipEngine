@@ -342,7 +342,7 @@ production capability does not replace or rebind that reference.
 | `vibevoice/diffusion.hip` | Diffusion-head normalization, modulation, and solver steps. |
 | `evie/evie_ops.hip` | Vision patch embedding, normalization, attention, and merger operations. |
 | `vision/gemma4_vision.{hip,py}` | FP32 Gemma 4 image RMSNorm, elementwise stages, X/Y rotary head layouts, softmax and spatial pooling; `vision_*` / `fp32` / `gemma4` registrations share gfx11 sources. The runtime composes these primitives with rocBLAS linear and attention contractions. |
-| `surya/surya_ops.hip` | Surya normalization, query/gate splitting, cache writes, and attention. |
+| `surya/surya_ops.hip` | Surya normalization, query/gate splitting, span-aware cache writes, fused attention and strict unfused QK/softmax/AV fallback. |
 | `timesfm/timesfm.hip` | TimesFM normalization, rotary transforms, attention, and layout operations. |
 | `timesfm3/timesfm3.hip` | TimesFM 3.0 variate attention, query/key normalization, and ReLU. |
 

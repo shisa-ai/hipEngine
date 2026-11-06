@@ -232,6 +232,45 @@ def surya_scatter_kv_f32_spans(
     _check(err, runtime, "surya scatter_kv spans")
 
 
+def surya_attention_decode_unfused_f32_spans(
+    query_ptr: int, key_cache_ptr: int, value_cache_ptr: int, out_ptr: int,
+    scores_ptr: int, spans: KVLiveSpans, block_size: int, num_q_heads: int,
+    num_kv_heads: int, head_dim: int, *, stream: int = 0,
+    library: ctypes.CDLL | None = None, runtime: HipRuntime | None = None,
+) -> None:
+    """Separate QK, softmax and AV launches over one FP32 span row.
+
+    Scores require ``num_q_heads * spans.max_live_count`` FP32 elements.
+    Empty visible sets produce zero; masked K/V (including NaNs) are not read.
+    """
+    _require_fp32_spans(spans)
+    _require_nonzero(
+        (query_ptr, key_cache_ptr, value_cache_ptr, out_ptr, scores_ptr),
+        ("query", "key_cache", "value_cache", "out", "scores"),
+    )
+    if min(block_size, num_q_heads, num_kv_heads, head_dim, spans.max_live_count) <= 0:
+        raise ValueError("attention geometry must be positive")
+    if num_q_heads % num_kv_heads:
+        raise ValueError("query heads must be a multiple of KV heads")
+    if spans.row_positions is None:
+        raise ValueError("decode requires row_positions")
+    if spans.base_offsets.numel * block_size < spans.max_live_count:
+        raise ValueError("page table does not cover span capacity")
+    runtime = runtime or get_hip_runtime()
+    library = library or build_surya_ops(load=True)
+    fn = _fn(library, "hipengine_surya_attention_decode_unfused_f32_spans",
+             [_P] * 10 + [_I] * 5 + [_S])
+    err = fn(
+        _P(query_ptr), _P(key_cache_ptr), _P(value_cache_ptr), _P(out_ptr), _P(scores_ptr),
+        _P(spans.base_offsets.ptr), _P(spans.live_counts.ptr),
+        _P(spans.token_positions.ptr) if spans.token_positions is not None else _P(0),
+        _P(spans.evict_mask.ptr) if spans.evict_mask is not None else _P(0),
+        _P(spans.row_positions.ptr), _I(spans.max_live_count), _I(block_size),
+        _I(num_q_heads), _I(num_kv_heads), _I(head_dim), _S(stream),
+    )
+    _check(err, runtime, "surya unfused decode spans")
+
+
 def surya_full_attn_decode_f32_spans(
     query_ptr: int,
     key_cache_ptr: int,

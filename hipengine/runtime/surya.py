@@ -71,6 +71,7 @@ from hipengine.kernels.hip_gfx1100.surya.surya_ops import (
     surya_full_attn_decode_f32_spans,
     surya_gdn_l2norm_f32,
     surya_scatter_kv_f32_spans,
+    surya_attention_decode_unfused_f32_spans,
     surya_split_qgate_f32,
 )
 from hipengine.kvcache import KVLiveSpans
@@ -461,9 +462,9 @@ def attention_decode_rocblas_f32(
 ) -> None:
     """Strict unfused single-query attention: batched SGEMM, scale, softmax, AV.
 
-    The pre-``KVLiveSpans`` Surya decode path, kept as the registered fallback
-    for :func:`surya_full_attn_decode_f32_spans` and as its parent-parity
-    oracle.  ``scores`` is the ``(num_q_heads, max_seq)`` fp32 scratch row the
+    The pre-``KVLiveSpans`` Surya decode path, retained only as a dense-fill
+    parent-parity oracle. Runtime fallback uses the span-aware unfused chain.
+    ``scores`` is the ``(num_q_heads, max_seq)`` fp32 scratch row the
     four dispatches round-trip through.  ``ptr_array`` uploads (and may cache)
     an int64 device pointer array for a batched call.
     """
@@ -883,23 +884,14 @@ class SuryaGpuRunner:
             )
 
     def _attention_decode(self, q_ptr, k_cache_ptr, v_cache_ptr, out_ptr, total) -> None:
-        """Strict unfused decode fallback (batched SGEMM + row softmax).
-
-        The default route is :func:`surya_full_attn_decode_f32_spans`; this
-        parent path stays registered for shapes the fused kernel does not
-        compile for (head_dim != 256, GQA repeat != 4) and as the bisection
-        oracle.  It reads no span metadata, which is exactly why it is the
-        fallback rather than the contract.
-        """
+        """Strict unfused decode using the request's span metadata."""
         s = self.spec
         nq, nk, hd = s.num_attention_heads, s.num_key_value_heads, s.head_dim
         scores = self._buf("scores", nq * self.max_seq * 4)
-        attention_decode_rocblas_f32(
-            self.rocblas, self.library, self.runtime, self._dev_ptr_array,
-            q_ptr=q_ptr, k_cache_ptr=k_cache_ptr, v_cache_ptr=v_cache_ptr,
-            out_ptr=out_ptr, scores_ptr=scores.ptr, total=total,
-            num_q_heads=nq, num_key_value_heads=nk, head_dim=hd,
-            max_seq=self.max_seq,
+        surya_attention_decode_unfused_f32_spans(
+            q_ptr, k_cache_ptr, v_cache_ptr, out_ptr, scores.ptr,
+            self._spans(), self._span_plan.block_size, nq, nk, hd,
+            library=self.surya_library, runtime=self.runtime,
         )
 
     def _attention_decode_spans(self, q_ptr, k_cache_ptr, v_cache_ptr, out_ptr) -> None:

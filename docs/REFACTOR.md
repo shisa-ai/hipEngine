@@ -2222,10 +2222,16 @@ Owner: `hipengine/runtime/surya.py`.
 
 Scope: `surya_scatter_kv_f32_spans`, `tests/test_gpu_surya_kv_spans.py`.
 
-**Deferred contract migration:** provide a span-aware unfused chain for those shapes before retiring
-the dense-offset fallback. Preserve its oracle role until replacement comparisons cover nonidentity
-pages, evictions and partial contexts, then exercise public Surya generation. Sharing a kernel with
-Qwen3.5 is not itself a clearing condition.
+Current: the runtime fallback is now a span-aware, separate QK/softmax/AV chain
+for arbitrary positive head widths and divisible GQA ratios. The dense rocBLAS
+chain remains only a diagnostic oracle. Nonidentity pages, eviction, causal and
+partial contexts, empty visible sets and masked NaN payloads pass on gfx1151;
+see `worklog/entries/20261106T010248.235022Z-lhl-r0484-span-fallback-cfe822.md`.
+Public continuation still needs the locally absent `datalab-to/surya-ocr-2`
+checkpoint; do not treat device fixtures as public generation evidence.
+
+**Remaining contract validation:** exercise public Surya generation and continuation
+with the span-aware fallback before retiring the dense diagnostic oracle.
 
 Done when: Deferred optimization follow-up: profile sparse live spans before changing the fused producer's
 full-chunk dot products. Bounding work by visibility must preserve token positions and masking;

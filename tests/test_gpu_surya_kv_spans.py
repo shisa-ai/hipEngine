@@ -416,6 +416,8 @@ def _run_decode_case(
     live_count: int,
     row_position: int,
     with_parent: bool,
+    unfused_only: bool = False,
+    poison_masked: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Run one decode fixture; returns (fused, parent, float64 reference)."""
 
@@ -435,6 +437,7 @@ def _run_decode_case(
         surya_full_attn_decode_f32_spans,
     )
     from hipengine.runtime.surya import attention_decode_rocblas_f32
+    from hipengine.kernels.hip_gfx1100.surya.surya_ops import surya_attention_decode_unfused_f32_spans
 
     runtime = get_hip_runtime()
     library = build_surya_ops(load=True, require_cached=_require_cached_build())
@@ -449,6 +452,13 @@ def _run_decode_case(
     query = rng.standard_normal((_NQ, _HD)).astype(np.float32)
     key_plane = rng.standard_normal((_NK, _MAX_SEQ, _HD)).astype(np.float32)
     value_plane = rng.standard_normal((_NK, _MAX_SEQ, _HD)).astype(np.float32)
+    if poison_masked:
+        for token in range(_MAX_SEQ):
+            if (token >= live_count or token_positions[token] < 0
+                    or token_positions[token] > row_position or evict_mask[token]):
+                physical = int(page_table[token // _BLOCK_SIZE]) * _BLOCK_SIZE + token % _BLOCK_SIZE
+                key_plane[:, physical, :] = np.nan
+                value_plane[:, physical, :] = np.nan
     expected = _reference_decode(
         query, key_plane, value_plane, page_table, token_positions, evict_mask,
         live_count, row_position, _BLOCK_SIZE,
@@ -505,19 +515,32 @@ def _run_decode_case(
                 total=live_count, num_q_heads=_NQ, num_key_value_heads=_NK,
                 head_dim=_HD, max_seq=_MAX_SEQ,
             )
-        surya_full_attn_decode_f32_spans(
-            query_buf.ptr, key_buf.ptr, value_buf.ptr, out_buf.ptr,
-            partial_out.ptr, partial_m.ptr, partial_l.ptr,
-            spans, _BLOCK_SIZE, _NQ, _NK, _HD, scale,
+            parent = np.empty_like(query)
+            copy_device_to_host(host_array_ptr(parent), parent_buf, parent.nbytes, runtime=runtime)
+            np.testing.assert_allclose(parent, expected, atol=_CPU_REFERENCE_ATOL, rtol=0.0)
+            dense_parent = parent.copy()
+        surya_attention_decode_unfused_f32_spans(
+            query_buf.ptr, key_buf.ptr, value_buf.ptr, parent_buf.ptr,
+            scores_buf.ptr, spans, _BLOCK_SIZE, _NQ, _NK, _HD,
             library=library, runtime=runtime,
         )
+        if not unfused_only:
+            surya_full_attn_decode_f32_spans(
+                query_buf.ptr, key_buf.ptr, value_buf.ptr, out_buf.ptr,
+                partial_out.ptr, partial_m.ptr, partial_l.ptr,
+                spans, _BLOCK_SIZE, _NQ, _NK, _HD, scale,
+                library=library, runtime=runtime,
+            )
         runtime.device_synchronize()
 
         actual = np.empty_like(query)
         parent = np.full_like(query, np.nan)
-        copy_device_to_host(host_array_ptr(actual), out_buf, actual.nbytes, runtime=runtime)
+        copy_device_to_host(host_array_ptr(actual), parent_buf if unfused_only else out_buf,
+                            actual.nbytes, runtime=runtime)
+        copy_device_to_host(host_array_ptr(parent), parent_buf, parent.nbytes, runtime=runtime)
+        np.testing.assert_allclose(parent, expected, atol=_CPU_REFERENCE_ATOL, rtol=0.0)
         if with_parent:
-            copy_device_to_host(host_array_ptr(parent), parent_buf, parent.nbytes, runtime=runtime)
+            np.testing.assert_allclose(actual, dense_parent, atol=_PARENT_PARITY_ATOL, rtol=0.0)
         return actual, parent, expected
     finally:
         for buffer in allocations:

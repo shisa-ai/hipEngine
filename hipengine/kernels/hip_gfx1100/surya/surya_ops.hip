@@ -287,6 +287,76 @@ __device__ __forceinline__ bool surya_spans_token_visible(
   return true;
 }
 
+// Strict unfused attention primitives for arbitrary positive head geometry.
+// Scores and AV use logical slot order; masked values are never read.
+__global__ void surya_span_scores_kernel(
+    const float* q, const float* k, float* scores, const int32_t* pages,
+    const int64_t* live, const int64_t* positions, const uint8_t* evicted,
+    const int64_t* row_position, int64_t capacity, int64_t block_size,
+    int64_t nq, int64_t nk, int64_t hd) {
+  int64_t i = int64_t(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i >= nq * capacity) return;
+  int64_t h = i / capacity, t = i % capacity;
+  float score = -INFINITY;
+  if (t < live[0] && surya_spans_token_visible(positions, evicted, t, row_position[0])) {
+    int64_t physical = surya_spans_physical_slot(pages, t, block_size);
+    float sum = 0.0f;
+    for (int64_t d = 0; d < hd; ++d)
+      sum = fmaf(q[h * hd + d], k[((h / (nq / nk)) * capacity + physical) * hd + d], sum);
+    score = sum * rsqrtf(float(hd));
+  }
+  scores[i] = score;
+}
+
+__global__ void surya_span_softmax_kernel(float* scores, int64_t capacity) {
+  float* row = scores + int64_t(blockIdx.x) * capacity;
+  float maximum = -INFINITY;
+  for (int64_t t = 0; t < capacity; ++t) maximum = fmaxf(maximum, row[t]);
+  float sum = 0.0f;
+  for (int64_t t = 0; t < capacity; ++t) {
+    float value = isfinite(maximum) ? expf(row[t] - maximum) : 0.0f;
+    row[t] = value;
+    sum += value;
+  }
+  for (int64_t t = 0; t < capacity; ++t) row[t] = sum > 0.0f ? row[t] / sum : 0.0f;
+}
+
+__global__ void surya_span_av_kernel(
+    const float* scores, const float* v, float* out, const int32_t* pages,
+    int64_t capacity, int64_t block_size, int64_t nq, int64_t nk, int64_t hd) {
+  int64_t i = int64_t(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i >= nq * hd) return;
+  int64_t h = i / hd, d = i % hd;
+  float sum = 0.0f;
+  for (int64_t t = 0; t < capacity; ++t) {
+    float probability = scores[h * capacity + t];
+    if (probability == 0.0f) continue;
+    int64_t physical = surya_spans_physical_slot(pages, t, block_size);
+    sum = fmaf(probability, v[((h / (nq / nk)) * capacity + physical) * hd + d], sum);
+  }
+  out[i] = sum;
+}
+
+extern "C" int hipengine_surya_attention_decode_unfused_f32_spans(
+    const float* q, const float* k, const float* v, float* out, float* scores,
+    const int32_t* pages, const int64_t* live, const int64_t* positions,
+    const uint8_t* evicted, const int64_t* row_position, int64_t capacity,
+    int64_t block_size, int64_t nq, int64_t nk, int64_t hd, hipStream_t stream) {
+  if (capacity <= 0 || block_size <= 0 || nq <= 0 || nk <= 0 || hd <= 0 || nq % nk)
+    return int(hipErrorInvalidValue);
+  hipLaunchKernelGGL(surya_span_scores_kernel, dim3((nq * capacity + 127) / 128), dim3(128),
+      0, stream, q, k, scores, pages, live, positions, evicted, row_position,
+      capacity, block_size, nq, nk, hd);
+  hipError_t err = hipGetLastError();
+  if (err != hipSuccess) return int(err);
+  hipLaunchKernelGGL(surya_span_softmax_kernel, dim3(nq), dim3(1), 0, stream, scores, capacity);
+  err = hipGetLastError();
+  if (err != hipSuccess) return int(err);
+  hipLaunchKernelGGL(surya_span_av_kernel, dim3((nq * hd + 127) / 128), dim3(128),
+      0, stream, scores, v, out, pages, capacity, block_size, nq, nk, hd);
+  return int(hipGetLastError());
+}
+
 // Scatter per-token K/V rows into persistent cache planes using KVLiveSpans.
 //   src (tokens, nk * head_dim) row-major (the k/v GEMM output);
 //   dst (nk, max_seq, head_dim) per-head planes;

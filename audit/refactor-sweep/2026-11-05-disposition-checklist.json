@@ -3659,9 +3659,11 @@
       "review_status": "reviewed",
       "disposition": "locally_actionable",
       "evidence": [
-        "hipengine/runtime/surya.py imports span scatter and line 830 retains packed attention; current Surya checkpoint is absent."
+        "Span-aware QK/softmax/AV fallback integrated for unsupported fused shapes; 29 focused GPU/host/hygiene tests pass on gfx1151, cached-build trace confirms launches.",
+        "worklog/entries/20261106T010248.235022Z-lhl-r0484-span-fallback-cfe822.md",
+        "Local Surya checkpoint resolver fails; public continuation needs datalab-to/surya-ocr-2 weights."
       ],
-      "next_action": "Build span-aware unfused fallback and tests for nonidentity pages/evictions/partial contexts now; model-based profiling/public validation waits for checkpoint.",
+      "next_action": "Public fallback/continuation needs Surya weights; independently profile sparse fixtures before changing fused work bounds. Dense rocBLAS retained as diagnostic oracle only.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
