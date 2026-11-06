@@ -2797,6 +2797,36 @@ def test_packed_state_leases_available_arena_without_eager_reservation(monkeypat
     assert state.buffers == ()
 
 
+def test_packed_state_releases_cross_chunk_lease_before_private_fallback(monkeypatch):
+    layout = _lease_test_layout()
+    backing = _lease_test_backing(layout)
+    released = []
+    reserved = []
+    pool = SimpleNamespace(
+        backing=backing, workspace_pages=lambda key: None,
+        lease_workspace=lambda key, pages: (0, 1, 8, 9),
+        workspace_pages_fit_root_backing=lambda pages: False,
+        release_workspace=lambda key: released.append(key),
+        reserve_private_workspace=lambda nbytes: reserved.append(nbytes) or 'private',
+    )
+    count = 0
+    def malloc(nbytes, **kwargs):
+        nonlocal count
+        count += 1
+        return DeviceBuffer(ptr=0x500000 + count * 0x10000, nbytes=int(nbytes))
+    monkeypatch.setattr(gguf_runner, 'malloc', malloc)
+    monkeypatch.setattr(gguf_kv, 'malloc', malloc)
+    state = _GGUFPackedTargetState.allocate(
+        _lease_test_runner(), slot_count=2, max_sequence_length=512,
+        runtime=SimpleNamespace(), kv_layout=layout, kv_pool=pool,
+    )
+    assert len(released) == 1
+    assert reserved and state.private_workspace_token == 'private'
+    assert state.kv_backing_kind == 'private'
+    assert state.growth_lease_key is None
+    assert state.page_ids == (0, 1, 2, 3)
+
+
 def test_gguf_packed_target_state_allocate_private_without_lease(monkeypatch) -> None:
     allocated: list[int] = []
 

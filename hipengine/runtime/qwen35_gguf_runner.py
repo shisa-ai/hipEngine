@@ -2855,6 +2855,16 @@ class _GGUFPackedTargetState:
                         growth_lease_key, growth_pages = grown
                         lease_pages = (*tuple(lease_pages), *growth_pages)
                 if lease_pages is not None:
+                    root_fits = getattr(kv_pool, "workspace_pages_fit_root_backing", None)
+                    if callable(root_fits) and not root_fits(tuple(lease_pages[:total_pages])):
+                        # Packed kernels bind root plane bases, not the pool's
+                        # per-page pointer tables. Appended chunks need the
+                        # existing private backing until those consumers migrate.
+                        if growth_lease_key is not None:
+                            kv_pool.release_workspace(growth_lease_key)
+                            growth_lease_key = None
+                        lease_pages = None
+                if lease_pages is not None:
                     # Pool-leased backing: the arena planes back the
                     # workspace and page_ids select this state's pages
                     # inside them. The lease pages stay pinned by the

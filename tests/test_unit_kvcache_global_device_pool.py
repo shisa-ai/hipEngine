@@ -33,6 +33,20 @@ def _pool(*, pages: int = 6):
     return pool, closed
 
 
+def test_workspace_root_binding_rejects_appended_chunks():
+    pool, _ = _pool(pages=2)
+    pool._grow_storage = lambda count, start: (
+        {role: tuple(0xD000 + i * 256 for i in range(count))
+         for role in ('layer0.key', 'layer0.value')},
+        {'layer0.key': 0xE000, 'layer0.value': 0xF000},
+        {'arena': 2},
+    )
+    pool.grow(2)
+    assert pool.workspace_pages_fit_root_backing((0, 1))
+    assert not pool.workspace_pages_fit_root_backing((0, 2))
+    assert not pool.workspace_pages_fit_root_backing((2, 3))
+
+
 @pytest.mark.parametrize("fragmented", [False, True])
 @pytest.mark.parametrize("max_pages", [4, 8])
 def test_private_allocation_grows_a_whole_chunk_or_refuses(

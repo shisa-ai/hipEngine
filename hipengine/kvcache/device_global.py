@@ -469,6 +469,19 @@ class GlobalDeviceKVPool:
             self.global_pool.release(lease_id)
             return page_ids
 
+    def workspace_pages_fit_root_backing(self, page_ids: tuple[int, ...]) -> bool:
+        """Whether base-pointer consumers can address these pages in root storage.
+
+        Workspace leases can span appended chunks. Pointer-table consumers may
+        use them directly; consumers binding ``backing`` plus global page offsets
+        must restrict themselves to the root chunk (or a contiguous grown arena).
+        """
+        with self._lock:
+            return all(
+                self._chunk_for_page(page_id)[0] == 0
+                for page_id in page_ids
+            )
+
     def workspace_pages(self, key: str) -> tuple[int, ...] | None:
         """Return the leased page IDs for a workspace, or None when absent."""
 
