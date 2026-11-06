@@ -2507,11 +2507,20 @@ Owner: `hipengine/generation/engine_service.py`.
 
 Scope: `generate_detailed`, `stream_detailed`.
 
-**Deferred interface decision:** define generic child admission, bounded work advancement,
-cancellation and retirement separately from the model-attached MTP contract. Migrate Laguna DFlash
-and the submit/poll adapter to that interface, then replace the compatibility gate with the actual
-generic-child capability. Do not execute model work on frontend threads or hide a whole generation
-in an administrative command; preserve the service's sole-driver ownership.
+**Implementation in place:** generic child admission, bounded advancement and retirement now
+have an explicit contract independent of model-attached MTP. The submit/poll adapter advances
+children on the service driver and contains per-child failures. Laguna DFlash uses private target
+sessions, drafters and cycles, advancing one prompt token or one speculative cycle per tick.
+Cancellation, deadlines, shutdown, partial setup failures and zero-token requests have focused
+coverage. See `worklog/entries/20261106T075454.368851Z-lhl-r0011-laguna-children-d77b10.md`
+and `worklog/entries/20261106T075838.544970Z-lhl-r0011-real-deadline-fdc5ae.md`.
+
+**Remaining validation:** public LLM method tests inject the service with synthetic model work;
+they do not exercise loader construction or actual inference. The local gfx1151 host lacks the
+Laguna GGUF/repacked target and DFlash drafter required for actual-model validation. Keep this
+entry open until that public route and provider lifecycle packet run with those artifacts.
+Do not execute model work on frontend threads or hide a whole generation in an administrative
+command; preserve the service's sole-driver ownership.
 
 Done when: extend `tests/test_integration_engine_service_speculative_ownership.py` with an
 actual generic-only child adapter and test blocking/stream agreement, slow work beside another
