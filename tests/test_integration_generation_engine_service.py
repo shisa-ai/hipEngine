@@ -881,6 +881,29 @@ def test_engine_service_drives_real_submit_poll_adapter_with_independent_childre
     assert inner.runner.reclaims.index(1) < inner.runner.reclaims.index(0)
 
 
+def test_default_stream_preserves_terminal_cancellation_after_live_chunks():
+    class CancelledDriver(_FakeSoleDriver):
+        def poll(self, *, max_ticks=1):
+            events = super().poll(max_ticks=max_ticks)
+            for request_id, output in tuple(self._outputs.items()):
+                self._outputs[request_id] = replace(
+                    output, finish_details=FinishDetails(reason="cancelled", cancelled=True),
+                )
+            return tuple(replace(event, stream_chunk=replace(
+                event.stream_chunk, finish_details=None,
+            )) if event.stream_chunk is not None else event for event in events)
+
+    service = EngineService(CancelledDriver())
+    try:
+        chunks = list(service.stream_detailed(_request("cancelled:2", max_tokens=2)))
+        assert chunks[-1].finish_details is not None
+        assert chunks[-1].finish_details.cancelled is True
+        assert chunks[-1].text == ""
+        assert chunks[-1].generated_token_ids == (1100, 1101)
+    finally:
+        service.close()
+
+
 def test_engine_service_blocking_and_streaming_share_one_driver() -> None:
     driver = _FakeSoleDriver()
     service = EngineService(driver, command_queue_size=16)

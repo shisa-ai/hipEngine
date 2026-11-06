@@ -183,6 +183,10 @@ class EngineServiceHandle:
                 if result.generation_output is not None and (
                     not emitted
                     or self._state.execution_mode in {"verify_chain", "verify_tree"}
+                    or (
+                        result.generation_output.finish_details is not None
+                        and result.generation_output.finish_details.cancelled
+                    )
                 ):
                     output = result.generation_output
                     yield GenerationStreamChunk(
