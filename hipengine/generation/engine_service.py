@@ -736,7 +736,9 @@ class EngineService:
             return "the driver exposes no generic speculative provider spelling"
         if not callable(getattr(driver, "submit_speculative_detailed", None)):
             return "the driver admits no speculative child submission"
-        if not self.supports_speculative_mtp:
+        if not self.supports_speculative_mtp and not bool(
+            getattr(driver, "supports_bounded_generic_speculative_children", False)
+        ):
             return (
                 "speculative child admission executes the driver's model-owned "
                 "speculative spelling, which this driver does not declare"

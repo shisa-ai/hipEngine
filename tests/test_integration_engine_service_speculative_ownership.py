@@ -358,6 +358,49 @@ def test_generic_speculative_multi_prompt_children_keep_public_order() -> None:
     assert snapshot["generic_speculative_children"] == 2
 
 
+def test_generic_only_bounded_child_advances_on_poll_not_admission() -> None:
+    class Driver(_GenericProviderDriver):
+        supports_speculative_mtp = False
+        supports_bounded_generic_speculative_children = True
+
+        def submit_speculative_detailed(self, request):
+            self.submit_thread_ids.append(threading.get_ident())
+            request_id = self._next_request_id
+            self._next_request_id += 1
+            self._active[request_id] = request
+            return GenerationSubmission(request_ids=(request_id,), request=request,
+                max_ticks=1, work_kind="verify_chain",
+                execution_route="bounded_generic_test")
+
+        def poll(self, *, max_ticks=1):
+            assert max_ticks == 1
+            self.poll_thread_ids.add(threading.get_ident())
+            for request_id, request in self._active.items():
+                if request_id not in self._outputs:
+                    self.model_thread_ids.append(threading.get_ident())
+                    self._outputs[request_id] = GenerationOutput(
+                        text="generic", generated_token_ids=(17,),
+                        finish_details=FinishDetails(reason="length", length_limit=1))
+                    break
+            return ()
+
+    driver = Driver()
+    service = EngineService(driver, idle_wait_seconds=0.001)
+    frontend = threading.get_ident()
+    try:
+        assert service.supports_speculative
+        blocking = service.generate_speculative_detailed(_request("bounded", max_tokens=1))
+        chunks = tuple(service.stream_speculative_detailed(_request("bounded", max_tokens=1)))
+        assert blocking[0].generated_token_ids == chunks[-1].generated_token_ids == (17,)
+        assert driver.mtp_spelling_calls == 0
+        assert driver.whole_request_thread_ids == []
+        assert driver.model_thread_ids and frontend not in driver.model_thread_ids
+        assert set(driver.model_thread_ids) == driver.poll_thread_ids
+        assert service.live_loop_snapshot()["engine_service"]["active_children"] == 0
+    finally:
+        service.close()
+
+
 def test_generic_speculative_declines_driver_without_speculative_child_admission() -> None:
     class _WholeRequestOnlyDriver(_GenericProviderDriver):
         """Laguna-shaped driver: generic provider, no model-attached MTP spelling."""
