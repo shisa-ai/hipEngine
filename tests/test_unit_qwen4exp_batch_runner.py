@@ -884,6 +884,36 @@ def test_block_table_copy_plan_preserves_prefix(position) -> None:
     assert plan == tuple(expected)
 
 
+@pytest.mark.parametrize("failure", ["reset", "mapping"])
+def test_pooled_admission_reset_failure_returns_reserved_blocks(monkeypatch, failure) -> None:
+    runner = _fake_runner(slots=2)
+    runner.pooled = True
+    runner._free_blocks = [0, 1, 2, 3]
+    runner._slot_blocks = [0, 0]
+    runner._block_host[:] = 0
+    def fail_setup(*args):
+        raise RuntimeError("setup failed")
+
+    mapping = lambda slot, count: None
+    monkeypatch.setattr(runner.index_states[0], "map_slot", fail_setup if failure == "mapping" else mapping, raising=False)
+    reset = runner._zero_slot
+    if failure == "reset":
+        monkeypatch.setattr(runner, "_zero_slot", fail_setup)
+    with pytest.raises(RuntimeError, match="setup failed"):
+        runner.admit(0, positions=300)
+    assert runner.free_slots == (0, 1)
+    assert runner._free_blocks == [0, 1, 2, 3]
+    assert runner._slot_blocks == [0, 0]
+    assert not np.any(runner._block_host)
+    monkeypatch.setattr(runner, "_zero_slot", reset)
+    monkeypatch.setattr(runner.index_states[0], "map_slot", mapping)
+    owner = runner.admit(0, positions=300)
+    assert owner > 0
+    assert runner._slot_blocks[0] == 2
+    runner.release(0, owner)
+    assert runner._free_blocks == [0, 1, 2, 3]
+
+
 @pytest.mark.parametrize("source,destination", [((7,), (2, 3)), ((7, 9), (2,)), ((7, -1), (2, 3))])
 def test_block_table_copy_plan_rejects_invalid_mapping(source, destination) -> None:
     from hipengine.runtime.qwen4_exp_batch_runner import _block_table_copy_plan

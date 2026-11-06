@@ -1684,14 +1684,25 @@ class Qwen4ExpGGUFBatchRunner:
             self._block_host[parsed, :] = 0
             self._block_host[parsed, :needed] = taken
             self._slot_blocks[parsed] = needed
-            for index_state in self.index_states:
-                index_state.map_slot(parsed, needed)
+            try:
+                for index_state in self.index_states:
+                    index_state.map_slot(parsed, needed)
+                self._zero_slot(parsed)
+            except BaseException:
+                # No owner was published. Return the provisional reservation;
+                # reuse always resets device state before publishing an owner.
+                self._free_blocks.extend(int(block) for block in taken)
+                self._free_blocks.sort()
+                self._block_host[parsed, :] = 0
+                self._slot_blocks[parsed] = 0
+                raise
         elif positions is not None and int(positions) > self.max_positions:
             raise ValueError(
                 f"{int(positions)} positions exceed the per-slot capacity "
                 f"{self.max_positions}"
             )
-        self._zero_slot(parsed)
+        if not self.pooled:
+            self._zero_slot(parsed)
         self._poisoned.discard(parsed)
         self._next_owner += 1
         self._owners[parsed] = self._next_owner
