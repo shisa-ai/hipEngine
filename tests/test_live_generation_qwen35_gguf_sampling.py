@@ -6048,6 +6048,34 @@ def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled
         ),
     ]
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
+    acquired_contexts = []
+    acquire = generator._acquire_shared_session
+
+    def record_acquire(*args, **kwargs):
+        acquired_contexts.append((kwargs["pool_name"], kwargs["max_sequence_length"]))
+        return acquire(*args, **kwargs)
+
+    monkeypatch.setattr(generator, "_acquire_shared_session", record_acquire)
+    released = generator.prepare_request_scratch(
+        max_prompt_tokens=4, max_batch_size=2, release_after_probe=True,
+        sampling_params=SamplingParams(speculative_mtp=True),
+    )
+    assert acquired_contexts == [("scratch_probe_mtp", 256)] * 2
+    assert released["packed_mtp_verify_widths"] == [2]
+    for failure in (RuntimeError, KeyboardInterrupt):
+        for release in (True, False):
+            before = len([call for call in calls if call[0] == "close"])
+
+            def fail_verify(*args, **kwargs):
+                raise failure("verify interrupted")
+
+            monkeypatch.setattr(FakeSession, "verify_target_blocks_batch", fail_verify)
+            with pytest.raises(failure, match="verify interrupted"):
+                generator.prepare_request_scratch(
+                    max_prompt_tokens=4, max_batch_size=2, release_after_probe=release,
+                    sampling_params=SamplingParams(speculative_mtp=True),
+                )
+            assert len([call for call in calls if call[0] == "close"]) == before + 2
 
 
 def test_gguf_ar_batch_decode_notimplemented_falls_back_to_step(monkeypatch) -> None:
