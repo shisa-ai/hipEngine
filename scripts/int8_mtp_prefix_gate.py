@@ -12,7 +12,8 @@ def assert_restored_pair(baseline, candidate, prefix_tokens):
     for result in (baseline, candidate):
         cache = result["diagnostics"]["prefix_cache"]
         assert cache["hit"] and cache["reused_tokens"] >= prefix_tokens, cache
-    cycles = candidate.get("timing", {}).get("mtp_cycles_count", 0)
+    diagnostics = candidate.get("diagnostics", {}).get("specdec2_mtp2", {})
+    cycles = diagnostics.get("cycles", candidate.get("timing", {}).get("mtp_cycles_count", 0))
     assert cycles > 0, candidate["diagnostics"]
     assert baseline["generated_token_ids"] == candidate["generated_token_ids"], {
         "stage": "ids", "ar": baseline["generated_token_ids"],

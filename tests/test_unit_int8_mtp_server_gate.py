@@ -77,6 +77,19 @@ def test_server_gate_rejects_inconsistent_usage():
         assert_result(result, speculative=True, compact=True)
 
 
+def test_prefix_gate_reads_current_gguf_cycle_diagnostics():
+    baseline = {
+        "generated_token_ids": [1, 2],
+        "diagnostics": {"prefix_cache": {"hit": True, "reused_tokens": 512}},
+    }
+    candidate = deepcopy(baseline)
+    candidate["diagnostics"]["specdec2_mtp2"] = {"cycles": 11}
+    assert assert_restored_pair(baseline, candidate, 512) == 11
+    candidate["diagnostics"]["specdec2_mtp2"]["cycles"] = 0
+    with pytest.raises(AssertionError):
+        assert_restored_pair(baseline, candidate, 512)
+
+
 @pytest.mark.parametrize("failure", [None, "miss", "partial", "ar", "ids"])
 def test_prefix_gate_requires_hit_restoration_and_matching_output(failure):
     baseline = {
