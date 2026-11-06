@@ -135,9 +135,6 @@ from hipengine.speculative.transaction import (
 )
 
 
-_Q6_MIXED_TARGET_ROWTILES_ENV = (
-    "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES"
-)
 # The adapter no longer carries a fixed MTP context window. Prompt context is not
 # an admission axis (docs/EXECUTION-PROFILES.md section 2.9): gating on it
 # silently disables an already-qualified path, and the 1,023 sentinel existed
@@ -933,15 +930,6 @@ class Qwen35GGUFMTP2Adapter:
                 (),
             )
         )
-        self.production_physical_q6_mixed_rowtiles = bool(
-            self.production_physical_q6_rowtile
-            and backend_package_capability(
-                str(self.generator.backend),
-                "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS",
-                {},
-            )
-            and _env_enabled(_Q6_MIXED_TARGET_ROWTILES_ENV, default=True)
-        )
         from hipengine.generation.physical_target_rows import resolve_physical_target_rows
 
         rows_plan = getattr(self.generator, "physical_target_rows", None)
@@ -952,6 +940,7 @@ class Qwen35GGUFMTP2Adapter:
         self.physical_target_rows = rows_plan
         self.production_target_pad_row_counts = rows_plan.pad_counts
         self.production_exact_target_row_counts = rows_plan.exact_counts
+        self.production_physical_q6_mixed_rowtiles = rows_plan.mixed_q6_rowtiles
         self._target_pad_token_scratch: DeviceBuffer | None = None
         self._target_pad_token_capacity = 0
         self.physical_width_depths = _physical_width_depths(self.generator)

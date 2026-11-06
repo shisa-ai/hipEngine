@@ -12,6 +12,7 @@ from hipengine.kernels.backends import backend_package_capability
 class PhysicalTargetRowsPlan:
     pad_counts: tuple[int, ...] = ()
     exact_counts: tuple[int, ...] = ()
+    mixed_q6_rowtiles: bool = False
 
 
 def resolve_physical_target_rows(backend: str, profile: str) -> PhysicalTargetRowsPlan:
@@ -41,4 +42,13 @@ def resolve_physical_target_rows(backend: str, profile: str) -> PhysicalTargetRo
             default = bool(policy.get("enabled_default", False))
             if policy and (default if env is None else enabled(str(env), default)):
                 exact.update(int(value) for value in policy.get("rows", ()))
-    return PhysicalTargetRowsPlan(padding, tuple(sorted(exact)))
+    mixed_q6 = bool(
+        backend_package_capability(
+            backend, "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS", (),
+        )
+        and backend_package_capability(
+            backend, "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS", {},
+        )
+        and enabled("HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES", True)
+    )
+    return PhysicalTargetRowsPlan(padding, tuple(sorted(exact)), mixed_q6)
