@@ -63,6 +63,34 @@ def test_selected_down_prefill_scopes_variant_and_restores(monkeypatch, failure)
     assert session.selected_down_mode == session.selected_gate_up_mode == "grouped_exact"
 
 
+@pytest.mark.parametrize("primary", [False, True])
+def test_teacher_forced_cleanup_drains_all_sessions_and_preserves_primary(monkeypatch, primary):
+    closed = []
+
+    def close(label):
+        closed.append(label)
+        raise RuntimeError("close " + label)
+
+    def construct(owner, args, mode, **kwargs):
+        return SimpleNamespace(config=SimpleNamespace(vocab_size=2), close=lambda: close(mode))
+
+    monkeypatch.setattr(benchmark, "_session_for_mode", construct)
+    def prefill(*args):
+        if primary:
+            raise ValueError("primary prefill")
+        return object()
+    monkeypatch.setattr(benchmark, "_prefill_for_mode", prefill)
+    with pytest.raises(ValueError if primary else RuntimeError) as caught:
+        benchmark._teacher_forced_prompt(
+            object(), {"token_ids": [], "id": "x", "category": "x", "prompt_tokens": 0, "token_ids_sha256": "x"},
+            SimpleNamespace(teacher_forced_tokens=0),
+        )
+    assert closed == list(benchmark.GROUPED_DOWN_COMPARISON.modes)
+    if primary:
+        assert str(caught.value) == "primary prefill"
+    assert any("close" in note for note in caught.value.__notes__)
+
+
 def test_teacher_forced_second_session_failure_closes_first(monkeypatch):
     closed = []
     calls = []

@@ -825,8 +825,19 @@ def _teacher_forced_prompt(
                     for mode in comparison.modes
                 }
     finally:
+        primary = sys.exc_info()[1]
+        cleanup_errors = []
         for session in sessions.values():
-            session.close()
+            try:
+                session.close()
+            except BaseException as error:
+                cleanup_errors.append(error)
+        if cleanup_errors:
+            failure = primary if primary is not None else cleanup_errors[0]
+            for error in cleanup_errors:
+                failure.add_note(f"teacher-forced session cleanup: {error!r}")
+            if primary is None:
+                raise failure
     return {
         "prompt_id": prompt["id"],
         "category": prompt["category"],
