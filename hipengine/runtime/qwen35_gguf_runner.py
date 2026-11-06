@@ -2876,6 +2876,22 @@ class _GGUFPackedTargetState:
                             kv_pool.release_workspace(growth_lease_key)
                             growth_lease_key = None
                         lease_pages = None
+                        if callable(binding_fn):
+                            replacement = _lease_packed_workspace_growth(
+                                kv_pool, needed_pages=total_pages
+                            )
+                            if replacement is not None:
+                                replacement_key, replacement_pages = replacement
+                                # Publish ownership before binding so failure cleanup
+                                # can release the acquired replacement lease.
+                                growth_lease_key = replacement_key
+                                replacement_binding = binding_fn(tuple(replacement_pages))
+                                if replacement_binding is None:
+                                    kv_pool.release_workspace(replacement_key)
+                                    growth_lease_key = None
+                                else:
+                                    lease_pages = replacement_pages
+                                    arena_backing, backing_page_ids = replacement_binding
                 if lease_pages is not None:
                     # Pool-leased backing: the arena planes back the
                     # workspace and page_ids select this state's pages
