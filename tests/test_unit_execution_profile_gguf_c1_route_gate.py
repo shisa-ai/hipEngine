@@ -111,6 +111,9 @@ def test_route_owner_metadata_does_not_claim_launch_engagement():
     assert candidate['counter'] == 'self_resetting_device'
     assert candidate['environment_mutated'] is False
     assert candidate['engagement'] == 'requested; requires launch trace'
+    nonpersistent = dict(gate.CANDIDATES['router_f32w_coop_persistent'].environment)
+    nonpersistent[gate._ROUTE_ENV_KEYS[1]] = '0'
+    assert gate.route_owner_metadata(nonpersistent)['counter'] == 'selected_id_alias_launch_reset'
 
 
 def test_router_candidate_declares_t2_mechanism_and_strict_fallback() -> None:

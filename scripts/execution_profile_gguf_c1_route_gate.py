@@ -99,7 +99,9 @@ def route_owner_metadata(values: Mapping[str, str]) -> dict[str, object]:
         "selection": "cooperative_persistent" if persistent else (
             "cooperative" if cooperative else "separate_projections_topk"
         ),
-        "counter": "self_resetting_device" if persistent else "none",
+        "counter": "self_resetting_device" if persistent else (
+            "selected_id_alias_launch_reset" if cooperative else "none"
+        ),
         "engagement": "requested; requires launch trace",
         "environment_mutated": False,
     }
