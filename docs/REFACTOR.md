@@ -2976,11 +2976,13 @@ owner state rather than `HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN`.
 Production/recovery/restoration decisions and strict grouped/GEMV comparisons are preserved.
 Profile isolation, batch forwarding and tile-map checks pass; see
 [selected-owner audit](../worklog/entries/20261106T103209.831222Z-lhl-r0006-selected-owner-audit-6aa8a3.md).
-Public selected-route attribution remains outstanding. Keep map rebuild and capacity checks.
+Public production generation reached the selected grouped blockscale guarded owner and
+closed with zero tracked allocations; see
+[public route check](../worklog/entries/20261106T103511.593935Z-lhl-r0006-public-selected-75483f.md).
+Keep map rebuild and capacity checks.
 
 Done when: paged index storage clears the cap with boundary/resource/reuse checks;
-interference policy meets the frozen campaign criteria; public requests attribute the
-profile-owned selected-down route while preserving map rebuild and capacity checks.
+interference policy meets the frozen campaign criteria.
 
 ### R0007 — Batch import-copy and admission ownership after reset repair
 
