@@ -71,6 +71,26 @@ def test_workspace_lease_can_require_one_backing_chunk():
     pool.close()
 
 
+def test_confined_workspace_grows_once_without_aggregate_deficit_chunk():
+    pool, _ = _pool(pages=2)
+    pool._max_pages = 6
+    pool._growth_chunk_pages = 1
+    grown = []
+    def grow(count, start):
+        grown.append(count)
+        return (
+            {role: tuple(0xD000 + i * 256 for i in range(count))
+             for role in ('layer0.key', 'layer0.value')},
+            {'layer0.key': 0xE000, 'layer0.value': 0xF000}, {'arena': start},
+        )
+    pool._grow_storage = grow
+    pages = pool.lease_workspace('packed', 4, within_one_chunk=True)
+    assert grown == [4]
+    assert pool.workspace_backing_for_pages(pages) is not None
+    pool.release_workspace('packed')
+    pool.close()
+
+
 @pytest.mark.parametrize('budget', [None, 6 * 128])
 def test_confined_workspace_grows_whole_chunk_or_refuses_budget(budget):
     pool, _ = _pool(pages=2)

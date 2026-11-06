@@ -439,7 +439,11 @@ class GlobalDeviceKVPool:
             self._require_open()
             if lease_id in self._workspace_leases:
                 raise ValueError(f"workspace lease {name!r} already exists")
-            self._ensure_free_pages(count, now_seconds=now_seconds)
+            if within_one_chunk:
+                if self.global_pool.free_pages < count and callable(self._on_pressure):
+                    self._on_pressure(count - self.global_pool.free_pages)
+            else:
+                self._ensure_free_pages(count, now_seconds=now_seconds)
             try:
                 if within_one_chunk:
                     try:
