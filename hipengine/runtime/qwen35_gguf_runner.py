@@ -13473,6 +13473,7 @@ class Qwen35GGUFResidentSession:
     # through ``bind_device_kv_allocation``. Construction rollback owns its
     # release, so a bind failure cannot strand the pages.
     _dms_pending_allocation: object | None = field(default=None, init=False, repr=False)
+    _dms_prefill_oracle_lease: object | None = field(default=None, init=False, repr=False)
     _dms_prefill_oracle_pair: tuple[DeviceBuffer, DeviceBuffer] | None = field(default=None, init=False, repr=False)
     _dms_layer_outer_pack: tuple[object, _ExternalDMSDevicePrefillCollector, int] | None = field(default=None, init=False, repr=False)
     _dms_decode_projector: object | None = field(default=None, init=False, repr=False)
@@ -14659,32 +14660,26 @@ class Qwen35GGUFResidentSession:
             * DType.BF16.itemsize
         )
         runtime = self.runtime or get_hip_runtime()
-        key_cache = malloc(nbytes, runtime=runtime)
-        try:
-            value_cache = malloc(nbytes, runtime=runtime)
-        except BaseException:
-            free(key_cache, runtime=runtime)
-            raise
-        self._dms_prefill_oracle_pair = (key_cache, value_cache)
+        from hipengine.runtime.dms_prefill_oracle import DMSPrefillOracleLease
+
+        self._dms_prefill_oracle_lease = DMSPrefillOracleLease.acquire(
+            nbytes, runtime=runtime, allocate=malloc, release=free,
+        )
+        self._dms_prefill_oracle_pair = self._dms_prefill_oracle_lease.buffers
         return self._dms_prefill_oracle_pair
 
     def _release_dms_prefill_oracle(self) -> None:
         if self._dms_prefill_oracle_pair is None:
             return
         runtime = self.runtime or get_hip_runtime()
-        key_cache, value_cache = self._dms_prefill_oracle_pair
+        from hipengine.runtime.dms_prefill_oracle import DMSPrefillOracleLease
+
+        lease = getattr(self, "_dms_prefill_oracle_lease", None)
+        if lease is None:
+            lease = DMSPrefillOracleLease(self._dms_prefill_oracle_pair)
         self._dms_prefill_oracle_pair = None
-        failure = None
-        for buffer in (value_cache, key_cache):
-            try:
-                free(buffer, runtime=runtime)
-            except BaseException as error:
-                if failure is None:
-                    failure = error
-                else:
-                    failure.add_note(f"DMS prefill oracle cleanup also failed: {error!r}")
-        if failure is not None:
-            raise failure
+        self._dms_prefill_oracle_lease = None
+        lease.close(runtime=runtime, release=free)
 
     def _release_dense_prefill_layer(self, physical_layer: int, *, runtime: HipRuntime) -> None:
         """Release one dense BF16 prefill layer's planes after its compact pack.

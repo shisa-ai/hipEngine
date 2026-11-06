@@ -111,6 +111,17 @@ def test_full_attention_scratch_uses_shared_oracle(monkeypatch) -> None:
     assert value_cache.nbytes == expected
 
 
+def test_oracle_has_one_transient_lease_owner(monkeypatch):
+    session = _layer_outer_session(monkeypatch)
+    pair = session._dms_layer_outer_oracle_pair()
+    lease = session._dms_prefill_oracle_lease
+    assert lease.buffers is pair
+    assert session._dms_layer_outer_oracle_pair() is pair
+    session._release_dms_prefill_oracle()
+    assert lease.buffers is None
+    assert session._dms_prefill_oracle_lease is None
+
+
 def test_oracle_release_and_pack_sink_fail_closed(monkeypatch) -> None:
     session = _layer_outer_session(monkeypatch)
     session._dms_layer_outer_oracle_pair()
