@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterator
 
 
@@ -41,18 +41,21 @@ _physical_exact_rowtiles: ContextVar[bool] = ContextVar(
     "physical_exact_rowtiles",
     default=False,
 )
-_moe_physical_c2_disable_f32_residual: ContextVar[bool] = ContextVar(
-    "moe_physical_c2_disable_f32_residual",
-    default=False,
+_physical_target_arithmetic: ContextVar[PhysicalTargetArithmeticPlan] = ContextVar(
+    "physical_target_arithmetic",
+    default=PhysicalTargetArithmeticPlan(),
 )
-_moe_physical_c2_pairreuse: ContextVar[bool] = ContextVar(
-    "moe_physical_c2_pairreuse",
-    default=False,
-)
-_moe_physical_c2_exact_linear: ContextVar[bool] = ContextVar(
-    "moe_physical_c2_exact_linear",
-    default=False,
-)
+
+
+@contextlib.contextmanager
+def physical_target_arithmetic_session(plan: PhysicalTargetArithmeticPlan) -> Iterator[None]:
+    """Bind a resolved physical target plan for one verifier call."""
+
+    token = _physical_target_arithmetic.set(plan)
+    try:
+        yield
+    finally:
+        _physical_target_arithmetic.reset(token)
 
 
 @contextlib.contextmanager
@@ -164,55 +167,53 @@ def physical_exact_rowtiles_enabled() -> bool:
 def moe_physical_c2_numerics_session(enabled: bool) -> Iterator[None]:
     """Select the independently gated packed-MoE C2 numerical boundary."""
 
-    token = _moe_physical_c2_disable_f32_residual.set(bool(enabled))
-    try:
+    with physical_target_arithmetic_session(replace(
+        _physical_target_arithmetic.get(), disable_f32_residual=bool(enabled),
+    )):
         yield
-    finally:
-        _moe_physical_c2_disable_f32_residual.reset(token)
 
 
 def moe_physical_c2_f32_residual_disabled() -> bool:
     """Return whether packed MoE C2 replaces the C1 F32-residual diagnostic."""
 
-    return bool(_moe_physical_c2_disable_f32_residual.get())
+    return _physical_target_arithmetic.get().disable_f32_residual
 
 
 @contextlib.contextmanager
 def moe_physical_c2_pairreuse_session(enabled: bool) -> Iterator[None]:
     """Select independently qualified R5/R6 MoE target weight reuse."""
 
-    token = _moe_physical_c2_pairreuse.set(bool(enabled))
-    try:
+    with physical_target_arithmetic_session(replace(
+        _physical_target_arithmetic.get(), pairreuse=bool(enabled),
+    )):
         yield
-    finally:
-        _moe_physical_c2_pairreuse.reset(token)
 
 
 def moe_physical_c2_pairreuse_enabled() -> bool:
     """Return whether the current physical MoE C2 target selected pair reuse."""
 
-    return bool(_moe_physical_c2_pairreuse.get())
+    return _physical_target_arithmetic.get().pairreuse
 
 
 @contextlib.contextmanager
 def moe_physical_c2_exact_linear_session(enabled: bool) -> Iterator[None]:
     """Select the strict row-exact linear owner for one MoE physical C2 target."""
 
-    token = _moe_physical_c2_exact_linear.set(bool(enabled))
-    try:
+    with physical_target_arithmetic_session(replace(
+        _physical_target_arithmetic.get(), exact_linear=bool(enabled),
+    )):
         yield
-    finally:
-        _moe_physical_c2_exact_linear.reset(token)
 
 
 def moe_physical_c2_exact_linear_enabled() -> bool:
     """Return whether packed MoE C2 uses row-exact linear layers."""
 
-    return bool(_moe_physical_c2_exact_linear.get())
+    return _physical_target_arithmetic.get().exact_linear
 
 
 __all__ = [
     "PhysicalTargetArithmeticPlan",
+    "physical_target_arithmetic_session",
     "moe_physical_c2_exact_linear_enabled",
     "moe_physical_c2_exact_linear_session",
     "moe_physical_c2_f32_residual_disabled",
