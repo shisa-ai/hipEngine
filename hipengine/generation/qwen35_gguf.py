@@ -9324,9 +9324,14 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         provider_store = getattr(getattr(self, "_mtp2_adapter", None),
                                  "_prefix_checkpoint_store_instance", None)
         if provider_store is not None:
-            # Host KV has an independent allowance of the same configured size;
-            # it must never consume or inflate the device residency allowance.
-            provider_store.trim_host_bytes(self._prefix_retained_state_bytes_limit)
+            # Host storage is separate from device residency. DMS target
+            # snapshots already consume part of this host allowance.
+            dms_cache = getattr(self, "_dms_prefix_cache", None)
+            host_remaining = max(
+                0, self._prefix_retained_state_bytes_limit
+                - (0 if dms_cache is None else int(dms_cache.nbytes)),
+            )
+            provider_store.trim_host_bytes(host_remaining)
         pools: dict[int, Any] = {}
         for entry in self._prefix_state_snapshots.values():
             pool = getattr(entry.snapshot, "arena_pool", None)
@@ -11395,6 +11400,9 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                         if not still_owned:
                             adapter.discard_prefix_checkpoint(prefix)
         row.prefill_ms += _timing_ms_since(start)
+        if getattr(getattr(self, "_mtp2_adapter", None),
+                   "_prefix_checkpoint_store_instance", None) is not None:
+            self._trim_prefix_snapshots()
         row.prefill_chunk_count += int(not hit)
         if row.native_sampled:
             sample = (

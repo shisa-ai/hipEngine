@@ -5,6 +5,21 @@ from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
 from hipengine.speculative.prefix_checkpoint import PrefixCheckpointStore
 
 
+def test_dms_target_host_cache_reduces_provider_host_allowance():
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._prefix_state_snapshots = {}
+    runner._dms_prefix_cache = SimpleNamespace(nbytes=30)
+    store = PrefixCheckpointStore(capacity=4, release=lambda _: None)
+    store.put((1,), (11,), SimpleNamespace(nbytes=0, host_nbytes=30))
+    runner._mtp2_adapter = SimpleNamespace(_prefix_checkpoint_store_instance=store)
+    runner._prefix_snapshot_limit = 4
+    runner._prefix_retained_limit = 4
+    runner._prefix_retained_state_bytes_limit = 50
+    runner._trim_prefix_snapshots()
+    assert store.host_nbytes == 0
+    assert runner._dms_prefix_cache.nbytes == 30
+
+
 def test_retained_union_prices_legacy_provider_payload():
     runner = object.__new__(Qwen35GGUFResidentModelRunner)
     runner._prefix_state_snapshots = {(1,): SimpleNamespace(
