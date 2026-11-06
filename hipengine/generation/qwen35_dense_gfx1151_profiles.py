@@ -50,7 +50,12 @@ def _binder(
     q4_verifier_rowtile: bool,
 ) -> None:
     from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner
-    from hipengine.generation.physical_target_rows import resolve_physical_target_rows
+    from hipengine.generation.physical_target_rows import (
+        resolve_physical_target_rows, resolve_physical_width_depths,
+    )
+    generator.physical_target_width_depths = resolve_physical_width_depths(
+        str(resolved.manifest["backend"]), resolved.profile.value,
+    )
     from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
 
     generator.physical_target_rows = resolve_physical_target_rows(

@@ -3,9 +3,56 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from hipengine.kernels.backends import backend_package_capability
+
+
+MTP2_MAX_CANDIDATE_DEPTH = 7
+MTP2_MAX_PHYSICAL_REQUESTS = 8
+DEFAULT_PHYSICAL_WIDTH_DEPTHS = tuple(
+    (width, depth) for width in range(1, 5) for depth in range(1, 4)
+)
+
+
+def resolve_physical_width_depths(
+    backend: str, profile: str, *, capability=backend_package_capability,
+) -> tuple[tuple[int, int], ...]:
+    """Validate and snapshot package width/depth cells without capacity clamping."""
+
+    if not backend:
+        return DEFAULT_PHYSICAL_WIDTH_DEPTHS
+    table = capability(backend, "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS", {})
+    if not isinstance(table, Mapping):
+        raise RuntimeError("backend MTP2 physical width/depth policies must be a mapping")
+    raw = table.get(profile, DEFAULT_PHYSICAL_WIDTH_DEPTHS)
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
+        raise RuntimeError("backend MTP2 physical width/depth policy must be a sequence")
+    cells: set[tuple[int, int]] = set()
+    for item in raw:
+        if not isinstance(item, Sequence) or isinstance(item, (str, bytes, bytearray)):
+            raise RuntimeError("backend MTP2 physical width/depth cells must be pairs")
+        values = tuple(item)
+        if len(values) != 2:
+            raise RuntimeError("backend MTP2 physical width/depth cells must be pairs")
+        try:
+            width, depth = (int(value) for value in values)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "backend MTP2 physical width/depth cells must be integer pairs"
+            ) from exc
+        if not 1 <= width <= MTP2_MAX_PHYSICAL_REQUESTS:
+            raise RuntimeError("backend MTP2 physical widths must be within [1, 8]")
+        if not 1 <= depth <= MTP2_MAX_CANDIDATE_DEPTH:
+            raise RuntimeError(
+                "backend MTP2 candidate depths must be within "
+                f"[1, {MTP2_MAX_CANDIDATE_DEPTH}]"
+            )
+        cells.add((width, depth))
+    if not cells:
+        raise RuntimeError("backend MTP2 physical width/depth policy must not be empty")
+    return tuple(sorted(cells))
 
 
 @dataclass(frozen=True, slots=True)

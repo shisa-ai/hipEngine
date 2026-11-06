@@ -77,6 +77,10 @@ def test_manifest_identity_stays_on_each_generator(order, ambient, monkeypatch):
         assert generator.physical_target_rows == resolve_physical_target_rows(
             "hip_gfx1151", profile.value,
         )
+        from hipengine.generation.physical_target_rows import resolve_physical_width_depths
+        assert generator.physical_target_width_depths == resolve_physical_width_depths(
+            "hip_gfx1151", profile.value,
+        )
         owners.append((generator, resolved))
         assert os.environ.get(name) == ambient
         for owner, expected in reversed(owners):

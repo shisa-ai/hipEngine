@@ -55,7 +55,12 @@ def _env_bool(name: str, raw: str) -> bool:
 
 
 def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
-    from hipengine.generation.physical_target_rows import resolve_physical_target_rows
+    from hipengine.generation.physical_target_rows import (
+        resolve_physical_target_rows, resolve_physical_width_depths,
+    )
+    generator.physical_target_width_depths = resolve_physical_width_depths(
+        str(resolved.manifest["backend"]), resolved.profile.value,
+    )
     generator.physical_target_rows = resolve_physical_target_rows(
         str(resolved.manifest["backend"]), resolved.profile.value,
     )

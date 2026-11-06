@@ -204,7 +204,12 @@ def _binder(
 ) -> None:
     """Bind the profile cold-path policy before any decode runs."""
 
-    from hipengine.generation.physical_target_rows import resolve_physical_target_rows
+    from hipengine.generation.physical_target_rows import (
+        resolve_physical_target_rows, resolve_physical_width_depths,
+    )
+    generator.physical_target_width_depths = resolve_physical_width_depths(
+        str(resolved.manifest["backend"]), resolved.profile.value,
+    )
     generator.physical_target_rows = resolve_physical_target_rows(
         str(resolved.manifest["backend"]), resolved.profile.value,
     )

@@ -762,68 +762,27 @@ def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, 
     return widths
 
 
-# Every C1-C4 depth has independent coverage. Wider cells must be listed by the
-# active backend package and execution profile; a scalar maximum cannot express
-# the measured C8-K3 win without also admitting slower C5-C7 cells.
-_MTP2_CERTIFIED_WIDTH_DEPTHS = tuple(
-    (width, depth)
-    for width in range(1, 5)
-    for depth in range(1, 4)
+# Structural bounds and direct/profile resolution share one owner module.
+from hipengine.generation.physical_target_rows import (
+    DEFAULT_PHYSICAL_WIDTH_DEPTHS as _MTP2_CERTIFIED_WIDTH_DEPTHS,
+    MTP2_MAX_CANDIDATE_DEPTH,
+    MTP2_MAX_PHYSICAL_REQUESTS as _MTP2_MAX_PHYSICAL_REQUESTS,
+    resolve_physical_width_depths,
 )
-_MTP2_MAX_PHYSICAL_REQUESTS = 8
-# Single source of truth for speculative candidate depth. Every clamp, default,
-# and validator must derive from this name; the limit was previously duplicated
-# as a validator constant, a hardcoded adapter clamp, a getattr default, and a
-# private self-alias.
-#
-# This is the structural admission bound, not a declaration that every backend
-# supports every width/depth cell. Backend policy and the requested execution
-# profile determine which cells the adapter can use.
-MTP2_MAX_CANDIDATE_DEPTH = 7
 
 
 def _physical_width_depths(generator: Any) -> tuple[tuple[int, int], ...]:
-    """Resolve the package-owned physical request-width/candidate-depth cells."""
+    """Use the profile-owned table, resolving direct callers at construction."""
 
+    bound = getattr(generator, "physical_target_width_depths", None)
+    if bound is not None:
+        return bound
     profile_value = getattr(generator, "execution_profile", None)
-    profile = str(getattr(profile_value, "value", profile_value) or "")
-    backend = str(getattr(generator, "backend", "") or "")
-    if not backend:
-        return _MTP2_CERTIFIED_WIDTH_DEPTHS
-    table = backend_package_capability(
-        backend,
-        "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
-        {},
+    return resolve_physical_width_depths(
+        str(getattr(generator, "backend", "") or ""),
+        str(getattr(profile_value, "value", profile_value) or ""),
+        capability=backend_package_capability,
     )
-    if not isinstance(table, Mapping):
-        raise RuntimeError("backend MTP2 physical width/depth policies must be a mapping")
-    raw = table.get(profile, _MTP2_CERTIFIED_WIDTH_DEPTHS)
-    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
-        raise RuntimeError("backend MTP2 physical width/depth policy must be a sequence")
-    cells: set[tuple[int, int]] = set()
-    for item in raw:
-        if not isinstance(item, Sequence) or isinstance(item, (str, bytes, bytearray)):
-            raise RuntimeError("backend MTP2 physical width/depth cells must be pairs")
-        values = tuple(item)
-        if len(values) != 2:
-            raise RuntimeError("backend MTP2 physical width/depth cells must be pairs")
-        try:
-            width, depth = (int(value) for value in values)
-        except (TypeError, ValueError) as exc:
-            raise RuntimeError(
-                "backend MTP2 physical width/depth cells must be integer pairs"
-            ) from exc
-        if not 1 <= width <= _MTP2_MAX_PHYSICAL_REQUESTS:
-            raise RuntimeError("backend MTP2 physical widths must be within [1, 8]")
-        if not 1 <= depth <= MTP2_MAX_CANDIDATE_DEPTH:
-            raise RuntimeError(
-                "backend MTP2 candidate depths must be within "
-                f"[1, {MTP2_MAX_CANDIDATE_DEPTH}]"
-            )
-        cells.add((width, depth))
-    if not cells:
-        raise RuntimeError("backend MTP2 physical width/depth policy must not be empty")
-    return tuple(sorted(cells))
 
 
 def _constraint_text_observer(

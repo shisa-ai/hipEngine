@@ -521,6 +521,14 @@ def test_physical_width_depth_policy_is_package_owned_and_capacity_clamped() -> 
         )
         # Capacity five cannot turn the hole in the policy into C5 admission.
         assert clamped._max_physical_requests() == 4
+        owner = _width_bound_owner(profile="production", capacity=5)
+        owner.generator.physical_target_width_depths = policy
+        module.backend_package_capability = real
+        bound = Qwen35GGUFMTP2Adapter(
+            owner, enabled=True, target_verify_mode="packed", candidate_budget=3,
+        )
+        assert bound.physical_width_depths is policy
+        assert bound._max_physical_requests() == 4
     finally:
         module.backend_package_capability = real
 
