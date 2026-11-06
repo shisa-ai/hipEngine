@@ -8,10 +8,11 @@ from hipengine.runtime import laguna_gguf_runner as runner
 from scripts import laguna_attention_packed_output_gate_ab as comparison
 
 
+@pytest.mark.parametrize("stage_verifier", [False, True])
 @pytest.mark.parametrize("mode", tuple(comparison._COMPARISONS["packed_output_gate"]))
 @pytest.mark.parametrize("rows", [128, 257, 384])
 @pytest.mark.parametrize("direct_fp16", [False, True])
-def test_output_comparison_arms_reach_distinct_real_layer_gate_routes(monkeypatch, mode, rows, direct_fp16):
+def test_output_comparison_arms_reach_distinct_real_layer_gate_routes(monkeypatch, mode, rows, direct_fp16, stage_verifier):
     calls = []
     settings = comparison._COMPARISONS["packed_output_gate"][mode]
     session = object.__new__(runner.LagunaGGUFResidentSession)
@@ -50,7 +51,8 @@ def test_output_comparison_arms_reach_distinct_real_layer_gate_routes(monkeypatc
     )
     session.libraries = SimpleNamespace(gguf_ops=object(), kv_attention=object(), attention_gate=object())
     session.full_rope = session.swa_rope = object()
-    session.runtime = object()
+    session.runtime = SimpleNamespace(memcpy_async=record("stage_copy"))
+    session.verifier_scratch = SimpleNamespace(key_ptr=lambda layer: 0xF000000, value_ptr=lambda layer: 0xF100000)
     session.backend = "hip_gfx1151"
     session.f16_prefill_mode = "hipblaslt_range_direct" if direct_fp16 else "hipblaslt"
     session.fuse_f16_boundaries = True
@@ -71,7 +73,21 @@ def test_output_comparison_arms_reach_distinct_real_layer_gate_routes(monkeypatc
     monkeypatch.setattr(runner, "launch_laguna_head_rmsnorm_rope", record("head"))
     monkeypatch.setattr(runner, "laguna_softplus_head_gate_f32_bf16_packed_tiles_out", record("packed_gate"))
     monkeypatch.setattr(runner, "laguna_softplus_head_gate_f32_fp16_via_bf16_packed_tiles_out", record("packed_gate_fp16"))
-    session._run_layer_rows(0, rows=rows, stream=7)
+    if stage_verifier and rows > 128:
+        with pytest.raises(ValueError, match="one attention tile"):
+            session._run_layer_rows(0, rows=rows, stage_verifier_kv=True, stream=7)
+        assert not any(entry[0] in {"append", "cached", "stage_copy"} for entry in calls)
+        return
+    session._run_layer_rows(0, rows=rows, stage_verifier_kv=stage_verifier, stream=7)
+    if stage_verifier:
+        assert not any(entry[0] in {"append", "cached", "blas", "packed_gate", "packed_gate_fp16"} for entry in calls)
+        assert len([entry for entry in calls if entry[0] == "fallback"]) == 1
+        copies = [entry for entry in calls if entry[0] == "stage_copy"]
+        assert [entry[1] for entry in copies] == [
+            (0xF000000, scratch.key_rotated.ptr, rows * 8 * 128 * 4, runner.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+            (0xF100000, scratch.value.ptr, rows * 8 * 128 * 4, runner.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+        ]
+        return
 
     eligible_offsets = [offset for offset in range(128, rows - 127, 128)]
     blas_calls = [entry for entry in calls if entry[0] == "blas"]
