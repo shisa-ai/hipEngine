@@ -1,6 +1,8 @@
 """Packed workspace owner releases storage and pool charges in order."""
 from types import SimpleNamespace
 
+import pytest
+
 from hipengine.runtime.qwen35_gguf_workspace import PackedWorkspaceOwner
 
 
@@ -33,3 +35,28 @@ def test_workspace_owner_counts_unique_buffers_and_releases_charges_after_storag
     assert owner.verify_state is None and owner.verify_scratch is None
     assert owner.ar_attention_workspace is None
     assert owner.decode_sessions == () and not owner.decode_state_dirty
+
+
+def test_workspace_owner_retry_does_not_repeat_completed_workspace_release():
+    events = []
+    owner = PackedWorkspaceOwner(
+        ar_attention_workspace=SimpleNamespace(buffers=(SimpleNamespace(ptr=1),)),
+        verify_scratch=SimpleNamespace(buffers=(SimpleNamespace(ptr=2),)),
+    )
+    failing = True
+
+    def release(buffer, **kwargs):
+        if buffer.ptr == 2 and failing:
+            raise RuntimeError('release failed')
+        events.append(buffer.ptr)
+
+    runtime = SimpleNamespace()
+    with pytest.raises(RuntimeError, match='release failed'):
+        owner.close(runtime=runtime, release=release)
+    assert owner.ar_attention_workspace is None
+    assert owner.verify_scratch is not None
+    failing = False
+    owner.close(runtime=runtime, release=release)
+    owner.close(runtime=runtime, release=release)
+    assert events == [1, 2]
+    assert owner.verify_scratch is None

@@ -5069,11 +5069,12 @@
       "ledger_line": 4184,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:26203 retains guarded idle packed workspace release."
+        "worklog/entries/20261106T041444.614860Z-lhl-r0209-close-79d4c0.md",
+        "af8451857 extracts shared buffer references, accounting and ordered teardown into PackedWorkspaceOwner. 143 workspace/layout/growth/owner tests pass; actual public cancellation/refill/close balances allocations."
       ],
-      "next_action": "Extract one workspace resource owner and migrate teardown callers with graph/scatter quiescence; release charges before pool close, never per-row reclaim.",
+      "next_action": "None; R0209 ledger section removed. Guarded session API remains a forwarding adapter. R0210 allocation policy remains separate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

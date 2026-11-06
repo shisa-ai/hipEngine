@@ -3232,21 +3232,6 @@ graph-pointer, lifecycle, cancellation, pressure, SLO and production load. Only 
 registered packages migrate may compatibility fixtures retire. Registered strict/unfused/serial
 numerical fallbacks remain independent of allocator cleanup.
 
-### R0209 — Extract packed-workspace ownership without breaking teardown
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `Qwen35GGUFResidentSession.release_idle_packed_workspace()`.
-
-**Deferred resource-owner design:** move session-held workspace references and teardown
-orchestration into one owner, keeping the guarded API until every caller migrates. Preserve
-scatter/graph quiescence and release scratch plus charges before pool close. Do not restore per-row
-reclaim releases.
-
-Done when: `uv run pytest tests/test_unit_gguf_packed_workspace_stability.py
-tests/test_unit_gguf_packed_verify_layout.py tests/test_unit_gguf_global_pool_growth.py -q` and
-public cancellation/reuse, retry/rebind and close with balanced ownership.
-
 ### R0210 — Consolidate private packed allocation after page-map repair
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
