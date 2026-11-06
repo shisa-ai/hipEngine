@@ -63,6 +63,22 @@ def test_selected_down_prefill_scopes_variant_and_restores(monkeypatch, failure)
     assert session.selected_down_mode == session.selected_gate_up_mode == "grouped_exact"
 
 
+def test_teacher_forced_second_session_failure_closes_first(monkeypatch):
+    closed = []
+    calls = []
+
+    def construct(*args, **kwargs):
+        calls.append(kwargs["mode"] if "mode" in kwargs else args[2])
+        if len(calls) == 2:
+            raise RuntimeError("second construction")
+        return SimpleNamespace(close=lambda: closed.append("first"))
+
+    monkeypatch.setattr(benchmark, "_session_for_mode", construct)
+    with pytest.raises(RuntimeError, match="second construction"):
+        benchmark._teacher_forced_prompt(object(), {}, SimpleNamespace())
+    assert closed == ["first"]
+
+
 HORIZONS = (16, 32)
 
 

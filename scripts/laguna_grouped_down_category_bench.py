@@ -772,15 +772,14 @@ def _teacher_forced_prompt(
     comparison: CategoryComparison = GROUPED_DOWN_COMPARISON,
 ) -> dict[str, Any]:
     baseline_mode, candidate_mode = comparison.modes
-    sessions = {
-        mode: _session_for_mode(owner, args, mode, comparison=comparison)
-        for mode in comparison.modes
-    }
-    logits = {
-        mode: np.empty(sessions[mode].config.vocab_size, dtype=np.float32)
-        for mode in comparison.modes
-    }
+    sessions = {}
     try:
+        for mode in comparison.modes:
+            sessions[mode] = _session_for_mode(owner, args, mode, comparison=comparison)
+        logits = {
+            mode: np.empty(sessions[mode].config.vocab_size, dtype=np.float32)
+            for mode in comparison.modes
+        }
         results = {
             mode: _prefill_for_mode(
                 sessions[mode],
