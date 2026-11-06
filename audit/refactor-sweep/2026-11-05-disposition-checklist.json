@@ -2923,11 +2923,13 @@
       "ledger_line": 2302,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:9235,9463-9467 resolves router-select threads alongside metadata and isolation inputs."
+        "Retain diagnostic isolation, router-thread controls, progress recording and queue drains; no execution/recorder ownership changes.",
+        "55 host and 8 flight-recorder tests pass; sweep and decoder help routes succeed.",
+        "worklog/entries/20261106T000537.280823Z-lhl-r0281-prefill-debug-5dc317.md"
       ],
-      "next_action": "Separate observation/selection/synchronization diagnostic owners and migrate complete sweep/decoder selectors, marker counts and cleanup before containment removal.",
+      "next_action": "None; containment retirement needs a separate concrete decision and bounded protocol.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

@@ -1894,26 +1894,6 @@ confirm public chain routing stays unchanged. The corresponding GGUF root/siblin
 is separately owned by `scripts/gguf_mtp_bench.py`; its supported-comparison disposition is recorded
 in `worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md`.
 
-### R0281-PREFILL-DEBUG — Isolation profiles, progress recording and drains
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS`.
-
-**Decision needed:** maintain these controls as explicit diagnostic policies, or retire selected
-interfaces while preserving reproducible selector maps, progress decoding and needed containment.
-Decide observation, execution selection and synchronization separately; none is an unused
-performance flag.
-
-Done when: migrate session/CLI forwarding, complete selector maps, conflict errors,
-provenance and shutdown together. Run the router-select, prefill-profile, queue-drain and
-flight-recorder test files, plus the bulk prefill hidden-seed/capacity tests and both sweep/decoder
-`--help` routes. If execution or recorder ownership changes, exercise real recorded prefill,
-chunk/layer waits, reset/reuse, exception cleanup and persisted decoding; verify marker and
-synchronization counts independently. Use the reference's bounded current-default long-context
-protocol for any claimed containment removal, without treating a recorded host stack or one
-completed pass as root-cause proof.
-
 ### R0281-GDN / R0377 — Prefill selectors and session-owned scratch
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
