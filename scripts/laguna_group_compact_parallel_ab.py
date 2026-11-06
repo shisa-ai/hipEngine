@@ -63,12 +63,12 @@ def _run(
 ) -> tuple[float, int]:
     child = _child_session(owner)
     try:
-        child.set_group_compact_mode(_MODES[mode])
-        started = time.perf_counter()
-        result = child.prefill(tokens)
-        child.runtime.device_synchronize()
-        elapsed = time.perf_counter() - started
-        return 512.0 / elapsed, int(result.next_token_id)
+        with child.group_compact_diagnostic(_MODES[mode]):
+            started = time.perf_counter()
+            result = child.prefill(tokens)
+            child.runtime.device_synchronize()
+            elapsed = time.perf_counter() - started
+            return 512.0 / elapsed, int(result.next_token_id)
     finally:
         child.close()
 
@@ -104,9 +104,9 @@ def main() -> int:
         for compact_mode in _MODES.values():
             warm_session = _child_session(owner)
             try:
-                warm_session.set_group_compact_mode(compact_mode)
-                warm_session.prefill(tokens[:128])
-                runtime.device_synchronize()
+                with warm_session.group_compact_diagnostic(compact_mode):
+                    warm_session.prefill(tokens[:128])
+                    runtime.device_synchronize()
             finally:
                 warm_session.close()
         for repetition in range(args.repetitions):

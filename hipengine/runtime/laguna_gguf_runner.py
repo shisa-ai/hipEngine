@@ -4259,6 +4259,17 @@ class LagunaGGUFResidentSession:
 
         self.prefill_swa_attention_hipblaslt = bool(enabled)
 
+    @contextlib.contextmanager
+    def group_compact_diagnostic(self, mode: str):
+        """Scope stable compaction reference selection to this resident owner."""
+        selected = resolve_laguna_group_compact_mode(self.backend, mode)
+        previous = self.group_compact_mode
+        try:
+            self.group_compact_mode = selected
+            yield
+        finally:
+            self.group_compact_mode = previous
+
     def set_group_compact_mode(self, mode: str) -> None:
         """Select stable serial or parallel MoE metadata compaction."""
 

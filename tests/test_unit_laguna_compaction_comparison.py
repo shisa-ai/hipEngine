@@ -1,11 +1,30 @@
 """Host contracts for stable Laguna source-row compaction comparisons."""
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
 
 from hipengine.runtime import laguna_moe as moe
 from scripts import laguna_group_compact_parallel_ab as comparison
+
+
+def test_compaction_diagnostic_restores_nested_failure_and_validates_before_mutation():
+    from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
+    owner = object.__new__(LagunaGGUFResidentSession)
+    owner.backend = 'hip_gfx1151'
+    owner.group_compact_mode = 'parallel'
+    with owner.group_compact_diagnostic('serial'):
+        assert owner.group_compact_mode == 'serial'
+        with pytest.raises(RuntimeError):
+            with owner.group_compact_diagnostic('parallel'):
+                raise RuntimeError('failure')
+        assert owner.group_compact_mode == 'serial'
+        with pytest.raises(ValueError):
+            with owner.group_compact_diagnostic('atomic'):
+                pass
+        assert owner.group_compact_mode == 'serial'
+    assert owner.group_compact_mode == 'parallel'
 
 
 @pytest.mark.parametrize("mode", ["serial", "parallel"])
@@ -71,8 +90,16 @@ def test_compaction_ab_closes_child_after_selected_mode_or_failure(monkeypatch, 
             raise RuntimeError("synthetic prefill failure")
         return SimpleNamespace(next_token_id=7)
 
+    @contextmanager
+    def diagnostic(selected):
+        calls.append(("mode", selected))
+        try:
+            yield
+        finally:
+            calls.append(("restore",))
+
     child = SimpleNamespace(
-        set_group_compact_mode=lambda selected: calls.append(("mode", selected)),
+        group_compact_diagnostic=diagnostic,
         prefill=prefill, close=lambda: calls.append(("close",)),
         runtime=SimpleNamespace(device_synchronize=lambda: calls.append(("sync",))),
     )
@@ -85,4 +112,4 @@ def test_compaction_ab_closes_child_after_selected_mode_or_failure(monkeypatch, 
         monkeypatch.setattr(comparison.time, "perf_counter", lambda: next(clock))
         assert comparison._run(object(), mode, [1, 2]) == (512.0, 7)
     assert calls[0] == ("mode", expected)
-    assert calls[-1] == ("close",)
+    assert calls[-2:] == [("restore",), ("close",)]
