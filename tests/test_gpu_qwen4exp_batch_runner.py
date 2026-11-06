@@ -1285,7 +1285,8 @@ def test_pooled_slots_match_the_static_layout_and_return_their_blocks(model) -> 
     try:
         assert pooled.pooled and not static.pooled
         assert pooled.pool_blocks == 3
-        extents = {0: 2 * block, 2: 20}
+        # Admission uses logical positions; allocation rounds to whole blocks.
+        extents = {0: pooled.max_positions, 2: 20}
         for slot, extent in extents.items():
             static.admit(slot)
             pooled.admit(slot, positions=extent)
