@@ -12,7 +12,7 @@ from scripts import laguna_long_context_profile as profiler
 
 
 @pytest.mark.parametrize("mode", comparison._MODES)
-def test_layout_comparison_constructs_each_real_session_without_later_prefetch(monkeypatch, mode):
+def test_layout_comparison_constructs_real_session_with_package_prefetch_defaults(monkeypatch, mode):
     sessions = []
     config = SimpleNamespace(context_length=4096)
     monkeypatch.setattr(comparison, "get_hip_runtime", lambda: object())
@@ -37,9 +37,9 @@ def test_layout_comparison_constructs_each_real_session_without_later_prefetch(m
     session, = sessions
     assert session.q6_qmicro_planar is (mode == "planar_candidate")
     assert session.q6_qmicro_permute is (mode == "current_permute")
-    assert not session.q6_wmma_prefetch_weight
-    assert not session.q6_wmma_prefetch_activation
-    assert not session.q6_precomputed_activation_sums
+    assert session.q6_wmma_prefetch_weight is (mode == "planar_candidate")
+    assert session.q6_wmma_prefetch_activation is (mode == "planar_candidate")
+    assert session.q6_precomputed_activation_sums is (mode == "planar_candidate")
     assert session._closed
 
 
@@ -49,7 +49,22 @@ def test_layout_comparison_records_fixed_policy_and_closes_owner(monkeypatch, mo
     constructors = []
     events = []
     runtime = SimpleNamespace(device_synchronize=lambda: events.append("sync"))
-    owner = SimpleNamespace(prefill=lambda tokens: events.append("warm"), close=lambda: events.append("close"))
+    from contextlib import contextmanager
+
+    @contextmanager
+    def prefetch_diagnostic(**kwargs):
+        assert kwargs == {"weight": False, "activation": False, "sums": False}
+        events.append("scope_enter")
+        try:
+            yield
+        finally:
+            events.append("scope_exit")
+
+    owner = SimpleNamespace(
+        prefill=lambda tokens: events.append("warm"),
+        close=lambda: events.append("close"),
+        q6_prefetch_diagnostic=prefetch_diagnostic,
+    )
     monkeypatch.setattr(comparison, "get_hip_runtime", lambda: runtime)
     monkeypatch.setattr(comparison, "memory_stats", lambda: {"tracked": 0})
     monkeypatch.setattr(comparison, "_compiler_version", lambda path: "synthetic")
@@ -76,11 +91,11 @@ def test_layout_comparison_records_fixed_policy_and_closes_owner(monkeypatch, mo
             "q6_precomputed_activation_sums": False,
         }
         assert record["comparison_policy"] == expected
-        assert {key: constructors[0][key] for key in expected} == expected
+        assert not any(key in constructors[0] for key in expected)
         assert record["q6_qmicro_planar"] is (mode == "planar_candidate")
         assert record["q6_qmicro_permute"] is (mode == "current_permute")
         assert record["memory"] == {"tracked_before": {"tracked": 0}, "tracked_after": {"tracked": 0}}
-    assert events == ["warm", "sync", "close"]
+    assert events == ["scope_enter", "warm", "sync", "scope_exit", "close"]
 
 
 @pytest.mark.parametrize("order", [comparison._MODES, tuple(reversed(comparison._MODES))])
@@ -94,17 +109,17 @@ def test_invalid_layout_order_fails_loudly(order):
         comparison._parse_mode_order(order)
 
 
-@pytest.mark.parametrize("planar,permute,expected_planar,expected_prefetch", [
-    (None, None, None, None), (True, None, True, None),
-    (False, None, False, False), (None, True, False, False),
-    (False, True, False, False), (None, False, None, None),
+@pytest.mark.parametrize("planar,permute,expected_planar", [
+    (None, None, None), (True, None, True),
+    (False, None, False), (None, True, False),
+    (False, True, False), (None, False, None),
 ])
-def test_profile_layout_override_preserves_defaults_or_satisfies_interleaved_prerequisites(planar, permute, expected_planar, expected_prefetch):
+def test_profile_layout_override_leaves_prefetch_to_owner(planar, permute, expected_planar):
     overrides = profiler._q6_layout_overrides(SimpleNamespace(q6_qmicro_planar=planar, q6_qmicro_permute=permute))
     assert overrides["q6_qmicro_planar"] is expected_planar
     assert overrides["q6_qmicro_permute"] is permute
     for name in ("q6_wmma_prefetch_weight", "q6_wmma_prefetch_activation", "q6_precomputed_activation_sums"):
-        assert overrides.get(name) is expected_prefetch
+        assert name not in overrides
 
 
 @pytest.mark.parametrize("flags,planar,permute", [
@@ -140,4 +155,4 @@ def test_profile_cli_run_forwards_layout_prerequisites_to_real_constructor(monke
     kw, = captured
     assert kw["q6_qmicro_planar"] is planar and kw["q6_qmicro_permute"] is permute
     for key in ("q6_wmma_prefetch_weight", "q6_wmma_prefetch_activation", "q6_precomputed_activation_sums"):
-        assert kw.get(key) is (False if planar is False else None)
+        assert key not in kw
