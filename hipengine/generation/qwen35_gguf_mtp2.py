@@ -738,11 +738,13 @@ def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, 
     file_type_name = str(getattr(weights, "file_type_name", "") or "")
     profile = getattr(generator, "execution_profile", None)
     profile = str(getattr(profile, "value", profile) or "")
-    policies = backend_package_capability(
-        str(getattr(generator, "backend", "")),
-        "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
-        {},
-    )
+    policies = getattr(generator, "physical_target_prompt_policies", None)
+    if policies is None:
+        policies = backend_package_capability(
+            str(getattr(generator, "backend", "")),
+            "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
+            {},
+        )
     if not isinstance(policies, Mapping):
         raise RuntimeError("backend prompt-streaming policies must be a mapping")
     raw = policies.get((geometry, file_type_name, profile), ())

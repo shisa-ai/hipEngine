@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from hipengine.kernels.backends import backend_package_capability
 
@@ -53,6 +54,28 @@ def resolve_physical_width_depths(
     if not cells:
         raise RuntimeError("backend MTP2 physical width/depth policy must not be empty")
     return tuple(sorted(cells))
+
+
+def resolve_physical_prompt_policies(backend: str) -> Mapping:
+    """Copy package prompt policy so later mutation cannot retarget an owner."""
+
+    policies = backend_package_capability(
+        backend, "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES", {},
+    )
+    if not isinstance(policies, Mapping):
+        raise RuntimeError("backend prompt-streaming policies must be a mapping")
+    snapshot = {}
+    for key, raw in policies.items():
+        if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
+            raise RuntimeError("backend prompt-streaming widths must be a sequence")
+        widths = tuple(sorted({int(value) for value in raw}))
+        if any(value < 1 or value > MTP2_MAX_PHYSICAL_REQUESTS for value in widths):
+            raise RuntimeError(
+                "backend prompt-streaming widths must be within "
+                f"[1, {MTP2_MAX_PHYSICAL_REQUESTS}]"
+            )
+        snapshot[key] = widths
+    return MappingProxyType(snapshot)
 
 
 @dataclass(frozen=True, slots=True)

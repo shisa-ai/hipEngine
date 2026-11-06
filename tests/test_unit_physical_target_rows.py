@@ -47,3 +47,17 @@ def test_rows_plan_snapshots_rollbacks(monkeypatch, profile):
     assert initial.exact_counts == ((8, 28) if profile == "production" else ())
     with pytest.raises(FrozenInstanceError):
         initial.exact_counts = ()
+
+
+def test_prompt_policy_snapshot_is_deeply_immutable(monkeypatch):
+    import hipengine.generation.physical_target_rows as module
+
+    widths = [4, 1, 4]
+    policies = {("geometry", None, "production"): widths}
+    monkeypatch.setattr(module, "backend_package_capability", lambda *args: policies)
+    snapshot = module.resolve_physical_prompt_policies("test_backend")
+    widths.append(8)
+    policies.clear()
+    assert snapshot[("geometry", None, "production")] == (1, 4)
+    with pytest.raises(TypeError):
+        snapshot[("geometry", None, "production")] = (8,)

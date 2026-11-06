@@ -403,7 +403,7 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     ) == frozenset()
 
 
-def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c1_c4() -> None:
+def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c1_c4(monkeypatch) -> None:
     owner = SimpleNamespace(
         generator=SimpleNamespace(
             backend="hip_gfx1151",
@@ -430,6 +430,20 @@ def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c1_c4() 
     assert adapter._physical_prompt_streaming_admitted(3) is True
     assert adapter._physical_prompt_streaming_admitted(4) is True
     assert adapter._physical_prompt_streaming_admitted(5) is False
+    from hipengine.generation.physical_target_rows import resolve_physical_prompt_policies
+    import hipengine.generation.qwen35_gguf_mtp2 as module
+    owner.generator.physical_target_prompt_policies = resolve_physical_prompt_policies(
+        owner.generator.backend,
+    )
+    real = module.backend_package_capability
+    monkeypatch.setattr(module, "backend_package_capability", lambda backend, name, default: (
+        {} if name == "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES"
+        else real(backend, name, default)
+    ))
+    bound = Qwen35GGUFMTP2Adapter(
+        owner, enabled=True, target_verify_mode="native", candidate_budget=3,
+    )
+    assert bound.physical_prompt_streaming_widths == (1, 2, 3, 4)
 
 
 def test_qwen38_q4ks_prompt_streaming_uses_geometry_capability() -> None:
