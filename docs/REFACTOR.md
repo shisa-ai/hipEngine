@@ -1697,10 +1697,16 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `q6_wmma_prefetch_weight`, `q6_wmma_prefetch_activation`, `q6_precomputed_activation_sums`.
 
-**Remaining work:** replace public controls with explicit production/reference ownership across
-constructor, setters, generalized A/B/leaf and numerical fixtures. Preserve layout/staging harness
-prerequisites and result readers. Actual-weight/public validation shares the local Laguna model
-resource blocker recorded in R0313–R0320, not a missing-measurement admission rule.
+**Host migration complete:** Q6 prefetch/sums use the validated restoring
+`q6_prefetch_diagnostic` bundle. The three setters and constructor overrides are removed;
+production settings derive from resident layout and backend capability. Generalized and
+planar A/B arms preserve producer/consumer selection; non-planar staging harnesses use
+layout-derived defaults. Direct primitive references and historical mode labels remain.
+See `worklog/entries/20261106T123709.064814Z-lhl-r0331-dictionary-callers-cee3c2.md`.
+
+**Remaining dependency:** generalized actual-weight comparison and public selection/state/
+cleanup validation need an accessible Laguna checkpoint; configured local artifacts are absent.
+Host runtime/WMMA/layout/profiler checks and 13 activation/full-MoE GPU cases passed on gfx1151.
 
 Done when: run runtime-mode, WMMA-reference, activation/layout, runner and full MoE
 numerical contracts; then execute the generalized comparison and public `LLM.generate()` with an

@@ -2475,11 +2475,11 @@
       "ledger_line": 1907,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "hipengine/runtime/laguna_gguf_runner.py:2969-2971,3616-3646,4166 implements prefetch/sum controls and prerequisites."
       ],
-      "next_action": "Move reference modes under explicit comparison ownership with matching sum producer/consumer and caller/result migration.",
+      "next_action": "Host migration complete e26907da5/24a58bd4b/c59edfc83/42cf70184: validated restoring prefetch/sum bundle, setters and constructor overrides retired, defaults bound to layout/capability, generalized/planar/staging callers migrated including dictionary kwargs. Runtime/runner/layout/profiler/WMMA checks pass; 13 gfx1151 activation/full-MoE cases pass. Keep primitive reference args and historical labels. Remaining generalized actual-weight and public selected-state/cleanup gates need accessible Laguna checkpoint (configured artifacts absent per R0341).",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
