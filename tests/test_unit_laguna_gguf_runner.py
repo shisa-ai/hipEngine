@@ -1274,8 +1274,9 @@ def test_laguna_session_constructor_failure_frees_partial_state_in_reverse(
     assert "libraries" not in events
 
 
+@pytest.mark.parametrize("explicit_policy", [False, True])
 @pytest.mark.parametrize("unsafe_metadata", [None, "missing_norm", "infinite_value_bound"])
-def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch, unsafe_metadata) -> None:
+def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch, unsafe_metadata, explicit_policy) -> None:
     validated_modes = []
     original_validate = runner_module.validate_laguna_f16_prefill_mode
 
@@ -1451,8 +1452,11 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch,
         assert events == ["weights"]
         return
 
+    from hipengine.runtime.laguna_prefill_policy import LagunaCachedPrefillPolicy
+    selected_policy = LagunaCachedPrefillPolicy(True, True, True, True) if explicit_policy else None
     session = runner_module.LagunaGGUFResidentSession(
         "/synthetic/laguna.gguf",
+        cached_prefill_policy=selected_policy,
         backend="hip_gfx1151",
         runtime=Runtime(),
         repacked_cache="/synthetic/laguna-repacked-v1",
@@ -1465,6 +1469,8 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch,
     assert session.prefill_attention_chunk_size == 128
     assert session.prefill_global_attention_chunk_size == 2_048
     assert session.prefill_kv_preappend is True
+    if explicit_policy:
+        assert session.cached_prefill_policy is selected_policy
     assert session.prefill_cached_meta is True
     assert session.prefill_global_qrow6 is True
     assert session.prefill_dense_initial is True
