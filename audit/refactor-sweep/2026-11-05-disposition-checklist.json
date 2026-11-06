@@ -3139,11 +3139,13 @@
       "ledger_line": 2477,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:9205-9212,10921-10951 retains individual FP32 boundary policy."
+        "Retain FP32 per-boundary comparisons and probe serialization; no arithmetic/default/policy migration.",
+        "255 FP32/probe tests and 62 routing/profile/invocation-contract tests pass.",
+        "worklog/entries/20261106T002958.374350Z-lhl-r0287-f32-policy-a5c431.md"
       ],
-      "next_action": "Represent boundary arithmetic as runner-owned plan and migrate buffer/profile/probe metadata with independent per-boundary diagnostics; no incidental default promotion.",
+      "next_action": "None; candidate promotion remains separate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

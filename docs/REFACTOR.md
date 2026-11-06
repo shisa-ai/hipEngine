@@ -1916,33 +1916,6 @@ pair+SiLU dispatch at values below, within and above their row bounds. Preserve 
 registered strict fallbacks. Run the rowtile-control and GEMV dispatch unit tests, raw-K and pack8
 GPU parity files and public generation with route attribution, reset/reuse and cleanup.
 
-### R0287 — Verifier FP32 arithmetic policy and probe provenance
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_VERIFY_F32_`, `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL`,
-`HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM`, `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS`,
-`HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA`, `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT`,
-`HIPENGINE_GGUF_VERIFY_F32_POST_NORM`, `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_ROUTER`,
-`HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SELECTED_Q8`, `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_SHARED_Q8`,
-`HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE`, `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN`,
-`HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE`, `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN`,
-`HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT`.
-
-**Decision needed:** preserve the explicit per-boundary comparisons, or move them into a
-runner-owned arithmetic plan with registered-profile bindings and probe serialization. Do not delete
-the broad stack merely because one historical composition failed, or enable every FP32 boundary to
-remove flags. Candidate promotion and diagnostic retention are separate decisions.
-
-Done when: migrate buffer materialization, BF16 mirrors, prefix rejoin, layer/FFN
-consumers, profile binders, physical-C2 context and probe metadata together. Run
-`tests/test_unit_qwen35_gguf_verify_f32_*.py`, dense-Q8 routing, profile/environment isolation,
-invocation-contract and forced-target probe tests. Runtime changes require real strict/production
-requests, teacher logits at matched contexts, prefix/intermediate/state checks and
-verify/commit/reset/cancel/close comparisons. Changed-arithmetic defaults need the execution-profile
-numerical/task gates; an old token-margin slice is not that gate. Token-embedding precision remains
-separately inventoried.
-
 ### R0291 / R0293 — Q8T16 rowtile selection and comparison ownership
 
 Owner: `hipengine/runtime/gguf_linear.py`.
