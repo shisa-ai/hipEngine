@@ -9,7 +9,7 @@ from hipengine.kernels.registry import KernelKey, is_registered
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
-from scripts.laguna_global_issue_diagnostic import global_issue_comparison
+from scripts.laguna_global_issue_diagnostic import global_issue_arm, global_issue_comparison
 from scripts import laguna_long_context_profile as profiler
 
 
@@ -73,8 +73,8 @@ def test_named_global_comparison_reaches_its_registered_pair(owner, name, contro
     args = SimpleNamespace(**{"compare_global_" + name: True})
     with global_issue_comparison(owner, args):
         for enabled in (False, True):
-            getattr(owner, "set_decode_global_" + name)(enabled)
-            assert cache.attend(0, 10, 20, gate_ptr=30, gated_out_ptr=40) is (live_count >= 127)
+            with global_issue_arm(owner, args, candidate=enabled):
+                assert cache.attend(0, 10, 20, gate_ptr=30, gated_out_ptr=40) is (live_count >= 127)
     assert vars(cache) == before
     if 127 <= live_count <= 4000:
         assert selected == [
@@ -98,8 +98,8 @@ def test_global_scope_preserves_generic_capacity_route(owner, name, control, can
     before = vars(cache).copy()
     with global_issue_comparison(owner, SimpleNamespace(**{"compare_global_" + name: True})):
         for enabled in (False, True):
-            getattr(owner, "set_decode_global_" + name)(enabled)
-            assert cache.attend(0, 10, 20, gate_ptr=30, gated_out_ptr=40)
+            with global_issue_arm(owner, SimpleNamespace(**{"compare_global_" + name: True}), candidate=enabled):
+                assert cache.attend(0, 10, 20, gate_ptr=30, gated_out_ptr=40)
     assert vars(cache) == before
     assert selected[0] == selected[1]
     assert "assume_exp_fixedshape" not in selected[0]
@@ -130,6 +130,26 @@ def test_global_scope_restores_nested_policies_and_failed_body(owner, failure):
             assert failure and str(error) == "synthetic comparison failure"
         assert vars(cache) == outer
     assert vars(cache) == before
+
+
+@pytest.mark.parametrize("failure", [False, True])
+@pytest.mark.parametrize("name,control,candidate", _PAIRS)
+def test_global_arm_restores_each_stage_on_exit(owner, name, control, candidate, failure):
+    args = SimpleNamespace(**{"compare_global_" + name: True})
+    before = vars(owner.kv_cache).copy()
+    field = "global_" + candidate
+    try:
+        with global_issue_arm(owner, args, candidate=True):
+            assert getattr(owner.kv_cache, field)
+            outer = vars(owner.kv_cache).copy()
+            with global_issue_arm(owner, args, candidate=False):
+                assert not getattr(owner.kv_cache, field)
+            assert vars(owner.kv_cache) == outer
+            if failure:
+                raise RuntimeError("synthetic arm failure")
+    except RuntimeError as error:
+        assert failure and str(error) == "synthetic arm failure"
+    assert vars(owner.kv_cache) == before
 
 
 @pytest.mark.parametrize("field,value", [("split_gate_fusion", False), ("global_split_min_live", None)])

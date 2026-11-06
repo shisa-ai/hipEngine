@@ -32,6 +32,19 @@ def comparison_name(args):
 
 
 @contextmanager
+def global_issue_arm(owner, args, *, candidate):
+    """Select one comparison arm and restore its stage field on exit."""
+    name = comparison_name(args)
+    if name is None:
+        yield
+        return
+    prefix = next(prefix for stage, prefix in _STAGES if stage == name)
+    with global_issue_comparison(owner, args):
+        setattr(owner.kv_cache, prefix + _SUFFIX, bool(candidate))
+        yield
+
+
+@contextmanager
 def global_issue_comparison(owner, args):
     """Hold predecessors on and successors off, restoring every touched field."""
     name = comparison_name(args)

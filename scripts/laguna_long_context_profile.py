@@ -25,6 +25,7 @@ from hipengine.tokenization.gguf import LagunaGGUFTokenizer
 from scripts.laguna_global_issue_diagnostic import (
     comparison_name as global_issue_comparison_name,
     global_issue_comparison,
+    global_issue_arm,
 )
 from scripts.laguna_moe_tail_diagnostic import unfused_moe_tail
 from scripts.laguna_swa_issue_diagnostic import comparison_name as swa_issue_comparison_name, swa_issue_comparison
@@ -1128,12 +1129,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.kv_cache.global_gqa2_vstage64_vec16_direct_fixedshape = (
                             mode == "candidate"
                         )
-                    if args.compare_global_assume_exp:
-                        owner.set_decode_global_assume_exp(mode == "candidate")
-                    if args.compare_global_exp32:
-                        owner.set_decode_global_exp32(mode == "candidate")
-                    if args.compare_global_mixed32:
-                        owner.set_decode_global_mixed32(mode == "candidate")
+                    if global_issue_comparison_name(args) is not None:
+                        decode_scopes.close()
+                        decode_scopes.enter_context(
+                            global_issue_arm(owner, args, candidate=mode == "candidate")
+                        )
                     if args.compare_selected_natural_decode:
                         owner.set_selected_natural_decode(
                             mode == "candidate"
