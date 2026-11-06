@@ -1305,6 +1305,11 @@ Owner: `hipengine/generation/qwen35_gguf.py`.
 
 Scope: `tail4_hadamard_group32`; `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG`.
 
+**First ownership unit:** `Qwen35GGUFBringupGenerator.int8_kv_failure_override` explicitly
+controls recorded-failure override without selecting resident storage. `False` overrides legacy
+environment opt-ins; `None` preserves existing callers until migration. Unsupported capabilities
+remain errors. Resident layout/default readers and allocation/soak callers remain to migrate.
+
 **Decision needed:** retain explicit diagnostic controls, or migrate them to a scoped policy that
 distinguishes a recorded-failure override from storage layout selection. Keep actual rejection
 records and capability/resource errors. Do not replace the current kernel declaration with

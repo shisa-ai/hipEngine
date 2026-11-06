@@ -1468,6 +1468,9 @@ class Qwen35GGUFBringupGenerator:
     ar_stream_decode: bool | None = None
     # Explicit packed-prefill selection; None uses the enabled package default.
     ar_packed_prefill: bool | None = None
+    # Recorded-failure override only; does not select the resident KV layout.
+    # None preserves legacy diagnostic callers during their migration.
+    int8_kv_failure_override: bool | None = None
     # Profile-owned cooperative F32 router policy. ``None`` selects the
     # runner's construction defaults.
     target_router_f32w_coop: bool | None = None
@@ -1565,8 +1568,10 @@ class Qwen35GGUFBringupGenerator:
             self.backend = backend
         return hip_target_arch_for_backend(backend)
 
-    @staticmethod
-    def _int8_kv_diagnostic_override_enabled() -> bool:
+    def _int8_kv_diagnostic_override_enabled(self) -> bool:
+        requested = self.int8_kv_failure_override
+        if requested is not None:
+            return bool(requested)
         return any(
             str(os.environ.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
             for name in _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS

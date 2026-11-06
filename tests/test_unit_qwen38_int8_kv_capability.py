@@ -584,8 +584,10 @@ def _public_kv_generator(tmp_path: Path, *, backend: str) -> Qwen35GGUFBringupGe
 
 @pytest.mark.parametrize("status", ["unsupported", "rejected"])
 @pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+@pytest.mark.parametrize("explicit_override,legacy_override", [(None, True), (True, False), (False, True)])
 def test_diagnostic_override_only_bypasses_recorded_quality_rejection(
     tmp_path: Path, monkeypatch, status: str, backend: str,
+    explicit_override: bool | None, legacy_override: bool,
 ) -> None:
     from dataclasses import replace
 
@@ -600,15 +602,22 @@ def test_diagnostic_override_only_bypasses_recorded_quality_rejection(
         "no registered kernel implements requested contract",
     )
     monkeypatch.setattr(generator, "_resolve_int8_kv_capability", lambda resolved: refusal)
-    monkeypatch.setenv(gguf_runner._GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, "1")
+    generator.int8_kv_failure_override = explicit_override
+    monkeypatch.setenv(gguf_runner._GGUF_INT8_ALLOW_UNVERIFIED_LONG_ENV, str(int(legacy_override)))
+    monkeypatch.delenv("HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED", raising=False)
     params = SimpleNamespace(kv_storage="int8_per_token_head", kv_scale_dtype="fp32")
-    if status == "unsupported":
-        with pytest.raises(ValueError, match="no registered kernel implements"):
+    if status == "unsupported" or explicit_override is False:
+        with pytest.raises(ValueError, match=refusal.reason):
             generator._resolve_request_kv_policy(params)
         assert generator.kv_capability_provenance["runtime_action"] == "fallback_bf16"
     else:
         generator._resolve_request_kv_policy(params)
         assert generator.kv_capability_provenance["runtime_action"] == "diagnostic_override"
+    # The explicit failure override is not a resident layout selector. Only
+    # the still-unmigrated legacy LONG input changes the diagnostic prefix.
+    assert gguf_runner._gguf_int8_bf16_prefix_full_attention_layers(
+        kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD, max_positions=12345,
+    ) == (0 if legacy_override else gguf_runner._GGUF_INT8_LONG_BF16_PREFIX_FULL_ATTENTION_LAYERS)
 
 
 @pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
