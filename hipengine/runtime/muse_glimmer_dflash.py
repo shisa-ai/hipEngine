@@ -56,7 +56,7 @@ from hipengine.loading.muse_glimmer_gguf import (
     MuseGlimmerWeightSpec,
 )
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
-from hipengine.runtime.gguf_linear import launch_gguf_linear
+from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_exact_rows
 from hipengine.runtime.muse_glimmer import _rope_tables_neox
 
 _RAW_QUANT_KEYS = RAW_QUANT_KEYS
@@ -159,15 +159,16 @@ class MuseGlimmerDFlashDrafter:
 
     def _linear(self, x: int, name: str, out: int, rows: int, inf: int, outf: int,
                 f32_out: bool = False, f32_in: bool = False) -> None:
-        # The drafter only proposes; correctness comes from the target verify,
-        # so the draft may use the fast reassociating WMMA prefill family for
-        # its multi-row block (changed arithmetic is acceptable here).
-        launch_gguf_linear(
+        # Weight-amortized row-independent owners (Q4 rowtile ~198 GB/s; Q5/Q6
+        # parent-parity rowtile). Measured far faster than the small-batch WMMA
+        # prefill at the draft's row counts on gfx1151 (Q4 37->198 GB/s, Q5 head
+        # 37->10 ms at rows=8). The draft only proposes, but these owners are
+        # bit-identical to decode anyway.
+        launch_gguf_linear_exact_rows(
             self._weight(name), x, out, rows, inf, outf,
             activation_dtype="f32" if f32_in else "bf16",
             output_dtype="f32" if f32_out else "bf16",
             backend=self.backend, runtime=self.runtime,
-            use_wmma_prefill=True, use_q4_pack8_wmma=True,
         )
 
     # -- lifecycle ---------------------------------------------------------
@@ -271,14 +272,16 @@ class MuseGlimmerDFlashDrafter:
         """Run [anchor, MASK...] at the context edge; return [block, vocab] logits.
 
         The block's K/V are appended for the non-causal attention and discarded
-        afterwards (the context length is restored).
+        afterwards (the context length is restored). The block may be shorter
+        than the trained block_size: only the requested mask rows are drafted,
+        which cuts the draft projection compute (the draft FFN is full-width).
         """
 
         cfg, rt = self.config, self.runtime
         ids = np.asarray(token_ids, dtype=np.int64)
         tokens = int(ids.size)
-        if tokens != cfg.block_size:
-            raise ValueError(f"draft block must be {cfg.block_size} tokens")
+        if not 2 <= tokens <= cfg.block_size:
+            raise ValueError(f"draft block must be 2..{cfg.block_size} tokens")
         if self._ctx_len + tokens > self.max_context:
             raise ValueError("draft KV overflow")
         h, q_dim, kv_dim, d = cfg.n_embd, cfg.n_heads * cfg.head_dim, cfg.n_kv_heads * cfg.head_dim, cfg.head_dim
@@ -370,11 +373,10 @@ class MuseGlimmerDFlashDrafter:
             src.ptr, self._ptr("output_norm.weight"), self.normed.ptr,
             tokens, h, cfg.rms_eps, runtime=rt,
         )
-        launch_gguf_linear(
+        launch_gguf_linear_exact_rows(
             self.target_weights.weight("output.weight"), self.normed.ptr,
             self.logits_bf16.ptr, tokens, h, self.vocab_size,
             output_dtype="bf16", backend=self.backend, runtime=rt,
-            use_wmma_prefill=True, use_q4_pack8_wmma=True,
         )
         from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
 

@@ -4970,6 +4970,11 @@ def launch_gguf_linear_decode_rows(
 # rows=1 registry variant, never by model identity.
 _EXACT_VERIFY_ROWTILE_SIBLING = {
     "dense_single_local32_bf16_bf16_out": ("dense_rowtile_gemv_bf16_bf16_out", 8),
+    # Q5_K / Q6_K T16 decode parent -> parent-parity rowtile (bit-identical,
+    # weight-amortized). The parent re-reads the weight per row at rows>1
+    # (Q5 head 37ms -> 10ms at rows=8 on gfx1151); the rowtile reads once.
+    "t16_gemv_decode_bf16_bf16_out": ("t16_gemv_rowtile_bf16_bf16_out", 8),
+    "t16_gemv_decode_bf16_f32_out": ("t16_gemv_rowtile_bf16_f32_out", 8),
 }
 _EXACT_VERIFY_ROW_INDEPENDENT = {
     "t16_gemv_decode_bf16_bf16_out": 64,

@@ -180,6 +180,11 @@ class MuseGlimmerDFlashTextProvider:
         length = len(prompt_ids)
         last_committed = prompt_ids[-1]
         prev_argmax = int(np.argmax(logits))
+        # Deferred boundary token: the bonus/corrected token from the previous
+        # cycle whose target KV is not yet written. It is processed as row 0 of
+        # the next verify (amortized with the draft block) instead of a separate
+        # decode forward, mirroring llama.cpp's deferred boundary pair.
+        pending_root: int | None = None
 
         generated: list[int] = []
         finish_reason = "length"
@@ -197,11 +202,15 @@ class MuseGlimmerDFlashTextProvider:
         self.last_prefill_seconds = decode_started - started
         while len(generated) < request.max_tokens:
             raise_if_generation_deadline_expired(request)
-            if length + n_draft + 1 > session.max_context:
+            root_rows = 1 if pending_root is not None else 0
+            if length + root_rows + n_draft + 1 > session.max_context:
                 finish_reason = "length"
                 break
+            # Draft only the rows we will verify (anchor + n_draft masks): the
+            # draft FFN/head are full-width, so unused mask rows cost projection
+            # time for no acceptance.
             block = np.asarray(
-                [last_committed] + [dcfg.mask_token_id] * (dcfg.block_size - 1),
+                [last_committed] + [dcfg.mask_token_id] * n_draft,
                 dtype=np.int64,
             )
             draft_logits = drafter.draft_block(block)
@@ -209,42 +218,44 @@ class MuseGlimmerDFlashTextProvider:
             draft_ids = [int(np.argmax(draft_logits[i])) for i in range(1, n_draft + 1)]
             self.counters.proposed += len(draft_ids)
 
-            vlogits, vtaps = session.verify_with_taps(draft_ids, tap_layers)
+            # Verify the deferred root (if any) plus the draft block in one
+            # forward. Row 0 of a pending-root verify writes the root's KV and
+            # yields its argmax (the prediction that accepts draft_ids[0]).
+            verify_ids = ([pending_root] + draft_ids) if pending_root is not None else draft_ids
+            vlogits, vtaps = session.verify_with_taps(verify_ids, tap_layers)
             self.counters.target_forwards += 1
             vargmax = np.argmax(vlogits, axis=1)
-            predictors = [prev_argmax] + [int(v) for v in vargmax[:-1]]
+            if pending_root is None:
+                predictors = [prev_argmax] + [int(v) for v in vargmax[:-1]]
+                draft_base = length
+            else:
+                predictors = [int(v) for v in vargmax[:-1]]
+                draft_base = length + 1
             accepted = 0
             while accepted < len(draft_ids) and draft_ids[accepted] == predictors[accepted]:
                 accepted += 1
             self.counters.accepted += accepted
+            # Inject the deferred root's taps first (contiguous draft context).
+            if pending_root is not None:
+                drafter.inject(vtaps[0:1], length)
             if accepted < len(draft_ids):
                 corrected = predictors[accepted]
                 commit = draft_ids[:accepted] + [corrected]
-                # Row `accepted` of the verify block processed the *rejected*
-                # draft token: its KV and logits belong to the wrong token.
-                # Keep only the accepted prefix, then process the corrected
-                # token fresh so the KV and the next prediction are correct.
-                session.truncate(length + accepted)
-                drafter.inject(vtaps[:accepted], length)
-                clogits, ctaps = session.decode_with_taps(corrected, tap_layers)
-                self.counters.target_forwards += 1
-                drafter.inject(ctaps, length + accepted)
-                length += accepted + 1
+                # The verify row at the mismatch processed the rejected draft
+                # token; roll back to the accepted prefix and defer the
+                # corrected token to the next verify.
+                session.truncate(draft_base + accepted)
+                drafter.inject(vtaps[root_rows:root_rows + accepted], draft_base)
+                length = draft_base + accepted
+                pending_root = corrected
                 last_committed = corrected
-                prev_argmax = int(np.argmax(clogits))
             else:
                 bonus = int(vargmax[-1])
                 commit = draft_ids + [bonus]
-                drafter.inject(vtaps, length)
-                length += len(draft_ids)
-                # The bonus token has no target KV yet: process it now so the
-                # next cycle starts from a uniform committed state.
-                blogits, btaps = session.decode_with_taps(bonus, tap_layers)
-                self.counters.target_forwards += 1
-                drafter.inject(btaps, length)
-                length += 1
+                drafter.inject(vtaps[root_rows:root_rows + len(draft_ids)], draft_base)
+                length = draft_base + len(draft_ids)
+                pending_root = bonus
                 last_committed = bonus
-                prev_argmax = int(np.argmax(blogits))
 
             for token in commit:
                 if len(generated) >= request.max_tokens:
