@@ -2854,12 +2854,20 @@ class _GGUFPackedTargetState:
                     else:
                         growth_lease_key, growth_pages = grown
                         lease_pages = (*tuple(lease_pages), *growth_pages)
+                arena_backing = None
+                backing_page_ids = None
                 if lease_pages is not None:
-                    root_fits = getattr(kv_pool, "workspace_pages_fit_root_backing", None)
-                    if callable(root_fits) and not root_fits(tuple(lease_pages[:total_pages])):
-                        # Packed kernels bind root plane bases, not the pool's
-                        # per-page pointer tables. Appended chunks need the
-                        # existing private backing until those consumers migrate.
+                    binding_fn = getattr(kv_pool, "workspace_backing_for_pages", None)
+                    if callable(binding_fn):
+                        binding = binding_fn(tuple(lease_pages[:total_pages]))
+                        if binding is not None:
+                            arena_backing, backing_page_ids = binding
+                        compatible = binding is not None
+                    else:
+                        root_fits = getattr(kv_pool, "workspace_pages_fit_root_backing", None)
+                        compatible = not callable(root_fits) or root_fits(tuple(lease_pages[:total_pages]))
+                    if not compatible:
+                        # Mixed chunks still need per-page pointer consumers.
                         if growth_lease_key is not None:
                             kv_pool.release_workspace(growth_lease_key)
                             growth_lease_key = None
@@ -2869,7 +2877,8 @@ class _GGUFPackedTargetState:
                     # workspace and page_ids select this state's pages
                     # inside them. The lease pages stay pinned by the
                     # pool; this state never frees them.
-                    arena_backing = getattr(kv_pool, "backing", None)
+                    if arena_backing is None:
+                        arena_backing = getattr(kv_pool, "backing", None)
                     if arena_backing is None or getattr(arena_backing, "layout", None) != kv_layout:
                         raise RuntimeError(
                             "packed workspace lease has no layout-compatible KV backing"
@@ -2884,7 +2893,11 @@ class _GGUFPackedTargetState:
                         "full_kv_scale_metadata": arena_backing.full_kv_scale_metadata,
                     }
                     kv_backing = arena_backing
-                    page_ids = tuple(int(page) for page in lease_pages[:total_pages])
+                    page_ids = (
+                        tuple(int(page) for page in backing_page_ids)
+                        if backing_page_ids is not None
+                        else tuple(int(page) for page in lease_pages[:total_pages])
+                    )
                     backing_kind = "pool_lease"
                     owned_buffers = tuple(state_buffers)
                 else:

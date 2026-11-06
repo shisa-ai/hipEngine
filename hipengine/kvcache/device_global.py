@@ -469,6 +469,23 @@ class GlobalDeviceKVPool:
             self.global_pool.release(lease_id)
             return page_ids
 
+    def workspace_backing_for_pages(
+        self, page_ids: tuple[int, ...]
+    ) -> tuple[Any, tuple[int, ...]] | None:
+        """Bind one workspace chunk with page offsets local to that backing.
+
+        The lease and pool retain global page IDs. Only a base-pointer consumer's
+        addressing view is rebased; mixed-chunk pages need pointer-table kernels.
+        """
+        pages = tuple(int(page) for page in page_ids)
+        if not pages:
+            raise ValueError("workspace binding requires at least one page")
+        with self._lock:
+            start, count, backing = self._chunk_for_page(pages[0])
+            if any(page < start or page >= start + count for page in pages):
+                return None
+            return backing, tuple(page - start for page in pages)
+
     def workspace_pages_fit_root_backing(self, page_ids: tuple[int, ...]) -> bool:
         """Whether base-pointer consumers can address these pages in root storage.
 

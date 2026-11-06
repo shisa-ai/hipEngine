@@ -2797,6 +2797,27 @@ def test_packed_state_leases_available_arena_without_eager_reservation(monkeypat
     assert state.buffers == ()
 
 
+def test_packed_state_binds_appended_chunk_with_local_page_offsets(monkeypatch):
+    layout = _lease_test_layout()
+    backing = _lease_test_backing(layout)
+    pool = SimpleNamespace(
+        backing=SimpleNamespace(layout='wrong root'),
+        workspace_pages=lambda key: (10, 11, 12, 13),
+        workspace_backing_for_pages=lambda pages: (backing, (2, 3, 4, 5)),
+    )
+    monkeypatch.setattr(gguf_runner, 'malloc', lambda *args, **kwargs: pytest.fail('private allocation'))
+    state = _GGUFPackedTargetState.allocate(
+        _lease_test_runner(), slot_count=2, max_sequence_length=512,
+        runtime=SimpleNamespace(), kv_layout=layout, kv_pool=pool,
+    )
+    assert state.page_ids == (2, 3, 4, 5)
+    assert state.full_key_caches == backing.full_key_caches
+    assert state.copy_segments(0, start_position=250, rows=12) == (
+        (250, 2 * 256 + 250, 6), (256, 3 * 256, 6),
+    )
+    assert state.buffers == ()
+
+
 def test_packed_state_releases_cross_chunk_lease_before_private_fallback(monkeypatch):
     layout = _lease_test_layout()
     backing = _lease_test_backing(layout)

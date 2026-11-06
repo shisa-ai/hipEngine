@@ -45,6 +45,11 @@ def test_workspace_root_binding_rejects_appended_chunks():
     assert pool.workspace_pages_fit_root_backing((0, 1))
     assert not pool.workspace_pages_fit_root_backing((0, 2))
     assert not pool.workspace_pages_fit_root_backing((2, 3))
+    assert pool.workspace_backing_for_pages((0, 1)) == ({'arena': 1}, (0, 1))
+    assert pool.workspace_backing_for_pages((3, 2)) == ({'arena': 2}, (1, 0))
+    assert pool.workspace_backing_for_pages((1, 2)) is None
+    with pytest.raises(ValueError, match='at least one page'):
+        pool.workspace_backing_for_pages(())
 
 
 @pytest.mark.parametrize("fragmented", [False, True])
