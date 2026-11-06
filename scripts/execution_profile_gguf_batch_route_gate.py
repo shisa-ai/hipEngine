@@ -324,28 +324,16 @@ def _pair_package_policy() -> Iterator[None]:
 
 @contextlib.contextmanager
 def _q4_selected_pair_package_policy() -> Iterator[None]:
-    """Evaluate the package selected-pairreuse floor with diagnostic envs unset.
+    """Evaluate package pair floors without process-global pair overrides."""
+    from hipengine.runtime.qwen35_gguf_runner import selected_pair_diagnostic
 
-    Same rule as ``_pair_package_policy``: the candidate arm must reach the
-    Q4 selected dual pairreuse route through the backend package
-    ``GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS`` floor, never through the env
-    overrides. The selected-pairreuse env keys are *unset* rather than set
-    to ``0`` because an explicit ``0`` overrides the package floor.
-    """
-
-    keys = (
-        POLICY_ENV,
-        PAIR_POLICY_ENV,
-        PAIR_COL8_ENV,
-        SELECTED_PAIR_ENV,
-        SELECTED_DOWN_PAIR_ENV,
-        SELECTED_Q6_DOWN_PAIR_ENV,
-    )
+    keys = (POLICY_ENV, PAIR_POLICY_ENV, PAIR_COL8_ENV)
     previous = {key: os.environ.get(key) for key in keys}
     try:
         for key in keys:
             os.environ.pop(key, None)
-        yield
+        with selected_pair_diagnostic():
+            yield
     finally:
         for key, prior in previous.items():
             if prior is None:

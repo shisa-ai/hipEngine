@@ -97,7 +97,14 @@ def test_selected_pair_package_policy_clears_overrides_and_restores(
 
     def exercise() -> None:
         with gate._candidate_route_policy(gate.ROUTE_PROFILE_Q4_SELECTED_PAIR):
-            assert all(key not in os.environ for key in keys)
+            from hipengine.runtime import qwen35_gguf_runner as runner
+            assert all(key not in os.environ for key in keys[:3])
+            assert {key: os.environ[key] for key in keys[3:]} == {
+                key: previous[key] for key in keys[3:]
+            }
+            with runner._gguf_t16_selected_pairreuse_min_rows_scope(8):
+                assert runner._gguf_t16_selected_pairreuse_enabled() is True
+            assert runner._gguf_t16_selected_down_pairreuse_enabled() is False
             if fail:
                 raise RuntimeError("capture failed")
 

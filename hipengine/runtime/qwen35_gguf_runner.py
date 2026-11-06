@@ -10731,7 +10731,25 @@ def _gguf_t16_selected_pairreuse_min_rows_scope(min_rows: int | None):
         _gguf_t16_selected_pairreuse_min_rows_session.reset(token)
 
 
+_selected_pair_diagnostic = ContextVar("selected_pair_diagnostic", default=None)
+
+
+@contextmanager
+def selected_pair_diagnostic(*, pair: bool | None = None,
+                             down: bool | None = None, q6_down: bool | None = None):
+    """Override pair diagnostics locally; None uses the session/package floor."""
+    token = _selected_pair_diagnostic.set((pair, down, q6_down))
+    try:
+        yield
+    finally:
+        _selected_pair_diagnostic.reset(token)
+
+
 def _gguf_t16_selected_pairreuse_enabled() -> bool:
+    diagnostic = _selected_pair_diagnostic.get()
+    if diagnostic is not None:
+        return (diagnostic[0] if diagnostic[0] is not None else
+                (_gguf_t16_selected_pairreuse_min_rows_session.get() or 0) > 0)
     raw = os.environ.get(_GGUF_T16_SELECTED_PAIRREUSE_ENV, "")
     if raw:
         return _env_flag(_GGUF_T16_SELECTED_PAIRREUSE_ENV, False)
@@ -10753,6 +10771,10 @@ def _gguf_t16_selected_down_pairreuse_min_rows_scope(min_rows: int | None):
 
 
 def _gguf_t16_selected_down_pairreuse_enabled() -> bool:
+    diagnostic = _selected_pair_diagnostic.get()
+    if diagnostic is not None:
+        return (diagnostic[1] if diagnostic[1] is not None else
+                (_gguf_t16_selected_down_pairreuse_min_rows_session.get() or 0) > 0)
     raw = os.environ.get(_GGUF_T16_SELECTED_DOWN_PAIRREUSE_ENV, "")
     if raw:
         return _env_flag(_GGUF_T16_SELECTED_DOWN_PAIRREUSE_ENV, False)
@@ -10822,6 +10844,10 @@ def _gguf_t16_selected_q6_down_pairreuse_min_rows_scope(min_rows: int | None):
 
 
 def _gguf_t16_selected_q6_down_pairreuse_enabled() -> bool:
+    diagnostic = _selected_pair_diagnostic.get()
+    if diagnostic is not None:
+        return (diagnostic[2] if diagnostic[2] is not None else
+                (_gguf_t16_selected_q6_down_pairreuse_min_rows_session.get() or 0) > 0)
     raw = os.environ.get(_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE_ENV, "")
     if raw:
         return _env_flag(_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE_ENV, False)
