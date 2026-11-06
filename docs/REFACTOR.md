@@ -1929,6 +1929,11 @@ verifier profiling, named suite routes and the batch-route gate. Keep the indepe
 shape policy separate. Deleting the 16-column or per-row bodies would remove live fallbacks, not
 just switches. Keep the already-enabled package routes while deciding configuration ownership.
 
+Current: pair-floor and broad-rowtile controls now use `ContextVar` storage;
+concurrent-owner RED/GREEN and a 399-test dispatch/owner bundle pass. Public
+worker-owned route validation remains open; caller-thread scopes are not queue
+transport. See `worklog/entries/20261106T003350.144961Z-lhl-r0291-context-owner-e05299.md`.
+
 Done when: migrate the floor, broad-policy interaction, column selection, explicit
 thread/shape fallback, profile binding and profiler parent/child provenance together. Run
 single/pair/triple launch, nested/exception restoration, strict/production binder, suite,

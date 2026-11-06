@@ -574,7 +574,8 @@ def test_public_triple_launch_uses_the_plan_path(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_WMMA_PREFILL", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", raising=False)
     monkeypatch.setattr(gl, "_wmma_prefill_session_enabled", None)
-    monkeypatch.setattr(gl, "_q8_t16_rowtile_all_session_enabled", None)
+    from contextvars import ContextVar
+    monkeypatch.setattr(gl, "_q8_t16_rowtile_all_session_enabled", ContextVar("test_all", default=None))
 
     assert launch_gguf_linear_triple(
         *weights,

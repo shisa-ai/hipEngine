@@ -4354,21 +4354,22 @@ def test_t16_pair_controls_preserve_precedence_and_shape_contract(
 @pytest.mark.parametrize("previous", [None, 3])
 def test_t16_pair_rowtile_floor_restores_nested_and_exception_scopes(monkeypatch, fail, previous) -> None:
     gl = gguf_linear_module
-    monkeypatch.setattr(gl, "_q8_t16_pair_rowtile_min_rows_session", previous)
+    from contextvars import ContextVar
+    monkeypatch.setattr(gl, "_q8_t16_pair_rowtile_min_rows_session", ContextVar("test_floor", default=previous))
     with gl.q8_t16_pair_rowtile_min_rows_session(8):
-        assert gl._q8_t16_pair_rowtile_min_rows_session == 8
+        assert gl._q8_t16_pair_rowtile_min_rows_session.get() == 8
         try:
             with gl.q8_t16_pair_rowtile_min_rows_session(0):
-                assert gl._q8_t16_pair_rowtile_min_rows_session == 0
+                assert gl._q8_t16_pair_rowtile_min_rows_session.get() == 0
                 if fail:
                     raise RuntimeError("pair capture failed")
         except RuntimeError as error:
             assert str(error) == "pair capture failed"
-        assert gl._q8_t16_pair_rowtile_min_rows_session == 8
+        assert gl._q8_t16_pair_rowtile_min_rows_session.get() == 8
         with pytest.raises(ValueError, match="non-negative"):
             gl.set_q8_t16_pair_rowtile_min_rows(-1)
-        assert gl._q8_t16_pair_rowtile_min_rows_session == 8
-    assert gl._q8_t16_pair_rowtile_min_rows_session == previous
+        assert gl._q8_t16_pair_rowtile_min_rows_session.get() == 8
+    assert gl._q8_t16_pair_rowtile_min_rows_session.get() == previous
 
 
 def test_t16_pair_rowtile_opt_out_keeps_exact_wrapper(monkeypatch) -> None:
@@ -4623,7 +4624,8 @@ def test_t16_broad_policy_restores_scopes_without_gating_shape_policy(monkeypatc
     gl = gguf_linear_module
     monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_SHAPES", raising=False)
-    monkeypatch.setattr(gl, "_q8_t16_rowtile_all_session_enabled", None)
+    from contextvars import ContextVar
+    monkeypatch.setattr(gl, "_q8_t16_rowtile_all_session_enabled", ContextVar("test_all", default=None))
     with gl.q8_t16_rowtile_all_session(True):
         try:
             with gl.q8_t16_rowtile_all_session(False):
@@ -4633,7 +4635,7 @@ def test_t16_broad_policy_restores_scopes_without_gating_shape_policy(monkeypatc
         except RuntimeError as error:
             assert str(error) == "rowtile capture failed"
         assert gl._resolve_use_q8_t16_all_rowtile()
-    assert gl._q8_t16_rowtile_all_session_enabled is None
+    assert gl._q8_t16_rowtile_all_session_enabled.get() is None
     monkeypatch.setenv("HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL", "0")
     assert not gl._use_q8_t16_all_rowtile(rows=5, in_features=2048, out_features=4096)
     assert not gl._use_q8_t16_all_rowtile(rows=5, in_features=5120, out_features=1024)

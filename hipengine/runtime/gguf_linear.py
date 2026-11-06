@@ -1263,8 +1263,12 @@ _Q8_T16_ROWTILE_THREADS = 128
 _Q8_T16_PAIR_ROWTILE_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
 _Q8_T16_PAIR_COL8_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_COL8"
 _Q8_T16_ROWTILE_ALL_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
-_q8_t16_pair_rowtile_min_rows_session: int | None = None
-_q8_t16_rowtile_all_session_enabled: bool | None = None
+_q8_t16_pair_rowtile_min_rows_session: ContextVar[int | None] = ContextVar(
+    "gguf_q8_t16_pair_rowtile_min_rows", default=None,
+)
+_q8_t16_rowtile_all_session_enabled: ContextVar[bool | None] = ContextVar(
+    "gguf_q8_t16_rowtile_all", default=None,
+)
 _Q8_T16_QWEN35_ATTN_QKV_OUT = 8192
 _Q8_T16_QWEN35_ATTN_GATE_OUT = 4096
 _Q8_T16_QWEN35_ATTN_IN = 2048
@@ -2704,49 +2708,52 @@ def _resolve_q8_t16_dual_split_threads(
 def set_q8_t16_pair_rowtile_min_rows(min_rows: int | None) -> None:
     """Set the owner-scoped minimum width for exact Q8T16 pair rowtiling."""
 
-    global _q8_t16_pair_rowtile_min_rows_session
     if min_rows is not None and int(min_rows) < 0:
         raise ValueError("Q8T16 pair rowtile minimum rows must be non-negative")
-    _q8_t16_pair_rowtile_min_rows_session = None if min_rows is None else int(min_rows)
+    _q8_t16_pair_rowtile_min_rows_session.set(None if min_rows is None else int(min_rows))
 
 
 @contextlib.contextmanager
 def q8_t16_pair_rowtile_min_rows_session(min_rows: int | None) -> Iterator[None]:
     """Temporarily apply a backend-certified Q8T16 pair-rowtile width floor."""
 
-    previous = _q8_t16_pair_rowtile_min_rows_session
-    set_q8_t16_pair_rowtile_min_rows(min_rows)
+    if min_rows is not None and int(min_rows) < 0:
+        raise ValueError("Q8T16 pair rowtile minimum rows must be non-negative")
+    token = _q8_t16_pair_rowtile_min_rows_session.set(
+        None if min_rows is None else int(min_rows)
+    )
     try:
         yield
     finally:
-        set_q8_t16_pair_rowtile_min_rows(previous)
+        _q8_t16_pair_rowtile_min_rows_session.reset(token)
 
 
 def set_q8_t16_rowtile_all_enabled(enabled: bool | None) -> None:
     """Set the packed-AR scoped Q8T16 row-amortized decode policy."""
 
-    global _q8_t16_rowtile_all_session_enabled
-    _q8_t16_rowtile_all_session_enabled = None if enabled is None else bool(enabled)
+    _q8_t16_rowtile_all_session_enabled.set(None if enabled is None else bool(enabled))
 
 
 @contextlib.contextmanager
 def q8_t16_rowtile_all_session(enabled: bool | None) -> Iterator[None]:
     """Temporarily select Q8T16 row amortization for one execution owner."""
 
-    previous = _q8_t16_rowtile_all_session_enabled
-    set_q8_t16_rowtile_all_enabled(enabled)
+    token = _q8_t16_rowtile_all_session_enabled.set(
+        None if enabled is None else bool(enabled)
+    )
     try:
         yield
     finally:
-        set_q8_t16_rowtile_all_enabled(previous)
+        _q8_t16_rowtile_all_session_enabled.reset(token)
 
 
 def _resolve_use_q8_t16_all_rowtile() -> bool:
     raw = os.environ.get(_Q8_T16_ROWTILE_ALL_ENV, "")
     if raw:
         return raw.strip().lower() in {"1", "true", "yes", "on"}
-    if _q8_t16_rowtile_all_session_enabled is not None:
-        return _q8_t16_rowtile_all_session_enabled
+    local = _q8_t16_rowtile_all_session_enabled.get()
+    if local is not None:
+        return local
     return False
 
 
@@ -2756,7 +2763,7 @@ def _resolve_use_q8_t16_pair_rowtile(
     raw = os.environ.get(_Q8_T16_PAIR_ROWTILE_ENV, "")
     if raw:
         return raw.strip().lower() in {"1", "true", "yes", "on"}
-    min_rows = _q8_t16_pair_rowtile_min_rows_session
+    min_rows = _q8_t16_pair_rowtile_min_rows_session.get()
     if min_rows is not None and min_rows > 0 and rows >= min_rows:
         return True
     if rowtile_all is not None:
@@ -2768,7 +2775,7 @@ def _resolve_use_q8_t16_pair_col8(*, rows: int) -> bool:
     raw = os.environ.get(_Q8_T16_PAIR_COL8_ENV, "")
     if raw:
         return raw.strip().lower() in {"1", "true", "yes", "on"}
-    min_rows = _q8_t16_pair_rowtile_min_rows_session
+    min_rows = _q8_t16_pair_rowtile_min_rows_session.get()
     return min_rows is not None and min_rows > 0 and rows >= min_rows
 
 
