@@ -26,6 +26,30 @@ def allocate_private_packed_backing(
     return backing, token
 
 
+@dataclass
+class StandalonePackedBackingLease:
+    """Own standalone fallback storage with the same lifetime as arena leases."""
+
+    backing: object
+    pool: object | None
+    token: object | None
+    remaining_buffers: list
+
+    @classmethod
+    def acquire(cls, *, pages: int, page_bytes: int, pool: object | None, allocate: Callable):
+        backing, token = allocate_private_packed_backing(
+            pages=pages, page_bytes=page_bytes, pool=pool, allocate=allocate,
+        )
+        return cls(backing, pool, token, list(backing.buffers))
+
+    def close(self, *, runtime: object, release: Callable) -> None:
+        while self.remaining_buffers:
+            release(self.remaining_buffers[-1], runtime=runtime)
+            self.remaining_buffers.pop()
+        if self.token is not None:
+            self.pool.release_private_workspace(self.token)
+            self.token = None
+
 
 @dataclass
 class PackedWorkspaceOwner:
@@ -85,9 +109,16 @@ class PackedWorkspaceOwner:
                     release(buffer, runtime=runtime)
         self.verify_scratch = None
         if self.verify_state is not None:
+            lease = getattr(self.verify_state, "backing_lease", None)
+            leased_buffers = (
+                {id(buffer) for buffer in lease.backing.buffers}
+                if lease is not None else set()
+            )
             for buffer in reversed(self.verify_state.buffers):
-                if buffer is not None:
+                if buffer is not None and id(buffer) not in leased_buffers:
                     release(buffer, runtime=runtime)
+            if lease is not None:
+                lease.close(runtime=runtime, release=release)
             pool = getattr(self.verify_state, "private_workspace_pool", None)
             token = getattr(self.verify_state, "private_workspace_token", None)
             if token is not None:

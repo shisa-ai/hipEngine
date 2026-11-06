@@ -4,8 +4,48 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.runtime.qwen35_gguf_workspace import (
-    PackedWorkspaceOwner, allocate_private_packed_backing,
+    PackedWorkspaceOwner, StandalonePackedBackingLease, allocate_private_packed_backing,
 )
+
+
+def test_standalone_backing_close_retries_only_unreleased_buffers():
+    events = []
+    lease = StandalonePackedBackingLease.acquire(
+        pages=2, page_bytes=16, pool=None,
+        allocate=lambda: SimpleNamespace(buffers=(1, 2)),
+    )
+    def release(buffer, **kwargs):
+        if buffer == 1:
+            raise RuntimeError('injected release failure')
+        events.append(buffer)
+    with pytest.raises(RuntimeError, match='injected release failure'):
+        lease.close(runtime=None, release=release)
+    assert lease.remaining_buffers == [1]
+    lease.close(runtime=None, release=lambda b, **kw: events.append(b))
+    assert events == [2, 1]
+
+
+@pytest.mark.parametrize('with_pool', [False, True])
+def test_standalone_backing_lease_owns_buffers_and_charge_once(with_pool):
+    events = []
+    buffers = tuple(SimpleNamespace(ptr=i, nbytes=16) for i in (1, 2))
+    pool = SimpleNamespace(
+        reserve_private_workspace=lambda size: events.append(('reserve', size)) or 'token',
+        release_private_workspace=lambda token: events.append(('charge', token)),
+    ) if with_pool else None
+    lease = StandalonePackedBackingLease.acquire(
+        pages=2, page_bytes=16, pool=pool,
+        allocate=lambda: SimpleNamespace(buffers=buffers),
+    )
+    owner = PackedWorkspaceOwner(verify_state=SimpleNamespace(
+        buffers=buffers, backing_lease=lease,
+    ))
+    assert owner.nbytes() == 32
+    owner.close(runtime=SimpleNamespace(), release=lambda b, **kw: events.append(('free', b.ptr)))
+    lease.close(runtime=SimpleNamespace(), release=lambda b, **kw: pytest.fail('double free'))
+    assert events == (([('reserve', 32)] if with_pool else [])
+                      + [('free', 2), ('free', 1)]
+                      + ([('charge', 'token')] if with_pool else []))
 
 
 @pytest.mark.parametrize('with_pool', [False, True])

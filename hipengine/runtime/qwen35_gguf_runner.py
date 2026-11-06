@@ -102,7 +102,7 @@ from hipengine.runtime.qwen35_gguf_prefix_state import (
 )
 from hipengine.runtime.qwen35_gguf_workspace import (
     PackedWorkspaceOwner as _PackedWorkspaceState,
-    allocate_private_packed_backing,
+    StandalonePackedBackingLease,
 )
 from hipengine.runtime.qwen35_gguf_state import (
     ResidentStateStorage, StateMemory, resident_state_field,
@@ -2611,6 +2611,7 @@ class _GGUFPackedTargetState:
     # "private" = owned chunk allocated by this state; "pool_lease" = planes
     # borrowed from the GlobalDeviceKVPool arena under the workspace lease.
     kv_backing_kind: str = "private"
+    backing_lease: StandalonePackedBackingLease | None = None
     private_workspace_pool: object | None = None
     private_workspace_token: object | None = None
     # Charge for the conv/recurrent state buffers themselves. They are device
@@ -2742,6 +2743,7 @@ class _GGUFPackedTargetState:
         layer_recurrent_states: list[object | None] = []
         state_buffers: list[object] = []
         kv_cache_fields: dict[str, tuple] | None = None
+        backing_lease = None
         private_workspace_token = None
         resident_charge_token = None
         growth_lease_key: str | None = None
@@ -2924,7 +2926,7 @@ class _GGUFPackedTargetState:
                     backing_kind = "pool_lease"
                     owned_buffers = tuple(state_buffers)
                 else:
-                    kv_backing, private_workspace_token = allocate_private_packed_backing(
+                    backing_lease = StandalonePackedBackingLease.acquire(
                         pages=total_pages,
                         page_bytes=_qwen35_gguf_kv_page_bytes(cfg, kv_layout),
                         pool=kv_pool,
@@ -2936,6 +2938,7 @@ class _GGUFPackedTargetState:
                             layout=kv_layout,
                         ),
                     )
+                    kv_backing = backing_lease.backing
                     page_ids = ()
                     backing_kind = "private"
                     owned_buffers = (*tuple(state_buffers), *kv_backing.buffers)
@@ -2944,6 +2947,8 @@ class _GGUFPackedTargetState:
                 free(buffer, runtime=runtime)
             if growth_lease_key is not None:
                 kv_pool.release_workspace(growth_lease_key)
+            if backing_lease is not None:
+                backing_lease.close(runtime=runtime, release=free)
             if private_workspace_token is not None:
                 kv_pool.release_private_workspace(private_workspace_token)
             if resident_charge_token is not None:
@@ -2972,6 +2977,7 @@ class _GGUFPackedTargetState:
             buffers=owned_buffers,
             page_ids=page_ids,
             kv_backing_kind=backing_kind,
+            backing_lease=backing_lease,
             private_workspace_pool=kv_pool if private_workspace_token is not None else None,
             private_workspace_token=private_workspace_token,
             resident_charge_pool=kv_pool if resident_charge_token is not None else None,
