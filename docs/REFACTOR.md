@@ -2377,13 +2377,17 @@ Owner: `hipengine/server/api.py`.
 
 Scope: `_startup_probe_width_reduction`, `max_sequence_length`.
 
-Done when: Deferred warmup design: connect a bounded probe context to explicit temporary session ownership,
-retaining shared weights and releasing probe-only allocations. Specify which packed kernels,
-workspace sizes and graph/context buckets it warms; a short-context success must not certify
-full-context capacity or graph coverage. Preserve actual request context limits and capacity
-estimates. Replace the width reduction only after a wide startup probe and subsequent public
-concurrent requests succeed under constrained memory, and failure/cancellation frees all probe
-resources. Keep the current guard until that replacement is implemented.
+**Bounded session implementation complete:** startup probes use temporary bounded-context
+sessions sharing immutable weights and release probe allocations on success, failure and
+cancellation. Configured 4 GiB KV-budget server checks passed at width four for AR and
+MTP startup, with ordinary concurrent HTTP requests succeeding. See
+[MTP server checkpoint](../worklog/entries/20261106T024942.449109Z-lhl-r0510-mtp-server-f8fd1d.md).
+These runs do not establish physical low-free-memory behavior or full-context/graph coverage.
+
+Done when: wide startup probes and subsequent public concurrent requests succeed under
+physical constrained memory, with failure/cancellation releasing all probe resources.
+Preserve actual request context limits and capacity estimates; short probes must not certify
+full-context capacity or graph buckets. Keep the width-reduction guard until that validation.
 
 ### R0512 — Revisit Q5 decode-dual dispatch separately from working prefill
 

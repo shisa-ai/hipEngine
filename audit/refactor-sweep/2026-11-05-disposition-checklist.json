@@ -4000,7 +4000,7 @@
         "hipengine/server/api.py:5637,11626 retains startup width reduction.",
         "c23ff1a17/15aee224e/0b164add5/62d0d62b7/983f9be0b implement release-only bounded sessions and failure/cancellation cleanup; 552d89666 adds server probe pricing. 5bec4b425 records width-four AR startup and concurrent HTTP success under configured 4 GiB budget."
       ],
-      "next_action": "Actual low-free-memory validation remains distinct from configured budget. Complete MTP-enabled server probe run bg-617, then price any physical-pressure experiment before allocating; keep width guard and do not certify full-context/graph coverage.",
+      "next_action": "Bounded AR and MTP-enabled server probes completed at width four under configured 4 GiB budget; bg-617 result recorded in worklog/entries/20261106T024942.449109Z-lhl-r0510-mtp-server-f8fd1d.md. Actual physical low-free-memory validation remains distinct: price that experiment before allocating; keep width guard and do not certify full-context/graph coverage. Do not repeat configured-budget startup checks.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
