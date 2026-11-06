@@ -4237,6 +4237,19 @@ class LagunaGGUFResidentSession:
             (self.prefill_swa_attention_hipblaslt,
              self.prefill_dense_contiguous_cache) = previous
 
+    @contextlib.contextmanager
+    def packed_attention_diagnostic(self, *, packed_query: bool, packed_output_gate: bool):
+        """Scope packed attention comparison choices to this resident owner."""
+        previous = (self.prefill_attention_hipblaslt_packed_query_producer,
+                    self.prefill_attention_hipblaslt_packed_output_gate)
+        try:
+            self.prefill_attention_hipblaslt_packed_query_producer = bool(packed_query)
+            self.prefill_attention_hipblaslt_packed_output_gate = bool(packed_output_gate)
+            yield
+        finally:
+            (self.prefill_attention_hipblaslt_packed_query_producer,
+             self.prefill_attention_hipblaslt_packed_output_gate) = previous
+
     def set_prefill_dense_contiguous_cache(self, enabled: bool) -> None:
         """Select direct identity addressing for qualified global prompt KV."""
 

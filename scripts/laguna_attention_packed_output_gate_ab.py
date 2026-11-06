@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import json
 from pathlib import Path
 import statistics
@@ -12,7 +13,6 @@ import time
 import numpy as np
 
 from hipengine.core.hip import get_hip_runtime
-from hipengine.kernels.backends import backend_package_capability
 from hipengine.loading.gguf import GGUFReader
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
@@ -69,21 +69,7 @@ def _child(
     settings: dict[str, bool],
 ) -> LagunaGGUFResidentSession:
     assert owner.weights is not None
-    # Hold the packed-query producer on so the output-gate arms reach distinct
-    # layouts. Restore package policy even if construction fails.
-    from hipengine.kernels import hip_gfx1151 as package
-
-    key = "LAGUNA_PREFILL_ATTENTION_HIPBLASLT_PACKED_QUERY_PRODUCER"
-    previous = backend_package_capability("hip_gfx1151", key)
-    had_binding = hasattr(package, key)
-    setattr(package, key, settings["packed_query_producer"])
-    try:
-        return _construct_child(owner, settings)
-    finally:
-        if had_binding:
-            setattr(package, key, previous)
-        else:
-            delattr(package, key)
+    return _construct_child(owner, settings)
 
 
 def _construct_child(
@@ -102,9 +88,6 @@ def _construct_child(
         prefill_chunk_size=512,
         prefill_attention_chunk_size=128,
         prefill_attention_hipblaslt=True,
-        prefill_attention_hipblaslt_packed_output_gate=(
-            settings["packed_output_gate"]
-        ),
     )
 
 
@@ -115,7 +98,12 @@ def _run(
     settings: dict[str, bool],
 ) -> dict[str, float | int | str]:
     child = _child(owner, settings)
+    scopes = ExitStack()
     try:
+        scopes.enter_context(child.packed_attention_diagnostic(
+            packed_query=settings["packed_query_producer"],
+            packed_output_gate=settings["packed_output_gate"],
+        ))
         started = time.perf_counter()
         result = child.prefill(tokens)
         child.runtime.device_synchronize()
@@ -144,7 +132,10 @@ def _run(
             "final_position": int(child.position),
         }
     finally:
-        child.close()
+        try:
+            scopes.close()
+        finally:
+            child.close()
 
 
 def main() -> int:
@@ -176,8 +167,12 @@ def main() -> int:
         for settings in modes.values():
             warm = _child(owner, settings)
             try:
-                warm.prefill(tokens[:128])
-                runtime.device_synchronize()
+                with warm.packed_attention_diagnostic(
+                    packed_query=settings["packed_query_producer"],
+                    packed_output_gate=settings["packed_output_gate"],
+                ):
+                    warm.prefill(tokens[:128])
+                    runtime.device_synchronize()
             finally:
                 warm.close()
         for repetition in range(args.repetitions):

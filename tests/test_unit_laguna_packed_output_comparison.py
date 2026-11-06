@@ -102,12 +102,17 @@ def test_output_comparison_captures_state_and_closes_on_failure(monkeypatch, fai
     calls = []
 
     def prefill(tokens):
+        assert child.prefill_attention_hipblaslt_packed_query_producer is True
+        assert child.prefill_attention_hipblaslt_packed_output_gate is True
         calls.append(("prefill", tuple(tokens)))
         if failure == "prefill":
             raise RuntimeError("synthetic prefill failure")
         return SimpleNamespace(next_token_id=9, next_token_logit=0.5, logits="logits", final_hidden="final", post_layer_hidden="post")
 
     child = SimpleNamespace(
+        packed_attention_diagnostic=lambda **kw: runner.LagunaGGUFResidentSession.packed_attention_diagnostic(child, **kw),
+        prefill_attention_hipblaslt_packed_query_producer=False,
+        prefill_attention_hipblaslt_packed_output_gate=False,
         prefill=prefill, position=512, close=lambda: calls.append(("close",)),
         runtime=SimpleNamespace(device_synchronize=lambda: calls.append(("sync",))),
     )
@@ -142,6 +147,8 @@ def test_output_comparison_captures_state_and_closes_on_failure(monkeypatch, fai
         }
         assert set(comparison._STATE_KEYS) == set(record) - {"tok_s", "elapsed_s"}
     assert calls[-1] == ("close",)
+    assert child.prefill_attention_hipblaslt_packed_query_producer is False
+    assert child.prefill_attention_hipblaslt_packed_output_gate is False
 
 
 def test_paired_result_names_repaired_comparison_basis(monkeypatch, capsys):
@@ -155,7 +162,10 @@ def test_paired_result_names_repaired_comparison_basis(monkeypatch, capsys):
     monkeypatch.setattr(comparison, "_compiler_version", lambda path: "test")
     runtime = SimpleNamespace(device_synchronize=lambda: None)
     owner = SimpleNamespace(close=lambda: None)
-    child = SimpleNamespace(prefill=lambda tokens: None, close=lambda: None)
+    child = SimpleNamespace(
+        packed_attention_diagnostic=lambda **kw: __import__('contextlib').nullcontext(),
+        prefill=lambda tokens: None, close=lambda: None,
+    )
     monkeypatch.setattr(comparison, "get_hip_runtime", lambda: runtime)
     monkeypatch.setattr(comparison, "LagunaGGUFResidentSession", lambda *a, **kw: owner)
     monkeypatch.setattr(comparison, "_child", lambda *a: child)
