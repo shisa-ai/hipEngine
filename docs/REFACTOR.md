@@ -1224,40 +1224,6 @@ with any reader removal. A runtime migration also needs the primitive pair-reuse
 public C8 MoE generation on both intended backends, with selected callables, neighboring/non-C8
 widths and cleanup recorded. A release-window deadline alone cannot replace these contracts.
 
-### R0281-ROUTER — Cooperative router profile and diagnostic controls
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_ROUTER_F32W_COOP`, `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER`.
-
-**Progress:** c1 numerical/performance, control-smoke and batch comparison callers now bind
-resident-runner choices explicitly (`d9acff4e3`, `5ffc4f79e`, `af3d92aab`). C1 metadata separates
-requested owner/counter selection from launch evidence (`219943792`). Construction snapshots a
-frozen router plan with explicit comparison precedence (`a406ed309`); 100 focused host tests pass.
-Public gfx1151 c1 traces 360 successful persistent cooperative launches per call, exact repeats
-and zero tracked allocations after close (`9ac1d56a4`, `a406ed309`).
-
-Remaining: public graph-route attribution and a forced capability-miss fallback check. Runtime
-readers are retired (`b01c47b41`); dead environment adapters are removed (`1e5602574`,
-`a39f9bb03`). Cooperative primitive/replay checks pass (`0396ebed0`), actual-model resident
-eager/graph counters and tokens pass (`cfae643d9`), and public strict separate-projection
-attribution passes (`ff26600af`). These do not establish public graph engagement or a simulated
-capability miss. Do not repeat completed default c1 route smoke.
-
-Done when: Remaining work: publish the actual selected router variant and counter ownership in a
-construction-time plan consumed by the runner, while preserving strict/production semantics, direct
-defaults, diagnostic on/off requests and the exact unfused fallback. Migrate profile binders and
-capture metadata before removing readers. This is part of the existing RF-1 resolved-plan direction;
-a profile registration alone does not remove its environment dependency. **Clearing action:** run
-`tests/test_unit_qwen35_moe_gfx1151_profiles.py`,
-`tests/test_unit_qwen35_gguf_compact_moe_gemv_routing.py`,
-`tests/test_unit_execution_profile_gguf_c1_route_gate.py` and
-`tests/test_unit_execution_profile_gguf_batch_route_gate.py`. A runtime migration also needs guarded
-cooperative/persistent primitive parity and public MoE c1 generation with selected variant/counter
-ownership, repeated graph/eager calls, fallback engagement and cleanup recorded. Keep both
-cooperative variants and unfused primitives until their callers and ownership contracts have
-migrated.
-
 ### R0281-MTP-CAP — Packed MTP batch policy and caller separation
 
 Owner: `hipengine/generation/qwen35_gguf.py`.

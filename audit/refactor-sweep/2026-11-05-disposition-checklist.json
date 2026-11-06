@@ -1770,11 +1770,12 @@
       "ledger_line": 1286,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:9220-9221,11036-11040 reads cooperative router and persistent counter independently."
+        "a406ed309 construction plan; b01c47b41 retired readers; d9acff4e3/5ffc4f79e/af3d92aab migrated comparison owners.",
+        "0396ebed0 primitive replay, cfae643d9 model eager/graph, ff26600af public strict, d7ba8ecbe simulated public capability fallback."
       ],
-      "next_action": "Router readers retired b01c47b41; dead adapters removed 1e5602574/a39f9bb03. Construction, caller/metadata migration, primitive replay, resident graph parity and public strict/default launch/repeat/cleanup pass. Remaining named public graph attribution and forced capability-miss fallback check; do not repeat completed default smoke.",
+      "next_action": "None: router control migration complete. Default chained norms intentionally exclude per-layer MoE graph; actual unchained graph comparison is validated separately without changing production chaining.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
