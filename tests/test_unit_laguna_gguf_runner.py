@@ -1673,8 +1673,9 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch,
     assert session.f16_prefill_mode == "hipblaslt_range_direct"
     assert validated_modes == ["hipblaslt_range_direct"]
     assert session.fuse_f16_boundaries is True
-    session.set_f16_boundary_fusion(False)
-    assert session.fuse_f16_boundaries is False
+    with session.f16_boundary_diagnostic(False):
+        assert session.fuse_f16_boundaries is False
+    assert session.fuse_f16_boundaries is True
     assert session.group_compact_mode == "parallel"
     assert session.moe_branch_concurrency is True
     assert session.moe_decode_branch_concurrency is True

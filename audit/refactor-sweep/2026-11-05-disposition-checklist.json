@@ -2521,7 +2521,7 @@
       "evidence": [
         "hipengine/runtime/laguna_gguf_runner.py:4202 keeps F16 boundary setter."
       ],
-      "next_action": "Migrate F16 boundary A/B to explicit composite/primitive owner without making both arms fused; preserve strict unfused chain and fallback.",
+      "next_action": "F16 boundary comparison migrated to restoring owner-local diagnostic in 481d5a9d0; persistent setter retired with 83 boundary/runner tests. Distinct fused/separate casts and fallback preserved. Actual-weight full-model/public validation requires absent Laguna model artifact R0313-R0320.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

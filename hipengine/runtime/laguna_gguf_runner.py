@@ -4202,15 +4202,10 @@ class LagunaGGUFResidentSession:
         """Restore the owner-local F16 boundary comparison after every exit."""
         previous = self.fuse_f16_boundaries
         try:
-            self.set_f16_boundary_fusion(enabled)
+            self.fuse_f16_boundaries = bool(enabled)
             yield
         finally:
             self.fuse_f16_boundaries = previous
-
-    def set_f16_boundary_fusion(self, enabled: bool) -> None:
-        """Fuse exact BF16-to-FP16 boundaries in range-direct prefill."""
-
-        self.fuse_f16_boundaries = bool(enabled)
 
     def set_prefill_attention_hipblaslt(self, enabled: bool) -> None:
         """Select the bounded dense-initial BLAS attention candidate."""

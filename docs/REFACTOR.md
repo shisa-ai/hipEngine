@@ -1714,18 +1714,19 @@ preserve historical result readers when retiring mode labels.
 
 Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
-Scope: `set_f16_boundary_fusion(...)`, `scripts/laguna_f16_boundary_ab.py`,
+Scope: `f16_boundary_diagnostic(...)`, `scripts/laguna_f16_boundary_ab.py`,
 `hipblaslt_range_direct`.
 
-**Blocker:** removing the setter also requires explicit primitive/composite ownership for the
-comparison. The local Laguna artifact resource blocker in R0313–R0320 prevents public/full-model
-validation; it does not disable the path.
+**Comparison migration implemented:** warmup and measured runs use an owner-local
+restoring diagnostic scope; the persistent setter is removed. Fused/separate-cast
+arms and production defaults are unchanged. The local Laguna artifact resource blocker
+in R0313–R0320 still prevents public/full-model validation; it does not disable the path.
 
 Done when: migrate the comparison without collapsing its arms, run F16
 boundary-comparison, runner and hipBLASLt contracts plus primitive BF16-boundary equality/full-model
 oracles, then public `LLM.generate()` across compatible and fallback projection routes. Confirm
 selected producers/casts, state equality and teardown. Keep the enabled capability and strict
-unfused chain when retiring the session setter.
+unfused chain with the scoped diagnostic owner.
 
 ### R0327 / R0328 — Laguna permute/planar comparison migration
 

@@ -61,16 +61,16 @@ def test_f16_projection_and_output_routes_preserve_cast_and_pointer_ownership(mo
 
 
 @pytest.mark.parametrize("mode", comparison._MODES)
-@pytest.mark.parametrize("failure", [None, "setter", "prefill"])
-def test_f16_comparison_uses_real_setter_and_closes_on_each_exit(monkeypatch, mode, failure):
+@pytest.mark.parametrize("failure", [None, "scope", "prefill"])
+def test_f16_comparison_uses_real_scope_and_closes_on_each_exit(monkeypatch, mode, failure):
     child = object.__new__(runner.LagunaGGUFResidentSession)
     child.position = 511
     child.fuse_f16_boundaries = not comparison._MODES[mode]
     events = []
     child.runtime = SimpleNamespace(device_synchronize=lambda: events.append("sync"))
     child.close = lambda: events.append("close")
-    if failure == "setter":
-        child.set_f16_boundary_fusion = lambda enabled: (_ for _ in ()).throw(RuntimeError("synthetic setter failure"))
+    if failure == "scope":
+        child.f16_boundary_diagnostic = lambda enabled: (_ for _ in ()).throw(RuntimeError("synthetic scope failure"))
 
     def prefill(tokens):
         assert tokens == [1, 2, 3]
@@ -99,6 +99,7 @@ def test_f16_comparison_uses_real_setter_and_closes_on_each_exit(monkeypatch, mo
 
 
 def test_f16_boundary_diagnostic_restores_nested_and_peer_state():
+    assert not hasattr(runner.LagunaGGUFResidentSession, 'set_f16_boundary_fusion')
     owner = object.__new__(runner.LagunaGGUFResidentSession)
     owner.fuse_f16_boundaries = True
     peer = object.__new__(runner.LagunaGGUFResidentSession)
