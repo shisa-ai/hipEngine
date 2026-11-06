@@ -79,6 +79,27 @@ _PRODUCTION_ROUTE_ENV = {
 
 
 @contextmanager
+def _route_owner(session, values: Mapping[str, str | None]) -> Iterator[None]:
+    """Bind the frozen comparison choices to the resident runner."""
+
+    keys = (_ROUTER_COOP_ENV, _ROUTER_PERSISTENT_ENV, _ROWTILE_ALL_ENV)
+    names = ("router_f32w_coop", "router_f32w_persistent_counter", "q8_t16_rowtile_all")
+    selected = [values.get(key) for key in keys]
+    if any(value not in {None, "0", "1"} for value in selected):
+        raise ValueError("route owner values must be 0, 1 or None")
+    owner = session.runner
+    previous = {name: getattr(owner, name) for name in names}
+    try:
+        for name, value in zip(names, selected):
+            # An unset rowtile diagnostic means the package floor, not caller env.
+            setattr(owner, name, True if value is None else value == "1")
+        yield
+    finally:
+        for name, value in previous.items():
+            setattr(owner, name, value)
+
+
+@contextmanager
 def _route_env(values: Mapping[str, str | None]) -> Iterator[None]:
     """Apply one frozen c1 route environment and restore the caller exactly."""
 
@@ -178,7 +199,7 @@ def _trajectory_with_controls(
         if route_env is None:
             yield
         else:
-            with _route_env(route_env):
+            with _route_owner(session, route_env):
                 yield
 
     with _env():
