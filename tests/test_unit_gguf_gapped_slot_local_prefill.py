@@ -249,6 +249,37 @@ def test_gather_bucket_rounding_cannot_exceed_explicit_memory_cap(monkeypatch):
     assert sum(sizes) == 5013504
 
 
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("failed_allocation", [1, 2])
+def test_gather_allocation_denial_preserves_cached_owner(
+    monkeypatch, cached, failed_allocation,
+):
+    scratch = replace(
+        _fake_slot_scratch(start=256, rows=2, blocks=8), head_major_kv_admitted=False,
+    )
+    old = (4096, DeviceBuffer(101, 8192), DeviceBuffer(102, 8192))
+    session = SimpleNamespace(runner=SimpleNamespace(backend="hip_gfx1100"))
+    if cached:
+        session._gapped_head_major_cache = old
+    allocations = []
+    freed = []
+
+    def allocate(nbytes, **kwargs):
+        allocations.append(nbytes)
+        if len(allocations) == failed_allocation:
+            raise MemoryError("allocation denied")
+        return DeviceBuffer(103, nbytes)
+
+    monkeypatch.setattr(gguf_runner, "malloc", allocate)
+    monkeypatch.setattr(gguf_runner, "free", lambda b, **kwargs: freed.append(b.ptr))
+    result = gguf_runner._gguf_gapped_slot_head_major_scratch(
+        session, scratch, context_tokens=8192, kv_width=1024, runtime=object(),
+    )
+    assert result is scratch
+    assert freed == ([103] if failed_allocation == 2 else [])
+    assert getattr(session, "_gapped_head_major_cache", None) is (old if cached else None)
+
+
 def test_gapped_slab_falls_back_when_the_kill_switch_is_off(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
