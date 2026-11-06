@@ -1244,36 +1244,6 @@ requests and cleanup. Compare complete-wall and latency on the intended backend 
 policy before choosing a tuning result. Keep per-slot unsupported-shape fallback and request-local
 state isolation.
 
-### R0281-AR-DECODE / R0308 — Packed decode controls and scalar baseline callers
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `scripts/gguf_concurrency_baseline.py`, `scripts/server_f1_concurrency_bench.py`,;
-`HIPENGINE_GGUF_AR_PACKED_DECODE`; `scripts/gguf_live_server_bench.py`.
-
-**Progress:** packed decode is selected through the generator-owned `ar_packed_decode`
-choice; `LLM(ar_packed_decode=...)` and server `--[no-]ar-packed-decode` carry it
-before worker construction. Baseline/live-server/production/sample gate callers
-are migrated. The process-wide reader and compatibility-loop import are removed.
-Focused control, baseline, launcher and live-host contracts: 257 passed, one skipped.
-Public gfx1151 constructor off/on/off generation produces packed widths [], [2,2,3], []
-with identical tested tokens, restored owner selection and zero tracked allocations
-on close. Decisions and artifacts are recorded in the R0281 AR transport/caller/
-reader-retirement worklogs.
-
-**Remaining work:** finish public neighboring/unrelated logical-width and shrinking-group
-coverage before closing this entry. Preserve default packed execution, scalar
-unsupported-shape behavior, physical grouping and slot/state cleanup. This is distinct from
-R0281-AR-LOOP's direct compatibility-loop extraction; the resident scheduler uses the same
-explicit owner selection.
-
-Done when: run `tests/test_unit_gguf_ar_decode_control.py`,
-`tests/test_unit_gguf_concurrency_baseline.py`, `tests/test_unit_server_f1_concurrency_bench.py` and
-`tests/test_unit_gguf_live_server_bench.py`, plus the packed-decode/fallback and shared-slot
-grouping nodes in `tests/test_live_generation_qwen35_gguf_sampling.py`. Reader retirement also needs
-real public packed and explicit-serial requests at neighboring/unrelated logical widths, ragged and
-shrinking groups, repeated output, selected path/fallback reasons and zero tracked cleanup.
-
 ### R0281-AR-PREFILL / R0309 — Packed prefill diagnostic control migration
 
 Owner: `hipengine/generation/qwen35_gguf.py`.
