@@ -3263,6 +3263,9 @@ class Qwen35GGUFMTP2Adapter:
                     getattr(self, "physical_prompt_streaming_widths", ())
                 ),
             },
+            "last_target_shape": dict(
+                getattr(self, "_last_target_shape_contract", {})
+            ),
             "last_partition": dict(
                 getattr(self, "_last_partition_contract", {})
             ),
@@ -4548,13 +4551,35 @@ class Qwen35GGUFMTP2Adapter:
     def _target_group_pad_rows(self, *, request_count: int, candidate_rows: int) -> int:
         """Return inactive pad rows lifting a physical group to admitted multiples."""
 
-        return physical_group_pad_rows(
+        pad_rows = physical_group_pad_rows(
             self.production_target_pad_row_counts,
             request_count,
             candidate_rows,
             int(getattr(self, "physical_accept_max_rows", _PHYSICAL_ACCEPT_MIN_ROWS)),
             exact_counts=getattr(self, "production_exact_target_row_counts", ()),
         )
+        logical_rows = int(request_count) + int(candidate_rows)
+        exact = getattr(self, "production_exact_target_row_counts", ())
+        counts = tuple(value for value in self.production_target_pad_row_counts if value > 0)
+        if logical_rows <= 0:
+            reason = "empty_group"
+        elif logical_rows in exact:
+            reason = "exact_row_count"
+        elif not counts:
+            reason = "no_padding_policy"
+        elif pad_rows:
+            reason = "padded_to_row_multiple"
+        elif logical_rows % min(counts) == 0:
+            reason = "aligned_row_multiple"
+        else:
+            reason = "accept_capacity_fallback"
+        self._last_target_shape_contract = {
+            "logical_rows": logical_rows,
+            "pad_rows": pad_rows,
+            "selected_rows": logical_rows + pad_rows,
+            "reason": reason,
+        }
+        return pad_rows
 
     def _target_pad_token_tensor(
         self,

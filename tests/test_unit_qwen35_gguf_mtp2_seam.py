@@ -1450,6 +1450,19 @@ def test_exact_target_rows_are_production_defaults_with_rollbacks(
     assert default._target_group_pad_rows(request_count=7, candidate_rows=21) == 0
     assert default._target_group_pad_rows(request_count=8, candidate_rows=24) == 0
     assert default._target_group_pad_rows(request_count=1, candidate_rows=3) == 2
+    assert default.physical_width_contract()["last_target_shape"] == {
+        "logical_rows": 4, "pad_rows": 2, "selected_rows": 6,
+        "reason": "padded_to_row_multiple",
+    }
+    assert default._target_group_pad_rows(request_count=2, candidate_rows=6) == 0
+    assert default.physical_width_contract()["last_target_shape"]["reason"] == "exact_row_count"
+    assert default._target_group_pad_rows(request_count=2, candidate_rows=4) == 0
+    assert default.physical_width_contract()["last_target_shape"]["reason"] == "aligned_row_multiple"
+    old_max = default.physical_accept_max_rows
+    default.physical_accept_max_rows = 5
+    assert default._target_group_pad_rows(request_count=1, candidate_rows=3) == 0
+    assert default.physical_width_contract()["last_target_shape"]["reason"] == "accept_capacity_fallback"
+    default.physical_accept_max_rows = old_max
     default.close()
 
     # A profile-bound owner is not retargeted by later diagnostic env changes.
