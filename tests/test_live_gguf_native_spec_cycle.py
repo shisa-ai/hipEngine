@@ -1075,7 +1075,9 @@ def test_device_proposal_handoff_requires_and_launches_only_a_cached_n2_graph() 
         )
 
 
-def test_native_target_graph_close_unregisters_before_unpin() -> None:
+@pytest.mark.parametrize('budget', [1, 2, 3, 4, 5, 6, 7])
+@pytest.mark.parametrize('sampled', [False, True])
+def test_native_target_graph_close_unregisters_before_unpin(budget, sampled) -> None:
     events: list[object] = []
 
     class Pool:
@@ -1106,12 +1108,19 @@ def test_native_target_graph_close_unregisters_before_unpin() -> None:
     graph.sampled_workspace = None
     graph.workspace = SimpleNamespace(free=lambda: events.append("workspace.free"))
     graph.closed = False
+    alias = f'_native_spec_b{budget}_target_graph_n2' + ('_sampled' if sampled else '')
+    setattr(session, alias, graph)
+    key = (budget, True, 256, sampled)
+    session._native_spec_target_graphs = {key: graph}
     session._graph_lifetime.register(graph)
     session._graph_lifetime.pin(graph, allocation=allocation, pool=pool)
     events.clear()
 
     graph.close()
+    graph.close()
 
+    assert getattr(session, alias) is None
+    assert session._native_spec_target_graphs == {}
     assert graph.closed is True
     assert session._graph_lifetime.decode_graphs() == ()
     assert session._graph_lifetime.pinned_graphs() == ()
