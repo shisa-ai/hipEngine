@@ -4270,14 +4270,6 @@ class LagunaGGUFResidentSession:
         finally:
             self.group_compact_mode = previous
 
-    def set_group_compact_mode(self, mode: str) -> None:
-        """Select stable serial or parallel MoE metadata compaction."""
-
-        self.group_compact_mode = resolve_laguna_group_compact_mode(
-            self.backend,
-            mode,
-        )
-
     def set_q6_lm_head_top1_stage1(self, enabled: bool) -> None:
         """Select exact Q6T16 producer tile maxima plus final top-1."""
 

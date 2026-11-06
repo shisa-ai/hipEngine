@@ -11,6 +11,7 @@ from scripts import laguna_group_compact_parallel_ab as comparison
 
 def test_compaction_diagnostic_restores_nested_failure_and_validates_before_mutation():
     from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
+    assert not hasattr(LagunaGGUFResidentSession, 'set_group_compact_mode')
     owner = object.__new__(LagunaGGUFResidentSession)
     owner.backend = 'hip_gfx1151'
     owner.group_compact_mode = 'parallel'
