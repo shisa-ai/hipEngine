@@ -1045,7 +1045,9 @@ class GGUFRouterPlan:
 
     @property
     def counter_owner(self) -> str:
-        return "session_scratch_self_resetting" if self.cooperative and self.persistent_counter else "none"
+        if not self.cooperative:
+            return "none"
+        return "session_scratch_self_resetting" if self.persistent_counter else "selected_id_alias_launch_reset"
 
 
 def _resolve_gguf_router_plan(owner) -> GGUFRouterPlan:

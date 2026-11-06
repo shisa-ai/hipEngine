@@ -19,7 +19,9 @@ def test_router_plan_snapshot_and_explicit_diagnostic(monkeypatch, coop, persist
     owner.router_f32w_coop = not coop
     assert flags.router_f32w_coop_enabled() is not coop
     assert owner.router_plan.cooperative is coop
-    assert (owner.router_plan.counter_owner != 'none') is (coop and persistent)
+    assert (owner.router_plan.counter_owner != 'none') is coop
+    if coop and not persistent:
+        assert owner.router_plan.counter_owner == 'selected_id_alias_launch_reset'
 
 
 def test_direct_router_environment_is_snapshotted(monkeypatch):
