@@ -2775,6 +2775,28 @@ def test_gguf_packed_target_state_allocate_uses_pool_workspace_lease(monkeypatch
     assert backing.full_value_caches[0] not in state.buffers
 
 
+def test_packed_state_leases_available_arena_without_eager_reservation(monkeypatch):
+    layout = _lease_test_layout()
+    backing = _lease_test_backing(layout)
+    calls = []
+    pool = SimpleNamespace(
+        backing=backing,
+        workspace_pages=lambda key: None,
+        lease_workspace=lambda key, pages: calls.append((key, pages)) or (3, 5, 6, 7),
+    )
+    monkeypatch.setattr(gguf_runner, "malloc", lambda *args, **kwargs: pytest.fail('unexpected private allocation'))
+    state = _GGUFPackedTargetState.allocate(
+        _lease_test_runner(), slot_count=2, max_sequence_length=512,
+        runtime=SimpleNamespace(), kv_layout=layout, kv_pool=pool,
+    )
+    assert state.kv_backing_kind == 'pool_lease'
+    assert state.page_ids == (3, 5, 6, 7)
+    assert state.growth_lease_pool is pool
+    assert state.growth_lease_key == calls[0][0]
+    assert calls[0][1] == 4
+    assert state.buffers == ()
+
+
 def test_gguf_packed_target_state_allocate_private_without_lease(monkeypatch) -> None:
     allocated: list[int] = []
 

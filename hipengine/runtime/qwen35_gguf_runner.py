@@ -2813,6 +2813,14 @@ class _GGUFPackedTargetState:
                     workspace_pages_fn = getattr(kv_pool, "workspace_pages", None)
                     if callable(workspace_pages_fn):
                         lease_pages = workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
+                    if lease_pages is None:
+                        # Direct owners may have a pool without an eager serving
+                        # reservation. Lease its arena before allocating private KV.
+                        grown = _lease_packed_workspace_growth(
+                            kv_pool, needed_pages=total_pages
+                        )
+                        if grown is not None:
+                            growth_lease_key, lease_pages = grown
                 if lease_pages is not None and len(lease_pages) < total_pages:
                     # Physical verifier width or context can exceed the eager
                     # serving-capacity lease. Private KV uses the same geometry
