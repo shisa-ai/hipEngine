@@ -32,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
     build_dflash_accept,
     dflash_accept_chain_i32_packed,
 )
+from hipengine.runtime.gguf_target_graph_alias import native_target_graph_alias
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -2170,12 +2171,9 @@ class Qwen35GGUFMTP2Adapter:
             target is not None
             and token_id is not None
             and self._sampled_accept_candidate(rid)
-            and getattr(
-                target,
-                f"_native_spec_b{budget}_target_graph_n2_sampled",
-                None,
-            )
-            is None
+            and native_target_graph_alias(
+                target, budget, device_accept=True, sampled=True,
+            ) is None
         ):
             # Warm the sampled accept variant independently of the row's
             # verifier. This hook is the only capture site and it runs at
@@ -2477,8 +2475,7 @@ class Qwen35GGUFMTP2Adapter:
             _decline("temperature is zero")
             return None
         budget = int(candidate_budget)
-        graph_name = f"_native_spec_b{budget}_target_graph_n2_sampled"
-        if getattr(target, graph_name, None) is None:
+        if native_target_graph_alias(target, budget, device_accept=True, sampled=True) is None:
             request_state = self._states.get(int(request_id))
             warmup_error = getattr(request_state, "device_chain_prepare_error", None)
             _decline(

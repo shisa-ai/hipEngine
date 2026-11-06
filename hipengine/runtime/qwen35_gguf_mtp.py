@@ -12,6 +12,7 @@ from typing import Any, Callable, Sequence
 
 import numpy as np
 
+from hipengine.runtime.gguf_target_graph_alias import native_target_graph_alias
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime
@@ -1476,11 +1477,7 @@ class Qwen35GGUFTransactionalVerifier:
         ) != "native":
             self.last_device_proposal_fallback_reason = "target_graph_native_policy_miss"
             return False
-        graph = getattr(
-            self.target,
-            f"_native_spec_b{budget}_target_graph_n2",
-            None,
-        )
+        graph = native_target_graph_alias(self.target, budget, device_accept=True)
         if graph is None:
             self.last_device_proposal_fallback_reason = "target_graph_not_cached"
             return False
