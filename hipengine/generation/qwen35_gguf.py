@@ -2228,6 +2228,12 @@ class Qwen35GGUFBringupGenerator:
     ) -> "Qwen35GGUFResidentModelRunner":
         """Create the single scheduler-facing GGUF model owner for this generator."""
 
+        if self.ar_stream_decode is True and not self._ar_packed_decode_enabled():
+            raise NotImplementedError(
+                "resident scalar stream decode requires disjoint execution and sample buffers; "
+                "resident slot views share these buffers. Use ar_stream_decode=False for "
+                "serial decode or enable ar_packed_decode for packed decode"
+            )
         if getattr(self, "dms_config", None) is not None:
             if capacity not in (None, 1):
                 raise ValueError("DMS compact serving requires max_active_requests=1")

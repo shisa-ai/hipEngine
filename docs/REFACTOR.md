@@ -1277,6 +1277,13 @@ Owner: `hipengine/generation/qwen35_gguf.py`.
 
 Scope: `HIPENGINE_GGUF_AR_STREAM_DECODE`.
 
+**Observed resident constraint:** logical slot views share temporary execution and scalar sample
+buffers; concurrent scalar streams corrupt outputs and fail repeatability. Explicit scalar-stream
+resident construction now names this capability miss rather than silently running serially.
+Evidence and clearing action: `worklog/entries/20261106T170945.764567Z-lhl-r0281-stream-shared-scratch-037b3a.md`.
+Compatibility independent-session streams remain implemented. The owner-control migration is in
+`8cd2421d9`; the ambient default reader remains until this remaining route work is resolved.
+
 **Remaining work:** provide an explicit resolved serial/stream/packed comparison control or
 designated serial oracle, then migrate writers, route metadata, cleanup tests and the env reader
 together. Preserve singleton and missing-hook fallback, packed-owner flush before per-slot work,
