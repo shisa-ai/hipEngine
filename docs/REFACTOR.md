@@ -3053,8 +3053,15 @@ Owner: `hipengine/generation/engine_loop.py`.
 
 Scope: `SubmitPollTextGenerator.submit_speculative_many_detailed()`, `VERIFY_CHAIN`.
 
-**Deferred provider migration:** inventory and migrate the remaining non-staged providers before
-removing synchronous selection, post-hoc work metadata and duplicate request/result ownership.
+**Provider inventory:** Qwen GGUF exposes staged adapter hooks through its resident runner;
+Flash-Next exposes capability and cycle hooks through `Qwen4ExpServingMTP`; Gemma's built-in
+provider exposes `generation_steps` through `Gemma4ResidentModelRunner` buffered decode.
+Laguna DFlash uses generic children (R0011), not MTP compatibility. Providers attached without
+these bounded interfaces can still reach whole-request compatibility. Inventory their attachment
+and caller contracts before removing synchronous selection, post-hoc work metadata and duplicate
+request/result ownership. Mixed-parameter compatibility admission now rolls back earlier children
+on a later admission failure; see
+`worklog/entries/20261106T090212.240760Z-lhl-r0188-admission-rollback-869685.md`.
 The former RF-10 planning entry delegates direct-control retirement to this provider migration;
 it does not require a separate scheduler implementation.
 
