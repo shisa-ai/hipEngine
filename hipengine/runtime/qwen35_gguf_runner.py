@@ -100,6 +100,7 @@ from hipengine.runtime.qwen35_gguf_prefill_plan import (
 from hipengine.runtime.qwen35_gguf_prefix_state import (
     Qwen35GGUFPrefixStateSnapshot, _GGUFPrefixSnapshotArenaPool,
 )
+from hipengine.runtime.gguf_packed_backing import select_packed_arena_backing
 from hipengine.runtime.qwen35_gguf_workspace import (
     PackedWorkspaceOwner as _PackedWorkspaceState,
     StandalonePackedBackingLease,
@@ -2818,22 +2819,7 @@ class _GGUFPackedTargetState:
                 owned_buffers = tuple(state_buffers)
                 lease_pages = None
             else:
-                if kv_pool is not None:
-                    workspace_pages_fn = getattr(kv_pool, "workspace_pages", None)
-                    if callable(workspace_pages_fn):
-                        lease_pages = workspace_pages_fn(_GGUF_PACKED_WORKSPACE_LEASE_KEY)
-                    if lease_pages is None:
-                        # Direct owners may have a pool without an eager serving
-                        # reservation. Lease its arena before allocating private KV.
-                        grown = _lease_packed_workspace_growth(
-                            kv_pool, needed_pages=total_pages
-                        )
-                        if grown is not None:
-                            growth_lease_key, lease_pages = grown
-                if lease_pages is not None and len(lease_pages) < total_pages:
-                    # Physical verifier width or context can exceed the eager
-                    # serving-capacity lease. Private KV uses the same geometry
-                    # and is charged in full in addition to the pinned arena.
+                def record_shortfall(leased_pages):
                     shortfalls = getattr(runner, "_packed_workspace_lease_shortfalls", None)
                     if shortfalls is None:
                         shortfalls = []
@@ -2842,62 +2828,20 @@ class _GGUFPackedTargetState:
                         except AttributeError:
                             shortfalls = None
                     if shortfalls is not None:
-                        shortfalls.append(
-                            {
-                                "leased_pages": int(len(lease_pages)),
-                                "needed_pages": int(total_pages),
-                                "slot_count": int(slot_count),
-                                "blocks_per_slot": int(blocks_per_slot),
-                                "max_sequence_length": int(max_sequence_length),
-                            }
-                        )
-                    # Extend the eager lease with idle arena pages before
-                    # falling back to a private chunk: the pool already holds
-                    # committed pages for the declared context, and a private
-                    # copy doubled KV for concurrent decode on 24 GB cards.
-                    grown = _lease_packed_workspace_growth(
-                        kv_pool, needed_pages=total_pages - len(lease_pages)
-                    )
-                    if grown is None:
-                        lease_pages = None
-                    else:
-                        growth_lease_key, growth_pages = grown
-                        lease_pages = (*tuple(lease_pages), *growth_pages)
-                arena_backing = None
-                backing_page_ids = None
-                if lease_pages is not None:
-                    binding_fn = getattr(kv_pool, "workspace_backing_for_pages", None)
-                    if callable(binding_fn):
-                        binding = binding_fn(tuple(lease_pages[:total_pages]))
-                        if binding is not None:
-                            arena_backing, backing_page_ids = binding
-                        compatible = binding is not None
-                    else:
-                        root_fits = getattr(kv_pool, "workspace_pages_fit_root_backing", None)
-                        compatible = not callable(root_fits) or root_fits(tuple(lease_pages[:total_pages]))
-                    if not compatible:
-                        # Mixed chunks still need per-page pointer consumers.
-                        if growth_lease_key is not None:
-                            kv_pool.release_workspace(growth_lease_key)
-                            growth_lease_key = None
-                        lease_pages = None
-                        if callable(binding_fn):
-                            replacement = _lease_packed_workspace_growth(
-                                kv_pool, needed_pages=total_pages
-                            )
-                            if replacement is not None:
-                                replacement_key, replacement_pages = replacement
-                                # Publish ownership before binding so failure cleanup
-                                # can release the acquired replacement lease.
-                                growth_lease_key = replacement_key
-                                replacement_binding = binding_fn(tuple(replacement_pages))
-                                if replacement_binding is None:
-                                    kv_pool.release_workspace(replacement_key)
-                                    growth_lease_key = None
-                                else:
-                                    lease_pages = replacement_pages
-                                    arena_backing, backing_page_ids = replacement_binding
-                if lease_pages is not None:
+                        shortfalls.append({
+                            "leased_pages": int(leased_pages),
+                            "needed_pages": int(total_pages),
+                            "slot_count": int(slot_count),
+                            "blocks_per_slot": int(blocks_per_slot),
+                            "max_sequence_length": int(max_sequence_length),
+                        })
+                arena_backing, backing_page_ids, growth_lease_key = select_packed_arena_backing(
+                    kv_pool, total_pages=total_pages, layout=kv_layout,
+                    eager_key=_GGUF_PACKED_WORKSPACE_LEASE_KEY,
+                    lease_growth=_lease_packed_workspace_growth,
+                    on_shortfall=record_shortfall,
+                )
+                if arena_backing is not None:
                     # Pool-leased backing: the arena planes back the
                     # workspace and page_ids select this state's pages
                     # inside them. The lease pages stay pinned by the
@@ -2918,11 +2862,7 @@ class _GGUFPackedTargetState:
                         "full_kv_scale_metadata": arena_backing.full_kv_scale_metadata,
                     }
                     kv_backing = arena_backing
-                    page_ids = (
-                        tuple(int(page) for page in backing_page_ids)
-                        if backing_page_ids is not None
-                        else tuple(int(page) for page in lease_pages[:total_pages])
-                    )
+                    page_ids = backing_page_ids
                     backing_kind = "pool_lease"
                     owned_buffers = tuple(state_buffers)
                 else:
