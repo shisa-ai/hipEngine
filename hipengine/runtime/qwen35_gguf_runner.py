@@ -2613,8 +2613,6 @@ class _GGUFPackedTargetState:
     # borrowed from the GlobalDeviceKVPool arena under the workspace lease.
     kv_backing_kind: str = "private"
     backing_lease: StandalonePackedBackingLease | None = None
-    private_workspace_pool: object | None = None
-    private_workspace_token: object | None = None
     # Charge for the conv/recurrent state buffers themselves. They are device
     # mallocs this state owns, so they are priced through the same pool budget
     # as the KV payload and released with these buffers.

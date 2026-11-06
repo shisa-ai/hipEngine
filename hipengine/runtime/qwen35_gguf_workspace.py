@@ -119,10 +119,6 @@ class PackedWorkspaceOwner:
                     release(buffer, runtime=runtime)
             if lease is not None:
                 lease.close(runtime=runtime, release=release)
-            pool = getattr(self.verify_state, "private_workspace_pool", None)
-            token = getattr(self.verify_state, "private_workspace_token", None)
-            if token is not None:
-                pool.release_private_workspace(token)
             charge_pool = getattr(self.verify_state, "resident_charge_pool", None)
             charge_token = getattr(self.verify_state, "resident_charge_token", None)
             if charge_token is not None:

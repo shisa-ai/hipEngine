@@ -2901,7 +2901,6 @@ def test_packed_state_releases_cross_chunk_lease_before_private_fallback(monkeyp
     )
     assert len(released) == 1
     assert reserved and state.backing_lease.token == 'private'
-    assert state.private_workspace_token is None
     assert state.kv_backing_kind == 'private'
     assert state.growth_lease_key is None
     assert state.page_ids == (0, 1, 2, 3)

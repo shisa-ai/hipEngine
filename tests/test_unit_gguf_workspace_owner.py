@@ -83,8 +83,6 @@ def test_workspace_owner_counts_unique_buffers_and_releases_charges_after_storag
     extra = buffer(2, 32)
     state = SimpleNamespace(
         buffers=(common,),
-        private_workspace_pool=SimpleNamespace(release_private_workspace=lambda token: events.append(('private', token))),
-        private_workspace_token='p',
         resident_charge_pool=SimpleNamespace(release_private_workspace=lambda token: events.append(('charge', token))),
         resident_charge_token='c',
         growth_lease_pool=SimpleNamespace(release_workspace=lambda token: events.append(('growth', token))),
@@ -99,7 +97,7 @@ def test_workspace_owner_counts_unique_buffers_and_releases_charges_after_storag
     assert owner.nbytes() == 48
     runtime = SimpleNamespace(device_synchronize=lambda: events.append(('sync',)))
     owner.close(runtime=runtime, release=lambda item, **kwargs: events.append(('free', item.ptr)))
-    assert events == [('sync',), ('free', 2), ('free', 1), ('private', 'p'), ('charge', 'c'), ('growth', 'g')]
+    assert events == [('sync',), ('free', 2), ('free', 1), ('charge', 'c'), ('growth', 'g')]
     assert owner.nbytes() == 0
     assert owner.verify_state is None and owner.verify_scratch is None
     assert owner.ar_attention_workspace is None
