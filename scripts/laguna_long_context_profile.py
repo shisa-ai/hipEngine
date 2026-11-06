@@ -43,6 +43,16 @@ from scripts.laguna_target_ar_bench import (
 )
 
 
+def _configure_selected_moe_comparison(stack: ExitStack, owner, args, *, mode: str) -> None:
+    stack.close()
+    if args.compare_grouped_exact_iq:
+        selected = "grouped_exact" if mode == "candidate" else "direct"
+        stack.enter_context(owner.selected_moe_diagnostic(gate_up=selected, down=selected))
+    elif args.compare_pair16_grouped_gate_up:
+        gate = "grouped_pair16" if mode == "candidate" else "grouped_exact"
+        stack.enter_context(owner.selected_moe_diagnostic(gate_up=gate, down="grouped_exact"))
+
+
 def _configure_moe_tail_comparison(stack: ExitStack, owner, *, enabled: bool) -> None:
     if not enabled:
         stack.enter_context(unfused_moe_tail(owner))
@@ -706,6 +716,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     load_started = time.perf_counter()
     diagnostic_scopes = ExitStack()
     decode_scopes = ExitStack()
+    selected_moe_scopes = ExitStack()
     from hipengine.runtime.f16_weight_linear import f16_decode_strategy
 
     if args.compare_f16_decode_onebarrier or args.compare_f16_decode_fixedk:
@@ -1040,20 +1051,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             if mode == "candidate"
                             else raw_k_control
                         )
-                    if args.compare_grouped_exact_iq:
-                        selected_mode = (
-                            "grouped_exact" if mode == "candidate" else "direct"
-                        )
-                        owner.set_selected_gate_up_mode(selected_mode)
-                        owner.set_selected_down_mode(selected_mode)
-                    if args.compare_pair16_grouped_gate_up:
-                        gate_up_mode = (
-                            "grouped_pair16"
-                            if mode == "candidate"
-                            else "grouped_exact"
-                        )
-                        owner.set_selected_gate_up_mode(gate_up_mode)
-                        owner.set_selected_down_mode("grouped_exact")
+                    _configure_selected_moe_comparison(
+                        selected_moe_scopes, owner, args, mode=mode,
+                    )
                     if args.compare_block_attention_hipblaslt:
                         owner.set_prefill_block_attention_hipblaslt(
                             mode == "candidate"
@@ -1207,6 +1207,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     )
         resident_nbytes = owner.resident_nbytes
     finally:
+        selected_moe_scopes.close()
         decode_scopes.close()
         diagnostic_scopes.close()
         if owner is not None:

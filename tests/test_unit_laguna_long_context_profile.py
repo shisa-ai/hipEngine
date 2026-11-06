@@ -7,6 +7,32 @@ from pathlib import Path
 
 import pytest
 
+@pytest.mark.parametrize("pair16", [False, True])
+def test_selected_moe_profiler_arms_restore_previous_policy(pair16):
+    from contextlib import ExitStack
+    from types import SimpleNamespace
+    from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
+    from scripts.laguna_long_context_profile import _configure_selected_moe_comparison
+
+    owner = object.__new__(LagunaGGUFResidentSession)
+    owner.backend = "hip_gfx1151"
+    owner.selected_gate_up_mode = "grouped_exact"
+    owner.selected_down_mode = "adaptive_grouped_smallm"
+    args = SimpleNamespace(compare_grouped_exact_iq=not pair16, compare_pair16_grouped_gate_up=pair16)
+    with pytest.raises(RuntimeError, match="synthetic"):
+        with ExitStack() as stack:
+            for mode in ("candidate", "control", "candidate"):
+                _configure_selected_moe_comparison(stack, owner, args, mode=mode)
+                expected_gate = (
+                    "grouped_pair16" if mode == "candidate" else "grouped_exact"
+                ) if pair16 else ("grouped_exact" if mode == "candidate" else "direct")
+                assert owner.selected_gate_up_mode == expected_gate
+                assert owner.selected_down_mode == ("grouped_exact" if pair16 else expected_gate)
+            raise RuntimeError("synthetic")
+    assert owner.selected_gate_up_mode == "grouped_exact"
+    assert owner.selected_down_mode == "adaptive_grouped_smallm"
+
+
 from scripts.laguna_long_context_profile import (
     ATTACK_LENGTHS,
     COMPARISON_ARGUMENTS,
