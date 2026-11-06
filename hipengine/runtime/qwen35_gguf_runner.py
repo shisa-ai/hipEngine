@@ -100,6 +100,7 @@ from hipengine.runtime.qwen35_gguf_prefill_plan import (
 from hipengine.runtime.qwen35_gguf_prefix_state import (
     Qwen35GGUFPrefixStateSnapshot, _GGUFPrefixSnapshotArenaPool,
 )
+from hipengine.runtime.qwen35_gguf_workspace import PackedWorkspaceOwner as _PackedWorkspaceState
 from hipengine.runtime.qwen35_gguf_state import (
     ResidentStateStorage, StateMemory, resident_state_field,
 )
@@ -2510,29 +2511,6 @@ class _GGUFPackedARAttentionWorkspace:
             partial_l=partial_l,
             buffers=(partial_out, partial_m, partial_l),
         )
-
-
-@dataclass
-class _PackedWorkspaceState:
-    """Shared mutable packed-workspace bookkeeping for one batch owner.
-
-    The batch owner and every ``resident_slot_view`` reference one instance so
-    the packed verify/decode state, deferred-scatter dirtiness, and workspace
-    geometry stay consistent no matter which session object executes a step
-    or triggers a resize.
-    """
-
-    verify_state: object | None = None
-    verify_scratch: object | None = None
-    ar_attention_workspace: object | None = None
-    verify_session_ids: tuple[int, ...] = ()
-    verify_max_written_positions: tuple[int, ...] = ()
-    decode_sessions: tuple = ()
-    decode_last_layout: object | None = None
-    decode_state_dirty: bool = False
-    decode_session_ids: tuple[int, ...] = ()
-    decode_positions: tuple[int, ...] = ()
-    decode_direct_linear_state: bool = False
 
 
 # Union-geometry defaults for the packed verify workspace. Physical packed
@@ -26162,28 +26140,7 @@ class Qwen35GGUFResidentSession:
         released-bytes reporting must count them too.
         """
 
-        seen: set[int] = set()
-        total = 0
-        for workspace in (
-            getattr(self, "_packed_ar_attention_workspace", None),
-            self._packed_verify_scratch,
-            self._packed_verify_state,
-        ):
-            if workspace is None:
-                continue
-            for buffer in (
-                *workspace.buffers,
-                *(
-                    getattr(workspace, "full_attn_split_growth_buffers", ())
-                    if workspace is self._packed_verify_scratch
-                    else ()
-                ),
-            ):
-                if buffer is None or int(buffer.ptr) == 0 or int(buffer.ptr) in seen:
-                    continue
-                seen.add(int(buffer.ptr))
-                total += int(buffer.nbytes)
-        return total
+        return self._packed_workspace_state().nbytes()
 
     def release_idle_packed_workspace(self) -> int:
         """Release packed owner scratch after state scatter and graph teardown."""
@@ -26201,59 +26158,7 @@ class Qwen35GGUFResidentSession:
         if delegate is not None and delegate is not self:
             delegate._free_packed_verify_workspace(runtime=runtime)
             return
-        # Return pages to the allocator only after queued work that may
-        # still reference them has completed.
-        synchronize = getattr(runtime, "device_synchronize", None)
-        if callable(synchronize):
-            synchronize()
-        attention_workspace = getattr(self, "_packed_ar_attention_workspace", None)
-        if attention_workspace is not None:
-            for buffer in reversed(attention_workspace.buffers):
-                if buffer is not None:
-                    free(buffer, runtime=runtime)
-        self._packed_ar_attention_workspace = None
-        if self._packed_verify_scratch is not None:
-            for buffer in reversed(
-                getattr(
-                    self._packed_verify_scratch,
-                    "full_attn_split_growth_buffers",
-                    (),
-                )
-            ):
-                if buffer is not None:
-                    free(buffer, runtime=runtime)
-            if hasattr(self._packed_verify_scratch, "full_attn_split_growth_buffers"):
-                object.__setattr__(
-                    self._packed_verify_scratch, "full_attn_split_growth_buffers", ()
-                )
-            for buffer in reversed(self._packed_verify_scratch.buffers):
-                if buffer is not None:
-                    free(buffer, runtime=runtime)
-        self._packed_verify_scratch = None
-        if self._packed_verify_state is not None:
-            for buffer in reversed(self._packed_verify_state.buffers):
-                if buffer is not None:
-                    free(buffer, runtime=runtime)
-            pool = getattr(self._packed_verify_state, "private_workspace_pool", None)
-            token = getattr(self._packed_verify_state, "private_workspace_token", None)
-            if token is not None:
-                pool.release_private_workspace(token)
-            charge_pool = getattr(self._packed_verify_state, "resident_charge_pool", None)
-            charge_token = getattr(self._packed_verify_state, "resident_charge_token", None)
-            if charge_token is not None:
-                charge_pool.release_private_workspace(charge_token)
-            growth_pool = getattr(self._packed_verify_state, "growth_lease_pool", None)
-            growth_key = getattr(self._packed_verify_state, "growth_lease_key", None)
-            if growth_key is not None:
-                growth_pool.release_workspace(growth_key)
-        self._packed_verify_state = None
-        self._packed_verify_session_ids = ()
-        self._packed_verify_max_written_positions = ()
-        self._packed_decode_sessions = ()
-        self._packed_decode_last_layout = None
-        self._packed_decode_state_dirty = False
-        self._packed_decode_session_ids = ()
-        self._packed_decode_positions = ()
+        self._packed_workspace_state().close(runtime=runtime, release=free)
 
     def _ensure_packed_ar_attention_workspace(
         self,
