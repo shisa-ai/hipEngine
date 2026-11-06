@@ -552,6 +552,31 @@ def test_pair_plans_interleave_explicit_owners_without_cache_reset(monkeypatch, 
         gl.clear_gguf_linear_dispatch_cache()
 
 
+def test_pair_decision_excludes_resident_operands_and_rebinds_per_launch():
+    from dataclasses import fields
+
+    weights = [_fake_weight(layout=LAYOUT_GGUF_Q8_0_T16,
+                            quant_key='gguf_q8_0_t16_v1') for _ in range(4)]
+    kwargs = dict(rows=4, in_features=2048, out_features=8192,
+                  out_features_b=4096, use_wmma_prefill=False,
+                  q8_t16_rowtile_all=False)
+    gl.clear_gguf_linear_dispatch_cache()
+    try:
+        first = gl._resolve_gguf_linear_pair_plan(*weights[:2], **kwargs)
+        peer = gl._resolve_gguf_linear_pair_plan(*weights[2:], **kwargs)
+        assert first.decision == peer.decision
+        assert 'operands' not in {field.name for field in fields(first.decision)}
+        assert first.operands[0].weight is weights[0]
+        assert peer.operands[0].weight is weights[2]
+        rebound = first.decision.bind(peer.operands)
+        assert rebound.decision == first.decision
+        gl._bind_pair_plan_owners(rebound, *weights[2:])
+        with pytest.raises(ValueError, match='owner changed'):
+            gl._bind_pair_plan_owners(first, *weights[2:])
+    finally:
+        gl.clear_gguf_linear_dispatch_cache()
+
+
 def test_pair_plan_explicit_rowtile_policy_beats_ambient(monkeypatch) -> None:
     """An owner's explicit input wins over the other owner's ambient value."""
 

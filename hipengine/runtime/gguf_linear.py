@@ -7441,8 +7441,8 @@ class _GGUFT16PairOperand:
 
 
 @dataclass(frozen=True)
-class _GGUFLinearPairPlan:
-    """Private, pointer-free, single-use plan for one GGUF projection pair."""
+class _GGUFLinearPairDecision:
+    """Immutable operation selection without resident weights or device pointers."""
 
     backend: str
     rows: int
@@ -7451,7 +7451,6 @@ class _GGUFLinearPairPlan:
     out_features_b: int
     activation_dtype: str
     output_dtype: str
-    operands: tuple[_GGUFPairedOperand, _GGUFPairedOperand]
     operation: str | None
     pair_key: KernelKey | None
     t16_operands: tuple[_GGUFT16PairOperand, ...]
@@ -7462,6 +7461,29 @@ class _GGUFLinearPairPlan:
     library_always: bool
     fallback_reason: str | None
     registry_generation: int
+
+    def bind(
+        self, operands: tuple[_GGUFPairedOperand, _GGUFPairedOperand],
+    ) -> _GGUFLinearPairPlan:
+        return _GGUFLinearPairPlan(
+            **{name: getattr(self, name)
+               for name in _GGUFLinearPairDecision.__dataclass_fields__},
+            operands=operands,
+        )
+
+
+@dataclass(frozen=True)
+class _GGUFLinearPairPlan(_GGUFLinearPairDecision):
+    """Launch-local binding of a pair decision to exact resident operands."""
+
+    operands: tuple[_GGUFPairedOperand, _GGUFPairedOperand]
+
+    @property
+    def decision(self) -> _GGUFLinearPairDecision:
+        return _GGUFLinearPairDecision(**{
+            name: getattr(self, name)
+            for name in _GGUFLinearPairDecision.__dataclass_fields__
+        })
 
 
 def _launch_gguf_linear_pair_source_f16_spans(
@@ -9722,7 +9744,7 @@ def _resolve_gguf_linear_pair_plan(
         library_always: bool = False,
         fallback_reason: str | None = None,
     ) -> _GGUFLinearPairPlan:
-        return _GGUFLinearPairPlan(
+        return _GGUFLinearPairDecision(
             backend=resolved_backend,
             rows=rows,
             in_features=in_features,
@@ -9730,7 +9752,6 @@ def _resolve_gguf_linear_pair_plan(
             out_features_b=out_features_b,
             activation_dtype=activation_dtype,
             output_dtype=output_dtype,
-            operands=operands,
             operation=operation,
             pair_key=pair_key,
             t16_operands=t16_operands,
@@ -9741,7 +9762,7 @@ def _resolve_gguf_linear_pair_plan(
             library_always=library_always,
             fallback_reason=fallback_reason,
             registry_generation=generation(),
-        )
+        ).bind(operands)
 
     if pair_kind == "none":
         return _plan(
