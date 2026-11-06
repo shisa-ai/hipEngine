@@ -818,5 +818,11 @@ def _free_qwen35_gguf_kv_chunk(
     *,
     runtime: HipRuntime,
 ) -> None:
+    failures: list[BaseException] = []
     for buffer in reversed(backing.buffers):
-        _free_gguf_kv_plane_buffer(buffer, runtime=runtime)
+        try:
+            _free_gguf_kv_plane_buffer(buffer, runtime=runtime)
+        except BaseException as error:
+            failures.append(error)
+    if failures:
+        raise BaseExceptionGroup("KV chunk close failed", failures)

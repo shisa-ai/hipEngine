@@ -176,6 +176,23 @@ def test_gguf_device_kv_chunk_allocates_policy_shaped_payload_and_scales() -> No
     assert runtime.free_calls == [buffer.ptr for buffer in reversed(backing.buffers)]
 
 
+def test_chunk_free_attempts_all_planes_after_one_release_fails(monkeypatch):
+    from hipengine.runtime import qwen35_gguf_kv as kv
+    from types import SimpleNamespace
+
+    buffers = tuple(DeviceBuffer(ptr=0x1000 + index * 0x100, nbytes=64)
+                    for index in range(3))
+    attempts = []
+    def release(buffer, *, runtime):
+        attempts.append(buffer.ptr)
+        if buffer is buffers[-1]:
+            raise RuntimeError('plane free failed')
+    monkeypatch.setattr(kv, '_free_gguf_kv_plane_buffer', release)
+    with pytest.raises(BaseExceptionGroup, match='KV chunk close failed'):
+        kv._free_qwen35_gguf_kv_chunk(SimpleNamespace(buffers=buffers), runtime=object())
+    assert attempts == [buffer.ptr for buffer in reversed(buffers)]
+
+
 def test_gguf_device_kv_binding_binds_and_unbinds_int8_scale_backing(monkeypatch) -> None:
     device = Device("hip", 0)
     key_cache = DeviceBuffer(ptr=0x110000, nbytes=4096)
