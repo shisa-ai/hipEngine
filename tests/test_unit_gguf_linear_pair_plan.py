@@ -565,6 +565,15 @@ def test_pair_decision_excludes_resident_operands_and_rebinds_per_launch():
         first = gl._resolve_gguf_linear_pair_plan(*weights[:2], **kwargs)
         peer = gl._resolve_gguf_linear_pair_plan(*weights[2:], **kwargs)
         assert first.decision == peer.decision
+        from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner, launch_decision_session
+        owner = LaunchDecisionOwner()
+        with launch_decision_session(owner):
+            owned_first = gl._resolve_gguf_linear_pair_plan(*weights[:2], **kwargs)
+            owned_peer = gl._resolve_gguf_linear_pair_plan(*weights[2:], **kwargs)
+        assert len(owner) == 1
+        assert owned_first.decision == owned_peer.decision == first.decision
+        assert owned_first.operands[0].weight is weights[0]
+        assert owned_peer.operands[0].weight is weights[2]
         assert 'operands' not in {field.name for field in fields(first.decision)}
         assert first.operands[0].weight is weights[0]
         assert peer.operands[0].weight is weights[2]

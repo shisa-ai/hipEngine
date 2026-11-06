@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Any, Callable, Iterator, Mapping
 
+from hipengine.runtime.gguf_launch_policy import own_launch_decision
 from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.specdec2_scope import (
@@ -6689,7 +6690,7 @@ def _resolve_gguf_linear_residual_plan(
         sidecar_variant: str | None = None,
         fallback_reason: str | None = None,
     ) -> _GGUFResidualLaunchPlan:
-        return _GGUFResidualDecision(
+        return own_launch_decision(_GGUFResidualDecision(
             backend=resolved_backend,
             rows=rows,
             in_features=in_features,
@@ -6704,7 +6705,7 @@ def _resolve_gguf_linear_residual_plan(
             sidecar_variant=sidecar_variant,
             fallback_reason=fallback_reason,
             registry_generation=generation(),
-        ).bind(weight)
+        )).bind(weight)
 
     if rows > 4:
         # Bulk residual fusion is currently a dense-BF16 WMMA composite. Fail
@@ -8189,7 +8190,7 @@ def _resolve_gguf_linear_pair_silu_plan(
         chunks: tuple[tuple[int, int], ...] = (),
         fallback_reason: str | None = None,
     ) -> _GGUFPairSiluPlan:
-        return _GGUFPairSiluDecision(
+        return own_launch_decision(_GGUFPairSiluDecision(
             backend=resolved_backend,
             rows=rows,
             in_features=in_features,
@@ -8218,7 +8219,7 @@ def _resolve_gguf_linear_pair_silu_plan(
             r28_enabled=r28_enabled,
             fallback_reason=fallback_reason,
             registry_generation=generation(),
-        ).bind(operands)
+        )).bind(operands)
 
     dispatch_a = resolve_gguf_linear_dispatch(
         weight_a,
@@ -9857,7 +9858,7 @@ def _resolve_gguf_linear_pair_plan(
         library_always: bool = False,
         fallback_reason: str | None = None,
     ) -> _GGUFLinearPairPlan:
-        return _GGUFLinearPairDecision(
+        return own_launch_decision(_GGUFLinearPairDecision(
             backend=resolved_backend,
             rows=rows,
             in_features=in_features,
@@ -9876,7 +9877,7 @@ def _resolve_gguf_linear_pair_plan(
             library_always=library_always,
             fallback_reason=fallback_reason,
             registry_generation=generation(),
-        ).bind(operands)
+        )).bind(operands)
 
     if pair_kind == "none":
         return _plan(
@@ -10666,7 +10667,7 @@ def _resolve_gguf_linear_triple_plan(
         resolved_threads: int,
         fallback_reason: str | None,
     ) -> _GGUFTripleLaunchPlan:
-        return _GGUFTripleDecision(
+        return own_launch_decision(_GGUFTripleDecision(
             backend=resolved_backend,
             rows=rows,
             in_features=in_features,
@@ -10677,7 +10678,7 @@ def _resolve_gguf_linear_triple_plan(
             use_wmma_prefill=use_wmma,
             fallback_reason=fallback_reason,
             registry_generation=resolved_registry_generation,
-        ).bind(tuple(operand.owner_slot for operand in operands))
+        )).bind(tuple(operand.owner_slot for operand in operands))
 
     if use_wmma and rows > 1 and (
         _dispatch_can_use_t16_wmma_prefill(dispatch_a, rows=rows, in_features=in_features)
