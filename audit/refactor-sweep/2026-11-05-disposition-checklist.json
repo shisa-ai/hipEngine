@@ -4880,7 +4880,7 @@
       "evidence": [
         "hipengine/generation/qwen35_gguf_mtp2.py:5657-5663 binds numerics/pairreuse/exact-linear scopes separately."
       ],
-      "next_action": "Move pairreuse into profile physical-target manifest with nested disable restoration and geometry validation; keep arithmetic decisions independent.",
+      "next_action": "Pairreuse is integrated in immutable PhysicalTargetPlan; MoE factory precedence repaired in 7fc8b5195. Host nested scope/geometry coverage and public arithmetic-plan engagement pass. Remaining: exact public device state and selected kernel attribution before retiring supported diagnostic scope; lifecycle packet completed under R0192.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4920,7 +4920,7 @@
       "evidence": [
         "hipengine/generation/qwen35_gguf_mtp2.py:5657 uses numerics ContextVar scope."
       ],
-      "next_action": "Carry numerical transport in resolved physical manifest with C1/strict nested/error/context isolation; do not retune arithmetic.",
+      "next_action": "Numerical transport is integrated in immutable PhysicalTargetPlan with scope isolation and MoE factory precedence coverage. Public C2 plan engagement recorded in 83794a172; R0192 lifecycle closed in 63dfa5969. Remaining: public C1/C2 selected arithmetic and exact rollback-state validation before scope retirement, without retuning arithmetic.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4940,7 +4940,7 @@
       "evidence": [
         "hipengine/generation/qwen35_gguf_mtp2.py:5663 binds exact-linear scope independently."
       ],
-      "next_action": "Move exact-linear into resolved manifest, preserving selected-state journal, C1 and rollback semantics; replacement kernel promotion is separate.",
+      "next_action": "Exact-linear selection is integrated in immutable arithmetic/physical plan, with scope isolation and public C2 plan engagement. Remaining: exact selected-state journal/rollback and selected kernel attribution; replacement-kernel promotion remains separate. Do not repeat completed transport migration or R0192 lifecycle packet.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
