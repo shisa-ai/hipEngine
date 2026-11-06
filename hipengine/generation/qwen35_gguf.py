@@ -9313,6 +9313,12 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         and limited reuse to one hand-off per conversation.
         """
 
+        provider_store = getattr(getattr(self, "_mtp2_adapter", None),
+                                 "_prefix_checkpoint_store_instance", None)
+        if provider_store is not None:
+            # Host KV has an independent allowance of the same configured size;
+            # it must never consume or inflate the device residency allowance.
+            provider_store.trim_host_bytes(self._prefix_retained_state_bytes_limit)
         pools: dict[int, Any] = {}
         for entry in self._prefix_state_snapshots.values():
             pool = getattr(entry.snapshot, "arena_pool", None)
