@@ -1678,9 +1678,15 @@ def create_qwen35_gguf_moe_mtp2_adapter(
     # Dense production rowtile arithmetic is independently qualified and must
     # not transfer to the MoE target. Prompt normalization and the packed C2
     # target numerical boundary are qualified in the MoE campaign instead.
-    adapter.production_physical_extra_rowtiles = False
-    adapter.production_physical_q5_rowtile = False
-    adapter.production_physical_q6_rowtile = False
+    adapter.physical_target_rows = replace(
+        adapter.physical_target_rows,
+        extra_q4_rowtiles=False,
+        q5_rowtiles=False,
+        q6_rowtiles=False,
+    )
+    adapter.production_physical_extra_rowtiles = adapter.physical_target_rows.extra_q4_rowtiles
+    adapter.production_physical_q5_rowtile = adapter.physical_target_rows.q5_rowtiles
+    adapter.production_physical_q6_rowtile = adapter.physical_target_rows.q6_rowtiles
     from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
 
     adapter.physical_target_arithmetic = getattr(

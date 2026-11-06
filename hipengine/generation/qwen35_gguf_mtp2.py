@@ -906,30 +906,6 @@ class Qwen35GGUFMTP2Adapter:
                 False,
             )
         )
-        self.production_physical_extra_rowtiles = bool(
-            str(profile) == "production"
-            and backend_package_capability(
-                str(self.generator.backend),
-                "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES",
-                (),
-            )
-        )
-        self.production_physical_q5_rowtile = bool(
-            str(profile) == "production"
-            and backend_package_capability(
-                str(self.generator.backend),
-                "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS",
-                (),
-            )
-        )
-        self.production_physical_q6_rowtile = bool(
-            str(profile) == "production"
-            and backend_package_capability(
-                str(self.generator.backend),
-                "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS",
-                (),
-            )
-        )
         from hipengine.generation.physical_target_rows import resolve_physical_target_rows
 
         rows_plan = getattr(self.generator, "physical_target_rows", None)
@@ -941,6 +917,9 @@ class Qwen35GGUFMTP2Adapter:
         self.production_target_pad_row_counts = rows_plan.pad_counts
         self.production_exact_target_row_counts = rows_plan.exact_counts
         self.production_physical_q6_mixed_rowtiles = rows_plan.mixed_q6_rowtiles
+        self.production_physical_extra_rowtiles = rows_plan.extra_q4_rowtiles
+        self.production_physical_q5_rowtile = rows_plan.q5_rowtiles
+        self.production_physical_q6_rowtile = rows_plan.q6_rowtiles
         self._target_pad_token_scratch: DeviceBuffer | None = None
         self._target_pad_token_capacity = 0
         self.physical_width_depths = _physical_width_depths(self.generator)

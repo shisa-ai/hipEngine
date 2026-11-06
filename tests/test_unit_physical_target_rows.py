@@ -17,6 +17,8 @@ def test_rows_plan_snapshots_rollbacks(monkeypatch, profile):
             "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS": (6,),
             "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS": (8,),
             "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS": (6,),
+            "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS": (6,),
+            "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES": ((8, 8),),
             "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS": {8: (6, 2)},
             "GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY": {
                 "rows": (28,), "enabled_env": "TEST_EXACT_ROWS", "enabled_default": True,
@@ -30,6 +32,9 @@ def test_rows_plan_snapshots_rollbacks(monkeypatch, profile):
     initial = resolve_physical_target_rows("test_backend", profile)
     assert initial.exact_counts == ((8, 28) if profile == "production" else ())
     assert initial.pad_counts == ((6,) if profile == "production" else ())
+    assert initial.extra_q4_rowtiles is (profile == "production")
+    assert initial.q5_rowtiles is (profile == "production")
+    assert initial.q6_rowtiles is (profile == "production")
     assert initial.mixed_q6_rowtiles is (profile == "production")
     monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES", "0")
     assert not resolve_physical_target_rows("test_backend", profile).mixed_q6_rowtiles

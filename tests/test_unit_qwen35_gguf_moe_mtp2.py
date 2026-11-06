@@ -1267,6 +1267,9 @@ def test_moe_adapter_factory_keeps_c1_and_selects_batched_owner(capacity, bound,
     assert c2.production_physical_extra_rowtiles is False
     assert c2.production_physical_q5_rowtile is False
     assert c2.production_physical_q6_rowtile is False
+    assert c2.physical_target_rows.extra_q4_rowtiles is False
+    assert c2.physical_target_rows.q5_rowtiles is False
+    assert c2.physical_target_rows.q6_rowtiles is False
     assert c2.physical_target_arithmetic.disable_f32_residual is (not bound)
     assert c2.physical_target_arithmetic.pairreuse is True
     assert c2.physical_target_arithmetic.exact_linear is (not bound)
