@@ -604,7 +604,6 @@ _GGUFSessionPoolKey = tuple[
     int,
     tuple[str, str, str, str],
 ]
-_GGUF_AR_STREAM_DECODE_ENV = "HIPENGINE_GGUF_AR_STREAM_DECODE"
 _GGUF_AR_D2_COST_ARTIFACT_ENV = "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT"
 _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
     "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED",
@@ -897,10 +896,6 @@ def _gguf_single_row_block_table_prefill_required(session: object) -> bool:
         getattr(session, "kv_attention_source", None) == "int8_direct"
         or _gguf_device_kv_contiguous_base_row(session) != 0
     )
-
-
-def _gguf_ar_stream_decode_enabled() -> bool:
-    return os.environ.get(_GGUF_AR_STREAM_DECODE_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_decode_graph_enabled() -> bool:
@@ -1468,7 +1463,7 @@ class Qwen35GGUFBringupGenerator:
     target_verifier_prefill_gdn_capture: bool | None = None
     # Explicit packed-decode selection; None uses the enabled package default.
     ar_packed_decode: bool | None = None
-    # Explicit stream selection; None temporarily uses the legacy package input.
+    # Explicit stream selection; None uses the enabled compatibility default.
     ar_stream_decode: bool | None = None
     # Explicit packed-prefill selection; None uses the enabled package default.
     ar_packed_prefill: bool | None = None
@@ -1825,8 +1820,7 @@ class Qwen35GGUFBringupGenerator:
         return self.ar_packed_prefill is not False
 
     def _ar_stream_decode_enabled(self) -> bool:
-        selected = self.ar_stream_decode
-        return _gguf_ar_stream_decode_enabled() if selected is None else bool(selected)
+        return self.ar_stream_decode is not False
 
     def _ar_packed_decode_enabled(self) -> bool:
         selected = self.ar_packed_decode

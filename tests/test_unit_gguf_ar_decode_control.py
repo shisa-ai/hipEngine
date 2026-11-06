@@ -70,8 +70,7 @@ def test_compat_packed_chunks_preserve_stream_control_and_singleton_fallback(
     generator = object.__new__(qwen35_gguf.Qwen35GGUFBringupGenerator)
     generator.ar_stream_decode = control
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "1" if control is False else "0")
-    if control is None:
-        monkeypatch.delenv("HIPENGINE_GGUF_AR_STREAM_DECODE", raising=False)
+
     rows = [SimpleNamespace(request_id=index) for index in range(count)]
     observed = []
     generator._try_step_ar_serving_slot_chunks_streams = lambda chunks, request: (
@@ -107,8 +106,6 @@ def test_compat_slot_streams_preserve_explicit_serial_and_prelaunch_capability_f
     generator = object.__new__(qwen35_gguf.Qwen35GGUFBringupGenerator)
     generator.ar_stream_decode = control
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "1" if control is False else "0")
-    if control is None:
-        monkeypatch.delenv("HIPENGINE_GGUF_AR_STREAM_DECODE", raising=False)
     calls = []
     generator._flush_ar_packed_decode_owners = lambda rows: None
     generator._record_ar_serving_token = lambda row, token, request: calls.append(("token", token))

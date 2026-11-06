@@ -1282,7 +1282,7 @@ buffers; concurrent scalar streams corrupt outputs and fail repeatability. Expli
 resident construction now names this capability miss rather than silently running serially.
 Evidence and clearing action: `worklog/entries/20261106T170945.764567Z-lhl-r0281-stream-shared-scratch-037b3a.md`.
 Compatibility independent-session streams remain implemented. The owner-control migration is in
-`8cd2421d9`; the ambient default reader remains until this remaining route work is resolved.
+`8cd2421d9`; stream selection now resolves from the owner rather than the ambient environment.
 
 **Remaining work:** provide an explicit resolved serial/stream/packed comparison control or
 designated serial oracle, then migrate writers, route metadata, cleanup tests and the env reader
