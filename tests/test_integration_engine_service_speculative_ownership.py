@@ -594,6 +594,62 @@ def test_generic_speculative_routes_through_real_submit_poll_adapter() -> None:
     assert inner.closed is True
 
 
+def test_generic_only_real_adapter_advances_bounded_children() -> None:
+    class Child:
+        def __init__(self, owner, request):
+            self.owner = owner
+            self.request = request
+            self.ticks = 0
+
+        def advance(self):
+            self.owner.threads.append(threading.get_ident())
+            self.ticks += 1
+            if self.request.prompts == ("fail",):
+                raise RuntimeError("bounded provider failed")
+            if self.ticks < 2:
+                return None
+            return GenerationOutput(text="bounded", generated_token_ids=(17,))
+
+        def close(self, *, reason):
+            self.owner.retired.append((self.request.prompts, reason))
+
+    class Inner:
+        supports_speculative = True
+        supports_speculative_mtp = False
+
+        def __init__(self):
+            self.threads = []
+            self.retired = []
+
+        def create_generic_speculative_child(self, request):
+            return Child(self, request)
+
+        def generate_speculative_detailed(self, request):
+            raise AssertionError("whole generation is not bounded work")
+
+        def close(self):
+            pass
+
+    inner = Inner()
+    adapter = SubmitPollTextGenerator(inner, capacity=2)
+    service = EngineService(adapter, idle_wait_seconds=0.001)
+    try:
+        assert service.supports_speculative
+        outputs = service.generate_speculative_detailed(
+            replace(_request("first"), prompts=("first", "second")))
+        assert [output.generated_token_ids for output in outputs] == [(17,), (17,)]
+        with pytest.raises(RuntimeError, match="bounded provider failed"):
+            service.generate_speculative_detailed(_request("fail"))
+        chunks = tuple(service.stream_speculative_detailed(_request("reuse")))
+        assert chunks[-1].generated_token_ids == (17,)
+        assert set(inner.threads) == {service.driver_thread_id}
+        assert [reason for _, reason in inner.retired] == ["completed", "completed", "error", "completed"]
+        assert not adapter._generic_speculative_children
+        assert not adapter._speculative_outputs_by_request
+    finally:
+        service.close()
+
+
 def test_generic_speculative_declines_real_adapter_over_whole_request_provider() -> None:
     class _WholeRequestInner:
         supports_speculative = True

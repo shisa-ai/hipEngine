@@ -488,6 +488,19 @@ class EngineLoopRunner(Protocol):
         """
 
 
+class BoundedGenericSpeculativeChild(Protocol):
+    """Request-private provider work advanced only by the service driver.
+
+    Admission must not execute model work. Each advance performs at most one
+    prefill chunk or speculative cycle and returns None until terminal output.
+    close releases request-owned resources on completion, failure or cancellation.
+    """
+
+    def advance(self) -> GenerationOutput | None: ...
+
+    def close(self, *, reason: str) -> None: ...
+
+
 class SubmitPollTextGenerator:
     """Run a ``TextGenerator`` through the resident ``submit``/``poll`` loop.
 
@@ -596,6 +609,7 @@ class SubmitPollTextGenerator:
             self._stream_states_by_request: dict[int, _ResidentStreamState] = {}
             self._submissions_by_request: dict[int, GenerationSubmission] = {}
             self._speculative_outputs_by_request: dict[int, GenerationOutput] = {}
+            self._generic_speculative_children: dict[int, BoundedGenericSpeculativeChild] = {}
             self._next_speculative_request_id = 1 << 60
             self._last_speculative_submission: GenerationSubmission | None = None
             self._cancel_dispatch_by_submission: dict[
@@ -653,6 +667,10 @@ class SubmitPollTextGenerator:
         return capability and (opaque or staged)
 
     @property
+    def supports_bounded_generic_speculative_children(self) -> bool:
+        return callable(getattr(self._inner, "create_generic_speculative_child", None))
+
+    @property
     def last_speculative_submission(self) -> GenerationSubmission | None:
         return self._last_speculative_submission
 
@@ -703,6 +721,16 @@ class SubmitPollTextGenerator:
         normalized = tuple(requests)
         if not normalized:
             return ()
+        if self.supports_bounded_generic_speculative_children and not self.supports_speculative_mtp:
+            admitted = []
+            try:
+                for request in normalized:
+                    admitted.append(self.submit_speculative_detailed(request))
+            except BaseException:
+                for submission in admitted:
+                    self.abort_submission(submission, reason="parent_submit_error")
+                raise
+            return tuple(admitted)
         if (any(request.grammar is not None for request in normalized)
                 and not getattr(self._inner, "supports_speculative_grammar", False)):
             raise NotImplementedError("grammar-constrained speculative decoding is not supported")
@@ -805,6 +833,27 @@ class SubmitPollTextGenerator:
         lifecycle. Cross-request proposal/verify packing remains SPEC-C2.
         """
 
+        if self.supports_bounded_generic_speculative_children and not self.supports_speculative_mtp:
+            if len(request.prompts) != 1:
+                raise ValueError("one generic child requires exactly one prompt")
+            with self._submission_priority.submission(self._loop_lock):
+                child = self._inner.create_generic_speculative_child(request)
+                if not callable(getattr(child, "advance", None)) or not callable(getattr(child, "close", None)):
+                    close = getattr(child, "close", None)
+                    if callable(close):
+                        close(reason="error")
+                    raise TypeError("generic child must implement advance() and close(reason=)")
+                request_id = self._next_speculative_request_id
+                self._next_speculative_request_id += 1
+                submission = GenerationSubmission(
+                    request_ids=(request_id,), request=request, max_ticks=1,
+                    work_kind=WorkKind.VERIFY_CHAIN.value,
+                    execution_route="engine_service_bounded_generic",
+                )
+                self._generic_speculative_children[request_id] = child
+                self._register_submission_cancellation_locked(submission)
+                self._last_speculative_submission = submission
+                return submission
         if (request.grammar is not None
                 and not getattr(self._inner, "supports_speculative_grammar", False)):
             raise NotImplementedError("grammar-constrained speculative decoding is not supported")
@@ -1160,7 +1209,43 @@ class SubmitPollTextGenerator:
                     self._abort_submission_locked(submission, reason="cancel")
                 self._loop.release_completed(request_id)
             self._route_stream_events_locked(events)
-            return events
+            generic_events = []
+            for _ in range(max_ticks):
+                if not self._generic_speculative_children:
+                    break
+                request_id = next(iter(self._generic_speculative_children))
+                child = self._generic_speculative_children.pop(request_id)
+                try:
+                    output = child.advance()
+                    if output is not None and not isinstance(output, GenerationOutput):
+                        raise TypeError("generic child advance must return GenerationOutput or None")
+                except Exception as exc:
+                    try:
+                        child.close(reason="error")
+                    except Exception:
+                        pass
+                    generic_events.append(EngineLoopEvent(
+                        kind="failed", request_id=request_id,
+                        request_ids=(request_id,), error=exc,
+                    ))
+                else:
+                    if output is None:
+                        self._generic_speculative_children[request_id] = child
+                    else:
+                        try:
+                            child.close(reason="completed")
+                        except Exception as exc:
+                            generic_events.append(EngineLoopEvent(
+                                kind="failed", request_id=request_id,
+                                request_ids=(request_id,), error=exc,
+                            ))
+                        else:
+                            self._speculative_outputs_by_request[request_id] = output
+            for event in generic_events:
+                submission = self._submissions_by_request.get(event.request_id)
+                if submission is not None:
+                    self._unregister_submission_cancellation_locked(submission)
+            return tuple(events) + tuple(generic_events)
 
     def generation_complete(self, submission: GenerationSubmission) -> bool:
         with self._loop_lock:
@@ -1597,9 +1682,14 @@ class SubmitPollTextGenerator:
             }
             and not self._is_staged_speculative_submission(submission)
         ):
-            for request_id in submission.request_ids:
-                self._speculative_outputs_by_request.pop(request_id, None)
-            self._unregister_submission_cancellation_locked(submission)
+            try:
+                for request_id in submission.request_ids:
+                    child = self._generic_speculative_children.pop(request_id, None)
+                    self._speculative_outputs_by_request.pop(request_id, None)
+                    if child is not None:
+                        child.close(reason=reason)
+            finally:
+                self._unregister_submission_cancellation_locked(submission)
             return
         for request_id in submission.request_ids:
             self._loop.cancel(request_id, reason=reason)
@@ -1629,6 +1719,15 @@ class SubmitPollTextGenerator:
             }
             for submission in submissions.values():
                 self._unregister_submission_cancellation_locked(submission)
+            children = tuple(self._generic_speculative_children.values())
+            self._generic_speculative_children.clear()
+            child_close_error = None
+            for child in children:
+                try:
+                    child.close(reason="shutdown")
+                except Exception as exc:
+                    if child_close_error is None:
+                        child_close_error = exc
             self._speculative_outputs_by_request.clear()
             with self._cancel_commands_lock:
                 self._cancel_commands.clear()
@@ -1646,6 +1745,8 @@ class SubmitPollTextGenerator:
                         inner_closer()
                 finally:
                     self._closed = True
+            if child_close_error is not None:
+                raise child_close_error
 
 
 @dataclass(frozen=True, slots=True)
