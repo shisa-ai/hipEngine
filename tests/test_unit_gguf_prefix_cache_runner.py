@@ -205,6 +205,17 @@ def _request(
     )
 
 
+def test_dms_owner_budget_uses_dms_default(monkeypatch):
+    monkeypatch.delenv("HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES", raising=False)
+    owner = _FakePrefixOwner()
+    owner.dms_metadata_path = "sidecar.json"
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    assert runner._prefix_retained_state_bytes_limit == 4 << 30
+    monkeypatch.setenv("HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES", "2097152")
+    runner = Qwen35GGUFResidentModelRunner(owner, capacity=1)
+    assert runner._prefix_retained_state_bytes_limit == 2097152
+
+
 def test_resident_runner_reuses_exact_current_prefix_and_reclaims_source_first() -> None:
     owner = _FakePrefixOwner()
     runner = Qwen35GGUFResidentModelRunner(owner, capacity=3)

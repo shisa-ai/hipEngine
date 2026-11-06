@@ -7658,7 +7658,9 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         # working set within the independent state-byte budget.
         self._prefix_retained_limit = _gguf_prefix_retained_snapshot_limit(capacity)
         self._prefix_retained_state_bytes_limit = (
-            _gguf_prefix_retained_state_bytes_limit()
+            _gguf_prefix_retained_state_bytes_limit(
+                dms=getattr(generator, "dms_metadata_path", None) is not None,
+            )
         )
         self._prefix_retained_evictions_by_reason: dict[str, int] = {}
         self._prefix_snapshot_promotions = 0
