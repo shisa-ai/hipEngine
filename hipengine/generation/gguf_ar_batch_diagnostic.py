@@ -8,6 +8,171 @@ from typing import Any
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 
 
+def try_step_ar_serving_slots_batch(generator: Any, live_slots: list[Any], request: Any) -> bool:
+    from hipengine.generation.qwen35_gguf import _gguf_ar_stream_decode_enabled
+
+    if len(live_slots) <= 1:
+        return False
+    chunks = generator._ar_serving_slot_chunks(live_slots)
+    if len(chunks) > 1 and _gguf_ar_stream_decode_enabled():
+        streamed = generator._try_step_ar_serving_slot_chunks_streams(chunks, request)
+        if streamed:
+            return True
+    for chunk in chunks:
+        if len(chunk) <= 1:
+            generator._flush_ar_packed_decode_owners(chunk)
+            for slot in chunk:
+                generator._step_ar_serving_slot_serial(slot, request)
+            continue
+        if not generator._step_ar_serving_slot_chunk_packed(chunk, request):
+            generator._flush_ar_packed_decode_owners(chunk)
+            for slot in chunk:
+                generator._step_ar_serving_slot_serial(slot, request)
+            continue
+    return True
+
+
+def step_ar_serving_slot_chunk_packed(
+    generator: Any, chunk: list[Any], request: Any, *,
+    stream: int = 0, record_tokens: bool = True,
+) -> list[Any] | None:
+    from hipengine.generation.qwen35_gguf import _timing_add_ms, _timing_ms_since
+
+    if len(chunk) <= 1:
+        return None
+    first_session = chunk[0].session
+    step_batch = getattr(first_session, "step_batch_native", None)
+    if not callable(step_batch):
+        return None
+    token_ids = [int(slot.prev_token) for slot in chunk]
+    sessions = [slot.session for slot in chunk]
+    positions = [int(slot.seq_position) for slot in chunk]
+    decode_start = time.perf_counter()
+    try:
+        if stream:
+            batch_result = step_batch(
+                token_ids, sessions=sessions, positions=positions,
+                return_logits=False, scatter_state=False, stream=int(stream),
+            )
+        else:
+            generator._flush_ar_packed_decode_owners_if_chunk_changed(chunk)
+            batch_result = step_batch(
+                token_ids, sessions=sessions, positions=positions,
+                return_logits=False, scatter_state=False,
+            )
+    except NotImplementedError:
+        return None
+    if batch_result is None:
+        return None
+    step_results = list(batch_result)
+    if len(step_results) != len(chunk):
+        raise RuntimeError(
+            f"GGUF AR native batch decode returned {len(step_results)} result(s) "
+            f"for {len(chunk)} live slot(s)"
+        )
+    if not record_tokens:
+        return step_results
+    decode_ms = _timing_ms_since(decode_start)
+    for slot, step_result in zip(chunk, step_results, strict=True):
+        _timing_add_ms(slot.timing, "decode_batch_ms", decode_ms)
+        token = int(getattr(step_result, "token_id"))
+        generator._record_ar_serving_token(slot, token, request)
+        slot.packed_decode_owner = first_session
+        slot.native_decode_steps += 1
+    return step_results
+
+
+def try_step_ar_serving_slots_streams(generator: Any, live_slots: list[Any], request: Any) -> bool:
+    from hipengine.generation.qwen35_gguf import (
+        _gguf_ar_stream_decode_enabled, _timing_add_ms, _timing_ms_since,
+    )
+
+    if len(live_slots) <= 1 or not _gguf_ar_stream_decode_enabled():
+        return False
+    generator._flush_ar_packed_decode_owners(live_slots)
+    for slot in live_slots:
+        if not callable(getattr(slot.session, "step_async_top1", None)):
+            return False
+        if not callable(getattr(slot.session, "read_top1_sample", None)):
+            return False
+        runtime = getattr(slot.session, "runtime", None)
+        if not callable(getattr(runtime, "stream_create", None)):
+            return False
+        if not callable(getattr(runtime, "stream_synchronize", None)):
+            return False
+        if not callable(getattr(runtime, "stream_destroy", None)):
+            return False
+    launch_start = time.perf_counter()
+    launched = []
+    for slot in live_slots:
+        if slot.decode_stream == 0:
+            slot.decode_stream = int(slot.session.runtime.stream_create(nonblocking=True))
+        slot.session.step_async_top1(int(slot.prev_token), position=int(slot.seq_position), stream=int(slot.decode_stream))
+        launched.append(slot)
+    for slot in launched:
+        slot.session.runtime.stream_synchronize(int(slot.decode_stream))
+    launch_ms = _timing_ms_since(launch_start)
+    for slot in launched:
+        result = slot.session.read_top1_sample()
+        _timing_add_ms(slot.timing, "decode_stream_batch_ms", launch_ms)
+        generator._record_ar_serving_token(slot, int(result.token_id), request)
+        slot.native_decode_steps += 1
+    return True
+
+
+def try_step_ar_serving_slot_chunks_streams(generator: Any, chunks: list[list[Any]], request: Any) -> bool:
+    import concurrent.futures
+    from hipengine.generation.qwen35_gguf import _timing_add_ms, _timing_ms_since
+
+    if len(chunks) <= 1:
+        return False
+    for chunk in chunks:
+        if len(chunk) <= 1:
+            return False
+        owner_slot = chunk[0]
+        step_batch = getattr(owner_slot.session, "step_batch_native", None)
+        if not callable(step_batch):
+            return False
+        runtime = getattr(owner_slot.session, "runtime", None)
+        if not callable(getattr(runtime, "stream_create", None)):
+            return False
+        if not callable(getattr(runtime, "stream_synchronize", None)):
+            return False
+        if not callable(getattr(runtime, "stream_destroy", None)):
+            return False
+    for chunk in chunks:
+        generator._flush_ar_packed_decode_owners_if_chunk_changed(chunk)
+        owner_slot = chunk[0]
+        if owner_slot.decode_stream == 0:
+            owner_slot.decode_stream = int(owner_slot.session.runtime.stream_create(nonblocking=True))
+
+    def step_chunk(chunk: list[Any]) -> list[Any] | None:
+        return generator._step_ar_serving_slot_chunk_packed(
+            chunk, request, stream=int(chunk[0].decode_stream), record_tokens=False,
+        )
+
+    stream_start = time.perf_counter()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(chunks)) as pool:
+        futures = [(chunk, pool.submit(step_chunk, chunk)) for chunk in chunks]
+        chunk_results = []
+        for chunk, future in futures:
+            result = future.result()
+            if result is None:
+                raise RuntimeError("streamed packed AR decode chunk failed after launch")
+            chunk_results.append((chunk, result))
+    stream_ms = _timing_ms_since(stream_start)
+    for chunk, step_results in chunk_results:
+        owner_session = chunk[0].session
+        for slot, step_result in zip(chunk, step_results, strict=True):
+            _timing_add_ms(slot.timing, "decode_batch_ms", stream_ms)
+            _timing_add_ms(slot.timing, "decode_stream_chunks_ms", stream_ms)
+            token = int(getattr(step_result, "token_id"))
+            generator._record_ar_serving_token(slot, token, request)
+            slot.packed_decode_owner = owner_session
+            slot.native_decode_steps += 1
+    return True
+
+
 def ar_serving_slot_chunks(live_slots: list[Any]) -> list[list[Any]]:
     from hipengine.generation.qwen35_gguf import _GGUF_AR_NATIVE_MAX_SLOTS
 
