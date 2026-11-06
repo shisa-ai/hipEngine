@@ -109,6 +109,12 @@ class PrefixCheckpointStore:
         return sum(int(getattr(entry.payload, "nbytes", 0))
                    for entry in self._entries.values() if not entry.released)
 
+    @property
+    def host_nbytes(self) -> int:
+        """Host checkpoint storage, separate from device residency."""
+        return sum(int(getattr(entry.payload, "host_nbytes", 0))
+                   for entry in self._entries.values() if not entry.released)
+
     def __len__(self) -> int:
         return len(self._entries)
 

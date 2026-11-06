@@ -32,6 +32,16 @@ def _store(capacity: int = 4) -> tuple[PrefixCheckpointStore, _Recorder]:
     return PrefixCheckpointStore(capacity=capacity, release=recorder), recorder
 
 
+def test_host_and_device_byte_totals_remain_distinct():
+    from types import SimpleNamespace
+    store, _ = _store()
+    store.put((1,), (10,), SimpleNamespace(nbytes=64, host_nbytes=1000))
+    assert store.nbytes == 64
+    assert store.host_nbytes == 1000
+    store.drop((1,))
+    assert store.host_nbytes == 0
+
+
 def test_allocation_inventory_does_not_touch_lru_or_hit_counters() -> None:
     from types import SimpleNamespace
     store, _ = _store()
