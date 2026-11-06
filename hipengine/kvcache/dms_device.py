@@ -239,10 +239,20 @@ class DMSExternalLinearDeviceProjector:
     def close(self) -> None:
         if self._closed:
             return
-        for buffer in reversed(self._buffers):
-            free(buffer, runtime=self._runtime)
-        self._buffers.clear()
+        buffers = self._buffers
+        self._buffers = []
         self._closed = True
+        error = None
+        for buffer in reversed(buffers):
+            try:
+                free(buffer, runtime=self._runtime)
+            except BaseException as exc:
+                if error is None:
+                    error = exc
+                else:
+                    error.add_note(f"additional DMS projector release failed: {exc!r}")
+        if error is not None:
+            raise error
 
 
 class DMSDevicePayloadStore:
