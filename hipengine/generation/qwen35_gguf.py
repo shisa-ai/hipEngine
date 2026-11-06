@@ -1476,8 +1476,8 @@ class Qwen35GGUFBringupGenerator:
     # Profile-owned verifier capture mode. ``None`` keeps the unbound/direct
     # diagnostic environment input, resolved once at session construction.
     target_verifier_prefill_gdn_capture: bool | None = None
-    # Profile-owned cooperative F32 router policy. ``None`` keeps the
-    # unbound/direct diagnostic environment input read per call.
+    # Profile-owned cooperative F32 router policy. ``None`` selects the
+    # runner's construction defaults.
     target_router_f32w_coop: bool | None = None
     target_router_f32w_persistent_counter: bool | None = None
     # Profile-owned broad Q8T16 rowtile admission. ``True`` admits the backend

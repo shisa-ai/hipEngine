@@ -1237,8 +1237,12 @@ frozen router plan with explicit comparison precedence (`a406ed309`); 100 focuse
 Public gfx1151 c1 traces 360 successful persistent cooperative launches per call, exact repeats
 and zero tracked allocations after close (`9ac1d56a4`, `a406ed309`).
 
-Remaining: finish metadata consumers and legacy adapters, verify graph/fallback ownership and
-primitive parity before reader retirement. Do not repeat completed default c1 route smoke.
+Remaining: public graph-route attribution and a forced capability-miss fallback check. Runtime
+readers are retired (`b01c47b41`); dead environment adapters are removed (`1e5602574`,
+`a39f9bb03`). Cooperative primitive/replay checks pass (`0396ebed0`), actual-model resident
+eager/graph counters and tokens pass (`cfae643d9`), and public strict separate-projection
+attribution passes (`ff26600af`). These do not establish public graph engagement or a simulated
+capability miss. Do not repeat completed default c1 route smoke.
 
 Done when: Remaining work: publish the actual selected router variant and counter ownership in a
 construction-time plan consumed by the runner, while preserving strict/production semantics, direct

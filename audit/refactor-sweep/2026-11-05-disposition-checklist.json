@@ -1774,7 +1774,7 @@
       "evidence": [
         "hipengine/runtime/qwen35_gguf_runner.py:9220-9221,11036-11040 reads cooperative router and persistent counter independently."
       ],
-      "next_action": "Construction snapshot implemented a406ed309; c1/perf/control/batch callers bind owner and c1 metadata separates requests from launch evidence. 100 host tests and public persistent c1 route/repeat/cleanup pass. Finish remaining metadata and adapters plus graph/fallback/primitive ownership before reader retirement; do not repeat default public smoke.",
+      "next_action": "Router readers retired b01c47b41; dead adapters removed 1e5602574/a39f9bb03. Construction, caller/metadata migration, primitive replay, resident graph parity and public strict/default launch/repeat/cleanup pass. Remaining named public graph attribution and forced capability-miss fallback check; do not repeat completed default smoke.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

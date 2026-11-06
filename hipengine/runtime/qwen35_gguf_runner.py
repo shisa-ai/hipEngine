@@ -1060,8 +1060,8 @@ def _resolve_gguf_router_plan(owner) -> GGUFRouterPlan:
 def _layer_ffn_flags(runner) -> _layer_ffn.FfnFlags:
     """The FFN predicates, each a thunk over the owner or ambient policy.
 
-    A constructed runner snapshots ambient router input once. Explicit comparison
-    owner fields override that plan; unconstructed fixtures retain ambient input.
+    A constructed runner snapshots package defaults once. Explicit comparison
+    owner fields override that plan; fixtures without a plan use package defaults.
     """
 
     env_flags = {
@@ -3236,8 +3236,8 @@ class Qwen35GGUFFullStackRunner:
     # Profile-owned verifier capture mode. ``None`` keeps the unbound/direct
     # diagnostic environment input, resolved once at construction.
     target_verifier_prefill_gdn_capture: bool | None = None
-    # Profile-owned cooperative F32 router policy. ``None`` keeps the
-    # unbound/direct diagnostic environment input read per call.
+    # Profile-owned cooperative F32 router policy. ``None`` selects package
+    # defaults through the construction plan.
     target_router_f32w_coop: bool | None = None
     target_router_f32w_persistent_counter: bool | None = None
     # Profile-owned broad Q8T16 rowtile admission. ``True`` admits the backend
@@ -13194,8 +13194,8 @@ class Qwen35GGUFResidentSession:
     # Profile-owned verifier capture mode. ``None`` inherits the runner's frozen
     # decision, or resolves the unbound/direct environment once.
     target_verifier_prefill_gdn_capture: bool | None = None
-    # Profile-owned cooperative F32 router policy. ``None`` leaves the
-    # unbound/direct diagnostic environment read in place.
+    # Profile-owned cooperative F32 router policy. ``None`` selects the shared
+    # runner's construction plan.
     target_router_f32w_coop: bool | None = None
     target_router_f32w_persistent_counter: bool | None = None
     # Profile-owned broad Q8T16 rowtile admission. ``None`` leaves the
