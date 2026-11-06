@@ -352,7 +352,15 @@ shipping path. Pre-registered gates, same host + same GGUF + same shapes:
 - **Gate B (product, speculative):** hipEngine with DFlash enabled beats the
   llama.cpp server `draft-dflash` decode rate on the same natural-prompt suite,
   using the cross-engine decode timing boundary (`BENCHMARK.md`); prefill is
-  covered by Gate A.
+  covered by Gate A. **PASSED (2026-11-06):** hipEngine DFlash **21.6 tok/s**
+  (budget 4, 3 repeats, per-repeat median 21.48) vs llama.cpp **21.30** on the
+  ten-prompt mtpbench suite, exact greedy IDs == true AR, 1.98x AR. The
+  batched-invariant block verify (Q4/Q5/Q6 parent-parity rowtile projections,
+  bit-identical KV + decode-equivalent attention) and the folded cycle
+  (corrected boundary token processed inside the next verify, no separate
+  forward) took DFlash from 2.59 -> 21.6 tok/s. Empirical budget sweep peaks
+  at 4 (shipping default). Artifact
+  `benchmarks/results/2026-11-06-gfx1151-muse-glimmer-hipengine-dflash-mtpbench.json`.
 - Every retained win updates `benchmarks/README.md`, `benchmarks/CHANGELOG.md`,
   and a `benchmarks/results/` artifact; arithmetic-changing defaults pass the
   `EXECUTION-PROFILES.md` production gate.
