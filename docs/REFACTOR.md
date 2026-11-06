@@ -2970,10 +2970,17 @@ override. Before retiring it, run `scripts/qwen38fn_prefill_interference.py` thr
 serve` over short, medium and long prompts with zero, one and multiple decoding peers; satisfy the
 campaign's frozen latency and prompt-cost criteria.
 
-Done when: Deferred arithmetic selector ownership: replace `HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN`
-with profile-owned registry selection preserving production WMMA and strict grouped/GEMV
-comparisons. Keep map rebuild and capacity checks, run
-`tests/test_unit_qwen4exp_q8_wmma_down_tile_map.py`, and verify public selected routes.
+**Selected-down ownership implemented:** profile construction publishes the effective
+Q8 selected-down choice on generator and runner; new lanes inherit it, and dispatch reads
+owner state rather than `HIPENGINE_QWEN4_EXP_Q8_0_SELECTED_WMMA_DOWN`.
+Production/recovery/restoration decisions and strict grouped/GEMV comparisons are preserved.
+Profile isolation, batch forwarding and tile-map checks pass; see
+[selected-owner audit](../worklog/entries/20261106T103209.831222Z-lhl-r0006-selected-owner-audit-6aa8a3.md).
+Public selected-route attribution remains outstanding. Keep map rebuild and capacity checks.
+
+Done when: paged index storage clears the cap with boundary/resource/reuse checks;
+interference policy meets the frozen campaign criteria; public requests attribute the
+profile-owned selected-down route while preserving map rebuild and capacity checks.
 
 ### R0007 — Batch import-copy and admission ownership after reset repair
 
