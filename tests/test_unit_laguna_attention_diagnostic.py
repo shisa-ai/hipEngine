@@ -41,20 +41,30 @@ def test_long_attention_scope_restores_nested_setup_failure(option, attr):
     assert getattr(owner, attr) is True
 
 
-def test_attention_comparison_setup_failure_restores_only_selected_owner(monkeypatch):
+@pytest.mark.parametrize("name", [
+    "set_prefill_long_attention_hipblaslt",
+    "set_prefill_block_attention_hipblaslt",
+    "set_prefill_swa_attention_hipblaslt",
+    "set_prefill_dense_contiguous_cache",
+])
+def test_persistent_attention_comparison_setters_are_retired(name):
+    assert not hasattr(LagunaGGUFResidentSession, name)
+
+
+def test_attention_comparison_setup_failure_restores_only_selected_owner():
     owner = LagunaGGUFResidentSession.__new__(LagunaGGUFResidentSession)
     sibling = LagunaGGUFResidentSession.__new__(LagunaGGUFResidentSession)
     for session in (owner, sibling):
         session.prefill_swa_attention_hipblaslt = True
         session.prefill_dense_contiguous_cache = False
 
-    def fail_after_mutation(enabled):
-        owner.prefill_dense_contiguous_cache = enabled
-        raise RuntimeError('configuration failed')
+    class InvalidChoice:
+        def __bool__(self):
+            owner.prefill_dense_contiguous_cache = True
+            raise RuntimeError('configuration failed')
 
-    monkeypatch.setattr(owner, 'set_prefill_dense_contiguous_cache', fail_after_mutation)
     with pytest.raises(RuntimeError, match='configuration failed'):
-        with owner.prefill_attention_diagnostic(swa=False, dense_contiguous=True):
+        with owner.prefill_attention_diagnostic(swa=False, dense_contiguous=InvalidChoice()):
             pytest.fail('failed setup must not enter the comparison')
     for session in (owner, sibling):
         assert session.prefill_swa_attention_hipblaslt is True

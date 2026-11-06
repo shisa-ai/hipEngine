@@ -4211,16 +4211,6 @@ class LagunaGGUFResidentSession:
 
         self.prefill_attention_hipblaslt = bool(enabled)
 
-    def set_prefill_long_attention_hipblaslt(self, enabled: bool) -> None:
-        """Select the global-only materialized-score long-attention candidate."""
-
-        self.prefill_long_attention_hipblaslt = bool(enabled)
-
-    def set_prefill_block_attention_hipblaslt(self, enabled: bool) -> None:
-        """Select bounded-state blocks within qualified long attention."""
-
-        self.prefill_block_attention_hipblaslt = bool(enabled)
-
     @contextlib.contextmanager
     def prefill_attention_diagnostic(
         self, *, swa: bool | None = None, dense_contiguous: bool | None = None,
@@ -4238,7 +4228,7 @@ class LagunaGGUFResidentSession:
         try:
             for key, value in choices.items():
                 if value is not None:
-                    getattr(self, "set_" + key)(value)
+                    setattr(self, key, bool(value))
             yield
         finally:
             for key, value in previous.items():
@@ -4256,16 +4246,6 @@ class LagunaGGUFResidentSession:
         finally:
             (self.prefill_attention_hipblaslt_packed_query_producer,
              self.prefill_attention_hipblaslt_packed_output_gate) = previous
-
-    def set_prefill_dense_contiguous_cache(self, enabled: bool) -> None:
-        """Select direct identity addressing for qualified global prompt KV."""
-
-        self.prefill_dense_contiguous_cache = bool(enabled)
-
-    def set_prefill_swa_attention_hipblaslt(self, enabled: bool) -> None:
-        """Select tensorized rolling M128 SWA attention."""
-
-        self.prefill_swa_attention_hipblaslt = bool(enabled)
 
     @contextlib.contextmanager
     def group_compact_diagnostic(self, mode: str):
