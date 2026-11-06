@@ -522,6 +522,37 @@ def test_speculative_batch_rollback_drains_peers_when_retirement_raises(monkeypa
         driver.close()
 
 
+def test_staged_speculative_batch_rollback_drains_after_retirement_failure(monkeypatch):
+    runner = _ResidentLifetimeRunner()
+    driver = SubmitPollTextGenerator(_ResidentInner(runner), capacity=2)
+    admitted = [object(), object()]
+    retired = []
+    failure = RuntimeError("third staged admission failed")
+    calls = []
+
+    def submit(request):
+        calls.append(request)
+        if len(calls) == 3:
+            raise failure
+        return admitted[len(calls) - 1]
+
+    def abort(submission, *, reason):
+        retired.append((submission, reason))
+        if submission is admitted[0]:
+            raise RuntimeError("staged retirement failed")
+
+    monkeypatch.setattr(driver, "_submit_staged_speculative_detailed_locked", submit)
+    monkeypatch.setattr(driver, "_abort_submission_locked", abort)
+    try:
+        with pytest.raises(RuntimeError, match="third staged admission failed") as caught:
+            driver.submit_speculative_many_detailed((_request(),) * 3)
+        assert caught.value is failure
+        assert retired == [(child, "cancel") for child in admitted]
+        assert any("staged retirement failed" in note for note in failure.__notes__)
+    finally:
+        driver.close()
+
+
 def test_runner_without_lifetime_hooks_keeps_scheduler_only_contract() -> None:
     runner = _HooklessResidentRunner()
     loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)

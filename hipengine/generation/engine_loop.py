@@ -747,9 +747,14 @@ class SubmitPollTextGenerator:
                         staged_submissions.append(
                             self._submit_staged_speculative_detailed_locked(request)
                         )
-                except Exception:
+                except BaseException as error:
                     for submission in staged_submissions:
-                        self._abort_submission_locked(submission, reason="cancel")
+                        try:
+                            self._abort_submission_locked(submission, reason="cancel")
+                        except BaseException as cleanup_error:
+                            error.add_note(
+                                f"staged speculative admission rollback failed: {cleanup_error!r}"
+                            )
                     raise
                 submissions = tuple(staged_submissions)
                 if submissions:
