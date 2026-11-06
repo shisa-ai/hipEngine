@@ -7,6 +7,23 @@ from pathlib import Path
 
 import pytest
 
+@pytest.mark.parametrize("compare_long,compare_block", [(False, False), (True, False), (False, True), (True, True)])
+@pytest.mark.parametrize("long,block", [(None, None), (False, True), (True, False)])
+def test_profile_long_policy_preserves_independent_control_defaults(monkeypatch, compare_long, compare_block, long, block):
+    from types import SimpleNamespace
+    from hipengine.runtime import laguna_prefill_policy
+    from scripts.laguna_long_context_profile import _long_attention_construction_policy
+
+    monkeypatch.setattr(laguna_prefill_policy, "backend_package_capability", lambda *args: True)
+    selected = _long_attention_construction_policy(SimpleNamespace(
+        backend="peer", compare_long_attention_hipblaslt=compare_long,
+        compare_block_attention_hipblaslt=compare_block,
+        long_attention_hipblaslt=long, block_attention_hipblaslt=block,
+    ))
+    assert selected.enabled is (False if compare_long else True if long is None else long)
+    assert selected.bounded is (False if compare_block else True if block is None else block)
+
+
 @pytest.mark.parametrize("field, option", [
     ("long_attention", "compare_long_attention_hipblaslt"),
     ("block_attention", "compare_block_attention_hipblaslt"),

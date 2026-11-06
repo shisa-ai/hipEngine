@@ -21,6 +21,7 @@ from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import memory_stats
 from hipengine.loading.gguf import GGUFReader
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
+from hipengine.runtime.laguna_prefill_policy import resolve_laguna_long_attention_policy
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
 from scripts.laguna_global_issue_diagnostic import (
     comparison_name as global_issue_comparison_name,
@@ -42,6 +43,14 @@ from scripts.laguna_target_ar_bench import (
     _sha256_bytes,
     _sha256_json,
 )
+
+
+def _long_attention_construction_policy(args):
+    return resolve_laguna_long_attention_policy(
+        args.backend,
+        enabled=False if args.compare_long_attention_hipblaslt else args.long_attention_hipblaslt,
+        bounded=False if args.compare_block_attention_hipblaslt else args.block_attention_hipblaslt,
+    )
 
 
 def _configure_selected_moe_comparison(stack: ExitStack, owner, args, *, mode: str) -> None:
@@ -787,16 +796,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_swa_split_wave_local=(
                 True if args.decode_split_attention is True else None
             ),
-            prefill_long_attention_hipblaslt=(
-                False
-                if args.compare_long_attention_hipblaslt
-                else args.long_attention_hipblaslt
-            ),
-            prefill_block_attention_hipblaslt=(
-                False
-                if args.compare_block_attention_hipblaslt
-                else args.block_attention_hipblaslt
-            ),
+            long_attention_policy=_long_attention_construction_policy(args),
             prefill_dense_contiguous_cache=(
                 False
                 if args.compare_dense_contiguous_cache
