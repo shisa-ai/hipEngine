@@ -21385,7 +21385,7 @@ class Qwen35GGUFResidentSession:
         pre_output_norm_rows: list[np.ndarray] = []
         capture_layer_ids = self._normalize_layer_output_capture(capture_layer_output_hidden)
         layer_output_rows: dict[int, list[np.ndarray]] = {int(layer_id): [] for layer_id in capture_layer_ids}
-        with gemv_decode_session(self.use_gemv_decode):
+        with launch_decision_session(getattr(self, "launch_decision_owner", None)), gemv_decode_session(self.use_gemv_decode):
             for row, token in enumerate(tokens.tolist()):
                 if advance_state_only:
                     self._run_token_to_final_hidden(
@@ -21670,6 +21670,7 @@ class Qwen35GGUFResidentSession:
             "lm_head": "row_linear_f32",
         }
         with (
+            launch_decision_session(getattr(self, "launch_decision_owner", None)),
             wmma_prefill_session(False),
             gemv_decode_session(self.use_gemv_decode),
             native_batch_decode_session(True),
@@ -22001,7 +22002,7 @@ class Qwen35GGUFResidentSession:
         src = self._hidden_a
         dst = self._hidden_b
         captures: dict[int, np.ndarray] = {}
-        with gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
+        with launch_decision_session(getattr(self, "launch_decision_owner", None)), gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 for slot in slots:
                     scratch = slot_scratch[slot]
@@ -22200,7 +22201,7 @@ class Qwen35GGUFResidentSession:
         gpu_stage_recorder.start()
         try:
             self._refresh_dms_decode_owner_marker()
-            with gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
+            with launch_decision_session(getattr(self, "launch_decision_owner", None)), gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
                 hidden_ptr = self._run_token_to_final_hidden(
                     int(token_id),
                     position=self._position,
@@ -22230,7 +22231,7 @@ class Qwen35GGUFResidentSession:
         if position is not None and int(position) != self._position:
             raise ValueError(f"position {position} does not match session cursor {self._position}")
         self._refresh_dms_decode_owner_marker()
-        with gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
+        with launch_decision_session(getattr(self, "launch_decision_owner", None)), gemv_decode_session(self.use_gemv_decode), self._iq_dense_mmq_context():
             hidden_ptr = self._run_token_to_final_hidden(
                 int(token_id),
                 position=self._position,
@@ -24521,6 +24522,7 @@ class Qwen35GGUFResidentSession:
             )
         )
         with (
+            launch_decision_session(getattr(self, "launch_decision_owner", None)),
             native_batch_decode_session(2 <= rows <= 8),
             wmma_prefill_session(False),
             gemv_decode_session(self.use_gemv_decode),

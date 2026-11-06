@@ -205,6 +205,8 @@ def _binder(
     """Bind the profile cold-path policy before any decode runs."""
 
     del resolved
+    from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner
+    generator.launch_decision_owner = LaunchDecisionOwner()
     _apply_profile_policy(
         generator, cooperative=cooperative, rowtile_floor=rowtile_floor
     )

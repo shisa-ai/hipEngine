@@ -51,6 +51,30 @@ def test_dense_profile_binder_gives_each_generator_an_independent_owner():
     assert first.launch_decision_owner is not second.launch_decision_owner
 
 
+def test_async_decode_binds_profile_owner_and_restores_scope():
+    from types import SimpleNamespace
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+    from contextlib import nullcontext
+
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.launch_decision_owner = LaunchDecisionOwner()
+    session.use_gemv_decode = False
+    session._position = 0
+    session._refresh_dms_decode_owner_marker = lambda: None
+    session._iq_dense_mmq_context = nullcontext
+    decision = Decision(1, 'decode')
+    def run(*args, **kwargs):
+        assert own_launch_decision(decision) is decision
+        assert own_launch_decision(Decision(1, 'decode')) is decision
+        return 123
+    session._run_token_to_final_hidden = run
+    session._sample_device_from_hidden = lambda *args, **kwargs: None
+    session.step_async_top1(7, stream=0)
+    assert len(session.launch_decision_owner) == 1
+    peer = Decision(1, 'decode')
+    assert own_launch_decision(peer) is peer
+
+
 def test_session_restores_owner_after_failure():
     owner = LaunchDecisionOwner()
     decision = Decision(1, 'pair')
