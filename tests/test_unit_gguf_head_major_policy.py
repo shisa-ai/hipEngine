@@ -25,8 +25,6 @@ def test_retired_head_major_boolean_cannot_override_package_or_gapped_gather(mon
 @pytest.mark.parametrize("tokens", [37, 511, 512, 65792, 65793])
 @pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
 def test_head_major_sizing_and_allocator_agree_on_resource_admission(monkeypatch, tokens, backend):
-    monkeypatch.delenv(runner._GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV, raising=False)
-    monkeypatch.delenv(runner._GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV, raising=False)
     allocated = []
     runtime = object()
 
@@ -40,7 +38,7 @@ def test_head_major_sizing_and_allocator_agree_on_resource_admission(monkeypatch
     kwargs = {"backend": backend, "capacity_tokens": tokens, "kv_width": 128}
     planned = runner._gguf_aotriton_head_major_kv_scratch_nbytes(**kwargs)
     pair = runner._try_allocate_gguf_aotriton_head_major_kv_scratch(**kwargs, runtime=runtime)
-    expected = tokens * 128 * 2 * 2 if backend == "hip_gfx1151" and tokens <= 65792 else 0
+    expected = tokens * 128 * 2 * 2 if backend == "hip_gfx1151" else 0
     assert planned == expected
     if expected:
         assert pair == tuple(allocated)
@@ -103,12 +101,10 @@ def test_head_major_interrupted_second_allocation_frees_first(monkeypatch):
     assert freed == allocated
 
 
-@pytest.mark.parametrize("cap_env,cap", [
-    ("_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV", "36"),
-    ("_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV", "18943"),
-])
-def test_head_major_resource_caps_remain_effective(monkeypatch, cap_env, cap):
-    monkeypatch.setenv(getattr(runner, cap_env), cap)
+@pytest.mark.parametrize("tokens", [65793, 100003, 262144])
+def test_retired_resource_caps_do_not_override_common_budget(monkeypatch, tokens):
+    monkeypatch.setenv("HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS", "36")
+    monkeypatch.setenv("HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES", "1")
     assert runner._gguf_aotriton_head_major_kv_scratch_nbytes(
-        backend="hip_gfx1151", capacity_tokens=37, kv_width=128,
-    ) == 0
+        backend="hip_gfx1151", capacity_tokens=tokens, kv_width=1024,
+    ) == tokens * 1024 * 4

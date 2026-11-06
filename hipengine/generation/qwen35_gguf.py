@@ -460,9 +460,9 @@ def _gguf_prefix_gapped_suffix_max_tokens() -> int:
     the contiguous route uses and pays the same AOTriton attention cost, so
     the guard no longer applies to it (any suffix length wins). The budget
     below only binds when that fast gapped route is unavailable for the
-    lease's backend/config - the gather kill-switch, a backend without
-    head-major KV, or a context beyond the validated head-major allocation
-    class - where the old paged-route costs still hold.
+    lease's backend/config: the gather kill-switch or a backend without the
+    registered head-major copy. Allocation checks the common memory budget and
+    retains the native paged fallback if the gather pair does not fit.
 
     A contiguous hit is never subject to this: it uses the same route the miss
     would have used, so it wins at any suffix length.

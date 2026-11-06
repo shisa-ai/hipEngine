@@ -27,7 +27,6 @@ from hipengine.kernels.hip_gfx1100.attention import (
 from hipengine.kernels.registry import KernelKey, resolve
 from hipengine.kvcache import KVLiveSpans
 from hipengine.runtime.qwen35_gguf_runner import (
-    _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
     _gguf_aotriton_head_major_buffers,
     _gguf_aotriton_head_major_kv_enabled,
     _try_allocate_gguf_aotriton_head_major_kv_scratch,
@@ -203,10 +202,10 @@ def test_head_major_scratch_allocation_denial_frees_partial_and_falls_back(monke
     assert _gguf_aotriton_head_major_buffers(scratch, context_len=257) is None
 
 
-def test_head_major_scratch_rejects_capacity_above_validated_64k_class(monkeypatch) -> None:
+def test_head_major_scratch_prices_long_capacity_against_common_budget(monkeypatch) -> None:
     import hipengine.runtime.qwen35_gguf_runner as runner_module
 
-    monkeypatch.setenv(_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV, "65792")
+    runtime = SimpleNamespace(mem_get_info=lambda: (1, 1))
     monkeypatch.setattr(
         runner_module,
         "malloc",
@@ -218,7 +217,7 @@ def test_head_major_scratch_rejects_capacity_above_validated_64k_class(monkeypat
             backend="hip_gfx1151",
             capacity_tokens=131328,
             kv_width=512,
-            runtime=object(),
+            runtime=runtime,
         )
         is None
     )

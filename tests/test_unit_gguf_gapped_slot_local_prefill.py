@@ -128,7 +128,7 @@ def test_gapped_bf16_slab_admits_the_gather_route() -> None:
 
 
 def test_fast_route_checks_the_request_context_not_resident_capacity() -> None:
-    """Demand-sized gather buffers admit any resident class up to the 64K cap."""
+    """Demand-sized gather supports long contexts when common memory fits."""
 
     from hipengine.kernels.backends import load_backend_kernel_package
 
@@ -142,12 +142,12 @@ def test_fast_route_checks_the_request_context_not_resident_capacity() -> None:
         )
         is True
     )
-    # Past the validated head-major allocation class the fast route is gone.
+    # No private token ceiling: allocation checks common headroom separately.
     assert (
         gguf_runner._gguf_gapped_slot_local_fast_route_available(
             context_tokens=100_000, **available
         )
-        is False
+        is True
     )
 
 
@@ -229,9 +229,9 @@ def test_bf16_gather_buffers_are_freed_at_session_teardown(monkeypatch, slot_vie
     assert session._gapped_head_major_cache is None
 
 
-def test_gather_bucket_rounding_cannot_exceed_explicit_memory_cap(monkeypatch):
-    monkeypatch.setenv(gguf_runner._GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV, "1224")
-    monkeypatch.setenv(gguf_runner._GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV, "5013504")
+def test_gather_bucket_rounding_ignores_retired_resource_caps(monkeypatch):
+    monkeypatch.setenv("HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS", "1224")
+    monkeypatch.setenv("HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES", "5013504")
     sizes = []
 
     def allocate(nbytes, **kwargs):
@@ -245,8 +245,8 @@ def test_gather_bucket_rounding_cannot_exceed_explicit_memory_cap(monkeypatch):
         context_tokens=1224, kv_width=1024, runtime=object(),
     )
     assert result.head_major_kv_admitted
-    assert result.head_major_kv_capacity == 1224
-    assert sum(sizes) == 5013504
+    assert result.head_major_kv_capacity == 4096
+    assert sum(sizes) == 4096 * 1024 * 4
 
 
 @pytest.mark.parametrize("cached", [False, True])
@@ -295,6 +295,33 @@ def test_gather_common_budget_denial_keeps_cached_pair(monkeypatch):
     )
     assert result is scratch
     assert session._gapped_head_major_cache is old
+
+
+@pytest.mark.parametrize("tokens", [4095, 4097, 65793, 100003])
+def test_gather_rounded_capacity_is_priced_before_allocation(monkeypatch, tokens):
+    from hipengine.runtime.memory_admission import DEFAULT_ADMISSION_RESERVE_BYTES
+
+    capacity = ((tokens + 4095) // 4096) * 4096
+    pair_bytes = capacity * 128 * 4
+    allocated = []
+    monkeypatch.setattr(gguf_runner, "resolve", lambda **kwargs: object())
+    monkeypatch.setattr(gguf_runner, "malloc", lambda nbytes, **kw: (
+        allocated.append(nbytes) or DeviceBuffer(4096 * len(allocated), nbytes)
+    ))
+    scratch = replace(_fake_slot_scratch(start=256, rows=2, blocks=8), head_major_kv_admitted=False)
+    for deficit in (1, 0):
+        session = SimpleNamespace(runner=SimpleNamespace(backend="hip_gfx1100"))
+        runtime = SimpleNamespace(mem_get_info=lambda: (
+            DEFAULT_ADMISSION_RESERVE_BYTES + pair_bytes - deficit, 2**40,
+        ))
+        result = gguf_runner._gguf_gapped_slot_head_major_scratch(
+            session, scratch, context_tokens=tokens, kv_width=128, runtime=runtime,
+        )
+        if deficit:
+            assert result is scratch and allocated == []
+        else:
+            assert result.head_major_kv_capacity == capacity
+            assert allocated == [pair_bytes // 2] * 2
 
 
 def test_gapped_slab_falls_back_when_the_kill_switch_is_off(

@@ -1855,9 +1855,12 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 Scope: `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV`, `HIPENGINE_GGUF_GAPPED_GATHER`,
 `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS`.
 
-**Remaining work:** replace both resource controls with the common scratch budget without dropping
-requested-context sizing, allocation rounding or partial-allocation cleanup. This is resource
-accounting, not a reason to reintroduce the retired boolean or gate execution on artifact identity.
+**Remaining work:** reserve rounded demand-allocated gapped scratch in the planner and exercise
+actual public gapped allocation (not an already-admitted contiguous workspace pair).
+The private token/byte controls are removed; both allocators use common memory admission,
+with requested-context sizing, rounding and partial-allocation cleanup preserved. Host,
+GPU-copy and public short/long validation is recorded in
+`worklog/entries/20261106T030744.058682Z-lhl-r0312-common-policy-ea5330.md`.
 
 Done when: migrate the planner, contiguous allocator and gapped allocator/admission
 together. Run head-major policy, capacity-route terms, gapped-slot and request-ownership tests plus

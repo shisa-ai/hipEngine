@@ -8830,14 +8830,6 @@ _QWEN35MOE_UNSAFE_FASTPATH_ENV = "HIPENGINE_GGUF_ALLOW_UNSAFE_QWEN35MOE_FASTPATH
 _GGUF_AOTRITON_PREFILL_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL"
 _GGUF_AOTRITON_PREFILL_ENABLE_ENV = "HIPENGINE_GGUF_AOTRITON_PREFILL_ENABLE"
 _GGUF_GAPPED_GATHER_ENV = "HIPENGINE_GGUF_GAPPED_GATHER"
-_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV = (
-    "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES"
-)
-_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV = (
-    "HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS"
-)
-_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT = 512 * 1024 * 1024
-_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT = 65_792
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_ENV = "HIPENGINE_GGUF_FULL_ATTN_DECODE_PAGED_MIN_CONTEXT"
 _GGUF_FULL_ATTN_DECODE_SPLIT_MIN_CONTEXT_DEFAULT = 1024
 # Default-off admission for the staged dense linear-attention verifier chain
@@ -10074,11 +10066,10 @@ def _gguf_aotriton_head_major_kv_scratch_nbytes(
     capacity_tokens: int,
     kv_width: int,
 ) -> int:
-    """Bytes of one cross-layer BF16 K/V scratch pair, or 0 when not admitted.
+    """Requested bytes of a package-selected cross-layer BF16 K/V pair.
 
-    Policy and size prefix of :func:`_try_allocate_gguf_aotriton_head_major_kv_scratch`.
-    The token and byte ceilings are exact fallback signals, so capacity planning
-    and allocation cannot disagree about whether a pair would be admitted.
+    Sizing is independent of current headroom; the allocator admits the same
+    bytes against the common memory budget immediately before allocation.
     """
 
     if not _gguf_aotriton_head_major_kv_enabled(backend):
@@ -10087,21 +10078,7 @@ def _gguf_aotriton_head_major_kv_scratch_nbytes(
     kv_width = int(kv_width)
     if capacity_tokens <= 0 or kv_width <= 0:
         raise ValueError("head-major KV scratch dimensions must be positive")
-    max_tokens = _env_int(
-        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
-        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
-    )
-    if max_tokens <= 0 or capacity_tokens > max_tokens:
-        return 0
-    per_buffer_bytes = capacity_tokens * kv_width * DType.BF16.itemsize
-    total_bytes = 2 * per_buffer_bytes
-    max_bytes = _env_int(
-        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
-        _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
-    )
-    if max_bytes <= 0 or total_bytes > max_bytes:
-        return 0
-    return int(total_bytes)
+    return 2 * capacity_tokens * kv_width * DType.BF16.itemsize
 
 
 def _gguf_head_major_pair_fits_memory(*, runtime: HipRuntime, nbytes: int) -> bool:
@@ -10130,10 +10107,9 @@ def _try_allocate_gguf_aotriton_head_major_kv_scratch(
 ) -> tuple[DeviceBuffer, DeviceBuffer] | None:
     """Best-effort tracked allocation for one cross-layer BF16 K/V pair.
 
-    The gfx1151 default is bounded to the validated 64K allocation class.
-    Token/byte capacity or HIP allocation denial is an exact fallback signal,
-    not a session-construction failure. If the second allocation fails, the
-    first is released before returning.
+    Common-budget or HIP allocation denial selects the existing fallback,
+    rather than failing session construction. If the second allocation fails,
+    the first is released before returning or propagating cancellation.
     """
 
     total_bytes = _gguf_aotriton_head_major_kv_scratch_nbytes(
@@ -12608,18 +12584,7 @@ def _gguf_gapped_head_major_capacity(*, context_tokens: int, kv_width: int) -> i
     """Resolve rounded gather capacity for sizing and allocation."""
     if int(context_tokens) <= 0 or int(kv_width) <= 0:
         return 0
-    capacity = min(
-        ((int(context_tokens) + 4095) // 4096) * 4096,
-        _env_int(
-            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV,
-            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_DEFAULT,
-        ),
-        _env_int(
-            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV,
-            _GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_DEFAULT,
-        ) // (2 * int(kv_width) * DType.BF16.itemsize),
-    )
-    return capacity if capacity >= int(context_tokens) else 0
+    return ((int(context_tokens) + 4095) // 4096) * 4096
 
 
 def _gguf_gapped_slot_local_fast_route_available(
@@ -12630,12 +12595,10 @@ def _gguf_gapped_slot_local_fast_route_available(
 ) -> bool:
     """Whether a gapped prefill of this size gathers onto the fast route.
 
-    The gather needs the env flag, a registered head-major copy kernel, and
-    a head-major buffer within the validated token/byte allocation class
-    (buffers are demand-sized per session, so only the request's own context
-    has to fit the class). When any check fails, a gapped slot falls back to
-    the native paged prefill kernel and the admission cost guard keeps
-    protecting long suffixes (see ``hipengine/generation/qwen35_gguf.py``).
+    The gather needs its rollback switch, a registered head-major copy kernel,
+    and positive dimensions. Allocation separately checks the common memory
+    budget for the request's rounded capacity. If it cannot allocate, execution
+    uses the native paged prefill kernel.
     """
 
     if not _gguf_gapped_gather_prefill_enabled():
@@ -12663,12 +12626,9 @@ def _gguf_gapped_slot_head_major_scratch(
 ):
     """Admit demand-sized head-major gather buffers for one gapped slot.
 
-    Resident sessions at a model's full context class (262,144 positions and
-    up) exceed the validated head-major allocation class, so their bulk
-    workspace carries no head-major buffers and the scratch's own admission is
-    False. The gather instead grows one per-session pair here, bucketed to the
-    context the session actually prefills and capped by the same validated
-    class limits; a context past the class keeps the native spans fallback.
+    Grow one per-session pair to the request's 4096-token capacity bucket.
+    Common-budget or allocation denial leaves the native spans fallback and
+    any existing cached pair intact.
     """
 
     if bool(getattr(layer_scratch, "head_major_kv_admitted", False)):
