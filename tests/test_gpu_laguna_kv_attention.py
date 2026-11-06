@@ -2107,6 +2107,39 @@ def test_laguna_preappend_cached_qrow4_matches_current_source_qrow4() -> None:
             runtime.device_synchronize()
             copy_device_to_host(host_array_ptr(actual), output, actual.nbytes, runtime=runtime)
             np.testing.assert_array_equal(actual, expected)
+        cached.commit_rows()
+        cached.evict_position(0, 0)
+        cached.evict_position(1, 0)
+        cached.prepare_rows(tuple(range(rows, 2 * rows)))
+        for layer_id in range(2):
+            cached.append_rows(layer_id, key_rows.ptr, value_rows.ptr, rows, library=library)
+        for layer_id, query, output, control, actual, expected, primitive in (
+            (0, global_query_rows, global_cached_out, global_cached_meta_out,
+             actual_global, actual_global_meta,
+             laguna_global_attention_prefill_qrow6_cached_meta_online_bf16_spans),
+            (1, swa_query_rows, swa_cached_out, swa_cached_meta_out,
+             actual_swa, actual_swa_meta,
+             laguna_swa_attention_prefill_qrow4_cached_meta_online_bf16_spans),
+        ):
+            state = cached.layer(layer_id)
+            args = (query.ptr, key_rows.ptr, value_rows.ptr, state.key_cache.ptr,
+                    state.value_cache.ptr, control.ptr, state.spans, rows)
+            kwargs = {"library": library, "runtime": runtime}
+            if layer_id == 0:
+                primitive(*args, state.capacity, state.q_heads, config.head_count_kv,
+                          config.key_length, config.key_length**-0.5, **kwargs)
+            else:
+                primitive(*args, state.q_heads, config.head_count_kv,
+                          config.key_length, config.key_length**-0.5,
+                          sliding_window=config.sliding_window, start_position=rows, **kwargs)
+            cached.attend_prefill_cached(
+                layer_id, query.ptr, key_rows.ptr, value_rows.ptr, output.ptr,
+                rows, library=library,
+            )
+            runtime.device_synchronize()
+            copy_device_to_host(host_array_ptr(actual), output, actual.nbytes, runtime=runtime)
+            copy_device_to_host(host_array_ptr(expected), control, expected.nbytes, runtime=runtime)
+            np.testing.assert_array_equal(actual, expected)
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
