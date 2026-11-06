@@ -83,3 +83,48 @@ def test_decode_attention_matches_cpu_reference(keys, key_begin, n_splits) -> No
     finally:
         for b in reversed(bufs):
             free(b)
+
+@pytest.mark.parametrize("tokens,keys,n_splits,window", [
+    (8, 8, 1, 0), (64, 64, 4, 0), (128, 128, 4, 32), (256, 256, 4, 64),
+])
+def test_prefill_attention_matches_cpu_reference(tokens, keys, n_splits, window) -> None:
+    """Multi-row causal (+SWA) prefill; locks the combine split-stride fix."""
+    from hipengine.core.memory import malloc, free, copy_host_array_to_device, copy_device_to_host, host_array_ptr
+    from hipengine.kernels.cpu_reference.muse_glimmer import gqa_attention, causal_swa_mask
+    from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
+        muse_glimmer_decode_attention,
+    )
+
+    rng = np.random.default_rng(tokens * 7 + keys)
+    n_q, n_kv, d = 32, 2, 128
+    q = (rng.standard_normal((tokens, n_q, d)) * 0.5).astype(np.float32)
+    k = (rng.standard_normal((keys, n_kv, d)) * 0.5).astype(np.float32)
+    v = (rng.standard_normal((keys, n_kv, d)) * 0.5).astype(np.float32)
+    qb, kb, vb = _bf16(q.reshape(tokens * n_q, d)), _bf16(k), _bf16(v)
+    q_f = _to_bf16_f32(qb).reshape(tokens, n_q, d)
+    k_f, v_f = _to_bf16_f32(kb), _to_bf16_f32(vb)
+    pos = np.arange(keys - tokens, keys, dtype=np.int64)
+    mask = causal_swa_mask(pos, keys, np.arange(keys), window if window > 0 else None)
+    ref = gqa_attention(q_f, k_f, v_f, mask, n_heads=n_q, n_kv_heads=n_kv, scale=d ** -0.5)
+
+    bufs = []
+    def up(arr):
+        b = malloc(arr.nbytes); bufs.append(b); copy_host_array_to_device(b, arr); return b
+    try:
+        qd = up(np.ascontiguousarray(qb)); kd = up(np.ascontiguousarray(kb)); vd = up(np.ascontiguousarray(vb))
+        out = malloc(tokens * n_q * d * 2); bufs.append(out)
+        partials = malloc(n_splits * tokens * n_q * 130 * 4); bufs.append(partials)
+        muse_glimmer_decode_attention(
+            qd.ptr, kd.ptr, vd.ptr, out.ptr, partials.ptr,
+            n_q_heads=n_q, n_kv_heads=n_kv, key_begin=0, key_end=keys,
+            n_splits=n_splits, tokens=tokens, window=window, scale=d ** -0.5,
+        )
+        host = np.empty(tokens * n_q * d, dtype=np.uint16)
+        copy_device_to_host(host_array_ptr(host), out)
+        got = _to_bf16_f32(host.reshape(tokens, n_q, d))
+        err = float(np.abs(got - ref).max())
+        assert np.isfinite(got).all()
+        assert err <= 0.02, f"tokens={tokens} keys={keys} splits={n_splits} win={window}: max|err| {err}"
+    finally:
+        for b in reversed(bufs):
+            free(b)

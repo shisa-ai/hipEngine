@@ -164,7 +164,7 @@ class MuseGlimmerResidentSession:
             self.identity_sin = scratch.alloc(self.max_context * cfg.head_dim * f32, rt)
             self.keep_mask_full = scratch.alloc(t_max * self.max_context, rt)
             self.keep_mask_swa = scratch.alloc(t_max * self.max_context, rt)
-            self.attn_partials = scratch.alloc(64 * cfg.n_heads * 130 * 4, rt)
+            self.attn_partials = scratch.alloc(max(64, 4 * t_max) * cfg.n_heads * 130 * 4, rt)
             self._logits_host = np.empty(cfg.vocab_size, dtype=np.float32)
             self._mask_host = np.empty((t_max, self.max_context), dtype=np.uint8)
             self._ids_host = np.empty(t_max, dtype=np.int64)
@@ -663,9 +663,10 @@ class MuseGlimmerResidentSession:
                 span = keys - key_begin
                 n_splits = 64
             else:
-                # Prefill rows parallelize over queries (tokens x 8 groups);
-                # one split per row keeps partials bounded and writes direct.
-                n_splits = 1
+                # Prefill rows parallelize over queries (tokens x 8 groups,
+                # GQA-packed so 16 Q heads share each KV read); 4 key splits
+                # shorten the serial walk and balance long causal rows.
+                n_splits = 4
                 key_begin = 0
             muse_glimmer_decode_attention(
                 self.q_bf16.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,

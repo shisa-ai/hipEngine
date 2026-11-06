@@ -133,7 +133,7 @@ __global__ void muse_glimmer_decode_attn_combine_kernel(
   float m = -INFINITY;
   const int64_t stride = GLIMMER_HEAD_DIM + 2;
   const int64_t base = (int64_t)token * n_q_heads + qh;
-  const int64_t tstride = n_q_heads * stride;
+  const int64_t tstride = tokens * n_q_heads * stride;
   for (int64_t s = 0; s < n_splits; s++) {
     float ms = partials[s * tstride + base * stride + GLIMMER_HEAD_DIM];
     m = fmaxf(m, ms);
