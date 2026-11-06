@@ -3215,6 +3215,7 @@ class Qwen35GGUFFullStackRunner:
     target_q8_t16_rowtile_all: bool | None = None
     # Profile-owned verifier F32 diagnostics and R28 selector. ``None`` keeps
     # the unbound/direct diagnostic environment input.
+    target_moe_tail_next_rms: bool | None = None
     target_verify_f32_residual: bool | None = None
     target_verify_f32_post_norm: bool | None = None
     target_q4_t16_dual_silu_r28: bool | None = None
@@ -4704,7 +4705,7 @@ class Qwen35GGUFFullStackRunner:
                 src = hidden_a
                 dst = hidden_b
                 active_layer_types = self.weights.config.layer_types[:layer_count]
-                chain_next_rms = self.weights.config.is_moe and _gguf_moe_tail_next_rms_enabled()
+                chain_next_rms = self.weights.config.is_moe and _gguf_moe_tail_next_rms_enabled(self)
                 input_norm_ptr: int | None = None
                 for layer_id, layer_type in enumerate(active_layer_types):
                     next_norm_weight_ptr = None
@@ -9396,8 +9397,9 @@ def _normalize_prefill_queue_drain(value: str) -> str:
     return mode
 
 
-def _gguf_moe_tail_next_rms_enabled() -> bool:
-    return _env_flag(_GGUF_MOE_TAIL_NEXT_RMS_ENV, True)
+def _gguf_moe_tail_next_rms_enabled(owner=None) -> bool:
+    selected = getattr(owner, "target_moe_tail_next_rms", None)
+    return _env_flag(_GGUF_MOE_TAIL_NEXT_RMS_ENV, True) if selected is None else bool(selected)
 
 
 def _gguf_prefill_router_select_threads(backend: str) -> int:
@@ -13113,6 +13115,7 @@ class Qwen35GGUFResidentSession:
     require_cached_build: bool = False
     backend: str = "auto"
     shared_runner: Qwen35GGUFFullStackRunner | None = None
+    moe_tail_next_rms: bool | None = None
     execution_routes: tuple[str, ...] = ("eager",)
     native_sampler_algorithm: str = "sorted"
     max_sequence_length: int | None = None
@@ -13650,6 +13653,7 @@ class Qwen35GGUFResidentSession:
         if self.shared_runner is None:
             self.runner = Qwen35GGUFFullStackRunner(
                 self.model_path,
+                target_moe_tail_next_rms=self.moe_tail_next_rms,
                 runtime=self.runtime,
                 compiler_version=self.compiler_version,
                 require_cached_build=self.require_cached_build,
@@ -25623,7 +25627,11 @@ class Qwen35GGUFResidentSession:
         src = self._hidden_a
         dst = self._hidden_b
         layer_types = self.runner.weights.config.layer_types
-        chain_next_rms = self.runner.weights.config.is_moe and _gguf_moe_tail_next_rms_enabled()
+        tail_override = getattr(self, "moe_tail_next_rms", None)
+        chain_next_rms = self.runner.weights.config.is_moe and (
+            _gguf_moe_tail_next_rms_enabled(self.runner)
+            if tail_override is None else bool(tail_override)
+        )
         moe_graph = self._moe_graph_for_decode() if scratch is self.scratch and not chain_next_rms else None
         input_norm_ptr: int | None = None
         for layer_id, layer_type in enumerate(layer_types):

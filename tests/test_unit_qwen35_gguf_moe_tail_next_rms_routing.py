@@ -86,7 +86,7 @@ def test_resident_decode_chains_norm_across_linear_full_transitions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session, calls = _session_and_calls()
-    monkeypatch.setattr(qgr, "_gguf_moe_tail_next_rms_enabled", lambda: True)
+    session.moe_tail_next_rms = True
     monkeypatch.setattr(
         qgr,
         "gguf_rmsnorm_bf16_f32_weight",
@@ -117,7 +117,7 @@ def test_resident_decode_keeps_unfused_layer_inputs_when_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session, calls = _session_and_calls()
-    monkeypatch.setattr(qgr, "_gguf_moe_tail_next_rms_enabled", lambda: False)
+    session.moe_tail_next_rms = False
     monkeypatch.setattr(qgr, "_gguf_moe_graph_enabled", lambda: False)
     monkeypatch.setattr(qgr, "gguf_rmsnorm_bf16_f32_weight", lambda *args, **kwargs: None)
 
@@ -138,6 +138,25 @@ def test_whole_step_graph_refuses_nested_moe_capture_before_state_access(monkeyp
         session.capture_decode_graph(position=0)
 
 
+@pytest.mark.parametrize("override", [None, False, True])
+def test_session_tail_override_does_not_mutate_shared_runner(monkeypatch, override):
+    session, calls = _session_and_calls()
+    session.runner.target_moe_tail_next_rms = True
+    session.moe_tail_next_rms = override
+    monkeypatch.setenv("HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS", "0")
+    monkeypatch.setattr(qgr, "_gguf_moe_graph_enabled", lambda: False)
+    monkeypatch.setattr(qgr, "gguf_rmsnorm_bf16_f32_weight", lambda *args, **kwargs: None)
+    session._run_current_hidden_to_final_hidden(position=2, stream=4)
+    assert session.runner.target_moe_tail_next_rms is True
+    assert (calls[0][4]["next_norm_weight_ptr"] is not None) is (override is not False)
+
+
+@pytest.mark.parametrize("value", [False, True])
+def test_explicit_tail_owner_precedes_environment(monkeypatch, value):
+    monkeypatch.setenv("HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS", "0" if value else "1")
+    assert qgr._gguf_moe_tail_next_rms_enabled(SimpleNamespace(target_moe_tail_next_rms=value)) is value
+
+
 @pytest.mark.parametrize("chain_next_rms", [False, True])
 def test_moe_graph_diagnostic_requires_unchained_layer_norms(
     monkeypatch: pytest.MonkeyPatch, chain_next_rms: bool,
@@ -154,7 +173,7 @@ def test_moe_graph_diagnostic_requires_unchained_layer_norms(
         assert selected_graph is graph
         calls.append(("graph", layer_id, layer_type))
 
-    monkeypatch.setattr(qgr, "_gguf_moe_tail_next_rms_enabled", lambda: chain_next_rms)
+    session.moe_tail_next_rms = chain_next_rms
     monkeypatch.setattr(session, "_moe_graph_for_decode", acquire_graph)
     monkeypatch.setattr(session, "_run_decode_layer_graphed", run_graph)
     monkeypatch.setattr(qgr, "gguf_rmsnorm_bf16_f32_weight", lambda *args, **kwargs: None)

@@ -36,14 +36,14 @@ pytestmark = pytest.mark.skipif(
 
 def _decode(enable_graph: bool, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("HIPENGINE_GGUF_MOE_GRAPH", "1" if enable_graph else "0")
-    monkeypatch.setenv("HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS", "0")
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "1")
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
     toks: list[int] = []
     stats = None
     with Qwen35GGUFResidentSession(
-        MODEL, max_sequence_length=128, use_wmma_prefill=True, use_gemv_decode=True
+        MODEL, max_sequence_length=128, use_wmma_prefill=True, use_gemv_decode=True,
+        moe_tail_next_rms=False,
     ) as s:
         first = s.prefill(PROMPT, use_bulk=True, return_logits=False)
         cur = int(first.token_id)
