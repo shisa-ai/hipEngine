@@ -293,6 +293,20 @@ class Qwen35GGUFPrefixStateSnapshot:
         )
 
     @property
+    def device_allocations(self) -> tuple[tuple[int, int], ...]:
+        """Owning device pointer/byte pairs, including arena padding once."""
+        if self.closed:
+            return ()
+        if self.arena is not None:
+            owner = self.arena.owner
+            return ((int(owner.ptr), int(owner.nbytes)),)
+        return tuple(sorted({
+            (int(buffer.ptr), int(buffer.nbytes))
+            for buffer in (*self.layer_conv_states, *self.layer_recurrent_states)
+            if buffer is not None
+        }))
+
+    @property
     def nbytes(self) -> int:
         return sum(
             int(buffer.nbytes)

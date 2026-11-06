@@ -143,6 +143,17 @@ class Qwen35GGUFNextNPrefixCheckpoint:
     released: bool = False
 
     @property
+    def device_allocations(self) -> tuple[tuple[int, int], ...]:
+        """Owning device pointer/byte pairs; host KV is excluded."""
+        if self.released:
+            return ()
+        return tuple(sorted({
+            (int(buffer.ptr), int(buffer.nbytes))
+            for buffer in (*self.state_backups, self.boundary_hidden)
+            if buffer is not None
+        }))
+
+    @property
     def nbytes(self) -> int:
         """Device bytes this checkpoint retains.
 
