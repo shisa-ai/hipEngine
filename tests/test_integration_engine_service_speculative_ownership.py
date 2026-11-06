@@ -650,6 +650,55 @@ def test_generic_only_real_adapter_advances_bounded_children() -> None:
         service.close()
 
 
+@pytest.mark.parametrize("terminal", ["cancel", "shutdown", "close_error"])
+def test_generic_only_real_adapter_retires_paused_child(terminal) -> None:
+    retired = []
+
+    class Child:
+        def advance(self):
+            return None
+
+        def close(self, *, reason):
+            retired.append(reason)
+            if terminal == "close_error":
+                raise RuntimeError("child close failed")
+
+    class Inner:
+        supports_speculative_mtp = False
+
+        def __init__(self):
+            self.closed = False
+
+        def create_generic_speculative_child(self, request):
+            return Child()
+
+        def generate_speculative_detailed(self, request):
+            raise AssertionError("whole-request bypass")
+
+        def close(self):
+            self.closed = True
+
+    inner = Inner()
+    adapter = SubmitPollTextGenerator(inner, capacity=1)
+    service = EngineService(adapter, idle_wait_seconds=0.001)
+    try:
+        handle = service.submit_speculative_child(_request("paused"))
+        if terminal == "shutdown":
+            service.close()
+        else:
+            assert handle.cancel()
+        with pytest.raises((GenerationCancelled, RuntimeError)):
+            handle.result(timeout=2)
+        assert len(retired) == 1
+        assert not adapter._generic_speculative_children
+        assert not adapter._submissions_by_request
+        if terminal != "shutdown":
+            assert not service.closed
+    finally:
+        service.close()
+    assert inner.closed
+
+
 def test_generic_speculative_declines_real_adapter_over_whole_request_provider() -> None:
     class _WholeRequestInner:
         supports_speculative = True
