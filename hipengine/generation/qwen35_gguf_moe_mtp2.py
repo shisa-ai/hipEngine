@@ -1629,17 +1629,30 @@ class Qwen35GGUFMoEMTP2Adapter:
         getattr(self, "_sampling_mode_by_request", {}).clear()
         self._disabled_requests.clear()
         self._active_claims = None
-        for target, buffer, normalized, normalized_bf16 in self._target_hidden_slabs.values():
-            self._detach_hidden_buffer(target, buffer)
-            free(normalized_bf16, runtime=target.runtime)
-            free(normalized, runtime=target.runtime)
-            free(buffer, runtime=target.runtime)
+        failures: list[BaseException] = []
+        hidden_slabs = tuple(self._target_hidden_slabs.values())
         self._target_hidden_slabs.clear()
-        for target, key_cache, value_cache in self._draft_kv_slabs.values():
-            free(value_cache, runtime=target.runtime)
-            free(key_cache, runtime=target.runtime)
+        draft_slabs = tuple(self._draft_kv_slabs.values())
         self._draft_kv_slabs.clear()
-        self._release_resident_slab_charges()
+        for target, buffer, normalized, normalized_bf16 in hidden_slabs:
+            self._detach_hidden_buffer(target, buffer)
+            for allocation in (normalized_bf16, normalized, buffer):
+                try:
+                    free(allocation, runtime=target.runtime)
+                except BaseException as error:
+                    failures.append(error)
+        for target, key_cache, value_cache in draft_slabs:
+            for allocation in (value_cache, key_cache):
+                try:
+                    free(allocation, runtime=target.runtime)
+                except BaseException as error:
+                    failures.append(error)
+        try:
+            self._release_resident_slab_charges()
+        except BaseException as error:
+            failures.append(error)
+        if failures:
+            raise BaseExceptionGroup("MoE MTP2 adapter close failed", failures)
 
 
 def create_qwen35_gguf_moe_mtp2_adapter(

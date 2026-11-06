@@ -99,7 +99,8 @@ def test_shared_dense_kv_allocation_rolls_back_partial_failure(monkeypatch, fail
     assert freed == list(reversed(allocated))
 
 
-def test_moe_close_detaches_slab_without_a_synthetic_request(monkeypatch) -> None:
+@pytest.mark.parametrize('fail_first_free', [False, True])
+def test_moe_close_detaches_slab_without_a_synthetic_request(monkeypatch, fail_first_free) -> None:
     from hipengine.generation import qwen35_gguf_moe_mtp2 as module
 
     adapter = object.__new__(Qwen35GGUFMoEMTP2Adapter)
@@ -115,9 +116,17 @@ def test_moe_close_detaches_slab_without_a_synthetic_request(monkeypatch) -> Non
     buffers = tuple(DeviceBuffer(ptr, 32) for ptr in (0x1000, 0x2000, 0x3000))
     adapter._target_hidden_slabs = {id(target): (target, *buffers)}
     freed = []
-    monkeypatch.setattr(module, 'free', lambda buffer, **kwargs: freed.append(buffer.ptr))
+    def release(buffer, **kwargs):
+        freed.append(buffer.ptr)
+        if fail_first_free and len(freed) == 1:
+            raise RuntimeError('hidden slab free failed')
+    monkeypatch.setattr(module, 'free', release)
 
-    adapter.close()
+    if fail_first_free:
+        with pytest.raises(BaseExceptionGroup, match='MoE MTP2 adapter close failed'):
+            adapter.close()
+    else:
+        adapter.close()
     adapter.close()
 
     assert target._last_target_hidden_ptr == 0
