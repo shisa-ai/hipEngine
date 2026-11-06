@@ -5796,9 +5796,21 @@ def test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths(monkeypatch
         ),
     ]
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
-    generator.prepare_request_scratch(max_prompt_tokens=4, max_batch_size=4,
-                                      release_after_probe=True)
+    acquired_contexts = []
+    acquire = generator._acquire_shared_session
+
+    def record_acquire(*args, **kwargs):
+        acquired_contexts.append((kwargs["pool_name"], kwargs["max_sequence_length"]))
+        return acquire(*args, **kwargs)
+
+    monkeypatch.setattr(generator, "_acquire_shared_session", record_acquire)
+    released = generator.prepare_request_scratch(max_prompt_tokens=4, max_batch_size=4,
+                                               release_after_probe=True)
+    assert acquired_contexts == [("scratch_probe_ar", 256)] * 6
+    assert released["probe_context_tokens"] == 256
     assert len([call for call in calls if call[0] == "close"]) == 6
+    assert result["full_context_capacity_checked"] is False
+    assert result["graph_context_buckets_warmed"] == []
 
 
 def test_specdec2_streaming_prompt_missing_adapter_preserves_candidate_budget(

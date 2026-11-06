@@ -1944,10 +1944,16 @@ class Qwen35GGUFBringupGenerator:
         self._prepare_kv_policy(sampling_params)
         max_batch = max(1, int(max_batch_size))
         prompt_len = max(1, min(128, int(max_prompt_tokens)))
+        # Probe-only sessions share immutable weights, not full-context KV.
+        # Leave room for verifier rows and keep request/session policy unchanged.
+        probe_context = max(256, prompt_len + 3) if release_after_probe else None
         result: dict[str, Any] = {
             "max_prompt_tokens": int(max_prompt_tokens),
             "max_batch_size": max_batch,
             "release_after_probe": bool(release_after_probe),
+            "probe_context_tokens": probe_context,
+            "full_context_capacity_checked": False,
+            "graph_context_buckets_warmed": [],
             "packed_ar_prefill_widths": [],
             "packed_ar_prefill_prompt_lengths": [],
             "packed_ar_prefill_skipped": False,
@@ -2003,7 +2009,8 @@ class Qwen35GGUFBringupGenerator:
                         for _slot in range(width):
                             session, key, _reused = self._acquire_shared_session(
                                 shared_runner,
-                                pool_name="ar_batch",
+                                pool_name="scratch_probe_ar" if release_after_probe else "ar_batch",
+                                max_sequence_length=probe_context,
                                 use_wmma_prefill=_resident_session_wmma_prefill_default(),
                                 use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                             )
@@ -2075,7 +2082,8 @@ class Qwen35GGUFBringupGenerator:
                         for _slot in range(width):
                             session, session_key, _session_reused = self._acquire_shared_session(
                                 shared_runner,
-                                pool_name="mtp_target",
+                                pool_name="scratch_probe_mtp" if release_after_probe else "mtp_target",
+                                max_sequence_length=probe_context,
                                 use_wmma_prefill=_resident_session_wmma_prefill_default(),
                                 use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
                             )
