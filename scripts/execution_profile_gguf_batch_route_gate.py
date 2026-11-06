@@ -94,6 +94,21 @@ DEFAULT_DYNAMIC_SCHEDULE = ((0, 8), (6, 4), (12, 2), (18, 1))
 DIRECT_DYNAMIC_SCHEDULE = ((0, 7), (6, 6), (12, 5), (18, 3))
 
 
+SELECTED_PAIR_SCOPED_POLICY = {
+    "owner": "selected_pair_diagnostic",
+    "pair": "session/package floor",
+    "down": "session/package floor",
+    "q6_down": "session/package floor",
+    "environment_overrides": "ignored within candidate scope; unchanged in process",
+}
+
+
+def selected_pair_diagnostic_metadata(route_profile: str) -> dict[str, object] | None:
+    """Describe effective scoped selection separately from ambient env values."""
+    return (dict(SELECTED_PAIR_SCOPED_POLICY)
+            if route_profile == ROUTE_PROFILE_Q4_SELECTED_PAIR else None)
+
+
 @dataclass(frozen=True, slots=True)
 class BatchRouteCapture:
     scenario_id: str
@@ -947,9 +962,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             POLICY_ENV: "unset: current package default",
             ROUTER_COOP_ENV: "unset: current package default",
             ROUTER_PERSISTENT_ENV: "unset: current package default",
-            SELECTED_PAIR_ENV: "unset: package selected-pairreuse floor",
-            SELECTED_DOWN_PAIR_ENV: "unset: package selected-pairreuse floor",
-            SELECTED_Q6_DOWN_PAIR_ENV: "unset: package selected-pairreuse floor",
+            SELECTED_PAIR_ENV: os.environ.get(SELECTED_PAIR_ENV),
+            SELECTED_DOWN_PAIR_ENV: os.environ.get(SELECTED_DOWN_PAIR_ENV),
+            SELECTED_Q6_DOWN_PAIR_ENV: os.environ.get(SELECTED_Q6_DOWN_PAIR_ENV),
         }
         if route_profile == ROUTE_PROFILE_Q4_SELECTED_PAIR
         else {
@@ -1045,6 +1060,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "package_min_rows_capability": POLICY_MIN_ROWS_CAPABILITY,
             "package_min_rows_verified": package_min_rows,
             "candidate_environment": candidate_environment,
+            "selected_pair_diagnostic": selected_pair_diagnostic_metadata(route_profile),
             "strict_environment": {
                 POLICY_ENV: "0",
                 **(

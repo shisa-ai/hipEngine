@@ -13,6 +13,20 @@ from scripts.execution_profile_gguf_batch_route_gate import (
 )
 
 
+def test_selected_pair_metadata_names_effective_scope_without_env_claims():
+    metadata = gate.selected_pair_diagnostic_metadata(gate.ROUTE_PROFILE_Q4_SELECTED_PAIR)
+    assert metadata == {
+        'owner': 'selected_pair_diagnostic',
+        'pair': 'session/package floor',
+        'down': 'session/package floor',
+        'q6_down': 'session/package floor',
+        'environment_overrides': 'ignored within candidate scope; unchanged in process',
+    }
+    metadata['pair'] = 'modified copy'
+    assert gate.SELECTED_PAIR_SCOPED_POLICY['pair'] == 'session/package floor'
+    assert gate.selected_pair_diagnostic_metadata(gate.ROUTE_PROFILE_CURRENT_DIRECT) is None
+
+
 def _step(token_id: int, logits: list[float]) -> dict[str, object]:
     return {"token_id": token_id, "logits": np.asarray(logits, dtype=np.float32)}
 

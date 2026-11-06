@@ -1750,7 +1750,7 @@
       "evidence": [
         "hipengine/runtime/qwen35_gguf_runner.py:9193-9195,10793-10889 retains three independent selected-pair controls."
       ],
-      "next_action": "Bind on/off comparisons to explicit scoped pair policy and migrate gate metadata/readers together; preserve request-local small-row scope and backend defaults.",
+      "next_action": "Scoped pair/down/Q6-down diagnostic and Q4 gate migration completed in c2609e289 (69 tests). Gate metadata now separates effective session/package-floor scope from unchanged ambient values (19 metadata/scope tests). Remaining: public native/serial/sparse/refill attribution and compatibility reader retirement after external-caller review; preserve request-local width floors and defaults.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
