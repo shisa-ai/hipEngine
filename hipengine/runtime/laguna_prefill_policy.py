@@ -36,3 +36,21 @@ def resolve_laguna_cached_prefill_policy(
         ) if value is None else value)
         for name, value in requested.items()
     })
+
+
+def select_laguna_long_attention_route(
+    *, enabled: bool, bounded: bool, short_route: bool, full_attention: bool,
+    rows: int, start: int, context_length: int, q_heads: int, kv_heads: int,
+    head_dim: int,
+) -> str | None:
+    """Select bounded or full-score execution without conflating their owners."""
+    if (
+        not enabled or short_route or not full_attention
+        or rows not in {128, 256, 512, 1_024, 2_048}
+        or (rows != 128 and not bounded)
+        or (rows == 128 and start < 4_096)
+        or start + rows > context_length
+        or (q_heads, kv_heads, head_dim) != (48, 8, 128)
+    ):
+        return None
+    return "bounded" if bounded else "full_score"

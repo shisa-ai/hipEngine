@@ -42,3 +42,27 @@ def test_cached_prefill_policy_preserves_independent_overrides(monkeypatch, valu
                      for name, value in zip(names, values) if value is None]
     with pytest.raises(FrozenInstanceError):
         result.cached_meta = True
+
+
+@pytest.mark.parametrize("rows", [17, 127, 128, 129, 256, 512, 1024, 2048])
+@pytest.mark.parametrize("start", [0, 4095, 4096, 4231])
+@pytest.mark.parametrize("enabled,bounded,short_route,full_attention", tuple(product([False, True], repeat=4)))
+def test_long_attention_route_preserves_existing_selection(rows, start, enabled, bounded, short_route, full_attention):
+    expected = enabled and not short_route and full_attention and rows in {128, 256, 512, 1024, 2048}
+    expected = expected and (rows == 128 or bounded) and (rows > 128 or start >= 4096)
+    result = policy.select_laguna_long_attention_route(
+        enabled=enabled, bounded=bounded, short_route=short_route,
+        full_attention=full_attention, rows=rows, start=start, context_length=8192,
+        q_heads=48, kv_heads=8, head_dim=128,
+    )
+    assert result == (("bounded" if bounded else "full_score") if expected else None)
+
+
+@pytest.mark.parametrize("override", [
+    {"context_length": 4223}, {"q_heads": 47}, {"kv_heads": 4}, {"head_dim": 64},
+])
+def test_long_attention_route_rejects_incompatible_capacity_or_geometry(override):
+    args = dict(enabled=True, bounded=True, short_route=False, full_attention=True,
+                rows=128, start=4096, context_length=8192, q_heads=48, kv_heads=8, head_dim=128)
+    args.update(override)
+    assert policy.select_laguna_long_attention_route(**args) is None

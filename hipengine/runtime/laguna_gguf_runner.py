@@ -121,6 +121,7 @@ from hipengine.runtime.laguna_moe import (
 )
 from hipengine.runtime.laguna_prefill_policy import (
     LagunaCachedPrefillPolicy, resolve_laguna_cached_prefill_policy,
+    select_laguna_long_attention_route,
 )
 from hipengine.runtime.laguna_rope import (
     LagunaDeviceRoPETables,
@@ -130,7 +131,6 @@ from hipengine.runtime.laguna_rope import (
 
 LAGUNA_DFLASH_CAPTURE_DEPTHS = (2, 11, 20, 30, 39, 48)
 _DEFAULT_CONTEXT_LENGTH = 4_096
-_LONG_ATTENTION_MIN_START = 4_096
 _EXPECTED_HEAD_COUNTS = tuple([48, 72, 72, 72] * 12)
 _EXPECTED_LAYER_TYPES = tuple(
     FULL_ATTENTION if layer_id % 4 == 0 else SLIDING_ATTENTION for layer_id in range(48)
@@ -5355,6 +5355,7 @@ class LagunaGGUFResidentSession:
                 )
                 use_attention_hipblaslt = False
                 use_long_attention_hipblaslt = False
+                long_attention_route = None
                 if (
                     self.prefill_attention_hipblaslt
                     and self.kv_cache.can_dense_initial_prefill(
@@ -5380,25 +5381,16 @@ class LagunaGGUFResidentSession:
                             head_dim=config.key_length,
                         )
                     )
-                    use_long_attention_hipblaslt = (
-                        self.prefill_long_attention_hipblaslt
-                        and not use_attention_hipblaslt
-                        and layer.attention_type == FULL_ATTENTION
-                        and attention_rows
-                        in {128, 256, 512, 1_024, 2_048}
-                        and (
-                            attention_rows == 128
-                            or self.prefill_block_attention_hipblaslt
-                        )
-                        and (
-                            attention_rows > 128
-                            or blas_start >= _LONG_ATTENTION_MIN_START
-                        )
-                        and blas_start + attention_rows <= self.context_length
-                        and state.q_heads == 48
-                        and config.head_count_kv == 8
-                        and config.key_length == 128
+                    long_attention_route = select_laguna_long_attention_route(
+                        enabled=self.prefill_long_attention_hipblaslt,
+                        bounded=self.prefill_block_attention_hipblaslt,
+                        short_route=use_attention_hipblaslt,
+                        full_attention=layer.attention_type == FULL_ATTENTION,
+                        rows=attention_rows, start=blas_start,
+                        context_length=self.context_length, q_heads=state.q_heads,
+                        kv_heads=config.head_count_kv, head_dim=config.key_length,
                     )
+                    use_long_attention_hipblaslt = long_attention_route is not None
                 if (
                     self.prefill_attention_hipblaslt_packed_query_producer
                     and query_is_packed != use_attention_hipblaslt
@@ -5417,10 +5409,7 @@ class LagunaGGUFResidentSession:
                     )
                     attention_route = (
                         self._ensure_block_attention_hipblaslt(attention_rows)
-                        if (
-                            use_long_attention_hipblaslt
-                            and self.prefill_block_attention_hipblaslt
-                        )
+                        if long_attention_route == "bounded"
                         else self._ensure_long_attention_hipblaslt()
                         if use_long_attention_hipblaslt
                         else self._ensure_attention_hipblaslt()
