@@ -5,6 +5,39 @@ from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
 from hipengine.speculative.prefix_checkpoint import PrefixCheckpointStore
 
 
+def test_unpaired_provider_owners_consume_shared_idle_allowance():
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    calls = []
+    pool = SimpleNamespace(trim_idle=lambda limit: calls.append(limit))
+    runner._prefix_state_snapshots = {(1,): SimpleNamespace(
+        snapshot=SimpleNamespace(nbytes=10, arena_pool=pool), retained=True)}
+    store = PrefixCheckpointStore(capacity=4, release=lambda _: None)
+    store.put((2,), (11,), SimpleNamespace(device_allocations=((4096, 30),)))
+    runner._mtp2_adapter = SimpleNamespace(_prefix_checkpoint_store_instance=store)
+    runner._prefix_snapshot_limit = 4
+    runner._prefix_retained_limit = 4
+    runner._prefix_retained_state_bytes_limit = 50
+    runner._trim_prefix_snapshots()
+    assert calls == [10]
+
+
+def test_unpaired_provider_overflow_is_evicted_without_target_loss():
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._prefix_state_snapshots = {(1,): SimpleNamespace(
+        snapshot=SimpleNamespace(nbytes=10), retained=True)}
+    released = []
+    store = PrefixCheckpointStore(capacity=4, release=released.append)
+    payload = SimpleNamespace(nbytes=60)
+    store.put((2,), (11,), payload)
+    runner._mtp2_adapter = SimpleNamespace(_prefix_checkpoint_store_instance=store)
+    runner._prefix_snapshot_limit = 4
+    runner._prefix_retained_limit = 4
+    runner._prefix_retained_state_bytes_limit = 50
+    runner._trim_prefix_snapshots()
+    assert released == [payload]
+    assert (1,) in runner._prefix_state_snapshots
+
+
 def test_owner_trim_bounds_provider_host_storage_without_dropping_target():
     runner = object.__new__(Qwen35GGUFResidentModelRunner)
     runner._prefix_state_snapshots = {(1,): SimpleNamespace(

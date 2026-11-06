@@ -163,6 +163,16 @@ class PrefixCheckpointStore:
             return ()
         return tuple(getattr(entry.payload, "device_allocations", ()))
 
+    def device_owner_charges_for(self, tokens: Sequence[int]) -> tuple[tuple[tuple[str, int], int], ...]:
+        """Inspect owner charges, with distinct namespaces for legacy payloads."""
+        entry = self._entries.get(_token_key(tokens))
+        if entry is None or entry.released:
+            return ()
+        inventory = getattr(entry.payload, "device_allocations", None)
+        if inventory is None:
+            return ((("payload", id(entry.payload)), int(getattr(entry.payload, "nbytes", 0))),)
+        return tuple((("device", int(ptr)), int(size)) for ptr, size in inventory)
+
     def token_keys(self) -> tuple[tuple[int, ...], ...]:
         """Return the stored prefixes, most recently used first."""
 

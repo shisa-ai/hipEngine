@@ -9279,7 +9279,9 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         self._prefix_phase_add("capture_evict", evict_start)
         self._prefix_phase_add("capture_total", phase_start)
 
-    def _retained_prefix_device_bytes(self, tokens: Sequence[tuple[int, ...]]) -> int:
+    def _retained_prefix_device_bytes(
+        self, tokens: Sequence[tuple[int, ...]], *, all_provider: bool = False,
+    ) -> int:
         """Union target/provider owning allocations for retained boundaries.
 
         Legacy payloads without inventories retain their reported byte charge,
@@ -9301,6 +9303,11 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             if store is not None:
                 for ptr, size in store.device_allocations_for(key):
                     allocations[int(ptr)] = max(allocations.get(int(ptr), 0), int(size))
+        if all_provider and store is not None:
+            for key in store.token_keys():
+                for (kind, identity), size in store.device_owner_charges_for(key):
+                    charges = allocations if kind == "device" else legacy
+                    charges[identity] = max(charges.get(identity, 0), size)
         return sum(allocations.values()) + sum(legacy.values())
 
     def _trim_prefix_snapshots(self) -> None:
@@ -9343,14 +9350,24 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             for tokens, entry in self._prefix_state_snapshots.items()
             if entry.retained
         ]
+        # Unpaired provider records cannot be evicted by target-boundary trim.
+        # Drop their LRU owners first rather than sacrificing reusable targets.
+        if provider_store is not None:
+            for key in reversed(provider_store.token_keys()):
+                if self._retained_prefix_device_bytes(
+                    retained, all_provider=True,
+                ) <= self._prefix_retained_state_bytes_limit:
+                    break
+                if key not in retained:
+                    provider_store.drop(key)
         while retained and (
             len(retained) > self._prefix_retained_limit
-            or self._retained_prefix_device_bytes(retained) > self._prefix_retained_state_bytes_limit
+            or self._retained_prefix_device_bytes(retained, all_provider=True) > self._prefix_retained_state_bytes_limit
         ):
             tokens = retained.pop(0)
             self._evict_prefix_snapshot(tokens, reason="trim_retained")
         remaining = max(0, self._prefix_retained_state_bytes_limit
-                        - self._retained_prefix_device_bytes(retained))
+                        - self._retained_prefix_device_bytes(retained, all_provider=True))
         for pool in pools.values():
             pool.trim_idle(remaining)
             # Quarantine remains charged but is never freed before retirement.
