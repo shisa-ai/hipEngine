@@ -2877,21 +2877,6 @@ lifetime and graph-held symbols after any source split. Run affected family pari
 and public generation with selected-symbol attribution; keep mechanical movement separate from
 arithmetic or default changes.
 
-### RF-10 / R0187 — Separate launch planning from direct-control migration
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `hipengine/runtime/gguf_linear.py`.
-
-**Remaining planning work:** bind reusable pair/triple/residual plans to RF-1's resolved profile owner;
-the private launch-local pair, fused pair-plus-SiLU, triple and residual plans are not cross-owner
-caches. Do not cache stale pointers or scratch generations in reusable policy. R0188 owns migration
-of non-staged providers before direct-control retirement.
-
-Done when: compare selected operations, operands and fallback reasons across threshold-straddling
-and unrelated shapes; test owner isolation, Q8T16 triple graph reuse, scratch invalidation and public
-commit/rollback lifecycle. Preserve the existing per-launch fallback and thread-selection contracts.
-
 ### R0189 — Packed-PARO transaction storage after journal integration
 
 Owner: `hipengine/generation/qwen35_paro_mtp2.py`.
@@ -3052,8 +3037,8 @@ Scope: `SubmitPollTextGenerator.submit_speculative_many_detailed()`, `VERIFY_CHA
 
 **Deferred provider migration:** inventory and migrate the remaining non-staged providers before
 removing synchronous selection, post-hoc work metadata and duplicate request/result ownership.
-RF-10's direct-control migration refers to this requirement, not a separate scheduler
-implementation.
+The former RF-10 planning entry delegates direct-control retirement to this provider migration;
+it does not require a separate scheduler implementation.
 
 Done when: Preserve the [`SPECDEC2.md`](reference/SPECDEC2.md) S3 direct-c1 ID/cycle and exact
 hidden/Conv/GDN/KV/cursor/following-AR gates, and S4 physical-c2/c4, late-admission/refill,

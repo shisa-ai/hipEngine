@@ -75,6 +75,28 @@ def test_async_decode_binds_profile_owner_and_restores_scope():
     assert own_launch_decision(peer) is peer
 
 
+def test_qwen_profiles_isolate_decisions_in_both_construction_orders():
+    from types import SimpleNamespace
+    from hipengine.generation import qwen35_dense_gfx1100_profiles as dense1100
+    from hipengine.generation import qwen35_dense_gfx1151_profiles as dense1151
+    from hipengine.generation import qwen35_moe_gfx1151_profiles as moe1151
+
+    for module in (dense1100, dense1151, moe1151):
+        for order in (('strict', 'production'), ('production', 'strict')):
+            generators = {}
+            for profile in order:
+                generator = SimpleNamespace()
+                getattr(module, f'_{profile}_binder')(generator, None)
+                generators[profile] = generator
+            decisions = {profile: Decision(1, profile) for profile in order}
+            for profile in (*order, *reversed(order)):
+                with launch_decision_session(generators[profile].launch_decision_owner):
+                    assert own_launch_decision(decisions[profile]) is decisions[profile]
+                    assert own_launch_decision(Decision(1, profile)) is decisions[profile]
+            assert all(len(generator.launch_decision_owner) == 1
+                       for generator in generators.values())
+
+
 def test_session_restores_owner_after_failure():
     owner = LaunchDecisionOwner()
     decision = Decision(1, 'pair')
