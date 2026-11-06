@@ -1802,11 +1802,13 @@ def test_laguna_preappend_cached_qrow4_matches_current_source_qrow4() -> None:
         backend="hip_gfx1151",
         runtime=runtime,
     )
+    from hipengine.runtime.laguna_prefill_policy import LagunaCachedPrefillPolicy
     cached = allocate_laguna_kv_cache(
         config,
         context_length=512,
         backend="hip_gfx1151",
         runtime=runtime,
+        cached_prefill_policy=LagunaCachedPrefillPolicy(True, True, True, True),
     )
     rows = 128
     rng = np.random.default_rng(20260726)
@@ -2094,6 +2096,17 @@ def test_laguna_preappend_cached_qrow4_matches_current_source_qrow4() -> None:
         np.testing.assert_array_equal(actual_swa, expected_swa)
         np.testing.assert_array_equal(actual_swa_meta, expected_swa)
         np.testing.assert_array_equal(actual_swa_dense_initial, expected_swa)
+        for layer_id, query, output, actual, expected in (
+            (0, global_query_rows, global_cached_out, actual_global, expected_global),
+            (1, swa_query_rows, swa_cached_out, actual_swa, expected_swa),
+        ):
+            cached.attend_prefill_cached(
+                layer_id, query.ptr, key_rows.ptr, value_rows.ptr, output.ptr,
+                rows, library=library,
+            )
+            runtime.device_synchronize()
+            copy_device_to_host(host_array_ptr(actual), output, actual.nbytes, runtime=runtime)
+            np.testing.assert_array_equal(actual, expected)
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
