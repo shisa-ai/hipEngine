@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import argparse
 from datetime import datetime, timezone
 import json
@@ -90,15 +91,17 @@ def _mode_order(
     return modes if (int(shape_index) + int(repetition)) % 2 == 0 else tuple(reversed(modes))
 
 
-def _set_mode(
+@contextmanager
+def _mode_scope(
     owner: LagunaGGUFResidentSession,
     mode: str,
     *,
     modes: tuple[str, str] = MODES,
-) -> None:
+):
     if mode not in modes:
         raise ValueError(f"unknown Laguna grouped-down mode {mode!r}")
-    owner.set_selected_down_mode(mode)
+    with owner.selected_moe_diagnostic(down=mode):
+        yield
 
 
 def _comparison_summary(
@@ -380,17 +383,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             for shape_index, value in enumerate(rows):
                 for mode in _mode_order(shape_index, 0, modes=modes):
                     owner.reset_state()
-                    _set_mode(owner, mode, modes=modes)
-                    owner.prefill(token_stream[:value])
+                    with _mode_scope(owner, mode, modes=modes):
+                        owner.prefill(token_stream[:value])
         for repetition in range(args.repetitions):
             for shape_index, value in enumerate(rows):
                 for mode in _mode_order(shape_index, repetition, modes=modes):
                     owner.reset_state()
-                    _set_mode(owner, mode, modes=modes)
-                    started = time.perf_counter()
-                    result = owner.prefill(token_stream[:value])
-                    runtime.device_synchronize()
-                    elapsed = time.perf_counter() - started
+                    with _mode_scope(owner, mode, modes=modes):
+                        started = time.perf_counter()
+                        result = owner.prefill(token_stream[:value])
+                        runtime.device_synchronize()
+                        elapsed = time.perf_counter() - started
                     samples[mode][value].append(elapsed)
                     next_tokens[mode][value].append(int(result.next_token_id))
                     print(

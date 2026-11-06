@@ -8,7 +8,7 @@ from scripts.laguna_grouped_down_prefill_bench import (
     _comparison_summary,
     _grouped_combine_summary,
     _mode_order,
-    _set_mode,
+    _mode_scope,
 )
 
 
@@ -120,15 +120,18 @@ def test_grouped_down_summary_fails_mismatch_or_slow_grouped_shape() -> None:
     assert "grouped_route_not_faster" in result["promotion"]["failed_checks"]
 
 
-def test_grouped_down_set_mode_uses_session_local_selector() -> None:
-    class Session:
-        selected: str | None = None
-
-        def set_selected_down_mode(self, mode: str) -> None:
-            self.selected = mode
-
-    session = Session()
-    _set_mode(session, "adaptive_grouped_smallm")  # type: ignore[arg-type]
-    assert session.selected == "adaptive_grouped_smallm"
+def test_grouped_down_mode_scope_restores_session_local_selector() -> None:
+    from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
+    session = object.__new__(LagunaGGUFResidentSession)
+    session.backend = "hip_gfx1151"
+    session.selected_gate_up_mode = "grouped_exact"
+    session.selected_down_mode = "direct"
+    with pytest.raises(RuntimeError, match="synthetic"):
+        with _mode_scope(session, "adaptive_grouped_smallm"):
+            assert session.selected_down_mode == "adaptive_grouped_smallm"
+            raise RuntimeError("synthetic")
+    assert session.selected_down_mode == "direct"
+    assert session.selected_gate_up_mode == "grouped_exact"
     with pytest.raises(ValueError, match="unknown Laguna grouped-down mode"):
-        _set_mode(session, "bogus")  # type: ignore[arg-type]
+        with _mode_scope(session, "bogus"):
+            pytest.fail("invalid mode entered")
