@@ -1,0 +1,484 @@
+{
+  "schema": 1,
+  "kind": "muse_glimmer_llamacpp_dflash_mtpbench_baseline",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "date": "2026-11-06",
+  "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified)",
+  "model_path": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+  "mmproj_path": "/models/gguf/Muse-Glimmer-30B-GGUF/mmproj-Muse-Glimmer-30B-Q4_K_M.gguf",
+  "draft_path": "/models/gguf/Muse-Glimmer-30B-GGUF/dflash-Muse-Glimmer-30B-Q4_K_M.gguf",
+  "prompt_suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "max_tokens": 512,
+  "temperature": 0.0,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 3,
+    "collected_at": "2026-11-06T11:58:35.577541+00:00",
+    "host_name": "zbook",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "b8bd9db393fdb1d1e87efd3fd7d8d11ba5d4cec6",
+    "git_branch": "muse-glimmer",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 2,
+    "dirty": true,
+    "dirty_paths": [],
+    "dirty_path_count": 0,
+    "untracked_paths": [
+      "benchmarks/results/2026-11-06-gfx1151-muse-glimmer-llamacpp-dflash-mtpbench-baseline.json",
+      "worklog/entries/20261106T115753.125991Z-lhl-muse-glimmer-4ba01b.md"
+    ],
+    "execution_affecting_dirty": false,
+    "execution_affecting_paths": [],
+    "configured_backend": "llamacpp_hip",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "0c34990e9926ceab29c14f6f253b5b90d7c48c204d1aa88d866c785220ce189e",
+      "size_bytes": 16756683904,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8377817664,
+        16755635328
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "f16/f16",
+    "command": [
+      "scripts/muse_glimmer_dflash_llamacpp_bench.py",
+      "--no-spawn",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8000",
+      "--max-tokens",
+      "512",
+      "--output",
+      "benchmarks/results/2026-11-06-gfx1151-muse-glimmer-llamacpp-dflash-mtpbench-baseline.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": "llama.cpp server predicted_n/predicted_ms; N+1 outputs, N timed transitions",
+    "warmups": null,
+    "repetitions": 1,
+    "profiler": null
+  },
+  "llama_cpp_commit": "e0f142d5ddc1461ce721644d92af33db23545105",
+  "runs": {
+    "dflash": {
+      "server_command": "<existing server at 127.0.0.1:8000>",
+      "server_log": null,
+      "no_spawn": true,
+      "natural": {
+        "prompt_file": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "request_count": 10,
+        "rows": [
+          {
+            "id": "code_merge_intervals",
+            "category": "code",
+            "wall_s": 21.692173914052546,
+            "content_sha256": "b45470382eb0ddb947d8a8fad7c860848399538a1e82777bd116528bf9629f25",
+            "content_chars": 2211,
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 85,
+              "prompt_ms": 492.029,
+              "prompt_per_token_ms": 5.788576470588235,
+              "prompt_per_second": 172.7540449851533,
+              "predicted_n": 512,
+              "predicted_ms": 21194.376,
+              "predicted_per_token_ms": 41.47627397260274,
+              "predicted_per_second": 24.110169603483488,
+              "draft_n": 516,
+              "draft_n_accepted": 338
+            },
+            "draft_acceptance": 0.6550387596899225,
+            "accepted_per_output": 0.66015625
+          },
+          {
+            "id": "code_topological_sort",
+            "category": "code",
+            "wall_s": 20.893010523053817,
+            "content_sha256": "83be426a8f9f1c577487ad2dd83e042d1a2a5471ac2ff0598796482af5cbdecf",
+            "content_chars": 2199,
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 94,
+              "prompt_ms": 553.924,
+              "prompt_per_token_ms": 5.8928085106382975,
+              "prompt_per_second": 169.69837017352563,
+              "predicted_n": 512,
+              "predicted_ms": 20323.777,
+              "predicted_per_token_ms": 39.77255772994129,
+              "predicted_per_second": 25.142964322035223,
+              "draft_n": 489,
+              "draft_n_accepted": 347
+            },
+            "draft_acceptance": 0.7096114519427403,
+            "accepted_per_output": 0.677734375
+          },
+          {
+            "id": "code_lru_cache",
+            "category": "code",
+            "wall_s": 21.60166804504115,
+            "content_sha256": "6e128316895ef62982105784bea53626487f1074cf4854b84aa4462d59b30d76",
+            "content_chars": 2214,
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 91,
+              "prompt_ms": 553.857,
+              "prompt_per_token_ms": 6.086340659340659,
+              "prompt_per_second": 164.30233796810367,
+              "predicted_n": 512,
+              "predicted_ms": 21034.235,
+              "predicted_per_token_ms": 41.162886497064584,
+              "predicted_per_second": 24.293728771215115,
+              "draft_n": 507,
+              "draft_n_accepted": 342
+            },
+            "draft_acceptance": 0.6745562130177515,
+            "accepted_per_output": 0.66796875
+          },
+          {
+            "id": "code_markdown_table",
+            "category": "code",
+            "wall_s": 22.014124528039247,
+            "content_sha256": "97703450f290910d95732dd366665e1065eb81d1b409493b5ffd916abd48e353",
+            "content_chars": 2293,
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 97,
+              "prompt_ms": 557.12,
+              "prompt_per_token_ms": 5.743505154639175,
+              "prompt_per_second": 174.10970706490522,
+              "predicted_n": 512,
+              "predicted_ms": 21441.842,
+              "predicted_per_token_ms": 41.96055185909981,
+              "predicted_per_second": 23.831907725091902,
+              "draft_n": 513,
+              "draft_n_accepted": 339
+            },
+            "draft_acceptance": 0.6608187134502924,
+            "accepted_per_output": 0.662109375
+          },
+          {
+            "id": "general_en_plan",
+            "category": "general_en",
+            "wall_s": 27.275950631010346,
+            "content_sha256": "314d9ec561ab6c6a7b2b2b935e8fae78c662f3353398a0255909ae6619293c49",
+            "content_chars": 2394,
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 84,
+              "prompt_ms": 512.326,
+              "prompt_per_token_ms": 6.099119047619048,
+              "prompt_per_second": 163.95810480045907,
+              "predicted_n": 512,
+              "predicted_ms": 26749.685,
+              "predicted_per_token_ms": 52.34772015655577,
+              "predicted_per_second": 19.103028689870552,
+              "draft_n": 640,
+              "draft_n_accepted": 297
+            },
+            "draft_acceptance": 0.4640625,
+            "accepted_per_output": 0.580078125
+          },
+          {
+            "id": "general_en_explain",
+            "category": "general_en",
+            "wall_s": 31.062899344949983,
+            "content_sha256": "9c7d2c4381eaf7cd675d542cbbacd9e842490c5b83ae0a156556339f4720ba08",
+            "content_chars": 2406,
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 83,
+              "prompt_ms": 515.175,
+              "prompt_per_token_ms": 6.206927710843373,
+              "prompt_per_second": 161.11030232445287,
+              "predicted_n": 512,
+              "predicted_ms": 30533.509,
+              "predicted_per_token_ms": 59.75246379647749,
+              "predicted_per_second": 16.73571157510917,
+              "draft_n": 731,
+              "draft_n_accepted": 267
+            },
+            "draft_acceptance": 0.3652530779753762,
+            "accepted_per_output": 0.521484375
+          },
+          {
+            "id": "general_ja_plan",
+            "category": "general_ja",
+            "wall_s": 26.732456644997,
+            "content_sha256": "10545b61ee0d2ea50e9b877e2afe5e3e449fdbe9a406864fe10bb0d40f9f434d",
+            "content_chars": 1703,
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 91,
+              "prompt_ms": 556.467,
+              "prompt_per_token_ms": 6.115021978021978,
+              "prompt_per_second": 163.53170987677615,
+              "predicted_n": 512,
+              "predicted_ms": 26161.013,
+              "predicted_per_token_ms": 51.19572015655577,
+              "predicted_per_second": 19.53288276719254,
+              "draft_n": 625,
+              "draft_n_accepted": 302
+            },
+            "draft_acceptance": 0.4832,
+            "accepted_per_output": 0.58984375
+          },
+          {
+            "id": "general_ja_explain",
+            "category": "general_ja",
+            "wall_s": 29.01394028996583,
+            "content_sha256": "16d25ad1a18601227eee63cb7e283b0620ec95274def9390b052ac3fb7a00fd8",
+            "content_chars": 2153,
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 89,
+              "prompt_ms": 559.085,
+              "prompt_per_token_ms": 6.28185393258427,
+              "prompt_per_second": 159.18867435184274,
+              "predicted_n": 512,
+              "predicted_ms": 28439.438,
+              "predicted_per_token_ms": 55.65447749510763,
+              "predicted_per_second": 17.96800625947672,
+              "draft_n": 680,
+              "draft_n_accepted": 284
+            },
+            "draft_acceptance": 0.4176470588235294,
+            "accepted_per_output": 0.5546875
+          },
+          {
+            "id": "mixed_ja_en_translate",
+            "category": "mixed_ja_en",
+            "wall_s": 18.04988534504082,
+            "content_sha256": "e0c28bac416dd24048150b6631baab1d9d66c3c83b38585b17c4f4bbfcfc3d3b",
+            "content_chars": 1536,
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 108,
+              "prompt_ms": 603.816,
+              "prompt_per_token_ms": 5.590888888888889,
+              "prompt_per_second": 178.86243491394728,
+              "predicted_n": 397,
+              "predicted_ms": 17431.418,
+              "predicted_per_token_ms": 44.01873232323233,
+              "predicted_per_second": 22.717601058043584,
+              "draft_n": 417,
+              "draft_n_accepted": 257
+            },
+            "draft_acceptance": 0.6163069544364509,
+            "accepted_per_output": 0.6473551637279596
+          },
+          {
+            "id": "mixed_ja_en_review",
+            "category": "mixed_ja_en",
+            "wall_s": 21.823307542013936,
+            "content_sha256": "29f9427449b3412a7c8c78b2a28ef90c7305218d01210dcb9c447f5867294dec",
+            "content_chars": 2178,
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 117,
+              "prompt_ms": 606.573,
+              "prompt_per_token_ms": 5.184384615384615,
+              "prompt_per_second": 192.8869237503153,
+              "predicted_n": 512,
+              "predicted_ms": 21202.919,
+              "predicted_per_token_ms": 41.49299217221135,
+              "predicted_per_second": 24.10045522505651,
+              "draft_n": 505,
+              "draft_n_accepted": 342
+            },
+            "draft_acceptance": 0.6772277227722773,
+            "accepted_per_output": 0.66796875
+          }
+        ],
+        "summary": {
+          "requests": 10,
+          "concurrency": 1,
+          "predicted_per_second_median": 23.274754391567743,
+          "predicted_per_second_weighted": 21.34217215093259,
+          "aggregate_decode_ms_total": 234512.212,
+          "aggregate_decode_predicted_per_second": 21.34217215093259,
+          "first_output_tokens_untimed": 10,
+          "timed_decode_transitions": 4995,
+          "transition_normalized_predicted_per_second": 21.299530448333325,
+          "aggregate_decode_transition_per_second": 21.299530448333325,
+          "client_wall_s_total": 240.1598116098903,
+          "request_wall_s_total": 240.15941680816468,
+          "client_aggregate_predicted_per_second": 20.84028949910237,
+          "draft_n": 5623,
+          "draft_n_accepted": 3115,
+          "draft_acceptance": 0.5539747465765605,
+          "accepted_per_output": 0.6223776223776224,
+          "denominators": {
+            "draft_acceptance": "draft_n_accepted / draft_n",
+            "accepted_per_output": "draft_n_accepted / predicted_n",
+            "native_predicted_per_second": "predicted_n / predicted_ms",
+            "transition_normalized_predicted_per_second": "(predicted_n - one prompt-produced first output token per request) / predicted_ms"
+          },
+          "timing_boundary": {
+            "source": "llama.cpp server_slot::t_start_generation/t_token_generation",
+            "first_output_token": "sampled before t_start_generation and included in predicted_n",
+            "predicted_ms": "wall from the first sampled output through subsequent decode transitions",
+            "cross_engine_rule": "request N+1 outputs and report N timed transitions per prompt"
+          }
+        },
+        "category_summary": {
+          "code": {
+            "requests": 4,
+            "concurrency": 1,
+            "predicted_per_second_median": 24.2019491873493,
+            "predicted_per_second_weighted": 24.382627235227943,
+            "aggregate_decode_ms_total": 83994.23,
+            "aggregate_decode_predicted_per_second": 24.382627235227943,
+            "first_output_tokens_untimed": 4,
+            "timed_decode_transitions": 2044,
+            "transition_normalized_predicted_per_second": 24.33500491640914,
+            "aggregate_decode_transition_per_second": 24.33500491640914,
+            "client_wall_s_total": 86.20097701018676,
+            "request_wall_s_total": 86.20097701018676,
+            "client_aggregate_predicted_per_second": 23.758431412650676,
+            "draft_n": 2025,
+            "draft_n_accepted": 1366,
+            "draft_acceptance": 0.6745679012345679,
+            "accepted_per_output": 0.6669921875,
+            "denominators": {
+              "draft_acceptance": "draft_n_accepted / draft_n",
+              "accepted_per_output": "draft_n_accepted / predicted_n",
+              "native_predicted_per_second": "predicted_n / predicted_ms",
+              "transition_normalized_predicted_per_second": "(predicted_n - one prompt-produced first output token per request) / predicted_ms"
+            },
+            "timing_boundary": {
+              "source": "llama.cpp server_slot::t_start_generation/t_token_generation",
+              "first_output_token": "sampled before t_start_generation and included in predicted_n",
+              "predicted_ms": "wall from the first sampled output through subsequent decode transitions",
+              "cross_engine_rule": "request N+1 outputs and report N timed transitions per prompt"
+            }
+          },
+          "general_en": {
+            "requests": 2,
+            "concurrency": 1,
+            "predicted_per_second_median": 17.91937013248986,
+            "predicted_per_second_weighted": 17.87609817986057,
+            "aggregate_decode_ms_total": 57283.194,
+            "aggregate_decode_predicted_per_second": 17.87609817986057,
+            "first_output_tokens_untimed": 2,
+            "timed_decode_transitions": 1022,
+            "transition_normalized_predicted_per_second": 17.84118392560303,
+            "aggregate_decode_transition_per_second": 17.84118392560303,
+            "client_wall_s_total": 58.33884997596033,
+            "request_wall_s_total": 58.33884997596033,
+            "client_aggregate_predicted_per_second": 17.552625744627456,
+            "draft_n": 1371,
+            "draft_n_accepted": 564,
+            "draft_acceptance": 0.4113785557986871,
+            "accepted_per_output": 0.55078125,
+            "denominators": {
+              "draft_acceptance": "draft_n_accepted / draft_n",
+              "accepted_per_output": "draft_n_accepted / predicted_n",
+              "native_predicted_per_second": "predicted_n / predicted_ms",
+              "transition_normalized_predicted_per_second": "(predicted_n - one prompt-produced first output token per request) / predicted_ms"
+            },
+            "timing_boundary": {
+              "source": "llama.cpp server_slot::t_start_generation/t_token_generation",
+              "first_output_token": "sampled before t_start_generation and included in predicted_n",
+              "predicted_ms": "wall from the first sampled output through subsequent decode transitions",
+              "cross_engine_rule": "request N+1 outputs and report N timed transitions per prompt"
+            }
+          },
+          "general_ja": {
+            "requests": 2,
+            "concurrency": 1,
+            "predicted_per_second_median": 18.750444513334628,
+            "predicted_per_second_weighted": 18.754423841663872,
+            "aggregate_decode_ms_total": 54600.451,
+            "aggregate_decode_predicted_per_second": 18.754423841663872,
+            "first_output_tokens_untimed": 2,
+            "timed_decode_transitions": 1022,
+            "transition_normalized_predicted_per_second": 18.71779410759812,
+            "aggregate_decode_transition_per_second": 18.71779410759812,
+            "client_wall_s_total": 55.74639693496283,
+            "request_wall_s_total": 55.74639693496283,
+            "client_aggregate_predicted_per_second": 18.368900167568878,
+            "draft_n": 1305,
+            "draft_n_accepted": 586,
+            "draft_acceptance": 0.44904214559386973,
+            "accepted_per_output": 0.572265625,
+            "denominators": {
+              "draft_acceptance": "draft_n_accepted / draft_n",
+              "accepted_per_output": "draft_n_accepted / predicted_n",
+              "native_predicted_per_second": "predicted_n / predicted_ms",
+              "transition_normalized_predicted_per_second": "(predicted_n - one prompt-produced first output token per request) / predicted_ms"
+            },
+            "timing_boundary": {
+              "source": "llama.cpp server_slot::t_start_generation/t_token_generation",
+              "first_output_token": "sampled before t_start_generation and included in predicted_n",
+              "predicted_ms": "wall from the first sampled output through subsequent decode transitions",
+              "cross_engine_rule": "request N+1 outputs and report N timed transitions per prompt"
+            }
+          },
+          "mixed_ja_en": {
+            "requests": 2,
+            "concurrency": 1,
+            "predicted_per_second_median": 23.409028141550046,
+            "predicted_per_second_weighted": 23.528292979377387,
+            "aggregate_decode_ms_total": 38634.337,
+            "aggregate_decode_predicted_per_second": 23.528292979377387,
+            "first_output_tokens_untimed": 2,
+            "timed_decode_transitions": 907,
+            "transition_normalized_predicted_per_second": 23.476525558080628,
+            "aggregate_decode_transition_per_second": 23.476525558080628,
+            "client_wall_s_total": 39.873192887054756,
+            "request_wall_s_total": 39.873192887054756,
+            "client_aggregate_predicted_per_second": 22.797271404245038,
+            "draft_n": 922,
+            "draft_n_accepted": 599,
+            "draft_acceptance": 0.6496746203904555,
+            "accepted_per_output": 0.658965896589659,
+            "denominators": {
+              "draft_acceptance": "draft_n_accepted / draft_n",
+              "accepted_per_output": "draft_n_accepted / predicted_n",
+              "native_predicted_per_second": "predicted_n / predicted_ms",
+              "transition_normalized_predicted_per_second": "(predicted_n - one prompt-produced first output token per request) / predicted_ms"
+            },
+            "timing_boundary": {
+              "source": "llama.cpp server_slot::t_start_generation/t_token_generation",
+              "first_output_token": "sampled before t_start_generation and included in predicted_n",
+              "predicted_ms": "wall from the first sampled output through subsequent decode transitions",
+              "cross_engine_rule": "request N+1 outputs and report N timed transitions per prompt"
+            }
+          }
+        }
+      }
+    }
+  },
+  "notes": [
+    "Gate B target for hipEngine Muse Glimmer DFlash (campaign MUSE-GLIMMER.md).",
+    "External llama.cpp diagnostic; no hipEngine correctness gate is implied.",
+    "Decode rate is the cross-engine transition-normalized boundary: sum(predicted_n - 1) * 1000 / sum(predicted_ms).",
+    "base mode is the same-suite true no-spec AR control."
+  ]
+}
