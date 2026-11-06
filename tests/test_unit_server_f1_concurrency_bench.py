@@ -663,7 +663,8 @@ def test_hipengine_command_separates_generation_window_from_prefill_chunk(
 
     assert command[command.index("--generation-batch-window-ms") + 1] == "5.0"
     assert env["HIPENGINE_MAX_PREFILL_CHUNK_TOKENS"] == "256"
-    assert env["HIPENGINE_GGUF_AR_PACKED_DECODE"] == "1"
+    assert "HIPENGINE_GGUF_AR_PACKED_DECODE" not in env
+    assert "--ar-packed-decode" in command
 
 
 def test_hipengine_serial_route_disables_actual_packed_decode_selector(
@@ -686,7 +687,8 @@ def test_hipengine_serial_route_disables_actual_packed_decode_selector(
         port=19123,
     )
     assert env["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] == "0"
-    assert env["HIPENGINE_GGUF_AR_PACKED_DECODE"] == "0"
+    assert "HIPENGINE_GGUF_AR_PACKED_DECODE" not in env
+    assert "--no-ar-packed-decode" in _command
 
 
 def test_hipengine_command_forwards_explicit_int8_kv_policy(tmp_path: Path) -> None:
@@ -882,7 +884,7 @@ def test_effective_server_environment_records_revalidation_axes(
     assert environment["HIP_VISIBLE_DEVICES"] == "7"
     assert environment["ROCR_VISIBLE_DEVICES"] is None
     assert environment["HIPENGINE_PREFILL_DECODE_POLICY"] == "fair"
-    assert environment["HIPENGINE_GGUF_AR_PACKED_DECODE"] == "1"
+    assert "HIPENGINE_GGUF_AR_PACKED_DECODE" not in environment
 
 
 def test_hardware_queue_cli_defaults_to_retained_queue2_and_rejects_unset(

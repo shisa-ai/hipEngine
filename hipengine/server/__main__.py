@@ -159,6 +159,12 @@ def build_parser() -> argparse.ArgumentParser:
             f"certified plan and the migration path otherwise (env {EXECUTION_PROFILE_ENV})"
         ),
     )
+    parser.add_argument(
+        "--ar-packed-decode",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Select packed AR decode explicitly; --no-ar-packed-decode uses serial decode",
+    )
     parser.add_argument("--served-model-name", help="Public model id exposed by /v1/models")
     parser.add_argument(
         "--api-key",
@@ -496,6 +502,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         backend=args.backend,
         quant=args.quant,
         execution_profile=args.execution_profile,
+        ar_packed_decode=args.ar_packed_decode,
         served_model_name=args.served_model_name,
         api_key=args.api_key,
         eager_load=args.eager_load,

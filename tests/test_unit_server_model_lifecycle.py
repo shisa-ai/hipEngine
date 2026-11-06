@@ -190,6 +190,16 @@ def test_build_engine_passes_exact_factory_kwargs_and_omits_absent_dms() -> None
     assert "dms" not in calls[0][1]
 
 
+@pytest.mark.parametrize("selected", [False, True])
+def test_build_engine_forwards_explicit_packed_decode(selected) -> None:
+    calls = []
+    _lifecycle([]).build_engine(
+        _spec(ar_packed_decode=selected),
+        lambda model, **kwargs: calls.append(kwargs),
+    )
+    assert calls[0]["ar_packed_decode"] is selected
+
+
 def test_build_engine_forwards_hot_vocabulary_intent() -> None:
     calls = []
     _lifecycle([]).build_engine(

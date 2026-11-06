@@ -833,6 +833,9 @@ class _ContainmentOwner:
         # the one a fallback step uses; mirror that private name here.
         self.shared = SimpleNamespace(_runtime=self.runtime)
 
+    def _ar_packed_decode_enabled(self) -> bool:
+        return True
+
     def _get_shared_runner(self):
         return self.shared
 

@@ -456,6 +456,7 @@ class ServerConfig:
     vision_max_image_bytes: int | None = None
     created: int = field(default_factory=lambda: int(time.time()))
     execution_profile: str | None = None
+    ar_packed_decode: bool | None = None
 
     def __post_init__(self) -> None:
         from hipengine.execution_profiles import resolve_requested_execution_profile
@@ -5042,6 +5043,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         backend=config.backend,
         quant=config.quant,
         execution_profile=config.execution_profile,
+        ar_packed_decode=config.ar_packed_decode,
         max_active_requests=config.max_active_requests,
         max_sequence_length=config.max_context_tokens,
         dms=config.dms,

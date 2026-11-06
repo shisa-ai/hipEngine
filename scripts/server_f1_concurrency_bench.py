@@ -87,7 +87,6 @@ _EFFECTIVE_SERVER_ENV_KEYS = (
     "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS",
     "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS",
     "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE",
-    "HIPENGINE_GGUF_AR_PACKED_DECODE",
     "HIP_VISIBLE_DEVICES",
     "ROCR_VISIBLE_DEVICES",
     "GPU_MAX_HW_QUEUES",
@@ -1834,11 +1833,12 @@ def _server_command_and_env(
         env["HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE"] = (
             "1" if native_batch else "0"
         )
-        env["HIPENGINE_GGUF_AR_PACKED_DECODE"] = "1" if native_batch else "0"
+        env.pop("HIPENGINE_GGUF_AR_PACKED_DECODE", None)
         command = [
             str(args.hipengine_python),
             "-m",
             "hipengine.server",
+            "--ar-packed-decode" if native_batch else "--no-ar-packed-decode",
             "--model",
             str(args.model),
             "--backend",
@@ -2744,6 +2744,10 @@ def _hardware_capture(args: argparse.Namespace, *, engine: str) -> dict[str, Any
             args.gpu_max_hw_queues
         ),
         "memory_domain": str(args.memory_domain),
+        "effective_execution_control": (
+            {"ar_packed_decode": args.hipengine_route_expectation == "native"}
+            if engine == "hipengine" else {}
+        ),
         "effective_server_environment": _effective_server_environment(
             args,
             engine=engine,
