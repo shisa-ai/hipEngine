@@ -115,6 +115,17 @@ def test_state_repeat_gate_rejects_nonfinite_layout_or_digest_drift() -> None:
     ]
 
 
+def test_route_owner_metadata_does_not_claim_launch_engagement():
+    strict = gate.route_owner_metadata(gate.STRICT_ENVIRONMENT)
+    candidate = gate.route_owner_metadata(gate.CANDIDATES['router_f32w_coop_persistent'].environment)
+    assert strict['selection'] == 'separate_projections_topk'
+    assert strict['counter'] == 'none'
+    assert candidate['selection'] == 'cooperative_persistent'
+    assert candidate['counter'] == 'self_resetting_device'
+    assert candidate['environment_mutated'] is False
+    assert candidate['engagement'] == 'requested; requires launch trace'
+
+
 def test_router_candidate_declares_t2_mechanism_and_strict_fallback() -> None:
     candidate = gate.CANDIDATES["router_f32w_coop_persistent"]
     assert candidate.classification == "T2"

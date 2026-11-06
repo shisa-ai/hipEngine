@@ -90,6 +90,21 @@ STRICT_ENVIRONMENT = {
 }
 
 
+def route_owner_metadata(values: Mapping[str, str]) -> dict[str, object]:
+    """Describe requested comparison ownership, not observed kernel engagement."""
+    cooperative = str(values[_ROUTE_ENV_KEYS[0]]) == "1"
+    persistent = cooperative and str(values[_ROUTE_ENV_KEYS[1]]) == "1"
+    return {
+        "owner": "resident runner",
+        "selection": "cooperative_persistent" if persistent else (
+            "cooperative" if cooperative else "separate_projections_topk"
+        ),
+        "counter": "self_resetting_device" if persistent else "none",
+        "engagement": "requested; requires launch trace",
+        "environment_mutated": False,
+    }
+
+
 @contextmanager
 def route_owner(session, values: Mapping[str, str]) -> Iterator[None]:
     """Bind the comparison to its live runner without changing process state."""
@@ -399,6 +414,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "strict_fallback": candidate.strict_fallback,
             "strict_environment": dict(STRICT_ENVIRONMENT),
             "candidate_environment": dict(candidate.environment),
+            "strict_owner": route_owner_metadata(STRICT_ENVIRONMENT),
+            "candidate_owner": route_owner_metadata(candidate.environment),
         },
         "protocol": {
             "model": str(args.model.resolve()),
