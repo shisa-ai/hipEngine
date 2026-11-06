@@ -71,6 +71,35 @@ def test_workspace_lease_can_require_one_backing_chunk():
     pool.close()
 
 
+@pytest.mark.parametrize('budget', [None, 6 * 128])
+def test_confined_workspace_grows_whole_chunk_or_refuses_budget(budget):
+    pool, _ = _pool(pages=2)
+    pool._max_pages = None if budget is None else budget // pool.page_bytes
+    grown = []
+    def grow(count, start):
+        grown.append(count)
+        return (
+            {role: tuple(0xD000 + i * 256 for i in range(count))
+             for role in ('layer0.key', 'layer0.value')},
+            {'layer0.key': 0xE000, 'layer0.value': 0xF000}, {'arena': start},
+        )
+    pool._grow_storage = grow
+    pool.grow(2)
+    grown.clear()
+    # Four pages are free in aggregate, but neither chunk can hold three.
+    if budget is None:
+        pages = pool.lease_workspace('packed', 3, within_one_chunk=True)
+        assert grown and grown[0] >= 3
+        assert pool.workspace_backing_for_pages(pages) is not None
+        pool.release_workspace('packed')
+    else:
+        with pytest.raises(MemoryError, match='within the pool budget'):
+            pool.lease_workspace('packed', 3, within_one_chunk=True)
+        assert grown == []
+        assert pool.workspace_pages('packed') is None
+    pool.close()
+
+
 @pytest.mark.parametrize("fragmented", [False, True])
 @pytest.mark.parametrize("max_pages", [4, 8])
 def test_private_allocation_grows_a_whole_chunk_or_refuses(

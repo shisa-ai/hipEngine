@@ -442,9 +442,29 @@ class GlobalDeviceKVPool:
             self._ensure_free_pages(count, now_seconds=now_seconds)
             try:
                 if within_one_chunk:
-                    lease = self._allocate_within_one_chunk(
-                        lease_id, private_pages=count, require_contiguous=False,
-                    )
+                    try:
+                        lease = self._allocate_within_one_chunk(
+                            lease_id, private_pages=count, require_contiguous=False,
+                        )
+                    except MemoryError:
+                        # Aggregate free space may span chunks too small for this
+                        # base-pointer consumer. Grow one compatible chunk once.
+                        needed = (
+                            max(1, count - self.global_pool.free_pages)
+                            if self._contiguous_growth else count
+                        )
+                        growth = max(self._growth_chunk_pages, needed)
+                        if self.budget_bytes is not None:
+                            remaining = (self.budget_bytes - self.accounted_bytes) // self.page_bytes
+                            growth = min(growth, remaining)
+                        if growth < needed:
+                            raise MemoryError(
+                                f"cannot lease {count} workspace pages in one backing chunk within the pool budget"
+                            )
+                        self.grow(growth, now_seconds=now_seconds)
+                        lease = self._allocate_within_one_chunk(
+                            lease_id, private_pages=count, require_contiguous=False,
+                        )
                 else:
                     lease = self.global_pool.allocate(
                         lease_id,
