@@ -246,6 +246,18 @@ class PrefixCheckpointStore:
             dropped += 1
         return dropped
 
+    def trim_host_bytes(self, max_bytes: int) -> int:
+        """Evict least-recently-used payloads to an explicit host-byte bound."""
+        if int(max_bytes) < 0:
+            raise ValueError("checkpoint host-byte bound must be non-negative")
+        dropped = 0
+        while self._entries and self.host_nbytes > int(max_bytes):
+            key = next(iter(self._entries))
+            self.drop(key)
+            self._evicted += 1
+            dropped += 1
+        return dropped
+
     def clear(self) -> int:
         """Release every entry; return the number released."""
 

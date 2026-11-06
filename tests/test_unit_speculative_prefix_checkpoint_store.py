@@ -32,6 +32,24 @@ def _store(capacity: int = 4) -> tuple[PrefixCheckpointStore, _Recorder]:
     return PrefixCheckpointStore(capacity=capacity, release=recorder), recorder
 
 
+def test_host_byte_trim_evicts_lru_without_changing_device_semantics():
+    from types import SimpleNamespace
+    store, recorder = _store()
+    first = SimpleNamespace(nbytes=64, host_nbytes=1000)
+    second = SimpleNamespace(nbytes=32, host_nbytes=500)
+    store.put((1,), (10,), first)
+    store.put((2,), (11,), second)
+    assert store.trim_host_bytes(600) == 1
+    assert recorder.released == [first]
+    assert store.host_nbytes == 500
+    assert store.nbytes == 32
+    assert store.get((2,), (11,)) is second
+    assert store.trim_host_bytes(0) == 1
+    assert len(store) == 0
+    with pytest.raises(ValueError):
+        store.trim_host_bytes(-1)
+
+
 def test_host_and_device_byte_totals_remain_distinct():
     from types import SimpleNamespace
     store, _ = _store()
