@@ -3159,11 +3159,13 @@ close produces accepted disconnect cancellations for both requests, followed by 
 C2 reuse and zero tracked allocations after close. See
 [plan engagement](../worklog/entries/20261106T104328.194555Z-lhl-r0193-public-plan-3d6d60.md)
 and [disconnect attribution](../worklog/entries/20261106T104953.816152Z-lhl-r0192-cancel-attribution-f685eb.md).
-These checks do not establish single-row cancellation with surviving peer progress or
-exact device rollback-state parity.
+Exact device rollback-state parity remains separate. Internal service handles using public
+LLM eligibility resolution now confirm accepted single-child cancellation while a peer is
+live, replacement admission, and packed target calls for both survivor and replacement;
+see [packed peer check](../worklog/entries/20261106T105502.830749Z-lhl-r0192-packed-peer-46059f.md).
 
-Done when: complete public single-row cancellation/refill and independent peer progress
-with the batched MoE NextN provider. Preserve complete C1 legacy cycles and explicit
+Done when: complete the public single-row cancellation/refill surface with independent peer
+progress. Preserve complete C1 legacy cycles and explicit
 refusals for unsupported direct staged calls.
 
 ### R0193 — Replace MoE numerical-scope transport without changing arithmetic
