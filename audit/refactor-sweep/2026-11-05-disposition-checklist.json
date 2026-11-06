@@ -1948,11 +1948,12 @@
       "ledger_line": 1453,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/generation/qwen35_gguf.py:4743,5940,6185 constructs worker executors inside compatibility paths."
+        "0a360fa7d binds compatibility draft/verifier workers to one request; cef79c04b closes the ledger section.",
+        "worklog/entries/20261106T172526.012855Z-lhl-r0281-worker-closure-d3e41b.md records separate compatibility/public repeats, actual routes, EOS-driven width 2-to-1 groups and zero allocated bytes after close."
       ],
-      "next_action": "Draft and chunked verifier now collect every submitted future on worker/submission failure; focused RED/GREEN and chunked-verifier generation fixtures pass. Owner-lifetime versus loop extraction remains open, with public lifecycle matrix still needed. See worklog/entries/20261105T201131.034039Z-lhl-verifier-future-drain-0216c8.md.",
+      "next_action": "None: request-bounded workers, future draining, sibling cleanup and failure/cancellation/deadline shutdown are tested; no performance claim.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
