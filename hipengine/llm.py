@@ -370,6 +370,7 @@ class LLM:
         quant: str = AUTO_QUANT,
         execution_profile: str | None = None,
         ar_packed_decode: bool | None = None,
+        ar_stream_decode: bool | None = None,
         max_active_requests: int | None = None,
         max_sequence_length: int | None = None,
         vision_max_scratch_bytes: int | None = None,
@@ -453,6 +454,9 @@ class LLM:
         if ar_packed_decode is not None and not isinstance(ar_packed_decode, bool):
             raise ValueError("ar_packed_decode must be None or a bool")
         self.ar_packed_decode = ar_packed_decode
+        if ar_stream_decode is not None and not isinstance(ar_stream_decode, bool):
+            raise ValueError("ar_stream_decode must be None or a bool")
+        self.ar_stream_decode = ar_stream_decode
         self.quant = quant
         self.execution_profile = (
             None if requested_profile is None else requested_profile.value
@@ -1637,6 +1641,12 @@ class LLM:
                         "the selected generator has no explicit packed AR decode control"
                     )
                 generator.ar_packed_decode = self.ar_packed_decode
+            if self.ar_stream_decode is not None:
+                if not hasattr(generator, "ar_stream_decode"):
+                    raise NotImplementedError(
+                        "the selected generator has no explicit stream AR decode control"
+                    )
+                generator.ar_stream_decode = self.ar_stream_decode
             _declare_serving_capacity(generator, self.max_active_requests)
             if self.dms_metadata_path is not None:
                 configure_metadata_dms = getattr(generator, "configure_dms", None)

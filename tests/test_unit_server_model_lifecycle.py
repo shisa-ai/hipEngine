@@ -200,6 +200,16 @@ def test_build_engine_forwards_explicit_packed_decode(selected) -> None:
     assert calls[0]["ar_packed_decode"] is selected
 
 
+@pytest.mark.parametrize("selected", [False, True])
+def test_build_engine_forwards_explicit_stream_decode(selected) -> None:
+    calls = []
+    _lifecycle([]).build_engine(
+        _spec(ar_stream_decode=selected),
+        lambda model, **kwargs: calls.append(kwargs),
+    )
+    assert calls[0]["ar_stream_decode"] is selected
+
+
 def test_build_engine_forwards_hot_vocabulary_intent() -> None:
     calls = []
     _lifecycle([]).build_engine(

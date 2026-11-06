@@ -59,7 +59,6 @@ _EXACT_ENV = {
     "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
     "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
     "HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft",
-    "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
 }
 
 
@@ -427,11 +426,14 @@ def _temporary_packed_decode(runner: Any, enabled: bool) -> Iterator[None]:
     """Select the idle benchmark runner before admitting this sample's requests."""
     generator = runner.generator
     prior = generator.ar_packed_decode
+    prior_stream = generator.ar_stream_decode
     generator.ar_packed_decode = bool(enabled)
+    generator.ar_stream_decode = False
     try:
         yield
     finally:
         generator.ar_packed_decode = prior
+        generator.ar_stream_decode = prior_stream
 
 
 def _run_reference(session: Any, prompt: Sequence[int], max_tokens: int) -> _ReferenceRun:
@@ -618,9 +620,7 @@ def _run_http_sample(
     reclaimed_before = set(reclaimed)
     memory_before = _memory_snapshot(f"before_{config.name}", runner)
     capture_state["label"] = f"{config.name}:{run_index}"
-    route_env = {
-        "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
-    }
+    route_env: dict[str, str] = {}
     traces: list[_HTTPTrace] = []
     live_trigger: dict[str, Any] | None = None
     with _temporary_packed_decode(runner, config.packed_decode), _temporary_environment(route_env):

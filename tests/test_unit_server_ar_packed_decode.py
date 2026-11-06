@@ -16,6 +16,20 @@ def test_server_parser_and_config_preserve_explicit_packed_control(selected, opt
     assert llm.ar_packed_decode is selected
 
 
+@pytest.mark.parametrize("selected, option", [(False, "--no-ar-stream-decode"), (True, "--ar-stream-decode")])
+def test_server_parser_and_config_preserve_explicit_stream_control(selected, option):
+    args = build_parser().parse_args(["--model", "fake.gguf", option])
+    config = ServerConfig(model=args.model, ar_stream_decode=args.ar_stream_decode)
+    assert config.ar_stream_decode is selected
+    llm = LLM("fake.gguf", ar_stream_decode=config.ar_stream_decode)
+    assert llm.ar_stream_decode is selected
+
+
+def test_llm_rejects_non_boolean_stream_control():
+    with pytest.raises(ValueError, match="ar_stream_decode"):
+        LLM("fake.gguf", ar_stream_decode="0")
+
+
 def test_server_packed_control_is_unset_by_default():
     assert build_parser().parse_args(["--model", "fake.gguf"]).ar_packed_decode is None
     assert LLM("fake.gguf").ar_packed_decode is None

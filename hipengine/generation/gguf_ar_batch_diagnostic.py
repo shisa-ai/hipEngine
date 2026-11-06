@@ -137,12 +137,10 @@ def finish_ar_serving_slot_prefill(generator: Any, slot: Any, token_id: int, req
 
 
 def try_step_ar_serving_slots_batch(generator: Any, live_slots: list[Any], request: Any) -> bool:
-    from hipengine.generation.qwen35_gguf import _gguf_ar_stream_decode_enabled
-
     if len(live_slots) <= 1:
         return False
     chunks = generator._ar_serving_slot_chunks(live_slots)
-    if len(chunks) > 1 and _gguf_ar_stream_decode_enabled():
+    if len(chunks) > 1 and generator._ar_stream_decode_enabled():
         streamed = generator._try_step_ar_serving_slot_chunks_streams(chunks, request)
         if streamed:
             return True
@@ -212,10 +210,10 @@ def step_ar_serving_slot_chunk_packed(
 
 def try_step_ar_serving_slots_streams(generator: Any, live_slots: list[Any], request: Any) -> bool:
     from hipengine.generation.qwen35_gguf import (
-        _gguf_ar_stream_decode_enabled, _timing_add_ms, _timing_ms_since,
+        _timing_add_ms, _timing_ms_since,
     )
 
-    if len(live_slots) <= 1 or not _gguf_ar_stream_decode_enabled():
+    if len(live_slots) <= 1 or not generator._ar_stream_decode_enabled():
         return False
     generator._flush_ar_packed_decode_owners(live_slots)
     for slot in live_slots:

@@ -26,9 +26,7 @@ from hipengine.benchmark.provenance import collect_artifact_provenance
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-_ROUTE_ENV_KEYS = (
-    "HIPENGINE_GGUF_AR_STREAM_DECODE",
-)
+_ROUTE_ENV_KEYS: tuple[str, ...] = ()
 _PROVENANCE_ENV_KEYS = (
     "HIPENGINE_BACKEND",
     "HIPENGINE_HIP_ARCH",
@@ -76,14 +74,8 @@ def _parse_concurrencies(raw: str) -> tuple[int, ...]:
 
 
 def _execution_environment(mode: str) -> dict[str, str]:
-    if mode == "serial":
-        return {
-            "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
-        }
-    if mode == "package":
-        return {
-            "HIPENGINE_GGUF_AR_STREAM_DECODE": "1",
-        }
+    if mode in {"serial", "package"}:
+        return {}
     raise ValueError(f"unknown GGUF concurrency execution mode: {mode!r}")
 
 
@@ -92,14 +84,17 @@ def _temporary_execution_control(llm: Any, mode: str) -> Iterator[None]:
     generator = llm._get_text_generator()._runner.generator
     prior = generator.ar_packed_decode
     prior_prefill = generator.ar_packed_prefill
+    prior_stream = generator.ar_stream_decode
     generator.ar_packed_decode = mode == "package"
     generator.ar_packed_prefill = mode == "package"
+    generator.ar_stream_decode = mode == "package"
     try:
         with _temporary_environment(_execution_environment(mode)):
             yield
     finally:
         generator.ar_packed_decode = prior
         generator.ar_packed_prefill = prior_prefill
+        generator.ar_stream_decode = prior_stream
 
 
 @contextmanager
@@ -308,7 +303,7 @@ def _run_serial_control(
     )
     return {
         "mode": "serial",
-        "execution_control": {"ar_packed_decode": False, "ar_packed_prefill": False},
+        "execution_control": {"ar_packed_decode": False, "ar_packed_prefill": False, "ar_stream_decode": False},
         "concurrency": int(concurrency),
         "environment": _execution_environment("serial"),
         "route_ok": route_ok,
@@ -329,7 +324,7 @@ def _run_package_inventory(
         sample = _run_generation(llm, prompts=prompts, sampling=sampling)
     return {
         "mode": "package_inventory",
-        "execution_control": {"ar_packed_decode": True, "ar_packed_prefill": True},
+        "execution_control": {"ar_packed_decode": True, "ar_packed_prefill": True, "ar_stream_decode": True},
         "concurrency": int(concurrency),
         "environment": _execution_environment("package"),
         "timing_eligible": False,

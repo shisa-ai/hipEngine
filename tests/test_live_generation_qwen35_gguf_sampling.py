@@ -4889,9 +4889,8 @@ def test_gguf_ar_packed_decode_can_be_disabled(monkeypatch) -> None:
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
-    monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "0")
-
     generator = _generator()
+    generator.ar_stream_decode = False
     generator.ar_packed_decode = False
     generator.prepare()
     outputs = generator.generate_detailed(_request(prompts=("long", "long2"), max_tokens=3))
@@ -4965,9 +4964,8 @@ def test_gguf_ar_stream_decode_uses_async_slot_streams(monkeypatch) -> None:
 
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
     monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
-    monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "1")
-
     generator = _generator()
+    generator.ar_stream_decode = True
     generator.ar_packed_decode = False
     generator.prepare()
     outputs = generator.generate_detailed(_request(prompts=("long", "long2"), max_tokens=3))
@@ -6172,7 +6170,7 @@ def test_gguf_ar_batch_decode_fallback_advances_each_slot_once_per_cycle(monkeyp
     ]
 
     generator = _generator()
-    monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "0")
+    generator.ar_stream_decode = False
 
     from hipengine.generation import gguf_ar_batch_diagnostic as ar_diagnostic
 
@@ -6221,7 +6219,7 @@ def test_gguf_ar_batch_decode_runs_one_native_c8_group(monkeypatch) -> None:
 
     generator = _generator()
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
-    monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "0")
+    generator.ar_stream_decode = False
     from hipengine.generation.gguf_ar_batch_diagnostic import run_ar_serving_slots
 
     run_ar_serving_slots(generator, slots, _request(prompts=("long",) * 8, max_tokens=2))
@@ -6294,7 +6292,7 @@ def test_gguf_ar_batch_decode_streams_chunks_above_native_c8(monkeypatch) -> Non
 
     generator = _generator()
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
-    monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "1")
+    generator.ar_stream_decode = True
     from hipengine.generation.gguf_ar_batch_diagnostic import run_ar_serving_slots
 
     run_ar_serving_slots(generator, slots, _request(prompts=("long",) * 10, max_tokens=2))

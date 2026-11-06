@@ -68,6 +68,7 @@ class ModelBuildSpec:
     vae_model: str | None
     mtp_hot_vocab: str | None = None
     ar_packed_decode: bool | None = None
+    ar_stream_decode: bool | None = None
 
 
 class ModelLifecycle:
@@ -111,6 +112,8 @@ class ModelLifecycle:
         }
         if spec.ar_packed_decode is not None:
             kwargs["ar_packed_decode"] = spec.ar_packed_decode
+        if spec.ar_stream_decode is not None:
+            kwargs["ar_stream_decode"] = spec.ar_stream_decode
         if spec.mtp_hot_vocab is not None:
             kwargs["mtp_hot_vocab"] = spec.mtp_hot_vocab
         if spec.dms is not None:

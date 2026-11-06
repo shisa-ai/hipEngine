@@ -1468,6 +1468,8 @@ class Qwen35GGUFBringupGenerator:
     target_verifier_prefill_gdn_capture: bool | None = None
     # Explicit packed-decode selection; None uses the enabled package default.
     ar_packed_decode: bool | None = None
+    # Explicit stream selection; None temporarily uses the legacy package input.
+    ar_stream_decode: bool | None = None
     # Explicit packed-prefill selection; None uses the enabled package default.
     ar_packed_prefill: bool | None = None
     # Profile-owned cooperative F32 router policy. ``None`` selects the
@@ -1821,6 +1823,10 @@ class Qwen35GGUFBringupGenerator:
 
     def _ar_packed_prefill_enabled(self) -> bool:
         return self.ar_packed_prefill is not False
+
+    def _ar_stream_decode_enabled(self) -> bool:
+        selected = self.ar_stream_decode
+        return _gguf_ar_stream_decode_enabled() if selected is None else bool(selected)
 
     def _ar_packed_decode_enabled(self) -> bool:
         selected = self.ar_packed_decode
@@ -4289,7 +4295,7 @@ class Qwen35GGUFBringupGenerator:
             plan.mode is SamplingMode.GREEDY_FAST
             and len(request.prompts) > 1
             and shared_runner is not None
-            and (self._ar_packed_decode_enabled() or _gguf_ar_stream_decode_enabled())
+            and (self._ar_packed_decode_enabled() or self._ar_stream_decode_enabled())
         ):
             return self._generate_ar_serving_slots(shared_runner, request, plan=plan)
         if (

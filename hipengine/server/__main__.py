@@ -163,7 +163,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--ar-packed-decode",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Select packed AR decode explicitly; --no-ar-packed-decode uses serial decode",
+        help="Select packed AR decode explicitly; disable both packed and stream decode for serial comparison",
+    )
+    parser.add_argument(
+        "--ar-stream-decode",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Select AR stream decode explicitly; disable both stream and packed decode for serial comparison",
     )
     parser.add_argument("--served-model-name", help="Public model id exposed by /v1/models")
     parser.add_argument(
@@ -503,6 +509,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         quant=args.quant,
         execution_profile=args.execution_profile,
         ar_packed_decode=args.ar_packed_decode,
+        ar_stream_decode=args.ar_stream_decode,
         served_model_name=args.served_model_name,
         api_key=args.api_key,
         eager_load=args.eager_load,

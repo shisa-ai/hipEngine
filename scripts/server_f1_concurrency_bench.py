@@ -1839,6 +1839,7 @@ def _server_command_and_env(
             "-m",
             "hipengine.server",
             "--ar-packed-decode" if native_batch else "--no-ar-packed-decode",
+            "--no-ar-stream-decode",
             "--model",
             str(args.model),
             "--backend",
@@ -2745,7 +2746,8 @@ def _hardware_capture(args: argparse.Namespace, *, engine: str) -> dict[str, Any
         ),
         "memory_domain": str(args.memory_domain),
         "effective_execution_control": (
-            {"ar_packed_decode": args.hipengine_route_expectation == "native"}
+            {"ar_packed_decode": args.hipengine_route_expectation == "native",
+             "ar_stream_decode": False}
             if engine == "hipengine" else {}
         ),
         "effective_server_environment": _effective_server_environment(
