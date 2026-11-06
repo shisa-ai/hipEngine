@@ -239,6 +239,7 @@ def test_laguna_dflash_bounded_provider_through_service(tmp_path, monkeypatch):
     from hipengine.generation.engine_loop import SubmitPollTextGenerator
     from hipengine.generation.engine_service import EngineService
     from hipengine.generation.laguna_gguf import LagunaGGUFGenerator
+    from hipengine import LLM, SamplingParams
 
     class Target(_TargetGenerator):
         supports_speculative = True
@@ -269,10 +270,13 @@ def test_laguna_dflash_bounded_provider_through_service(tmp_path, monkeypatch):
     adapter = SubmitPollTextGenerator(target, capacity=2)
     service = EngineService(adapter, idle_wait_seconds=0.001)
     try:
-        outputs = service.generate_speculative_detailed(
-            _request(prompts=((7, 8), (9, 8))))
+        llm = LLM(str(model), backend="hip_gfx1151", speculative_provider="dflash",
+                  draft_model=str(snapshot), speculative_candidate_budget=4)
+        llm._text_generator = service
+        params = SamplingParams(max_tokens=3, temperature=0.0)
+        outputs = llm.generate_speculative_detailed(((7, 8), (9, 8)), params)
         assert [output.generated_token_ids for output in outputs] == [(10, 11, 24)] * 2
-        chunks = tuple(service.stream_speculative_detailed(_request()))
+        chunks = tuple(llm.stream_speculative_detailed((7, 8), params))
         assert chunks[-1].generated_token_ids == outputs[0].generated_token_ids
         assert set(threads) == {service.driver_thread_id}
         assert len({id(session) for session in sessions}) == 3
