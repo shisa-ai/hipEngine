@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
+from contextlib import nullcontext
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -410,6 +411,7 @@ def _oracle_gate(
     global_prefill_variant: str | None = None,
     swa_prefill_variant: str | None = None,
     session_configurator: Callable[[LagunaGGUFResidentSession], None] | None = None,
+    session_scope: Callable | None = None,
 ) -> dict[str, Any]:
     template = json.loads(args.template.read_text(encoding="utf-8"))
     oracle = json.loads(args.oracle.read_text(encoding="utf-8"))
@@ -426,14 +428,15 @@ def _oracle_gate(
     try:
         if session_configurator is not None:
             session_configurator(session)
-        result = session.prefill(prompt_ids)
-        logits = np.empty(session.config.vocab_size, dtype=np.float32)
-        owner.runtime.memcpy(
-            host_array_ptr(logits),
-            result.logits.ptr,
-            logits.nbytes,
-            HipMemcpyKind.DEVICE_TO_HOST,
-        )
+        with session_scope(session) if session_scope is not None else nullcontext():
+            result = session.prefill(prompt_ids)
+            logits = np.empty(session.config.vocab_size, dtype=np.float32)
+            owner.runtime.memcpy(
+                host_array_ptr(logits),
+                result.logits.ptr,
+                logits.nbytes,
+                HipMemcpyKind.DEVICE_TO_HOST,
+            )
     finally:
         session.close()
     reference = _normalized_log_probs(np.load(args.oracle_logprobs, allow_pickle=False))

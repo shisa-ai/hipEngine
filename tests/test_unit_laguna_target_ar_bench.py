@@ -13,6 +13,55 @@ from scripts.laguna_target_ar_bench import (
 )
 
 
+@pytest.mark.parametrize("failure", [False, True])
+def test_oracle_session_scope_covers_prefill_and_copy_then_restores(monkeypatch, tmp_path, failure):
+    from contextlib import contextmanager
+    import json
+    import numpy as np
+
+    template = tmp_path / "template.json"
+    oracle = tmp_path / "oracle.json"
+    distribution = tmp_path / "distribution.npy"
+    template.write_text(json.dumps({"cases": [{"name": "test", "token_ids": [1]}]}))
+    oracle.write_text(json.dumps({"prompt": {"case": "test"}, "first_token": {"id": 0}}))
+    np.save(distribution, np.zeros(2, dtype=np.float32))
+    events = []
+    active = []
+
+    @contextmanager
+    def scope(session):
+        active.append(True)
+        try:
+            yield
+        finally:
+            active.clear()
+            events.append("restore")
+
+    def prefill(tokens):
+        assert active
+        if failure:
+            raise RuntimeError("prefill failed")
+        return SimpleNamespace(logits=SimpleNamespace(ptr=1))
+
+    def copy(*args):
+        assert active
+        import ctypes
+        ctypes.memset(args[0], 0, args[2])
+        events.append("copy")
+
+    session = SimpleNamespace(config=SimpleNamespace(vocab_size=2), prefill=prefill,
+                              close=lambda: events.append("close"))
+    monkeypatch.setattr(benchmark, "_session", lambda *a, **kw: session)
+    args = SimpleNamespace(template=template, oracle=oracle, oracle_logprobs=distribution)
+    owner = SimpleNamespace(runtime=SimpleNamespace(memcpy=copy))
+    if failure:
+        with pytest.raises(RuntimeError, match="prefill failed"):
+            benchmark._oracle_gate(owner, args, session_scope=scope)
+    else:
+        assert benchmark._oracle_gate(owner, args, session_scope=scope)["pass"]
+    assert events[-2:] == ["restore", "close"]
+
+
 def _row(
     *,
     prompt_id: str,
