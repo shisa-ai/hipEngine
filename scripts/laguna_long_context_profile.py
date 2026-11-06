@@ -1149,8 +1149,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             mode == "candidate"
                         )
                     if args.compare_selected_natural_tile8_decode:
-                        owner.set_selected_natural_tile8_decode(
-                            mode == "candidate"
+                        decode_scopes.close()
+                        decode_scopes.enter_context(
+                            owner.selected_natural_tile8_diagnostic(mode == "candidate")
                         )
                     owner.reset_state()
                     started = time.perf_counter()

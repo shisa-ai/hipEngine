@@ -4290,6 +4290,16 @@ class LagunaGGUFResidentSession:
 
         self.use_selected_natural_decode = bool(enabled)
 
+    @contextlib.contextmanager
+    def selected_natural_tile8_diagnostic(self, enabled: bool):
+        """Restore the owner-local tile8 reference choice after every exit."""
+        previous = self.use_selected_natural_tile8_decode
+        try:
+            self.use_selected_natural_tile8_decode = bool(enabled)
+            yield
+        finally:
+            self.use_selected_natural_tile8_decode = previous
+
     def set_selected_natural_tile8_decode(self, enabled: bool) -> None:
         """Select the exact tile8 natural gate/up sibling."""
 

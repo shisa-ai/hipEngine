@@ -10,6 +10,22 @@ from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from scripts import laguna_long_context_profile as profiler
 
 
+def test_tile8_diagnostic_restores_owner_after_nested_failure():
+    owner = object.__new__(LagunaGGUFResidentSession)
+    peer = object.__new__(LagunaGGUFResidentSession)
+    owner.use_selected_natural_tile8_decode = False
+    peer.use_selected_natural_tile8_decode = False
+    with owner.selected_natural_tile8_diagnostic(True):
+        assert owner.use_selected_natural_tile8_decode is True
+        assert peer.use_selected_natural_tile8_decode is False
+        with pytest.raises(RuntimeError, match='failed'):
+            with owner.selected_natural_tile8_diagnostic(False):
+                assert owner.use_selected_natural_tile8_decode is False
+                raise RuntimeError('failed')
+        assert owner.use_selected_natural_tile8_decode is True
+    assert owner.use_selected_natural_tile8_decode is False
+
+
 @pytest.mark.parametrize("compare", [False, True])
 @pytest.mark.parametrize("row_count", [1, 2, 17])
 def test_profile_tile8_comparison_owns_residency_and_holds_later_overlays_off(monkeypatch, tmp_path, compare, row_count):
