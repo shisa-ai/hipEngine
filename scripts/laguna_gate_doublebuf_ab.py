@@ -145,8 +145,12 @@ def _mode_scope(session, runtime_mode):
         with session.q4_activation_sums_diagnostic(runtime_mode == "q4_precomputed_sums_on"):
             yield
     else:
-        _apply_mode(session, runtime_mode)
-        yield
+        if runtime_mode.startswith("selected_down:"):
+            scope = session.selected_moe_diagnostic(down=runtime_mode.removeprefix("selected_down:"))
+        else:
+            scope = session.selected_moe_diagnostic(gate_up=runtime_mode)
+        with scope:
+            yield
 
 
 def _apply_mode(

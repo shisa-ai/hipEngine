@@ -4113,6 +4113,24 @@ class LagunaGGUFResidentSession:
             mode,
         )
 
+    @contextlib.contextmanager
+    def selected_moe_diagnostic(self, *, gate_up: str | None = None, down: str | None = None):
+        """Restore owner-local selected-MoE reference variants after comparison."""
+        selected_gate = (
+            self.selected_gate_up_mode if gate_up is None
+            else resolve_laguna_selected_gate_up_mode(self.backend, gate_up)
+        )
+        selected_down = (
+            self.selected_down_mode if down is None
+            else resolve_laguna_selected_down_mode(self.backend, down)
+        )
+        previous = (self.selected_gate_up_mode, self.selected_down_mode)
+        try:
+            self.selected_gate_up_mode, self.selected_down_mode = selected_gate, selected_down
+            yield
+        finally:
+            self.selected_gate_up_mode, self.selected_down_mode = previous
+
     def set_selected_gate_up_mode(self, mode: str) -> None:
         """Select the explicit compact selected gate/up prefill candidate."""
 

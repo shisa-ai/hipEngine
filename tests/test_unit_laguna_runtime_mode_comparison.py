@@ -1,5 +1,6 @@
 """Host contracts for Laguna's generalized runtime-mode comparison harness."""
 
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -56,8 +57,16 @@ def test_runtime_comparison_captures_complete_state_and_closes_child(monkeypatch
             raise RuntimeError("synthetic prefill failure")
         return SimpleNamespace(next_token_id=9, next_token_logit=0.5, logits="logits", final_hidden="final", post_layer_hidden="post")
 
+    @contextmanager
+    def diagnostic(**kwargs):
+        calls.append(("mode", kwargs["gate_up"]))
+        try:
+            yield
+        finally:
+            calls.append(("restore",))
+
     child = SimpleNamespace(
-        set_selected_gate_up_mode=lambda mode: calls.append(("mode", mode)),
+        selected_moe_diagnostic=diagnostic,
         prefill=prefill, position=3, close=lambda: calls.append(("close",)),
         runtime=SimpleNamespace(device_synchronize=lambda: calls.append(("sync",))),
     )
@@ -82,7 +91,7 @@ def test_runtime_comparison_captures_complete_state_and_closes_child(monkeypatch
         }
         assert ("sync",) in calls
     assert calls[:2] == [("child", 3), ("mode", "custom_gate")]
-    assert calls[-1] == ("close",)
+    assert calls[-2:] == [("restore",), ("close",)]
 
 
 @pytest.mark.parametrize("mode,expected", [
@@ -115,6 +124,23 @@ def test_q6_comparison_scope_keeps_sum_producer_and_consumer_consistent(mode, ex
         session.q6_wmma_prefetch_weight, session.q6_wmma_prefetch_activation,
         session.q6_precomputed_activation_sums,
     ) == initial
+
+
+def test_selected_moe_diagnostic_validates_before_mutation_and_restores():
+    session = object.__new__(LagunaGGUFResidentSession)
+    session.backend = "hip_gfx1151"
+    session.selected_gate_up_mode = "grouped_exact"
+    session.selected_down_mode = "grouped_exact"
+    with comparison._mode_scope(session, "mmq128x32_d8_f32_wavecols_direct_doublebuf"):
+        assert session.selected_gate_up_mode == "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+        with pytest.raises(ValueError):
+            with session.selected_moe_diagnostic(gate_up="grouped_exact", down="invalid"):
+                pass
+        assert session.selected_gate_up_mode == "mmq128x32_d8_f32_wavecols_direct_doublebuf"
+        with pytest.raises(RuntimeError):
+            with comparison._mode_scope(session, "selected_down:grouped_exact"):
+                raise RuntimeError("synthetic")
+    assert session.selected_gate_up_mode == session.selected_down_mode == "grouped_exact"
 
 
 @pytest.mark.parametrize("planar,selected", [
