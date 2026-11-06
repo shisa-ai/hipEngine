@@ -1916,28 +1916,6 @@ pair+SiLU dispatch at values below, within and above their row bounds. Preserve 
 registered strict fallbacks. Run the rowtile-control and GEMV dispatch unit tests, raw-K and pack8
 GPU parity files and public generation with route attribution, reset/reuse and cleanup.
 
-### R0281-SELECTED-DP4A / R0283 / R0288 — Explicit activation-adapter ownership
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `_LLAMA_COMPAT_MTP_ENV`; `HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A`,
-`HIPENGINE_GGUF_T16_SELECTED_DP4A`,; `HIPENGINE_GGUF_RAW_SELECTED_DP4A`,
-`HIPENGINE_GGUF_T16_SELECTED_Q5_DP4A_THREADS`, `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS`.
-
-**Decision needed:** preserve these diagnostics or replace ambient selectors with an explicit
-caller-owned adapter plan across compatibility generation, bench/profiler and workbench consumers.
-The selected-call binder now represents the optional raw/T16 adapters (see R0471): it binds their
-conversion, kernel and plan-owned Q8_1 workspace instead of refusing the certificate, and it still
-never certifies a conversion by borrowing a BF16 or mandatory-X8 record. Removing implemented
-runtime capabilities is not implied by that representation work. Coordinate the selectors' remaining
-invocation-ownership work rather than independently deleting flags consumed by the named composition.
-
-Done when: migrate workspace allocation, ordered dual/single operands, BF16/F32 inputs,
-actual output types, adapter intents and artifact provenance together. Run selected-call
-binding/admission, compact-MoE routing, parity-workbench and suite tests; cover raw/T16/X8 layouts
-and the fused-c1 exception. An execution change also needs primitive numerical/profile gates and
-real public plus compatibility proposal/verification/commit/reset and teardown checks.
-
 ### R0281-DRAFT-CHAIN — Explicit chain policy and host fallback
 
 Owner: `hipengine/speculative/mtp_resident_draft.py`.

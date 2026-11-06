@@ -3019,11 +3019,13 @@
       "ledger_line": 2380,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:9191-9192,10747-10751 still reads optional selected adapters."
+        "Retain supported selected raw/T16 DP4A diagnostics, independent adapter intents and plan-owned conversion workspace; no execution/default change.",
+        "241 binding/admission/routing/workbench/suite tests pass.",
+        "worklog/entries/20261106T001620.891957Z-lhl-r0281-selected-dp4a-2de539.md"
       ],
-      "next_action": "Bind activation conversion/kernel/Q8_1 workspace in caller-owned plan and migrate bench/profile intent/provenance without borrowing a BF16 certificate.",
+      "next_action": "None; adapter arithmetic promotion and R0471 representation remain separate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
