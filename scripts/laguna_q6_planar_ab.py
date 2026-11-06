@@ -120,23 +120,23 @@ def _run_mode(
         q6_qmicro=True,
         q6_qmicro_planar=planar,
         q6_qmicro_permute=not planar,
-        **_COMPARISON_POLICY,
     )
     load_seconds = time.perf_counter() - load_started
     try:
-        owner.prefill(tokens[:128])
-        runtime.device_synchronize()
-        records = []
-        for repetition in range(args.repetitions):
-            record = _run_once(owner, tokens)
-            records.append(record)
-            print(
-                mode,
-                repetition,
-                f"{float(record['tok_s']):.6f}",
-                int(record["next_token"]),
-                flush=True,
-            )
+        with owner.q6_prefetch_diagnostic(weight=False, activation=False, sums=False):
+            owner.prefill(tokens[:128])
+            runtime.device_synchronize()
+            records = []
+            for repetition in range(args.repetitions):
+                record = _run_once(owner, tokens)
+                records.append(record)
+                print(
+                    mode,
+                    repetition,
+                    f"{float(record['tok_s']):.6f}",
+                    int(record["next_token"]),
+                    flush=True,
+                )
     finally:
         owner.close()
     tracked_after = memory_stats()

@@ -34,9 +34,6 @@ _COMPARISON_POLICY = {
     "q6_skip_padded_activation": False,
     "q6_qmicro_planar": False,
     "q6_qmicro_permute": False,
-    "q6_wmma_prefetch_weight": False,
-    "q6_wmma_prefetch_activation": False,
-    "q6_precomputed_activation_sums": False,
 }
 
 _MODES = {

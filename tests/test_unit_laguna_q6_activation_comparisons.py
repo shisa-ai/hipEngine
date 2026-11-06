@@ -1,5 +1,6 @@
 """Prerequisite contracts for historical Q6 activation-staging comparisons."""
 
+from contextlib import contextmanager
 import json
 from types import SimpleNamespace
 
@@ -89,8 +90,6 @@ def test_comparison_owner_loads_same_layout_and_records_policy(monkeypatch, modu
     kw, = constructors
     expected = {
         "q6_qmicro": True, "q6_qmicro_planar": False, "q6_qmicro_permute": False,
-        "q6_wmma_prefetch_weight": False, "q6_wmma_prefetch_activation": False,
-        "q6_precomputed_activation_sums": False,
     }
     if module is compact:
         expected.update(q6_half_row_activation=False, q6_skip_padded_activation=False)
@@ -102,6 +101,49 @@ def test_comparison_owner_loads_same_layout_and_records_policy(monkeypatch, modu
     assert record["comparison_policy"] == expected
     assert record["comparison"]["complete_state_exact"]
     assert closed == ["child", "child", "owner"]
+
+
+@pytest.mark.parametrize("mode", ["current_permute", "planar_candidate"])
+def test_planar_comparison_scopes_prefetch_off_through_warmup_and_capture(monkeypatch, mode):
+    from scripts import laguna_q6_planar_ab as planar
+    events = []
+    session = SimpleNamespace()
+
+    @contextmanager
+    def diagnostic(**kwargs):
+        assert kwargs == dict(weight=False, activation=False, sums=False)
+        session.active = True
+        try:
+            yield
+        finally:
+            session.active = False
+            events.append("restore")
+
+    def prefill(tokens):
+        assert session.active
+        events.append("warmup")
+
+    def capture(owner, tokens):
+        assert owner is session and session.active
+        return {"tok_s": 1.0, "next_token": 2}
+
+    def construct(*args, **kwargs):
+        assert not any(key.startswith("q6_wmma_prefetch") for key in kwargs)
+        assert "q6_precomputed_activation_sums" not in kwargs
+        return session
+
+    session.q6_prefetch_diagnostic = diagnostic
+    session.prefill = prefill
+    session.close = lambda: events.append("close")
+    monkeypatch.setattr(planar, "LagunaGGUFResidentSession", construct)
+    monkeypatch.setattr(planar, "get_hip_runtime", lambda: SimpleNamespace(device_synchronize=lambda: None))
+    monkeypatch.setattr(planar, "memory_stats", lambda: {})
+    monkeypatch.setattr(planar, "_compiler_version", lambda path: "synthetic")
+    monkeypatch.setattr(planar, "_run_once", capture)
+    args = SimpleNamespace(compiler_version_file=None, require_cached_build=False, repetitions=1)
+    result = planar._run_mode(mode, args=args, tokens=[1, 2])
+    assert result["comparison_policy"] == planar._COMPARISON_POLICY
+    assert events == ["warmup", "restore", "close"]
 
 
 @pytest.mark.parametrize("lanes", [31, 32, 33, 97])
