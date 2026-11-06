@@ -23,8 +23,9 @@ def test_verifier_width_does_not_inherit_prefill_or_warmup_limit(monkeypatch):
     assert calls == [4, 3]
 
 
+@pytest.mark.parametrize("request_owned", [False, True])
 @pytest.mark.parametrize("failure_index", [0, 1, 2])
-def test_stream_draft_failure_frees_successful_sibling_snapshots(monkeypatch, failure_index):
+def test_stream_draft_failure_frees_successful_sibling_snapshots(monkeypatch, failure_index, request_owned):
     generator = _generator()
     slots = [SimpleNamespace(
         request_id=index, draft_stream=0, generated_ids=[1], timing={},
@@ -46,10 +47,19 @@ def test_stream_draft_failure_frees_successful_sibling_snapshots(monkeypatch, fa
 
     monkeypatch.setattr(generator, "_draft_mtp_serving_slot", draft)
     monkeypatch.setattr(generator, "_free_mtp_serving_cycle_snapshot", lambda result: freed.append(result.slot.request_id))
-    with pytest.raises(RuntimeError, match="draft failed"):
-        generator._try_draft_mtp_serving_slots_streams(
-            slots, object(), SimpleNamespace(max_tokens=4, deadline_at=None), base_env={},
-        )
+    if request_owned:
+        from concurrent.futures import ThreadPoolExecutor
+        pool = ThreadPoolExecutor(max_workers=3)
+        for slot in slots:
+            slot.worker_pool = pool
+    try:
+        with pytest.raises(RuntimeError, match="draft failed"):
+            generator._try_draft_mtp_serving_slots_streams(
+                slots, object(), SimpleNamespace(max_tokens=4, deadline_at=None), base_env={},
+            )
+    finally:
+        if request_owned:
+            pool.shutdown(wait=True)
     assert sorted(completed) == [0, 1, 2]
     assert sorted(freed) == [index for index in range(3) if index != failure_index]
 
@@ -331,8 +341,9 @@ def test_stream_verifier_drains_launched_chunks_without_serial_resubmission(monk
     assert sorted(calls) == list(range(8)), "every launched future must drain once"
 
 
+@pytest.mark.parametrize("request_owned", [False, True])
 @pytest.mark.parametrize("submission_failure", [False, True])
-def test_stream_verifier_collects_every_submitted_future(monkeypatch, submission_failure):
+def test_stream_verifier_collects_every_submitted_future(monkeypatch, submission_failure, request_owned):
     generator = _generator()
     collected = []
     runtime = SimpleNamespace(stream_create=lambda **kwargs: 900,
@@ -370,6 +381,10 @@ def test_stream_verifier_collects_every_submitted_future(monkeypatch, submission
             return Future(index)
 
     monkeypatch.setattr(qwen35_gguf.concurrent.futures, "ThreadPoolExecutor", Pool)
+    if request_owned:
+        pool = Pool()
+        for chunk in chunks:
+            chunk[0].slot.worker_pool = pool
     with pytest.raises(RuntimeError, match="submit failed" if submission_failure else "worker 0"):
         generator._try_verify_mtp_serving_cycle_chunks_streams(chunks)
     assert collected == ([0, 1] if submission_failure else [0, 1, 2])

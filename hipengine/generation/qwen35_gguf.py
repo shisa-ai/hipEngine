@@ -14,7 +14,7 @@ import time
 import uuid
 import weakref
 from collections import Counter, deque
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from types import SimpleNamespace
 from functools import wraps
@@ -1025,6 +1025,7 @@ class _GGUFMTPServingSlot:
     mtp_device_kv_len: int = 0
     draft_stream: int = 0
     verify_stream: int = 0
+    worker_pool: Any | None = None
     done: bool = False
 
 
@@ -5527,8 +5528,15 @@ class Qwen35GGUFBringupGenerator:
         *,
         base_env: dict[str, str | None],
     ) -> None:
-        while any(not slot.done for slot in slots):
-            self._run_mtp_serving_slots_cycle(slots, assets, request, base_env=base_env)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(slots))) as pool:
+            for slot in slots:
+                slot.worker_pool = pool
+            try:
+                while any(not slot.done for slot in slots):
+                    self._run_mtp_serving_slots_cycle(slots, assets, request, base_env=base_env)
+            finally:
+                for slot in slots:
+                    slot.worker_pool = None
 
     def _run_mtp_serving_slots_cycle(
         self,
@@ -5641,7 +5649,12 @@ class Qwen35GGUFBringupGenerator:
         batch_start = time.perf_counter()
         drafted: list[_GGUFMTPDraftedCycle] = []
         failure: BaseException | None = None
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(live_slots)) as pool:
+        request_pool = getattr(live_slots[0], "worker_pool", None)
+        pool_context = (
+            nullcontext(request_pool) if request_pool is not None
+            else concurrent.futures.ThreadPoolExecutor(max_workers=len(live_slots))
+        )
+        with pool_context as pool:
             futures = []
             try:
                 for slot in live_slots:
@@ -5905,7 +5918,12 @@ class Qwen35GGUFBringupGenerator:
 
         stream_start = time.perf_counter()
         failure: BaseException | None = None
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(chunks)) as pool:
+        request_pool = getattr(chunks[0][0].slot, "worker_pool", None)
+        pool_context = (
+            nullcontext(request_pool) if request_pool is not None
+            else concurrent.futures.ThreadPoolExecutor(max_workers=len(chunks))
+        )
+        with pool_context as pool:
             futures = []
             try:
                 for chunk in chunks:
