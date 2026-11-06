@@ -2991,7 +2991,13 @@ profile the import boundary before claiming a benefit from a new kernel.
 admission record; release detaches it and reuse creates a new record. Request leases reference
 that same record rather than copying physical slot and owner fields; mixed-target consumers use
 checked runner methods. Owner row planning preserves the caller's request order through these
-records. Final device/public validation remains outstanding.
+records. Device validation passed the batch runner and serving fixtures (one pooled-capacity
+fixture repaired); the named CPU bundle passed. Public gfx1151 production reuse with
+`protect_ttft`, two requests and a fixed horizon confirmed two imports and seven width-two
+steps per call, matching repeated token IDs and zero tracked allocations after close.
+Default scheduling produced different shape sequences and tokens; this is not evidence of
+same-shape failure or batch-composition invariance. See
+[public validation](../worklog/entries/20261106T102915.238841Z-lhl-r0007-public-admission-0fa288.md).
 Preserve physical-slot identity, cancellation/reuse, preflight failure and poisoned-step cleanup;
 publishing partial admission is not acceptable.
 
