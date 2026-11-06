@@ -108,9 +108,15 @@ def test_bound_plan_is_immutable_and_authoritative_for_widths(monkeypatch):
     from types import SimpleNamespace
     import hipengine.generation.physical_target_rows as module
     from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
-    from hipengine.generation.qwen35_gguf_mtp2 import _physical_width_depths
+    from hipengine.generation.qwen35_gguf_mtp2 import (
+        _physical_width_depths, _physical_prompt_streaming_widths,
+    )
+    from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
 
-    monkeypatch.setattr(module, "backend_package_capability", lambda *args: {})
+    monkeypatch.setattr(module, "backend_package_capability", lambda backend, name, default: (
+        {(QWEN35_DENSE_H5120_GEOMETRY, None, "strict"): (1, 2)}
+        if name == "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES" else {}
+    ))
     owner = SimpleNamespace()
     module.bind_physical_target_plan(
         owner, "", "strict", arithmetic=PhysicalTargetArithmeticPlan(),
@@ -120,6 +126,11 @@ def test_bound_plan_is_immutable_and_authoritative_for_widths(monkeypatch):
     assert _physical_width_depths(owner) == plan.width_depths
     assert owner.physical_target_rows is plan.rows
     assert owner.physical_target_arithmetic is plan.arithmetic
+    owner.execution_profile = "production"
+    adapter_owner = SimpleNamespace(_shared_runner=SimpleNamespace(weights=SimpleNamespace(
+        geometry=QWEN35_DENSE_H5120_GEOMETRY, file_type_name="unknown",
+    )))
+    assert _physical_prompt_streaming_widths(adapter_owner, owner) == (1, 2)
     with pytest.raises(FrozenInstanceError):
         plan.profile = "production"
 

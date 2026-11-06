@@ -739,6 +739,8 @@ def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, 
     profile = getattr(generator, "execution_profile", None)
     profile = str(getattr(profile, "value", profile) or "")
     plan = getattr(generator, "physical_target_plan", None)
+    if plan is not None:
+        profile = plan.profile
     policies = (plan.prompt_policies if plan is not None else
                 getattr(generator, "physical_target_prompt_policies", None))
     if policies is None:
