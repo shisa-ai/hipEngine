@@ -299,6 +299,17 @@ def test_pair_silu_plan_expanded_metadata_boundary(monkeypatch):
     assert at.expanded_metadata is True
     assert at.metadata_nbytes == metadata_nbytes
 
+    for pointer, capacity in ((None, 2 * metadata_nbytes),
+                              (0, 2 * metadata_nbytes),
+                              (5000, 2 * metadata_nbytes - 1)):
+        rejected_events = []
+        assert not _execute(
+            at, weight_a, weight_b, events=rejected_events,
+            monkeypatch=monkeypatch, pair_workspace_ptr=pointer,
+            pair_workspace_nbytes=capacity,
+        )
+        assert rejected_events == []
+
     events = []
     assert _execute(
         at,

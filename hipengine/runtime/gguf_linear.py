@@ -9180,6 +9180,12 @@ def _execute_gguf_linear_pair_silu_plan(
         return True
 
     if operation == "t16_wmma_expanded":
+        if plan.expanded_metadata and (
+            pair_workspace_ptr is None
+            or int(pair_workspace_ptr) <= 0
+            or int(pair_workspace_nbytes) < 2 * plan.metadata_nbytes
+        ):
+            return False
         common = (
             x_ptr,
             weight_a.allocation("tiles").tensor.ptr,
