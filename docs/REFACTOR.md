@@ -1386,18 +1386,19 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 
 Scope: `HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS`.
 
-**Implemented:** the live graph comparison explicitly requests unchained execution through
-`moe_tail_next_rms=False`. Session selection overrides runner/environment input without mutating
-a shared runner; owned construction forwards the choice. Unspecified input preserves production
-chaining and the legacy diagnostic adapter. Routing/dispatch checks pass (25 tests), constructor
-checks pass (71 tests), and BF16/FP16 fused/unfused primitive checks pass on gfx1151 (13 tests).
-See `worklog/entries/20261106T143829.922143Z-lhl-r0281-tail-owner-d6fc2d.md`.
+**Implemented:** the graph comparison explicitly requests unchained execution through
+`moe_tail_next_rms=False`; session-local selection does not mutate shared runners. The environment
+reader is retired (`ec9106d64`), with default chaining unchanged and stale values ignored.
+Focused routing/dispatch/constructor checks pass (99 tests), as do 13 BF16/FP16 primitive cases.
+Actual-weight eager/graph token parity and nonzero capture/replay with zero rejects pass on
+Qwen3.6-35B-A3B UD-Q4_K_M (`24785b826`). Public default generation repeats exact tokens across
+three unequal prompts, traces chaining, and releases tracked allocations after close, including
+with stale environment value `0` (`3bb2dede2`, `ec9106d64`).
 
-**Remaining:** the live graph parity fixture skipped because its configured
-`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` artifact is absent. Run actual capture/replay and
-public short/long/ragged decode output/state/cleanup validation before retiring the legacy
-reader. Host owner transport and primitive equality do not establish full-model graph parity.
-Do not disable production chaining or change slot-weighted arithmetic to make a graph engage.
+**Remaining validation:** public unequal prompts above ran serially with one active request;
+they do not establish packed-ragged scheduling or independent cache/recurrent-state/logit parity.
+Complete the named public ragged/state checks before closing this entry; do not remigrate the
+retired reader or repeat completed serial token/cleanup checks.
 
 Done when: run `tests/test_unit_qwen35_gguf_moe_tail_next_rms_routing.py` and
 `tests/test_unit_qwen35_gguf_iq_dispatch.py`, plus BF16/FP16 primitive fused/ unfused parity gates.

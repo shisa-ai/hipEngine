@@ -1973,7 +1973,7 @@
       "evidence": [
         "hipengine/runtime/qwen35_gguf_runner.py:9190,9459 retains tail norm control; 25741 documents per-layer graph route."
       ],
-      "next_action": "Owned session/runner selection and live graph caller migration implemented (c34e19549); constructor forwarding/cleanup passes (5eb65e29c). Focused routing/dispatch 25 pass, constructor 71 pass, gfx1151 BF16/FP16 primitives 13 pass. Find accessible compatible MoE artifact and run live graph capture/replay plus public short/long/ragged output/state/cleanup before reader retirement; fixture default artifact absent. Preserve default chaining and legacy adapter until complete.",
+      "next_action": "Reader retired in ec9106d64 after owner/caller migration, 99 focused host tests, 13 GPU primitives, actual-weight graph counter/token parity and public serial unequal-prompt route/repeat/zero-allocation teardown. Complete public packed-ragged/state coverage before closing; no checkpoint blocker and no need to repeat completed serial checks.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
