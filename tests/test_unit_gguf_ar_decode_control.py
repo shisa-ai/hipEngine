@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.generation import gguf_ar_batch_diagnostic as ar_diagnostic
 from hipengine.generation import qwen35_gguf
 
 
@@ -82,7 +83,7 @@ def test_compat_packed_chunks_preserve_stream_control_and_singleton_fallback(
         ("serial", row.request_id)
     )
 
-    handled = generator._try_step_ar_serving_slots_batch(rows, object())
+    handled = ar_diagnostic.try_step_ar_serving_slots_batch(generator, rows, object())
 
     assert handled is (count > 1)
     assert any(kind == "stream" for kind, _ in observed) is (
@@ -91,7 +92,7 @@ def test_compat_packed_chunks_preserve_stream_control_and_singleton_fallback(
     if count > 1:
         packed_ids = [rid for kind, ids in observed if kind == "packed" for rid in ids]
         assert packed_ids == list(range(count))
-        assert all(len(chunk) <= 8 for chunk in generator._ar_serving_slot_chunks(rows))
+        assert all(len(chunk) <= 8 for chunk in ar_diagnostic.ar_serving_slot_chunks(rows))
     else:
         assert observed == []
 
@@ -128,7 +129,7 @@ def test_compat_slot_streams_preserve_explicit_serial_and_prelaunch_capability_f
         rows.append(SimpleNamespace(session=session, decode_stream=0, prev_token=1,
                                     seq_position=10, timing={}, native_decode_steps=0))
 
-    handled = generator._try_step_ar_serving_slots_streams(rows, object())
+    handled = ar_diagnostic.try_step_ar_serving_slots_streams(generator, rows, object())
 
     expected = control != "0" and missing is None
     assert handled is expected

@@ -6168,7 +6168,9 @@ def test_gguf_ar_batch_decode_fallback_advances_each_slot_once_per_cycle(monkeyp
     generator = _generator()
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "0")
 
-    assert generator._try_step_ar_serving_slots_batch(
+    from hipengine.generation import gguf_ar_batch_diagnostic as ar_diagnostic
+
+    assert ar_diagnostic.try_step_ar_serving_slots_batch(generator,
         slots,
         _request(prompts=("long", "long2"), max_tokens=4),
     ) is True
@@ -6214,7 +6216,9 @@ def test_gguf_ar_batch_decode_runs_one_native_c8_group(monkeypatch) -> None:
     generator = _generator()
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "0")
-    generator._run_ar_serving_slots(slots, _request(prompts=("long",) * 8, max_tokens=2))
+    from hipengine.generation.gguf_ar_batch_diagnostic import run_ar_serving_slots
+
+    run_ar_serving_slots(generator, slots, _request(prompts=("long",) * 8, max_tokens=2))
 
     assert [slot.generated_ids for slot in slots] == [[1, 2]] * 8
     assert [call for call in calls if call[0] == "step_batch"] == [
@@ -6285,7 +6289,9 @@ def test_gguf_ar_batch_decode_streams_chunks_above_native_c8(monkeypatch) -> Non
     generator = _generator()
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_AR_STREAM_DECODE", "1")
-    generator._run_ar_serving_slots(slots, _request(prompts=("long",) * 10, max_tokens=2))
+    from hipengine.generation.gguf_ar_batch_diagnostic import run_ar_serving_slots
+
+    run_ar_serving_slots(generator, slots, _request(prompts=("long",) * 10, max_tokens=2))
 
     assert [slot.generated_ids for slot in slots] == [[1, 2]] * 10
     assert [call for call in calls if call[0] == "stream_create"] == [
@@ -6300,7 +6306,9 @@ def test_gguf_ar_batch_decode_streams_chunks_above_native_c8(monkeypatch) -> Non
     assert all("decode_batch_ms" in slot.timing for slot in slots)
     assert all("decode_stream_chunks_ms" in slot.timing for slot in slots)
 
-    generator._close_ar_serving_slots(slots, reuse=False)
+    from hipengine.generation.gguf_ar_batch_diagnostic import close_ar_serving_slots
+
+    close_ar_serving_slots(generator, slots, reuse=False)
 
     assert [call for call in calls if call[0] == "stream_destroy"] == [
         ("stream_destroy", 501),
@@ -6349,7 +6357,9 @@ def test_gguf_ar_batch_decode_flushes_before_singleton_fallback(monkeypatch) -> 
     generator = _generator()
     monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
     monkeypatch.delenv("HIPENGINE_GGUF_AR_STREAM_DECODE", raising=False)
-    generator._run_ar_serving_slots(slots, _request(prompts=("long", "long2"), max_tokens=3))
+    from hipengine.generation.gguf_ar_batch_diagnostic import run_ar_serving_slots
+
+    run_ar_serving_slots(generator, slots, _request(prompts=("long", "long2"), max_tokens=3))
 
     assert [slot.generated_ids for slot in slots] == [[1, 99], [1, 2, 3]]
     assert calls == [

@@ -1705,7 +1705,7 @@
       "evidence": [
         "hipengine/generation/qwen35_gguf.py:4368 retains direct serving-slots compatibility loop."
       ],
-      "next_action": "Map actual direct callers and shared flush dependencies, then extract diagnostic adapter or retire migrated loops while preserving resident bypass sentinel and error cleanup.",
+      "next_action": "Shared flush owner committed 6a37905be; native greedy diagnostic d38f9ddf8; AR orchestration/cycle/token/launch/prefill bodies moved through da6bf9873. Resident AST has no AR helper or native greedy references. Migrate direct diagnostic callers and unnecessary forwarding wrappers; finish actual public cancellation/streaming checks before ledger closure.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
