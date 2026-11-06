@@ -7,6 +7,25 @@ from hipengine.runtime import gguf_native_spec_cycle as cycle
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 
+@pytest.mark.parametrize('budget', range(1, 8))
+@pytest.mark.parametrize('suffix', ['', '_n2', '_n2_sampled'])
+def test_alias_store_keeps_capture_identities_and_sessions_separate(budget, suffix):
+    first = object.__new__(Qwen35GGUFResidentSession)
+    second = object.__new__(Qwen35GGUFResidentSession)
+    name = f'_native_spec_b{budget}_target_graph{suffix}'
+    graph = object()
+    assert getattr(first, name) is None
+    setattr(first, name, graph)
+    assert getattr(first, name) is graph
+    assert getattr(second, name) is None
+    assert name not in first.__dict__
+    assert len(first._native_target_graph_aliases) == 1
+    other = '_n2' if not suffix else ''
+    assert getattr(first, f'_native_spec_b{budget}_target_graph{other}') is None
+    setattr(first, name, None)
+    assert first._native_target_graph_aliases == {}
+
+
 def test_eviction_close_failure_keeps_graph_reachable_for_retry(monkeypatch):
     monkeypatch.setattr(cycle, '_NATIVE_TARGET_GRAPH_CACHE_MAX_ENTRIES', 1)
     session = SimpleNamespace()
