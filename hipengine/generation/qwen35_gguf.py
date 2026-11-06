@@ -4462,128 +4462,20 @@ class Qwen35GGUFBringupGenerator:
         tokenize_ms_by_request: dict[int, float],
         request: GenerationRequest,
     ) -> list[_GGUFARServingSlot]:
-        slots: list[_GGUFARServingSlot] = []
-        try:
-            for row_index in range(len(request.prompts)):
-                raise_if_generation_deadline_expired(request)
-                prompt_ids = encoded_prompts[row_index]
-                timing: dict[str, float] = {
-                    "tokenize_ms": float(tokenize_ms_by_request.get(row_index, 0.0))
-                }
-                session_open_start = time.perf_counter()
-                session, session_pool_key, _session_reused = self._acquire_shared_session(
-                    shared_runner,
-                    pool_name="ar_batch",
-                    use_wmma_prefill=_resident_session_wmma_prefill_default(),
-                    use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
-                )
-                _timing_set(timing, "session_open_ms", session_open_start)
-                slot = _GGUFARServingSlot(
-                    request_id=row_index,
-                    prompt_ids=list(prompt_ids),
-                    session=session,
-                    prev_token=0,
-                    seq_position=0,
-                    generated_ids=[],
-                    timing=timing,
-                    session_pool_key=session_pool_key,
-                )
-                slots.append(slot)
-            if self._try_prefill_ar_serving_slots_batch(slots, request):
-                return slots
-            for slot in slots:
-                prefill_start = time.perf_counter()
-                prefill_result = slot.session.prefill(slot.prompt_ids, return_logits=False)
-                _timing_add(slot.timing, "prefill_ms", prefill_start)
-                self._finish_ar_serving_slot_prefill(slot, int(prefill_result.token_id), request)
-        except Exception:
-            self._close_ar_serving_slots(slots, reuse=False)
-            raise
-        return slots
+        from hipengine.generation.gguf_ar_batch_diagnostic import open_ar_serving_slots
+
+        return open_ar_serving_slots(
+            self, shared_runner, encoded_prompts, tokenize_ms_by_request, request,
+        )
 
     def _try_prefill_ar_serving_slots_batch(
         self,
         slots: list[_GGUFARServingSlot],
         request: GenerationRequest,
     ) -> bool:
-        if len(slots) <= 1 or not _gguf_ar_packed_prefill_enabled():
-            return False
-        chunks = self._ar_serving_slot_chunks(slots)
-        if any(len(chunk) <= 1 for chunk in chunks):
-            return False
-        for chunk in chunks:
-            prefill_batch = getattr(chunk[0].session, "prefill_batch_native", None)
-            if not callable(prefill_batch):
-                return False
-            if any(not slot.prompt_ids for slot in chunk):
-                return False
-        batch_start = time.perf_counter()
-        batch_results_by_request: dict[int, Any] = {}
-        chunk_ms_by_request: dict[int, float] = {}
-        completed_chunks = 0
-        serial_prefill_request_ids: set[int] = set()
-        try:
-            for chunk in chunks:
-                prefill_batch = getattr(chunk[0].session, "prefill_batch_native")
-                prompt_ids = [tuple(int(token) for token in slot.prompt_ids) for slot in chunk]
-                sessions = [slot.session for slot in chunk]
-                chunk_start = time.perf_counter()
-                results = prefill_batch(
-                    prompt_ids,
-                    sessions=sessions,
-                    return_logits=False,
-                )
-                if results is None:
-                    raise NotImplementedError("GGUF AR packed prefill returned no results")
-                batch_results = list(results)
-                if len(batch_results) != len(chunk):
-                    raise RuntimeError(
-                        f"GGUF AR packed prefill returned {len(batch_results)} result(s) "
-                        f"for {len(chunk)} live slot(s)"
-                    )
-                chunk_ms = _timing_ms_since(chunk_start)
-                for slot, result in zip(chunk, batch_results, strict=True):
-                    batch_results_by_request[int(slot.request_id)] = result
-                    chunk_ms_by_request[int(slot.request_id)] = chunk_ms
-                completed_chunks += 1
-        except NotImplementedError:
-            if completed_chunks == 0:
-                # Nothing was prefilled yet, so the caller's per-slot route can
-                # serve the whole request; declining here keeps the packed
-                # bound from rejecting a prompt the context admits.
-                return False
-            # A later width group hit the packed route's context bound. The
-            # groups before it are already prefilled, so finish the remaining
-            # slots on the strict per-session route instead of failing a
-            # request whose prompt is inside the configured context.
-            self._fallback_reasons["packed_prefill_unsupported_k0"] += 1
-            for chunk in chunks[completed_chunks:]:
-                for slot in chunk:
-                    result = slot.session.prefill(
-                        slot.prompt_ids,
-                        return_logits=False,
-                    )
-                    batch_results_by_request[int(slot.request_id)] = result
-                    chunk_ms_by_request[int(slot.request_id)] = _timing_ms_since(
-                        batch_start
-                    )
-                    serial_prefill_request_ids.add(int(slot.request_id))
-        prefill_ms = _timing_ms_since(batch_start)
-        for slot in slots:
-            result = batch_results_by_request[int(slot.request_id)]
-            _timing_add_ms(slot.timing, "prefill_ms", prefill_ms)
-            _timing_add_ms(slot.timing, "prefill_batch_ms", prefill_ms)
-            if len(chunks) > 1:
-                _timing_add_ms(
-                    slot.timing,
-                    "prefill_batch_chunk_ms",
-                    float(chunk_ms_by_request.get(int(slot.request_id), 0.0)),
-                )
-            slot.native_compact_prefill = (
-                int(slot.request_id) not in serial_prefill_request_ids
-            )
-            self._finish_ar_serving_slot_prefill(slot, int(getattr(result, "token_id")), request)
-        return True
+        from hipengine.generation.gguf_ar_batch_diagnostic import try_prefill_ar_serving_slots_batch
+
+        return try_prefill_ar_serving_slots_batch(self, slots, request)
 
     def _finish_ar_serving_slot_prefill(
         self,
@@ -4591,15 +4483,9 @@ class Qwen35GGUFBringupGenerator:
         token_id: int,
         request: GenerationRequest,
     ) -> None:
-        prev_token = int(token_id)
-        generated_ids = [prev_token]
-        slot.prev_token = prev_token
-        slot.seq_position = int(slot.session.position)
-        slot.generated_ids = generated_ids
-        slot.done = (
-            len(generated_ids) >= int(request.max_tokens)
-            or _gguf_finished(generated_ids, self.tokenizer, request)
-        )
+        from hipengine.generation.gguf_ar_batch_diagnostic import finish_ar_serving_slot_prefill
+
+        finish_ar_serving_slot_prefill(self, slot, token_id, request)
 
     def _run_ar_serving_slots(
         self,
