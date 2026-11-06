@@ -171,9 +171,7 @@ class LagunaKVCache:
         context_length: int,
         sliding_window: int,
         backend: str,
-        prefill_cached_meta: bool,
-        prefill_global_qrow6: bool,
-        prefill_dense_initial: bool,
+        cached_prefill_policy: LagunaCachedPrefillPolicy,
         swa_prefill_role_variants: Mapping[str, str],
         prefill_preappend_role_scoped: bool,
         prefill_preappend_role_variants: Mapping[str, str],
@@ -223,17 +221,13 @@ class LagunaKVCache:
         swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512: bool,
         swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512: bool,
         runtime: HipRuntime,
-        cached_prefill_policy: LagunaCachedPrefillPolicy | None = None,
     ) -> None:
         self.layers = layers
         self._buffers = buffers
         self.context_length = int(context_length)
         self.sliding_window = int(sliding_window)
         self.backend = str(backend)
-        self.cached_prefill_policy = cached_prefill_policy or LagunaCachedPrefillPolicy(
-            False, bool(prefill_cached_meta), bool(prefill_global_qrow6),
-            bool(prefill_dense_initial),
-        )
+        self.cached_prefill_policy = cached_prefill_policy
         self.swa_prefill_role_variants = dict(swa_prefill_role_variants)
         self.prefill_preappend_role_scoped = bool(prefill_preappend_role_scoped)
         self.prefill_preappend_role_variants = dict(
@@ -3307,9 +3301,6 @@ def allocate_laguna_kv_cache(
             sliding_window=sliding_window,
             backend=backend,
             cached_prefill_policy=resolved_cached_policy,
-            prefill_cached_meta=resolved_cached_policy.cached_meta,
-            prefill_global_qrow6=resolved_cached_policy.global_qrow6,
-            prefill_dense_initial=resolved_cached_policy.dense_initial,
             swa_prefill_role_variants=parsed_swa_prefill_role_variants,
             prefill_preappend_role_scoped=prefill_preappend_role_scoped,
             prefill_preappend_role_variants=(
