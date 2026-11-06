@@ -2899,12 +2899,13 @@
       "ledger_line": 2280,
       "owner": "`hipengine/runtime/laguna_moe.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/laguna_moe.py:213-215,313,1238-1243 supports 4/8/16 router tiles.",
-        "scripts/laguna_router_token_tile_ab.py:66,107 mutates child and warm owners explicitly."
+        "Retain named Laguna/Gemma router tile comparison interfaces and direct tile-16 requests; no execution/default change.",
+        "9 host and 12 GPU tile/selection tests pass; both A/B and microbench help routes succeed.",
+        "worklog/entries/20261106T000323.762637Z-lhl-r0281-router-tiles-066317.md"
       ],
-      "next_action": "Bind router comparison mode in diagnostic plan and migrate setters/Gemma/child harness metadata while preserving explicit invalid-mode errors and independent oracles.",
+      "next_action": "None; defaults and arithmetic promotion are separate decisions.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

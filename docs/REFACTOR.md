@@ -1894,28 +1894,6 @@ confirm public chain routing stays unchanged. The corresponding GGUF root/siblin
 is separately owned by `scripts/gguf_mtp_bench.py`; its supported-comparison disposition is recorded
 in `worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md`.
 
-### R0281-ROUTER-TILES — Laguna/Gemma router comparison ownership
-
-Owner: `hipengine/runtime/laguna_moe.py`.
-
-Scope: `LAGUNA_ROUTER_LOGITS_MODE`, `token_tile_4`, `token_tile_8`,
-`scripts/laguna_router_token_tile_ab.py`.
-
-**Decision needed:** keep these named comparison modes or migrate the setter and benchmark
-interfaces into a scoped diagnostic plan. A later default-only refresh cannot decide whether to
-erase direct tile-16 or Gemma comparison requests. Default changes, arithmetic changes and interface
-retirement are separate decisions;
-
-Done when: migrate the session's resolved mode, setter, child-session A/B harness,
-microbench, plan function table, backend metadata and Gemma caller with result provenance. Preserve
-explicit invalid-mode errors, default c1/ multirow selection and independent 256/512-thread
-numerical references. Run
-`tests/test_live_laguna_moe_gpu.py::test_laguna_router_logits_mode_is_exact_and_explicit`, backend
-alias and canonical-router tests, both script `--help` routes and the Gemma SGEMM comparison tests.
-Before changing execution, run the router tile and top-k GPU parity/attribution nodes and public
-Laguna/Gemma generation with short, partial-tile and longer prompts, reset/reuse and allocation
-cleanup. Declare profile gates for any changed arithmetic.
-
 ### R0281-PREFILL-DEBUG — Isolation profiles, progress recording and drains
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
