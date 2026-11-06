@@ -8,6 +8,40 @@ from typing import Any
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 
 
+def run_ar_serving_slots(generator: Any, slots: list[Any], request: Any) -> None:
+    from hipengine.generation.qwen35_gguf import (
+        _gguf_ar_packed_decode_enabled,
+        _timing_add_ms,
+        _timing_ms_since,
+    )
+
+    while any(not slot.done for slot in slots):
+        live_slots = [slot for slot in slots if not slot.done]
+        cycle_start = time.perf_counter()
+        handled = False
+        if _gguf_ar_packed_decode_enabled():
+            handled = generator._try_step_ar_serving_slots_batch(live_slots, request)
+        if not handled:
+            handled = generator._try_step_ar_serving_slots_streams(live_slots, request)
+        if not handled:
+            for slot in live_slots:
+                generator._step_ar_serving_slot_serial(slot, request)
+        cycle_ms = _timing_ms_since(cycle_start)
+        for slot in live_slots:
+            _timing_add_ms(slot.timing, "slots_decode_phase_ms", cycle_ms)
+
+
+def close_ar_serving_slots(generator: Any, slots: list[Any], *, reuse: bool = True) -> None:
+    for slot in reversed(slots):
+        if slot.decode_stream:
+            slot.session.runtime.stream_destroy(int(slot.decode_stream))
+            slot.decode_stream = 0
+        if reuse:
+            generator._release_shared_session(slot.session_pool_key, slot.session)
+        else:
+            slot.session.close()
+
+
 def generate_ar_serving_slots(generator: Any, shared_runner: Any, request: Any, *, plan: Any):
     # Formatting and telemetry are shared with the resident implementation. Import
     # at invocation so the diagnostic does not create an initialization cycle.

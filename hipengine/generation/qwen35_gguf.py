@@ -4606,20 +4606,9 @@ class Qwen35GGUFBringupGenerator:
         slots: list[_GGUFARServingSlot],
         request: GenerationRequest,
     ) -> None:
-        while any(not slot.done for slot in slots):
-            live_slots = [slot for slot in slots if not slot.done]
-            cycle_start = time.perf_counter()
-            handled = False
-            if _gguf_ar_packed_decode_enabled():
-                handled = self._try_step_ar_serving_slots_batch(live_slots, request)
-            if not handled:
-                handled = self._try_step_ar_serving_slots_streams(live_slots, request)
-            if not handled:
-                for slot in live_slots:
-                    self._step_ar_serving_slot_serial(slot, request)
-            cycle_ms = _timing_ms_since(cycle_start)
-            for slot in live_slots:
-                _timing_add_ms(slot.timing, "slots_decode_phase_ms", cycle_ms)
+        from hipengine.generation.gguf_ar_batch_diagnostic import run_ar_serving_slots
+
+        run_ar_serving_slots(self, slots, request)
 
     def _try_step_ar_serving_slots_streams(
         self,
@@ -4849,14 +4838,9 @@ class Qwen35GGUFBringupGenerator:
         )
 
     def _close_ar_serving_slots(self, slots: list[_GGUFARServingSlot], *, reuse: bool = True) -> None:
-        for slot in reversed(slots):
-            if slot.decode_stream:
-                slot.session.runtime.stream_destroy(int(slot.decode_stream))
-                slot.decode_stream = 0
-            if reuse:
-                self._release_shared_session(slot.session_pool_key, slot.session)
-            else:
-                slot.session.close()
+        from hipengine.generation.gguf_ar_batch_diagnostic import close_ar_serving_slots
+
+        close_ar_serving_slots(self, slots, reuse=reuse)
 
     @_target_arch_scoped
     def _generate_dense_speculative_mtp_detailed(

@@ -3,7 +3,26 @@ from types import SimpleNamespace
 
 import pytest
 
-from hipengine.generation.gguf_ar_batch_diagnostic import generate_ar_serving_slots
+from hipengine.generation.gguf_ar_batch_diagnostic import (
+    close_ar_serving_slots,
+    generate_ar_serving_slots,
+)
+
+
+@pytest.mark.parametrize('reuse', [False, True])
+def test_ar_diagnostic_close_destroys_stream_before_release(reuse):
+    events = []
+    session = SimpleNamespace(
+        runtime=SimpleNamespace(stream_destroy=lambda stream: events.append(('stream', stream))),
+        close=lambda: events.append(('close',)),
+    )
+    slot = SimpleNamespace(session=session, session_pool_key='ar', decode_stream=7)
+    owner = SimpleNamespace(
+        _release_shared_session=lambda key, session: events.append(('release', key)),
+    )
+    close_ar_serving_slots(owner, [slot], reuse=reuse)
+    assert events == [('stream', 7), ('release', 'ar') if reuse else ('close',)]
+    assert slot.decode_stream == 0
 
 
 def test_ar_diagnostic_closes_acquired_slots_without_reuse_on_failure():
