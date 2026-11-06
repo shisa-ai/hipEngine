@@ -9268,6 +9268,30 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         self._prefix_phase_add("capture_evict", evict_start)
         self._prefix_phase_add("capture_total", phase_start)
 
+    def _retained_prefix_device_bytes(self, tokens: Sequence[tuple[int, ...]]) -> int:
+        """Union target/provider owning allocations for retained boundaries.
+
+        Legacy payloads without inventories retain their reported byte charge,
+        deduplicated by payload identity. Idle arena-pool owners are separate
+        resources, not live retained checkpoints.
+        """
+        allocations: dict[int, int] = {}
+        legacy: dict[int, int] = {}
+        store = getattr(getattr(self, "_mtp2_adapter", None),
+                        "_prefix_checkpoint_store_instance", None)
+        for key in tokens:
+            snapshot = self._prefix_state_snapshots[key].snapshot
+            inventory = getattr(snapshot, "device_allocations", None)
+            if inventory is None:
+                legacy[id(snapshot)] = int(getattr(snapshot, "nbytes", 0))
+            else:
+                for ptr, size in inventory:
+                    allocations[int(ptr)] = max(allocations.get(int(ptr), 0), int(size))
+            if store is not None:
+                for ptr, size in store.device_allocations_for(key):
+                    allocations[int(ptr)] = max(allocations.get(int(ptr), 0), int(size))
+        return sum(allocations.values()) + sum(legacy.values())
+
     def _trim_prefix_snapshots(self) -> None:
         """Bound transient and retained snapshots independently.
 
@@ -9290,18 +9314,11 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             for tokens, entry in self._prefix_state_snapshots.items()
             if entry.retained
         ]
-        retained_bytes = sum(
-            int(getattr(self._prefix_state_snapshots[tokens].snapshot, "nbytes", 0))
-            for tokens in retained
-        )
         while retained and (
             len(retained) > self._prefix_retained_limit
-            or retained_bytes > self._prefix_retained_state_bytes_limit
+            or self._retained_prefix_device_bytes(retained) > self._prefix_retained_state_bytes_limit
         ):
             tokens = retained.pop(0)
-            retained_bytes -= int(
-                getattr(self._prefix_state_snapshots[tokens].snapshot, "nbytes", 0)
-            )
             self._evict_prefix_snapshot(tokens, reason="trim_retained")
 
     def _promote_prefix_snapshots(self, row: _GGUFResidentLoopRow) -> None:

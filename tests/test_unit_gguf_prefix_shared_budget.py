@@ -1,0 +1,48 @@
+"""Retained prefix budget prices target/provider owner unions, not view sums."""
+from types import SimpleNamespace
+
+from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+from hipengine.speculative.prefix_checkpoint import PrefixCheckpointStore
+
+
+def test_trim_evicts_provider_bytes_with_target_boundary():
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._prefix_state_snapshots = {
+        (1,): SimpleNamespace(snapshot=SimpleNamespace(nbytes=10), retained=True),
+        (2,): SimpleNamespace(snapshot=SimpleNamespace(nbytes=10), retained=True),
+    }
+    released = []
+    store = PrefixCheckpointStore(capacity=4, release=lambda p: released.append(p))
+    payload = SimpleNamespace(device_allocations=((4096, 100),))
+    store.put((1,), (10,), payload)
+    runner._mtp2_adapter = SimpleNamespace(_prefix_checkpoint_store_instance=store)
+    runner._prefix_snapshot_limit = 4
+    runner._prefix_retained_limit = 4
+    runner._prefix_retained_state_bytes_limit = 50
+    evicted = []
+    def evict(key, *, reason):
+        evicted.append(key)
+        runner._prefix_state_snapshots.pop(key)
+        store.drop(key)
+    runner._evict_prefix_snapshot = evict
+    runner._trim_prefix_snapshots()
+    assert evicted == [(1,)]
+    assert released == [payload]
+    assert tuple(runner._prefix_state_snapshots) == ((2,),)
+
+
+def test_retained_budget_counts_shared_owners_once_and_arena_padding():
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    shared = SimpleNamespace(device_allocations=((4096, 8192),), nbytes=192)
+    legacy = SimpleNamespace(nbytes=100)
+    runner._prefix_state_snapshots = {
+        (1,): SimpleNamespace(snapshot=shared, retained=True),
+        (2,): SimpleNamespace(snapshot=shared, retained=True),
+        (3,): SimpleNamespace(snapshot=legacy, retained=True),
+        (4,): SimpleNamespace(snapshot=legacy, retained=True),
+    }
+    store = PrefixCheckpointStore(capacity=4, release=lambda _: None)
+    store.put((1,), (10,), SimpleNamespace(device_allocations=((4096, 8192), (16384, 64))))
+    runner._mtp2_adapter = SimpleNamespace(_prefix_checkpoint_store_instance=store)
+    assert runner._retained_prefix_device_bytes(((1,), (2,), (3,), (4,))) == 8192 + 64 + 100
+    assert runner._retained_prefix_device_bytes(((2,),)) == 8192
