@@ -1916,25 +1916,6 @@ pair+SiLU dispatch at values below, within and above their row bounds. Preserve 
 registered strict fallbacks. Run the rowtile-control and GEMV dispatch unit tests, raw-K and pack8
 GPU parity files and public generation with route attribution, reset/reuse and cleanup.
 
-### R0282-DFLASH-DRAFTER — Dense and post-attention plan ownership
-
-Owner: `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py`.
-
-Scope: `HIPENGINE_DFLASH_DRAFTER_DENSE`, `HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM`.
-
-**Decision needed:** preserve explicit comparisons or move dense and post-attention selection into
-caller-owned drafter plans. Separate a shared runtime dense policy from a benchmark-only fusion
-experiment; do not make a new model-specific timing row a prerequisite for either implemented route
-to run, or remove the naive primitive merely because WMMA is the default.
-
-Done when: migrate the two output-type wrappers, actual DFlash2 and benchmark consumers,
-compiler/profile provenance and direct GPU-oracle callers together. Cover aligned/unaligned input
-width, output tails, explicit naive, invalid values and fused hidden-width bounds; retain the strict
-unfused chain. Run `tests/test_unit_dflash_drafter_controls.py`, drafter/context tests and
-`tests/test_gpu_dflash_dense_wmma.py`, `tests/test_gpu_dflash_add_rmsnorm.py` plus affected DFlash2
-kernel/forward tests. A runtime selection change needs real provider requests with variant
-attribution, reset/reuse and teardown; arithmetic changes need their execution-profile checks.
-
 ### R0285 / R0286 — Draft and target synchronized profiling ownership
 
 Owner: `hipengine/runtime/gguf_native_spec_cycle.py`.

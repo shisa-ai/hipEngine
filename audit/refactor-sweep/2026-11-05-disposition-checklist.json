@@ -3091,11 +3091,13 @@
       "ledger_line": 2436,
       "owner": "`hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py:49-60,358-370 validates independent dense and add-norm env controls."
+        "Preserve dense WMMA/default, naive reference and separate benchmark fusion diagnostics; no runtime change.",
+        "32 control, 10 context/acceptance and 36 GPU primitive/native-forward tests pass.",
+        "worklog/entries/20261106T002551.276464Z-lhl-r0282-dflash-drafter-855ca3.md"
       ],
-      "next_action": "Migrate both wrappers and real DFlash2/benchmark callers to owned dense/post-attention plans, retaining naive and strict unfused references.",
+      "next_action": "None; supported comparisons retained.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
