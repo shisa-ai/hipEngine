@@ -3068,6 +3068,8 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     generator.native_batch_decode = True
     monkeypatch.setattr(generator, "_generate_ar_serving_slots", reject_direct_loop)
     monkeypatch.setattr(generator, "_generate_greedy_batch", reject_direct_loop)
+    monkeypatch.setattr(generator, "_flush_ar_packed_decode_owners", reject_direct_loop)
+    monkeypatch.setattr(generator, "_flush_ar_packed_decode_owners_if_chunk_changed", reject_direct_loop)
     adapter = SubmitPollTextGenerator(generator, capacity=2)
     runner = adapter._runner
     assert isinstance(runner, qwen35_gguf.Qwen35GGUFResidentModelRunner)

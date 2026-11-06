@@ -44,6 +44,10 @@ from hipengine.generation.batch_scheduler import (
     GeneratedTokenEvent,
     ResidentBatchScheduler,
 )
+from hipengine.generation.packed_decode_ownership import (
+    flush_packed_decode_owners,
+    flush_packed_decode_owners_if_chunk_changed,
+)
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.speculative.weight_uploads import WeightUploadCache
@@ -4898,31 +4902,10 @@ class Qwen35GGUFBringupGenerator:
         return step_results
 
     def _flush_ar_packed_decode_owners_if_chunk_changed(self, chunk: list[_GGUFARServingSlot]) -> None:
-        if not chunk:
-            return
-        owner = chunk[0].packed_decode_owner
-        sessions = tuple(slot.session for slot in chunk)
-        if owner is not None and all(slot.packed_decode_owner is owner for slot in chunk):
-            owner_sessions = tuple(getattr(owner, "_packed_decode_sessions", ()))
-            owner_dirty = bool(getattr(owner, "_packed_decode_state_dirty", False))
-            if owner_dirty and owner_sessions == sessions:
-                return
-        self._flush_ar_packed_decode_owners(chunk)
+        flush_packed_decode_owners_if_chunk_changed(chunk)
 
     def _flush_ar_packed_decode_owners(self, slots: list[_GGUFARServingSlot]) -> None:
-        owners: list[Any] = []
-        for slot in slots:
-            owner = slot.packed_decode_owner
-            if owner is not None and not any(existing is owner for existing in owners):
-                owners.append(owner)
-        for owner in owners:
-            flush = getattr(owner, "flush_packed_decode_state", None)
-            if callable(flush):
-                flush()
-        if owners:
-            for slot in slots:
-                if any(slot.packed_decode_owner is owner for owner in owners):
-                    slot.packed_decode_owner = None
+        flush_packed_decode_owners(slots)
 
     def _step_ar_serving_slot_serial(
         self,
@@ -12819,7 +12802,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         if graphs and graph is None:
             self._close_packed_decode_graphs(rows)
 
-        self.generator._flush_ar_packed_decode_owners_if_chunk_changed(concrete)
+        flush_packed_decode_owners_if_chunk_changed(concrete)
         graph_eligible = bool(
             bool(allow_graph)
             and (
@@ -13258,7 +13241,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         self._close_packed_decode_graphs(row_tuple)
         slots = [row.slot for row in row_tuple if row.slot is not None]
         if slots:
-            self.generator._flush_ar_packed_decode_owners(slots)
+            flush_packed_decode_owners(slots)
 
     def _flush_row_owner(self, row: _GGUFResidentLoopRow) -> None:
         slot = row.slot
@@ -13295,14 +13278,14 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             for slot in concrete:
                 slot.packed_decode_owner = None
             return
-        self.generator._flush_ar_packed_decode_owners(concrete)
+        flush_packed_decode_owners(concrete)
 
     def _flush_all_packed_owners(self) -> None:
         rows = [row for row in self._rows.values() if row.slot is not None]
         self._close_packed_decode_graphs(rows)
         slots = [row.slot for row in rows if row.slot is not None]
         if slots:
-            self.generator._flush_ar_packed_decode_owners(slots)
+            flush_packed_decode_owners(slots)
 
     def _stream_token_text(self, request_id: int, token_id: int, *, final: bool) -> str:
         # Speculative events can arrive after reclaim removed the row. Keep the
