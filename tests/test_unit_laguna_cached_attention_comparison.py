@@ -6,12 +6,30 @@ from types import SimpleNamespace
 import pytest
 
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
+from hipengine.runtime.laguna_prefill_policy import LagunaCachedPrefillPolicy
 from hipengine.runtime import laguna_kv as kv
 from scripts import (
     laguna_attention_cached_meta_ab as cached_meta,
     laguna_attention_dense_initial_ab as dense_initial,
     laguna_attention_global_qrow6_ab as global_qrow6,
 )
+
+
+@pytest.mark.parametrize("override", ["prefill_cached_meta", "prefill_global_qrow6", "prefill_dense_initial"])
+def test_cache_policy_conflicts_fail_before_runtime_lookup(monkeypatch, override):
+    monkeypatch.setattr(kv, "get_hip_runtime", lambda: pytest.fail("runtime acquired"))
+    with pytest.raises(ValueError, match="legacy overrides"):
+        kv.allocate_laguna_kv_cache(
+            None, context_length=512,
+            cached_prefill_policy=LagunaCachedPrefillPolicy(True, True, True, True),
+            **{override: False},
+        )
+
+
+def test_cache_policy_wrong_type_fails_before_runtime_lookup(monkeypatch):
+    monkeypatch.setattr(kv, "get_hip_runtime", lambda: pytest.fail("runtime acquired"))
+    with pytest.raises(TypeError, match="LagunaCachedPrefillPolicy"):
+        kv.allocate_laguna_kv_cache(None, context_length=512, cached_prefill_policy=object())
 
 
 def _cache(attention_type, start, rows=128):
@@ -38,7 +56,7 @@ def _cache(attention_type, start, rows=128):
 @pytest.mark.parametrize("meta,qrow6,dense", list(product([False, True], repeat=3)))
 def test_cached_attention_flags_select_real_variants_without_changing_launch_ownership(attention_type, start, meta, qrow6, dense):
     cache = _cache(attention_type, start)
-    cache.prefill_cached_meta, cache.prefill_global_qrow6, cache.prefill_dense_initial = meta, qrow6, dense
+    cache.cached_prefill_policy = LagunaCachedPrefillPolicy(True, meta, qrow6, dense)
     calls = []
     cache._resolve = lambda layer, variant: lambda *args, **kwargs: calls.append((layer, variant, args, kwargs))
     cache.attend_prefill_cached(0, 10, 20, 30, 40, 128, stream=7, library="library")
@@ -85,7 +103,7 @@ def test_preappend_capability_preserves_partial_wrap_and_wide_global_contracts(a
 ])
 def test_package_role_precedes_legacy_flags_and_retains_metadata_admission(attention_type, role, variant):
     cache = _cache(attention_type, 128)
-    cache.prefill_cached_meta = cache.prefill_global_qrow6 = cache.prefill_dense_initial = False
+    cache.cached_prefill_policy = LagunaCachedPrefillPolicy(False, False, False, False)
     cache.prefill_preappend_role_scoped = True
     cache.prefill_preappend_role_variants = {role: variant}
     calls = []

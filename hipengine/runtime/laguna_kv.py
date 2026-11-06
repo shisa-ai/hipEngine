@@ -234,9 +234,6 @@ class LagunaKVCache:
             False, bool(prefill_cached_meta), bool(prefill_global_qrow6),
             bool(prefill_dense_initial),
         )
-        self.prefill_cached_meta = self.cached_prefill_policy.cached_meta
-        self.prefill_global_qrow6 = self.cached_prefill_policy.global_qrow6
-        self.prefill_dense_initial = self.cached_prefill_policy.dense_initial
         self.swa_prefill_role_variants = dict(swa_prefill_role_variants)
         self.prefill_preappend_role_scoped = bool(prefill_preappend_role_scoped)
         self.prefill_preappend_role_variants = dict(
@@ -2055,7 +2052,7 @@ class LagunaKVCache:
                 else _DENSE_INITIAL_FIXED512_CACHED_GLOBAL_PREFILL_VARIANT
             )
         dense_initial = (
-            self.prefill_dense_initial
+            self.cached_prefill_policy.dense_initial
             and self.can_dense_initial_prefill(
                 layer_id,
                 rows,
@@ -2068,13 +2065,13 @@ class LagunaKVCache:
             if dense_initial:
                 variant = (
                     _DENSE_INITIAL_GLOBAL_QROW6_PREFILL_VARIANT
-                    if self.prefill_global_qrow6 and start_position >= 128
+                    if self.cached_prefill_policy.global_qrow6 and start_position >= 128
                     else _DENSE_INITIAL_GLOBAL_PREFILL_VARIANT
                 )
-            elif self.prefill_cached_meta and start_position >= 128:
+            elif self.cached_prefill_policy.cached_meta and start_position >= 128:
                 variant = (
                     _CACHED_META_GLOBAL_QROW6_PREFILL_VARIANT
-                    if self.prefill_global_qrow6
+                    if self.cached_prefill_policy.global_qrow6
                     else _CACHED_META_GLOBAL_PREFILL_VARIANT
                 )
             else:
@@ -2084,7 +2081,7 @@ class LagunaKVCache:
                 _DENSE_INITIAL_SWA_PREFILL_VARIANT
                 if dense_initial
                 else _CACHED_META_SWA_PREFILL_VARIANT
-                if self.prefill_cached_meta
+                if self.cached_prefill_policy.cached_meta
                 else _CACHED_SWA_PREFILL_VARIANT
             )
         fn = self._resolve("laguna_attention_prefill", variant)
