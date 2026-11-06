@@ -3067,11 +3067,13 @@
       "ledger_line": 2419,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/generation/qwen35_gguf.py:754-775,1998-2067,3472 still resolves ambient diagnostic WMMA preference into sessions."
+        "Preserve resident prefill diagnostic and production default; no execution migration.",
+        "50 diagnostic/profile/CLI tests pass, including pool isolation/reuse and effective-selector precedence.",
+        "worklog/entries/20261106T002226.262722Z-lhl-r0282-prefill-policy-881935.md"
       ],
-      "next_action": "Create session-owned prefill plan and migrate pooled/unpooled/DMS/warmup consumers with opposite-choice reuse isolation and explicit error tests.",
+      "next_action": "None; supported comparison retained.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

@@ -1916,23 +1916,6 @@ pair+SiLU dispatch at values below, within and above their row bounds. Preserve 
 registered strict fallbacks. Run the rowtile-control and GEMV dispatch unit tests, raw-K and pack8
 GPU parity files and public generation with route attribution, reset/reuse and cleanup.
 
-### R0282-PREFILL-POLICY — Resident prefill diagnostic ownership
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `_resident_session_wmma_prefill_default()`; `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL`.
-
-**Decision needed:** keep the diagnostic selector or replace it with an explicit session-owned
-prefill plan. Preserve working comparison routes and the production WMMA default; an old negative
-timing result alone is not a reason to delete supported GEMV kernels or change another provider's
-policy.
-
-Done when: migrate generator/DMS acquisition, pooled and unpooled sessions, warmup,
-benchmark precedence and effective-route provenance together. Cover unset/on/off/invalid values,
-opposite-choice pool isolation, matching reuse, AR/MTP/DMS owners, and the dense speculative
-exception. A runtime change also needs public requests with route attribution, reset/reuse and
-teardown; changing arithmetic or automatic selection requires its applicable profile checks.
-
 ### R0282-DFLASH-DRAFTER — Dense and post-attention plan ownership
 
 Owner: `hipengine/kernels/hip_gfx1100/speculative/dflash_drafter.py`.
