@@ -2627,11 +2627,13 @@
       "ledger_line": 2026,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "hipengine/runtime/laguna_gguf_runner.py:2953-2956,3411-3445 retains four independent preappend/meta/qrow/dense controls."
+        "Immutable session/cache policy and all three A/B callers migrated; duplicate internal transport removed (834bac496).",
+        "Device-selected eviction fallback passes (8d32e380c); bulk/serial partial wrap cases pass (19b08b9d8).",
+        "Host partial/verifier routes pass (1eef3f733); device verifier prefix/cancel canonical K/V and metadata equality passes (ac2bc887f)."
       ],
-      "next_action": "Construction and all A/B callers migrated (176a6f071/1e8dcc92c); KV identity forwarding and immutable selection completed (2c37298a9/b77db9c88). Explicit-policy eviction fallback passes (7dbd18599), actual selected initial global/SWA device output equality passes (d7ed80211). Complete GPU partial/eviction/verifier coverage before compatibility retirement; public selected-state/cleanup matrix needs accessible Laguna checkpoint. Package-role maps remain separate.",
+      "next_action": "Provide an accessible Laguna checkpoint, then run public selected-variant/output/state/cleanup matrix including partial prefill and verifier logits before compatibility retirement. Configured artifacts named in R0313 remain absent; primitive partial parity and device publication checks do not establish model-level outputs. Package-role maps remain separate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

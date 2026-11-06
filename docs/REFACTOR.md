@@ -1873,8 +1873,17 @@ ambiguous policy plus overrides fails before runtime acquisition. Explicit-polic
 fallback and selector-to-device initial global/SWA output equality pass. See
 `worklog/entries/20261106T141438.269623Z-lhl-r0321-device-route-6f4ad7.md`.
 
-**Remaining work:** complete GPU partial/eviction/verifier coverage and public
-selected-variant/state/cleanup matrix before retiring compatibility inputs.
+**Additional validation:** internal KV construction no longer duplicates resolved policy fields.
+Device-selected global/SWA cached-meta fallback after eviction matches explicit primitives
+(`8d32e380c`). Bulk-versus-serial partial tiles at 2, 7, 8 and 12 rows pass around SWA wrap
+(`19b08b9d8`); these are primitive comparisons, not cached-policy selection for partial tiles.
+Host layer routing covers 17, 127, 128, 129, 257 and 384 rows, including staged-verifier
+bypass (`1eef3f733`). Device verifier prefix/cancel publication matches canonical control
+K/V and span metadata for 0, 1, 3 and 7 accepted rows (`ac2bc887f`).
+
+**Remaining work:** public selected-variant/output/state/cleanup matrix, including partial
+prefill and verifier logits, before retiring compatibility inputs. Device publication checks
+alone do not establish model-level verifier output parity.
 Public model checks need the accessible Laguna artifact described in R0313–R0320. This dependency
 does not restrict execution or disable defaults.
 
