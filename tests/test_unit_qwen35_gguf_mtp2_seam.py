@@ -276,6 +276,15 @@ def test_native_chain_accept_commits_the_accepted_row_for_every_bucket() -> None
         assert rejected.accepted_tokens == ((),)
         assert rejected.selected_candidate_rows == (0,)
         assert rejected.next_tokens == (777,)
+        # Every interior rejection must select its matching state/hidden row.
+        for accepted in range(rows - 1):
+            top1 = list(agreeing)
+            top1[accepted] = 777
+            partial = batch.accept_from_top1(top1, remaining_decode=(64,))
+            assert partial.accepted_counts == (accepted,), (rows, accepted)
+            assert partial.accepted_tokens == (tokens[1:1 + accepted],)
+            assert partial.selected_candidate_rows == (accepted,)
+            assert partial.next_tokens == (777,)
         # The remaining-decode budget caps acceptance at ``budget - 1`` drafts
         # and never emits the exhausted sentinel, so every cycle publishes at
         # least its correction token and the target cursor still advances by
