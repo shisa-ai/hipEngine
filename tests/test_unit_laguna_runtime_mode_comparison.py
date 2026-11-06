@@ -33,10 +33,7 @@ def test_mode_parser_preserves_generalized_arms_and_owns_default_copy():
 @pytest.mark.parametrize("mode,expected", [
     ("mmq128x32_d8_f32_wavecols_direct_doublebuf", [("gate", "mmq128x32_d8_f32_wavecols_direct_doublebuf")]),
     ("selected_down:custom_down", [("down", "custom_down")]),
-    ("q6_wmma_current", [("q6_sums", False), ("activation", False), ("weight", False)]),
-    ("q6_wmma_prefetch", [("q6_sums", False), ("activation", False), ("weight", True)]),
-    ("q6_wmma_prefetch_activation", [("weight", True), ("activation", True), ("q6_sums", False)]),
-    ("q6_wmma_precomputed_sums", [("weight", True), ("activation", True), ("q6_sums", True)]),
+
     ("q4_precomputed_sums_off", [("q4_sums", False)]),
     ("q4_precomputed_sums_on", [("q4_sums", True)]),
 ])
@@ -46,8 +43,7 @@ def test_comparison_applies_only_requested_runtime_controls(mode, expected):
         method: lambda value, label=label: calls.append((label, value))
         for method, label in (
             ("set_selected_gate_up_mode", "gate"), ("set_selected_down_mode", "down"),
-            ("set_q6_wmma_prefetch_activation", "activation"), ("set_q6_wmma_prefetch_weight", "weight"),
-            ("set_q6_precomputed_activation_sums", "q6_sums"), ("set_q4_precomputed_activation_sums", "q4_sums"),
+("set_q4_precomputed_activation_sums", "q4_sums"),
         )
     })
     comparison._apply_mode(session, mode)
@@ -100,7 +96,9 @@ def test_runtime_comparison_captures_complete_state_and_closes_child(monkeypatch
     ("q6_wmma_precomputed_sums", (True, True, True)),
 ])
 @pytest.mark.parametrize("initial", [(True, True, True), (False, False, False)])
-def test_q6_comparison_real_setters_keep_sum_producer_and_consumer_consistent(mode, expected, initial):
+def test_q6_comparison_scope_keeps_sum_producer_and_consumer_consistent(mode, expected, initial):
+    for name in ("set_q6_wmma_prefetch_weight", "set_q6_wmma_prefetch_activation", "set_q6_precomputed_activation_sums"):
+        assert not hasattr(LagunaGGUFResidentSession, name)
     session = object.__new__(LagunaGGUFResidentSession)
     session.q6_qmicro_planar = True
     (session.q6_wmma_prefetch_weight, session.q6_wmma_prefetch_activation,

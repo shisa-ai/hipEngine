@@ -1635,12 +1635,13 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch,
     assert session.q6_wmma_prefetch_weight is True
     assert session.q6_wmma_prefetch_activation is True
     assert session.q6_precomputed_activation_sums is True
-    session.set_q6_precomputed_activation_sums(False)
+    with session.q6_prefetch_diagnostic(weight=False, activation=False, sums=False):
+        assert session.q6_wmma_prefetch_weight is False
+        assert session.q6_wmma_prefetch_activation is False
+        assert session.q6_precomputed_activation_sums is False
+    assert session.q6_wmma_prefetch_weight is True
     assert session.q4_precomputed_activation_sums is True
     session.set_q4_precomputed_activation_sums(False)
-    session.set_q6_wmma_prefetch_activation(False)
-    session.set_q6_wmma_prefetch_weight(False)
-    assert session.q6_wmma_prefetch_weight is False
     assert kv_kwargs["prefill_cached_meta"] is True
     assert kv_kwargs["prefill_global_qrow6"] is True
     assert kv_kwargs["prefill_dense_initial"] is True

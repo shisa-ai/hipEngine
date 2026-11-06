@@ -4172,37 +4172,6 @@ class LagunaGGUFResidentSession:
                 self.q6_precomputed_activation_sums,
             ) = previous
 
-    def set_q6_wmma_prefetch_weight(self, enabled: bool) -> None:
-        """Select exact Q6 register prefetch or its current WMMA rollback."""
-
-        if enabled and not self.q6_qmicro_planar:
-            raise ValueError(
-                "Q6 WMMA weight prefetch requires planar qmicro"
-            )
-        if not enabled and self.q6_wmma_prefetch_activation:
-            raise ValueError(
-                "disable Q6 WMMA activation prefetch before weight prefetch"
-            )
-        self.q6_wmma_prefetch_weight = bool(enabled)
-
-    def set_q6_wmma_prefetch_activation(self, enabled: bool) -> None:
-        """Select pipelined Q6 activation loads or weight-only prefetch."""
-
-        if enabled and not self.q6_wmma_prefetch_weight:
-            raise ValueError(
-                "Q6 WMMA activation prefetch requires weight prefetch"
-            )
-        self.q6_wmma_prefetch_activation = bool(enabled)
-
-    def set_q6_precomputed_activation_sums(self, enabled: bool) -> None:
-        """Select packed Q6 K16 sums or consumer-side sum reconstruction."""
-
-        if enabled and not self.q6_wmma_prefetch_activation:
-            raise ValueError(
-                "Q6 precomputed activation sums require activation prefetch"
-            )
-        self.q6_precomputed_activation_sums = bool(enabled)
-
     def set_q4_precomputed_activation_sums(self, enabled: bool) -> None:
         """Select packed D8 K16 sums or consumer-side sum reconstruction."""
 

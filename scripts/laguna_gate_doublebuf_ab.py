@@ -155,22 +155,6 @@ def _apply_mode(
         session.set_selected_down_mode(
             runtime_mode.removeprefix(selected_down_prefix)
         )
-    elif runtime_mode == "q6_wmma_current":
-        session.set_q6_precomputed_activation_sums(False)
-        session.set_q6_wmma_prefetch_activation(False)
-        session.set_q6_wmma_prefetch_weight(False)
-    elif runtime_mode == "q6_wmma_prefetch":
-        session.set_q6_precomputed_activation_sums(False)
-        session.set_q6_wmma_prefetch_activation(False)
-        session.set_q6_wmma_prefetch_weight(True)
-    elif runtime_mode == "q6_wmma_prefetch_activation":
-        session.set_q6_wmma_prefetch_weight(True)
-        session.set_q6_wmma_prefetch_activation(True)
-        session.set_q6_precomputed_activation_sums(False)
-    elif runtime_mode == "q6_wmma_precomputed_sums":
-        session.set_q6_wmma_prefetch_weight(True)
-        session.set_q6_wmma_prefetch_activation(True)
-        session.set_q6_precomputed_activation_sums(True)
     elif runtime_mode == "q4_precomputed_sums_off":
         session.set_q4_precomputed_activation_sums(False)
     elif runtime_mode == "q4_precomputed_sums_on":
