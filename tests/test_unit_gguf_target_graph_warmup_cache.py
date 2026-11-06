@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.runtime.gguf_target_graph_alias import native_target_graph_alias
 from hipengine.runtime import gguf_native_spec_cycle as cycle
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
@@ -17,6 +18,9 @@ def test_alias_store_keeps_capture_identities_and_sessions_separate(budget, suff
     assert getattr(first, name) is None
     setattr(first, name, graph)
     assert getattr(first, name) is graph
+    assert native_target_graph_alias(
+        first, budget, device_accept=bool(suffix), sampled=suffix.endswith('_sampled'),
+    ) is graph
     assert getattr(second, name) is None
     assert name not in first.__dict__
     assert len(first._native_target_graph_aliases) == 1

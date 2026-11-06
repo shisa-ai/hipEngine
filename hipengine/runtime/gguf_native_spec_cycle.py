@@ -21,6 +21,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from hipengine.runtime.gguf_target_graph_alias import native_target_graph_alias
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import (
@@ -3026,10 +3027,9 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
         raise NativeSpecTargetGraphUnsupportedError(
             "device proposal requires one cached B1-B7 target bucket"
         )
-    cache_name = f"_native_spec_b{rows - 1}_target_graph_n2"
-    if sampled_accept:
-        cache_name = f"{cache_name}_sampled"
-    graph = getattr(session, cache_name, None)
+    graph = native_target_graph_alias(
+        session, rows - 1, device_accept=True, sampled=sampled_accept,
+    )
     if graph is None:
         reason = "device proposal handoff requires a compatible cached N2 target graph"
         session.last_native_spec_target_fallback_reason = reason
