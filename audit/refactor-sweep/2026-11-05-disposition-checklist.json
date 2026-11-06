@@ -2194,11 +2194,11 @@
       "ledger_line": 1673,
       "owner": "`hipengine/runtime/laguna_moe.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "scripts/laguna_group_compact_parallel_ab.py:28 still names serial_rollback; hipengine/runtime/laguna_moe.py:219-220 keeps serial and parallel modes."
       ],
-      "next_action": "Migrate serial comparison to explicit primitive ownership before selector removal; preserve distinct historical result parsing and strict oracle.",
+      "next_action": "Host comparison migration completed ed6c5767a/c4b1ef4ad: scoped warmup/measured arms, setter retired; constructor already package-owned, serial primitive arguments and historical labels preserved. 119 host/source-default tests and 2 synthetic full-MoE Q4/Q6 gfx1151 oracle cases passed. Remaining: accessible Laguna checkpoint for actual public default-selection metadata/output equality/cleanup; configured local artifacts absent (R0341). Do not repeat host migration or remove strict serial reference primitives.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

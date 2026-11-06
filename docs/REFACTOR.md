@@ -1452,10 +1452,16 @@ Owner: `hipengine/runtime/laguna_moe.py`.
 
 Scope: `scripts/laguna_group_compact_parallel_ab.py`.
 
-**Remaining work:** migrate session-level comparisons to explicit primitive ownership before
-removing the `serial` override. Keep registered reference primitives and historical result readers.
-The Laguna model-resource dependency and public-route validation described in R0313–R0318 also apply
-to this migration.
+**Host migration complete:** the A/B harness uses `group_compact_diagnostic` for warmup
+and measured calls; the persistent session setter is removed. Serial/parallel primitive
+arguments remain explicit numerical oracles, and historical result labels are unchanged.
+Compaction/source-default/runner host checks pass (119 tests); synthetic full-MoE Q4/Q6
+numerical contracts pass on gfx1151. See
+`worklog/entries/20261106T122018.828940Z-lhl-r0319-compaction-setter-681e08.md`.
+
+**Remaining dependency:** public default-selection metadata/output/cleanup validation
+needs an accessible Laguna checkpoint; configured local benchmark/live artifacts are absent.
+Do not remove serial primitive references or repeat completed session migration.
 
 Done when: migrate the A/B harness, numerical fixtures and session setter together; run
 compaction comparison, source-default, runner and full MoE numerical contracts, then public
