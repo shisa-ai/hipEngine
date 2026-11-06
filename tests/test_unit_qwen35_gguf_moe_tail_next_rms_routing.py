@@ -73,12 +73,12 @@ def _session_and_calls():
     return session, calls
 
 
-def test_moe_tail_next_rms_env_defaults_on_with_opt_out(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS", raising=False)
-    assert qgr._gguf_moe_tail_next_rms_enabled()
-    monkeypatch.setenv("HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS", "0")
-    assert not qgr._gguf_moe_tail_next_rms_enabled()
-    monkeypatch.setenv("HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS", "1")
+@pytest.mark.parametrize("stale", [None, "0", "1", "invalid"])
+def test_moe_tail_defaults_on_ignoring_retired_environment(monkeypatch, stale):
+    if stale is None:
+        monkeypatch.delenv("HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS", stale)
     assert qgr._gguf_moe_tail_next_rms_enabled()
 
 

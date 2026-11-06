@@ -9123,7 +9123,6 @@ def _gguf_bulk_prefill_initial_hidden_capacity(
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
 _GGUF_FUSED_MOE_FFN_ENV = "HIPENGINE_GGUF_FUSED_MOE_FFN"
 _GGUF_HOST_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_HOST_TOKEN_EMBEDDING"
-_GGUF_MOE_TAIL_NEXT_RMS_ENV = "HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS"
 _GGUF_Q4K_SELECTED_DUAL_DP4A_ENV = "HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A"
 _GGUF_T16_SELECTED_DP4A_ENV = "HIPENGINE_GGUF_T16_SELECTED_DP4A"
 _GGUF_T16_SELECTED_PAIRREUSE_ENV = "HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE"
@@ -9399,7 +9398,7 @@ def _normalize_prefill_queue_drain(value: str) -> str:
 
 def _gguf_moe_tail_next_rms_enabled(owner=None) -> bool:
     selected = getattr(owner, "target_moe_tail_next_rms", None)
-    return _env_flag(_GGUF_MOE_TAIL_NEXT_RMS_ENV, True) if selected is None else bool(selected)
+    return True if selected is None else bool(selected)
 
 
 def _gguf_prefill_router_select_threads(backend: str) -> int:
