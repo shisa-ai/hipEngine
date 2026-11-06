@@ -2922,8 +2922,16 @@ profile owner; adapter capacity clamping remains independent. Direct callers use
 the same resolvers. See
 [`row-owner checkpoint`](../worklog/entries/20261106T094204.248065Z-lhl-r0195-row-owner-2c7013.md)
 and [`width-owner checkpoint`](../worklog/entries/20261106T095506.365433Z-lhl-r0195-width-owner-457c24.md).
-Loaded-geometry prompt policy and final target-shape attribution still need
-integration into the profile-resolved physical-target manifest.
+Loaded-geometry prompt policy tables are frozen on those owners; adapter
+construction selects widths with the existing file-type fallback. The adapter's
+`physical_width_contract()` exposes JSON-compatible resolved row/arithmetic,
+width/depth and prompt-width policy plus the last padding decision and its reason.
+See [`prompt-owner checkpoint`](../worklog/entries/20261106T095747.652410Z-lhl-r0195-prompt-owner-934411.md),
+[`policy contract`](../worklog/entries/20261106T095934.807046Z-lhl-r0195-policy-contract-cb3fdb.md)
+and [`padding attribution`](../worklog/entries/20261106T100045.077441Z-lhl-r0195-shape-contract-6f075c.md).
+These reports describe policy and planning, not actual kernel dispatch. Integration
+into the profile-resolved physical-target manifest and public output/state
+validation remain outstanding.
 Reuse RF-1/RF-10 ownership rather than add a parallel selector. Retire the two rollback flags
 only with explicit coverage of their replacement policies and diagnostic controls.
 
