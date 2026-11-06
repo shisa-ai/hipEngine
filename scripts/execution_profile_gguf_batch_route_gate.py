@@ -358,7 +358,16 @@ def _q4_selected_pair_package_policy() -> Iterator[None]:
 
 
 @contextlib.contextmanager
-def _candidate_route_policy(route_profile: str) -> Iterator[None]:
+def _candidate_route_policy(route_profile: str, *, session=None) -> Iterator[None]:
+    if session is not None and (
+        _router_candidate_enabled or str(route_profile) != ROUTE_PROFILE_Q8T16
+    ):
+        from scripts.execution_profile_gguf_c1_route_gate import route_owner
+
+        values = {ROUTER_COOP_ENV: "1", ROUTER_PERSISTENT_ENV: "1"}
+        with route_owner(session, values), _candidate_route_policy(route_profile):
+            yield
+        return
     if str(route_profile) == ROUTE_PROFILE_CURRENT_DIRECT:
         with _current_package_policy():
             yield
@@ -502,7 +511,7 @@ def _run_static_group(
             packed_candidate=packed_candidate,
         )
         trajectories: list[list[dict[str, object]]] = [[] for _ in prompt_rows]
-        with _candidate_route_policy(route_profile):
+        with _candidate_route_policy(route_profile, session=sessions[0]):
             for step in range(int(decode_steps)):
                 token_ids = [
                     int(strict[str(row["id"])][step]["token_id"])
@@ -566,7 +575,7 @@ def _run_dynamic(
             packed_candidate=packed_candidate,
         )
         trajectories: dict[int, list[dict[str, object]]] = {index: [] for index in range(8)}
-        with _candidate_route_policy(route_profile):
+        with _candidate_route_policy(route_profile, session=sessions[0]):
             for step in range(int(decode_steps)):
                 width, entered, previous = _schedule_width(schedule, step)
                 active_indices = survivor_order[:width]
@@ -631,7 +640,7 @@ def _run_sparse_c8(
             packed_candidate=packed_candidate,
         )
         trajectories: list[list[dict[str, object]]] = [[] for _ in prompt_rows]
-        with _candidate_route_policy(route_profile):
+        with _candidate_route_policy(route_profile, session=sessions[0]):
             for step in range(int(decode_steps)):
                 token_ids = [
                     int(strict[str(row["id"])][step]["token_id"])
@@ -782,7 +791,13 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             requested_mode=str(args.gdn_mode),
             backend_exact_mode=_gguf_gdn_prefill_backend_exact_mode(resolved_backend),
         )
-        with _rowtile_policy(False):
+        from scripts.execution_profile_gguf_c1_route_gate import route_owner
+        strict_router = ({ROUTER_COOP_ENV: "0", ROUTER_PERSISTENT_ENV: "0"}
+                         if _router_candidate_enabled else None)
+        with contextlib.ExitStack() as strict_scope:
+            strict_scope.enter_context(_rowtile_policy(False))
+            if strict_router is not None:
+                strict_scope.enter_context(route_owner(owner, strict_router))
             for index, row in enumerate(prompt_rows):
                 prompt_id = str(row["id"])
                 strict[prompt_id] = tuple(

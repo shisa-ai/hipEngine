@@ -13,6 +13,21 @@ from scripts.execution_profile_gguf_batch_route_gate import (
 )
 
 
+def test_batch_candidate_binds_and_restores_shared_router_owner(monkeypatch):
+    from types import SimpleNamespace
+
+    owner = SimpleNamespace(router_f32w_coop=False, router_f32w_persistent_counter=None)
+    session = SimpleNamespace(runner=owner)
+    monkeypatch.setattr(gate, "_router_candidate_enabled", True)
+    monkeypatch.setenv(gate.ROUTER_COOP_ENV, "caller")
+    with gate._candidate_route_policy(gate.ROUTE_PROFILE_Q8T16, session=session):
+        assert owner.router_f32w_coop is True
+        assert owner.router_f32w_persistent_counter is True
+    assert owner.router_f32w_coop is False
+    assert owner.router_f32w_persistent_counter is None
+    assert os.environ[gate.ROUTER_COOP_ENV] == "caller"
+
+
 def test_selected_pair_metadata_names_effective_scope_without_env_claims():
     metadata = gate.selected_pair_diagnostic_metadata(gate.ROUTE_PROFILE_Q4_SELECTED_PAIR)
     assert metadata == {
