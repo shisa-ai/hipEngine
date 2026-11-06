@@ -1299,37 +1299,6 @@ Done when: run `tests/test_unit_gguf_ar_decode_control.py`,
 serial and stream requests at widths below/above eight and an unrelated width, ragged/shrinking
 groups, selected route, repeat output and teardown.
 
-### R0281-MTP-DRAFT-EXECUTOR — Compatibility draft/verifier worker lifetime
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `_try_draft_mtp_serving_slots_streams`, `_try_verify_mtp_serving_cycle_chunks_streams`;
-`HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT`, `HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY`;
-`_close_mtp_serving_slots`.
-
-**Remaining work:** decide whether to retire compatibility execution through the existing loop
-extraction or give its worker pool a bounded request/owner lifetime. Do not add another global
-switch. A persistent pool must retain per-slot seed/KV ownership, ordered results,
-deadline/cancellation handling, complete future draining, failure cleanup and shutdown before its
-device resources are released. The current per-call draft pool now collects every
-submitted future on failure and frees successful sibling snapshots before raising;
-submission failure also drains already launched work. The chunked verifier now
-collects every submitted future after worker or submission failure, preserving the
-first error and attaching later worker failures as notes. Pool shutdown already
-waited for execution, but did not previously retrieve every result. Neither pool
-reuses workers.
-Profile this path first if claiming pool reuse improves complete
-wall; old server throughput comparisons do not establish current worker overhead or a resident MTP2
-benefit.
-
-Done when: run stream-draft, chunked-verifier and MTP2 nodes in
-`tests/test_live_generation_qwen35_gguf_sampling.py`,
-`tests/test_unit_gguf_mtp_serving_chunk_policy.py` and the GGUF MTP2 seam tests. Worker-lifetime
-changes need direct compatibility requests and public `LLM.generate()`/serving validation
-separately, recording which route actually runs, repeat output, shrinking groups,
-deadline/cancellation/failure, drained futures and zero leaked streams/allocations. Do not label a
-compatibility-only worker change as a resident scheduler improvement.
-
 ### R0281-INT8-POLICY — Legacy context and layout diagnostic controls
 
 Owner: `hipengine/generation/qwen35_gguf.py`.
