@@ -1414,16 +1414,22 @@ class Qwen35GGUFMoEMTP2Adapter:
             keys = tuple(self._resident_charge_tokens)
         else:
             keys = (int(target_key),) if int(target_key) in self._resident_charge_tokens else ()
+        failures: list[BaseException] = []
         for key in keys:
             tokens = self._resident_charge_tokens.pop(key, [])
             if not callable(release):
                 continue
             for token in tokens:
-                release(token)
+                try:
+                    release(token)
+                except BaseException as error:
+                    failures.append(error)
         roles = self._slab_charge_tokens()
         for role_key in tuple(roles):
             if target_key is None or int(role_key[0]) == int(target_key):
                 roles.pop(role_key, None)
+        if failures:
+            raise BaseExceptionGroup("MoE slab charge release failed", failures)
 
     @staticmethod
     def _hidden_slab_rows(slab: tuple[Any, ...], hidden_size: int) -> int:

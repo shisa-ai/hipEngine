@@ -1332,6 +1332,30 @@ def test_moe_adapter_prices_its_slabs_through_the_pool_budget() -> None:
     assert pool._tokens == {}
 
 
+def test_moe_slab_charge_release_drains_peers_after_failure():
+    pool = _RecordingPool()
+    adapter = _charge_test_adapter(pool)
+    tokens = [adapter._charge_resident_slab(rid, 'draft_kv', 512)
+              for rid in (7, 7, 9)]
+    adapter._slab_charge_by_role = {(7, 'draft'): tokens[0], (9, 'draft'): tokens[2]}
+    attempts = []
+    original = pool.release_private_workspace
+    def release(token):
+        attempts.append(token)
+        original(token)
+        if token is tokens[0]:
+            raise RuntimeError('charge release failed')
+    pool.release_private_workspace = release
+    with pytest.raises(BaseExceptionGroup, match='MoE slab charge release failed'):
+        adapter._release_resident_slab_charges()
+    assert attempts == tokens
+    assert adapter._resident_charge_tokens == {}
+    assert adapter._slab_charge_by_role == {}
+    assert pool._tokens == {}
+    adapter._release_resident_slab_charges()
+    assert attempts == tokens
+
+
 def test_moe_adapter_slab_charge_is_refused_before_allocating() -> None:
     """A refusal propagates out of the charge, so no malloc is reached."""
 
