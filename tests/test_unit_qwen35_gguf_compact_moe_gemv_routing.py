@@ -87,7 +87,7 @@ def test_c1_decode_coop_optout_uses_f32_router_logits_and_select(
     runner, scratch = _fake_runner_and_scratch()
     calls: list[tuple[str, object]] = []
     _patch_common_moe_kernels(monkeypatch, calls)
-    monkeypatch.setenv("HIPENGINE_GGUF_ROUTER_F32W_COOP", coop_enabled)
+    runner.router_f32w_coop = coop_enabled == "1"
     attempts: list[bool] = []
     monkeypatch.setattr(
         qgr,
@@ -124,11 +124,8 @@ def test_c1_decode_can_route_exact_f32w_cooperative_router(
     runner, scratch = _fake_runner_and_scratch()
     calls: list[tuple[str, object]] = []
     _patch_common_moe_kernels(monkeypatch, calls)
-    monkeypatch.delenv("HIPENGINE_GGUF_ROUTER_F32W_COOP", raising=False)
-    if persistent is None:
-        monkeypatch.delenv("HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER", raising=False)
-    else:
-        monkeypatch.setenv("HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER", persistent)
+    runner.router_f32w_coop = True
+    runner.router_f32w_persistent_counter = persistent != "0"
     monkeypatch.setattr(
         qgr,
         "_try_launch_qwen35_router_topk_split_shared_bf16_f32w",
@@ -1355,6 +1352,7 @@ def _fake_runner_and_scratch(
     weights = SimpleNamespace(config=cfg, layer=lambda layer_id: layer)
     runner = object.__new__(qgr.Qwen35GGUFFullStackRunner)
     runner.weights = weights
+    runner.router_f32w_coop = False
     runner.runtime = "runtime-sentinel"
     # object.__new__ bypasses __post_init__, which normally resolves `auto`.
     runner.backend = "hip_gfx1100"
