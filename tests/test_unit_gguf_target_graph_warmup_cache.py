@@ -3,7 +3,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from hipengine.runtime.gguf_target_graph_alias import native_target_graph_alias
+from hipengine.runtime.gguf_target_graph_alias import (
+    clear_native_target_graph_aliases, native_target_graph_alias, set_native_target_graph_alias,
+)
 from hipengine.runtime import gguf_native_spec_cycle as cycle
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
@@ -28,6 +30,19 @@ def test_alias_store_keeps_capture_identities_and_sessions_separate(budget, suff
     assert getattr(first, f'_native_spec_b{budget}_target_graph{other}') is None
     setattr(first, name, None)
     assert first._native_target_graph_aliases == {}
+
+
+def test_keyed_clear_removes_only_retired_graph_across_aliases():
+    session = object.__new__(Qwen35GGUFResidentSession)
+    retired, peer = object(), object()
+    for budget in (1, 4, 7):
+        set_native_target_graph_alias(session, budget, retired, device_accept=True)
+    set_native_target_graph_alias(session, 4, peer, device_accept=True, sampled=True)
+    clear_native_target_graph_aliases(session, retired)
+    clear_native_target_graph_aliases(session, retired)
+    assert session._native_target_graph_aliases == {(4, True, True): peer}
+    assert session._native_spec_b4_target_graph_n2 is None
+    assert session._native_spec_b4_target_graph_n2_sampled is peer
 
 
 def test_eviction_close_failure_keeps_graph_reachable_for_retry(monkeypatch):
