@@ -3980,6 +3980,7 @@ def test_gguf_resident_runner_discards_only_terminal_packed_state(
     events: list[str] = []
     owner = SimpleNamespace(
         discard_packed_decode_state=lambda: events.append("discard"),
+        flush_packed_decode_state=lambda: events.append("owner_flush"),
     )
 
     class FakeGraph:
@@ -4013,14 +4014,8 @@ def test_gguf_resident_runner_discards_only_terminal_packed_state(
         "invalidate"
     )
 
-    def flush_owners(concrete) -> None:
-        events.append("owner_flush")
-        for slot in concrete:
-            slot.packed_decode_owner = None
-
-    runner.generator = SimpleNamespace(
-        _flush_ar_packed_decode_owners=flush_owners,
-    )
+    # The resident runner owns shared flushing directly, not through its generator.
+    runner.generator = SimpleNamespace()
 
     runner._flush_row_owner(rows[0])
 
