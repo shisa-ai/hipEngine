@@ -1583,10 +1583,20 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `LLM.generate()`.
 
-**Remaining work:** move the public setters/cache policy ladder and profiler mode/result readers
-into the diagnostic owner, preserving generic and peer-backend routes. Remove the scoped field
-policy when reference variant selection no longer mutates production flags. Real numerical/public
-validation needs R0340/R0273's Laguna artifact and the configured ROCm environment.
+**Host migration complete:** profiler arms select explicit registered references through
+`global_issue_arm`; the three persistent setters are removed. Diagnostic scopes restore one
+cache-owned reference slot without changing production prerequisite or successor flags. Generic
+capacity and peer-backend routes remain available.
+
+**Validation:** global issue/profiler/runner contracts pass, as does the maintained primitive
+CPU-oracle case on gfx1151. Device owner-versus-registered-primitive checks cover both arms of
+each pair across live126/127/576/3999/4000/4001 and capacity4095/4096/4097. These dispatch checks
+are distinct from independent arithmetic oracles. See
+`worklog/entries/20261106T133146.186131Z-lhl-r0349-boundaries-ce03f0.md`.
+
+**Remaining dependency:** public `LLM.generate()` selected-symbol, full-state and teardown
+validation needs an accessible Laguna checkpoint; configured local artifacts are absent.
+ROCm gfx1151 is available. Reference primitives remain in production builds pending that check.
 
 Done when: run global issue, profiler, runner and KV attention contracts; on ROCm,
 exercise each pair against its registered primitive oracle on both sides of split/live4000 and

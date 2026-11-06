@@ -2348,11 +2348,12 @@
       "ledger_line": 1802,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "hipengine/runtime/laguna_gguf_runner.py:4265-4283 exposes attention reference setters."
+        "3bbeb7905/9781e2080/bf920f073 migrate profiler arms, retire setters and replace temporary flag policy with cache-owned reference slot.",
+        "eb172a5a0: 24 gfx1151 owner/primitive boundary cases pass; cbef1ae5f: maintained global primitive CPU oracle passes."
       ],
-      "next_action": "Move global exp/mixed32 public mutation and profiler/result readers to diagnostic owner; eliminate temporary field-policy mutation only after reference selectors migrate.",
+      "next_action": "Supply accessible Laguna checkpoint and run public LLM.generate default-successor selected-symbol/full-state/teardown checks. Configured local artifacts absent; ROCm gfx1151 available. Host and device migration checks complete; preserve reference primitives pending public check.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
