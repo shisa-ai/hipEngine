@@ -261,6 +261,48 @@ def test_dms_exact_budget_eviction_rejects_invalid_scores() -> None:
         )
 
 
+@pytest.mark.parametrize("tokens", [1, 7, 31, 33])
+@pytest.mark.parametrize("ratio", [1, 2, 4, 64])
+@pytest.mark.parametrize("window", [0, 3, 1000])
+def test_exact_budget_matches_independent_rank_oracle(tokens, ratio, window):
+    rng = np.random.default_rng(280 + tokens)
+    # Small integral scores deliberately create many ties across distinct heads.
+    scores = rng.integers(-2, 3, (tokens, 2, 3)).astype(np.float32)
+    positions = np.cumsum(rng.integers(1, 4, tokens)).astype(np.int64)
+    current = int(positions[-1]) + 1
+    eligible = [i for i, pos in enumerate(positions) if current - int(pos) > window]
+    keep = (len(eligible) + ratio - 1) // ratio
+    count = len(eligible) - keep
+    expected = np.zeros_like(scores, dtype=np.bool_)
+    for layer in range(2):
+        for head in range(3):
+            ranked = sorted(eligible, key=lambda i: (-float(scores[i, layer, head]), int(positions[i])))
+            expected[ranked[:count], layer, head] = True
+    original = scores.copy()
+    actual = build_dms_exact_budget_eviction(
+        scores, current_position=current, window_size=window,
+        target_compression_ratio=ratio, positions=positions,
+    )
+    np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(scores, original)
+    np.testing.assert_array_equal(actual.sum(axis=0), np.full((2, 3), count))
+    np.testing.assert_array_equal(build_dms_exact_budget_eviction(
+        scores, current_position=current, window_size=window,
+        target_compression_ratio=ratio, positions=positions,
+    ), actual)
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("index", [0, 6])
+def test_exact_budget_rejects_nonfinite_even_in_protected_window(bad, index):
+    scores = np.zeros((7, 1, 2), dtype=np.float32)
+    scores[index, 0, 1] = bad
+    with pytest.raises(ValueError, match="finite"):
+        build_dms_exact_budget_eviction(
+            scores, current_position=6, window_size=2, target_compression_ratio=2,
+        )
+
+
 def test_dms_live_mask_keeps_recent_window_and_non_evicted_rows() -> None:
     evict = np.asarray([[True, True, False, True, True]], dtype=np.bool_)
 
