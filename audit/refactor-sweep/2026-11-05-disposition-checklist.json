@@ -1178,11 +1178,13 @@
       "ledger_line": 801,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "human_decision_required",
       "evidence": [
-        "hipengine/runtime/laguna_gguf_runner.py:2959,3483-3490 uses long-attention control for bounded selection too."
+        "Explicit bounded/full-score route selection implemented (beb5475be); immutable construction policy and profiler adapter migrated (8e3ec3820/0f19ab346).",
+        "Independent lazy-owner allocation/reuse/width-rejection tests pass (7f8079fa6); audit check passes.",
+        "Long-context ceiling optional block_context and both long-context/SWA algorithm_counts consumers remain active."
       ],
-      "next_action": "Separate diagnostic full-score ownership from production bounded-route policy before any retirement; inventory both long-context and ceiling callers. Missing weights only defer final public checks.",
+      "next_action": "Choose retention of supported full-score diagnostics or retirement of their long-context comparison/ceiling callers. Preserve shared algorithm API and bounded production execution. Public long-prefill output/state/cleanup matrix additionally needs accessible Laguna checkpoint; do not repeat completed construction/route extraction.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

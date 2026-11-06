@@ -750,7 +750,22 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `prefill_block_attention_hipblaslt=False/True`.
 
-Done when: Dependency: separate full-score diagnostics from long-attention execution policy before removal.
+**Implemented separation:** immutable `LagunaLongAttentionPolicy` resolves construction choices;
+the long-context profiler passes it explicitly. Route selection names bounded versus full-score
+owners without changing legacy defaults, geometry, short-route precedence or generic fallback.
+Host policy/runner/profile checks pass; lazy-owner tests cover independent allocation, same-width
+reuse and incompatible-width rejection. See
+`worklog/entries/20261106T143423.875861Z-lhl-r0264-lazy-owners-fa51c1.md`.
+
+**Caller inventory:** the long-context profiler still supports both comparisons. The long-context
+ceiling owns an explicit optional `block_context`; it and the SWA ceiling both call
+`algorithm_counts`. Those APIs are live comparison dependencies, not unused full-score-only code.
+
+**Remaining:** choose whether to retain full-score as a supported diagnostic or retire its
+comparison/ceiling callers. Until that decision, preserve the working oracle and shared algorithm
+APIs. Public long-prefill output/state/cleanup validation needs the checkpoint in R0249/R0250.
+
+Done when: separate full-score diagnostics from long-attention execution policy before removal.
 `prefill_long_attention_hipblaslt` and `LAGUNA_PREFILL_LONG_ATTENTION_HIPBLASLT` currently enable
 the bounded route too; deleting them as though they only enabled the old owner would disable
 production long attention. **Decision needed:** retain full-score as a supported diagnostic, or
