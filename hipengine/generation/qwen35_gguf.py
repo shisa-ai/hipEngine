@@ -1478,6 +1478,7 @@ class Qwen35GGUFBringupGenerator:
     target_verifier_prefill_gdn_capture: bool | None = None
     # Profile-owned cooperative F32 router policy. ``None`` selects the
     # runner's construction defaults.
+    ar_packed_decode: bool | None = None
     target_router_f32w_coop: bool | None = None
     target_router_f32w_persistent_counter: bool | None = None
     # Profile-owned broad Q8T16 rowtile admission. ``True`` admits the backend
@@ -1824,6 +1825,10 @@ class Qwen35GGUFBringupGenerator:
         if requested is None:
             return {}
         return {"target_verifier_prefill_gdn_capture": bool(requested)}
+
+    def _ar_packed_decode_enabled(self) -> bool:
+        selected = self.ar_packed_decode
+        return _gguf_ar_packed_decode_enabled() if selected is None else bool(selected)
 
     def _target_router_policy_session_kwargs(self) -> dict[str, Any]:
         """Carry the owner-bound cooperative F32 router policy into every owner."""
@@ -4288,7 +4293,7 @@ class Qwen35GGUFBringupGenerator:
             plan.mode is SamplingMode.GREEDY_FAST
             and len(request.prompts) > 1
             and shared_runner is not None
-            and (_gguf_ar_packed_decode_enabled() or _gguf_ar_stream_decode_enabled())
+            and (self._ar_packed_decode_enabled() or _gguf_ar_stream_decode_enabled())
         ):
             return self._generate_ar_serving_slots(shared_runner, request, plan=plan)
         if (
@@ -11996,7 +12001,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 serial_fallback_reason = "mixed_sampler_routes"
             elif group.physical_rows > packed_decode_limit:
                 serial_fallback_reason = "packed_decode_width_unqualified"
-            elif _gguf_ar_packed_decode_enabled() and (
+            elif self._ar_packed_decode_enabled() and (
                 group.active_rows > 1 or group.physical_rows > 1
             ):
                 packed = self._step_native_chunk(
