@@ -99,28 +99,6 @@ def _route_owner(session, values: Mapping[str, str | None]) -> Iterator[None]:
             setattr(owner, name, value)
 
 
-@contextmanager
-def _route_env(values: Mapping[str, str | None]) -> Iterator[None]:
-    """Apply one frozen c1 route environment and restore the caller exactly."""
-
-    keys = (_ROUTER_COOP_ENV, _ROUTER_PERSISTENT_ENV, _ROWTILE_ALL_ENV)
-    previous = {key: os.environ.get(key) for key in keys}
-    try:
-        for key in keys:
-            value = values.get(key)
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = str(value)
-        yield
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-
-
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:

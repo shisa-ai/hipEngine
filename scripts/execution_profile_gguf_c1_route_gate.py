@@ -127,27 +127,6 @@ def route_owner(session, values: Mapping[str, str]) -> Iterator[None]:
             setattr(owner, name, value)
 
 
-@contextmanager
-def route_environment(values: Mapping[str, str]) -> Iterator[None]:
-    """Apply a complete c1 route environment and restore the caller exactly."""
-
-    unknown = sorted(set(values) - set(_ROUTE_ENV_KEYS))
-    missing = sorted(set(_ROUTE_ENV_KEYS) - set(values))
-    if unknown or missing:
-        raise ValueError(f"route environment mismatch; missing={missing}, unknown={unknown}")
-    previous = {key: os.environ.get(key) for key in _ROUTE_ENV_KEYS}
-    try:
-        for key in _ROUTE_ENV_KEYS:
-            os.environ[key] = str(values[key])
-        yield
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-
-
 def _state_summary(
     session: Any,
     trajectory: Sequence[Mapping[str, object]],

@@ -23,19 +23,6 @@ def _state(prompt_id: str, digest: str, **overrides):
     return row
 
 
-def test_route_environment_is_complete_and_restores(monkeypatch: pytest.MonkeyPatch) -> None:
-    first, second = gate._ROUTE_ENV_KEYS
-    monkeypatch.setenv(first, "caller")
-    monkeypatch.delenv(second, raising=False)
-
-    with gate.route_environment(gate.STRICT_ENVIRONMENT):
-        assert os.environ[first] == "0"
-        assert os.environ[second] == "0"
-
-    assert os.environ[first] == "caller"
-    assert second not in os.environ
-
-
 @pytest.mark.parametrize("fail", [False, True])
 def test_route_owner_is_nested_restored_and_environment_independent(monkeypatch, fail):
     for key in gate._ROUTE_ENV_KEYS:
@@ -77,9 +64,9 @@ def test_route_owner_normalizes_binary_values_consistently():
         assert runner.router_f32w_persistent_counter is True
 
 
-def test_route_environment_rejects_partial_manifest() -> None:
+def test_route_owner_rejects_partial_manifest() -> None:
     with pytest.raises(ValueError, match="missing"):
-        with gate.route_environment({gate._ROUTE_ENV_KEYS[0]: "1"}):
+        with gate.route_owner(None, {gate._ROUTE_ENV_KEYS[0]: "1"}):
             pass
 
 
