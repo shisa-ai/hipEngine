@@ -28,7 +28,6 @@ from hipengine.benchmark.provenance import collect_artifact_provenance
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _ROUTE_ENV_KEYS = (
     "HIPENGINE_GGUF_AR_PACKED_PREFILL",
-    "HIPENGINE_GGUF_AR_PACKED_DECODE",
     "HIPENGINE_GGUF_AR_STREAM_DECODE",
 )
 _PROVENANCE_ENV_KEYS = (
@@ -81,16 +80,26 @@ def _execution_environment(mode: str) -> dict[str, str]:
     if mode == "serial":
         return {
             "HIPENGINE_GGUF_AR_PACKED_PREFILL": "0",
-            "HIPENGINE_GGUF_AR_PACKED_DECODE": "0",
             "HIPENGINE_GGUF_AR_STREAM_DECODE": "0",
         }
     if mode == "package":
         return {
             "HIPENGINE_GGUF_AR_PACKED_PREFILL": "1",
-            "HIPENGINE_GGUF_AR_PACKED_DECODE": "1",
             "HIPENGINE_GGUF_AR_STREAM_DECODE": "1",
         }
     raise ValueError(f"unknown GGUF concurrency execution mode: {mode!r}")
+
+
+@contextmanager
+def _temporary_execution_control(llm: Any, mode: str) -> Iterator[None]:
+    generator = llm._get_text_generator()._runner.generator
+    prior = generator.ar_packed_decode
+    generator.ar_packed_decode = mode == "package"
+    try:
+        with _temporary_environment(_execution_environment(mode)):
+            yield
+    finally:
+        generator.ar_packed_decode = prior
 
 
 @contextmanager
@@ -274,7 +283,7 @@ def _run_serial_control(
     measured_runs: int,
 ) -> dict[str, Any]:
     prompts = tuple(prompt for _ in range(int(concurrency)))
-    with _temporary_environment(_execution_environment("serial")):
+    with _temporary_execution_control(llm, "serial"):
         for _ in range(int(warmup_runs)):
             _run_generation(llm, prompts=prompts, sampling=sampling)
         samples = [
@@ -299,6 +308,7 @@ def _run_serial_control(
     )
     return {
         "mode": "serial",
+        "execution_control": {"ar_packed_decode": False},
         "concurrency": int(concurrency),
         "environment": _execution_environment("serial"),
         "route_ok": route_ok,
@@ -315,10 +325,11 @@ def _run_package_inventory(
     sampling: Any,
 ) -> dict[str, Any]:
     prompts = tuple(prompt for _ in range(int(concurrency)))
-    with _temporary_environment(_execution_environment("package")):
+    with _temporary_execution_control(llm, "package"):
         sample = _run_generation(llm, prompts=prompts, sampling=sampling)
     return {
         "mode": "package_inventory",
+        "execution_control": {"ar_packed_decode": True},
         "concurrency": int(concurrency),
         "environment": _execution_environment("package"),
         "timing_eligible": False,
