@@ -2995,13 +2995,13 @@
       "ledger_line": 2363,
       "owner": "`hipengine/runtime/gguf_linear.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "Context-local ownership repaired in e28cc6700; 45 host tests pass. GPU matrix passes after fixture-only repair 03af2ed6c.",
-        "Public caller-thread explicit-off scope is not transported to engine-service worker; bg-584 fails selected-control assertion, not numerical parity.",
-        "worklog/entries/20261106T001419.973039Z-lhl-rowtile-worker-transport-c01722.md"
+        "Execution-context-only scope retained with ContextVar isolation e28cc6700; no caller-thread request transport promised.",
+        "Host/GPU comparisons pass after fixture repair 03af2ed6c and exact-registration repair e9538b9a5; public off/on raw/pack8 dispatch rewrite attribution, repeat/reuse and allocation drain pass.",
+        "worklog/entries/20261106T005409.628111Z-lhl-r0281-rowtile-closure-442de9.md"
       ],
-      "next_action": "Define explicit per-request transport or worker-owned diagnostic binding, preserving packed-batch isolation; public explicit-off route remains unverified.",
+      "next_action": "None; future request selector would require explicit queue transport and mixed-batch contract.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

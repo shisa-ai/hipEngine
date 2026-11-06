@@ -1894,28 +1894,6 @@ confirm public chain routing stays unchanged. The corresponding GGUF root/siblin
 is separately owned by `scripts/gguf_mtp_bench.py`; its supported-comparison disposition is recorded
 in `worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md`.
 
-### R0281-ROWTILE-CONTROL — Scoped comparison ownership
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `q4k_rowtile_session(False)`; `HIPENGINE_GGUF_Q4K_ROWTILE`.
-
-**Decision needed:** keep this scoped comparison interface or migrate its module-global state to
-execution-owner-local configuration. Removing a dormant environment switch does not make the
-existing global setter thread-local. Coordinate this with other GGUF session control ownership
-rather than deleting strict reference kernels or silently altering concurrent calls.
-
-Current: `e28cc6700` replaced global state with `ContextVar`; host isolation tests pass.
-Caller-thread scopes do not propagate through the engine-service worker: a public explicit-off
-probe resolves default-on. Request transport or worker-owned diagnostic binding remains open;
-see `worklog/entries/20261106T001419.973039Z-lhl-rowtile-worker-transport-c01722.md`.
-
-Done when: migrate resolver consumers and comparison tests together; exercise
-nested/exception restoration and concurrent independent owners, plus singleton, pair and fused
-pair+SiLU dispatch at values below, within and above their row bounds. Preserve WMMA precedence and
-registered strict fallbacks. Run the rowtile-control and GEMV dispatch unit tests, raw-K and pack8
-GPU parity files and public generation with route attribution, reset/reuse and cleanup.
-
 ### R0380 — Recurrent-state storage controls and speculative writers
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
