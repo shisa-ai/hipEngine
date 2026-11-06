@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 import argparse
 import json
 import os
@@ -74,17 +75,16 @@ def _revision() -> str:
 
 
 def _time_ms(runtime, fn) -> float:
-    start = runtime.event_create()
-    stop = runtime.event_create()
-    try:
+    with ExitStack() as cleanup:
+        start = runtime.event_create()
+        cleanup.callback(runtime.event_destroy, start)
+        stop = runtime.event_create()
+        cleanup.callback(runtime.event_destroy, stop)
         runtime.event_record(start)
         fn()
         runtime.event_record(stop)
         runtime.event_synchronize(stop)
         return float(runtime.event_elapsed_time_ms(start, stop))
-    finally:
-        runtime.event_destroy(stop)
-        runtime.event_destroy(start)
 
 
 def run(args: argparse.Namespace) -> dict[str, object]:
