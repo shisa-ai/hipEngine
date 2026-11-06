@@ -67,13 +67,19 @@ def test_real_moe_caller_binds_p8_threshold_and_sum_producer(monkeypatch, rows, 
 
 @pytest.mark.parametrize("initial", [False, True])
 @pytest.mark.parametrize("mode,expected", [("q4_precomputed_sums_off", False), ("q4_precomputed_sums_on", True)])
-def test_q4_sum_comparison_uses_real_setter_without_changing_q6(initial, mode, expected):
+def test_q4_sum_comparison_scope_restores_without_changing_q6(initial, mode, expected):
+    assert not hasattr(LagunaGGUFResidentSession, "set_q4_precomputed_activation_sums")
     session = object.__new__(LagunaGGUFResidentSession)
     session.q4_precomputed_activation_sums = initial
     session.q6_precomputed_activation_sums = object()
     before = session.q6_precomputed_activation_sums
-    comparison._apply_mode(session, mode)
-    assert session.q4_precomputed_activation_sums is expected
+    with comparison._mode_scope(session, mode):
+        assert session.q4_precomputed_activation_sums is expected
+        with pytest.raises(RuntimeError, match="synthetic"):
+            with session.q4_activation_sums_diagnostic(not expected):
+                raise RuntimeError("synthetic")
+        assert session.q4_precomputed_activation_sums is expected
+    assert session.q4_precomputed_activation_sums is initial
     assert session.q6_precomputed_activation_sums is before
 
 

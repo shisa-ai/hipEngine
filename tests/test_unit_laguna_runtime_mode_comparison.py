@@ -33,8 +33,6 @@ def test_mode_parser_preserves_generalized_arms_and_owns_default_copy():
 @pytest.mark.parametrize("mode,expected", [
     ("mmq128x32_d8_f32_wavecols_direct_doublebuf", [("gate", "mmq128x32_d8_f32_wavecols_direct_doublebuf")]),
     ("selected_down:custom_down", [("down", "custom_down")]),
-    ("q4_precomputed_sums_off", [("q4_sums", False)]),
-    ("q4_precomputed_sums_on", [("q4_sums", True)]),
 ])
 def test_comparison_applies_only_requested_runtime_controls(mode, expected):
     calls = []
@@ -42,7 +40,6 @@ def test_comparison_applies_only_requested_runtime_controls(mode, expected):
         method: lambda value, label=label: calls.append((label, value))
         for method, label in (
             ("set_selected_gate_up_mode", "gate"), ("set_selected_down_mode", "down"),
-            ("set_q4_precomputed_activation_sums", "q4_sums"),
         )
     })
     comparison._apply_mode(session, mode)

@@ -4165,10 +4165,15 @@ class LagunaGGUFResidentSession:
                 self.q6_precomputed_activation_sums,
             ) = previous
 
-    def set_q4_precomputed_activation_sums(self, enabled: bool) -> None:
-        """Select packed D8 K16 sums or consumer-side sum reconstruction."""
-
-        self.q4_precomputed_activation_sums = bool(enabled)
+    @contextlib.contextmanager
+    def q4_activation_sums_diagnostic(self, enabled: bool):
+        """Scope the Q4 sum producer/consumer comparison to this owner."""
+        previous = self.q4_precomputed_activation_sums
+        try:
+            self.q4_precomputed_activation_sums = bool(enabled)
+            yield
+        finally:
+            self.q4_precomputed_activation_sums = previous
 
     def set_moe_shared_after_router(self, enabled: bool) -> None:
         """Move concurrent shared work behind the exact router prefix."""

@@ -141,6 +141,9 @@ def _mode_scope(session, runtime_mode):
             weight=weight, activation=activation, sums=sums,
         ):
             yield
+    elif runtime_mode in ("q4_precomputed_sums_off", "q4_precomputed_sums_on"):
+        with session.q4_activation_sums_diagnostic(runtime_mode == "q4_precomputed_sums_on"):
+            yield
     else:
         _apply_mode(session, runtime_mode)
         yield
@@ -155,10 +158,6 @@ def _apply_mode(
         session.set_selected_down_mode(
             runtime_mode.removeprefix(selected_down_prefix)
         )
-    elif runtime_mode == "q4_precomputed_sums_off":
-        session.set_q4_precomputed_activation_sums(False)
-    elif runtime_mode == "q4_precomputed_sums_on":
-        session.set_q4_precomputed_activation_sums(True)
     else:
         session.set_selected_gate_up_mode(runtime_mode)
 

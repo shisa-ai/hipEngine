@@ -1641,7 +1641,9 @@ def test_laguna_owned_session_close_frees_weights_and_is_idempotent(monkeypatch,
         assert session.q6_precomputed_activation_sums is False
     assert session.q6_wmma_prefetch_weight is True
     assert session.q4_precomputed_activation_sums is True
-    session.set_q4_precomputed_activation_sums(False)
+    with session.q4_activation_sums_diagnostic(False):
+        assert session.q4_precomputed_activation_sums is False
+    assert session.q4_precomputed_activation_sums is True
     assert kv_kwargs["prefill_cached_meta"] is True
     assert kv_kwargs["prefill_global_qrow6"] is True
     assert kv_kwargs["prefill_dense_initial"] is True
