@@ -2370,11 +2370,12 @@
       "ledger_line": 1819,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "hipengine/runtime/laguna_gguf_runner.py:4265-4283 retains SWA issue comparison setters."
+        "cb4385821/8a42b613f/e5249ca74 migrate profiler arms, retire six setters and replace flag mutation with explicit owner reference.",
+        "a62a5f4e4: maintained gfx1151 primitive CPU oracle and 24 owner/reference device cases pass."
       ],
-      "next_action": "Consolidate six SWA reference selectors and profiler readers under diagnostic owner with restoration tests, preserving generic and peer-backend routes.",
+      "next_action": "Supply accessible Laguna checkpoint for public default-successor selected-symbol/full-state/teardown validation. Configured local artifacts absent; ROCm gfx1151 available. Host migration and synthetic device unsaturated/saturated/wrapped contracts complete; preserve reference primitives pending public check.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
