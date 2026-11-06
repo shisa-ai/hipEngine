@@ -123,6 +123,30 @@ def test_oracle_release_and_pack_sink_fail_closed(monkeypatch) -> None:
         session.pack_dms_prefill_layer(3, stream=0)
 
 
+@pytest.mark.parametrize('failed_role', ['value', 'key', 'both'])
+def test_oracle_release_drains_both_planes_once_on_failure(monkeypatch, failed_role):
+    session = _layer_outer_session(monkeypatch)
+    key, value = session._dms_layer_outer_oracle_pair()
+    calls = []
+
+    def release(buffer, *, runtime):
+        calls.append(buffer)
+        role = 'value' if buffer is value else 'key'
+        if failed_role in (role, 'both'):
+            raise RuntimeError(f'{role} release failed')
+
+    monkeypatch.setattr(gguf_runner, 'free', release)
+    first = 'value' if failed_role in ('value', 'both') else 'key'
+    with pytest.raises(RuntimeError, match=f'{first} release failed') as caught:
+        session._release_dms_prefill_oracle()
+    assert calls == [value, key]
+    assert session._dms_prefill_oracle_pair is None
+    session._release_dms_prefill_oracle()
+    assert calls == [value, key]
+    if failed_role == 'both':
+        assert any('key release failed' in note for note in caught.value.__notes__)
+
+
 def test_layer_outer_hidden_workspace_covers_full_prompt(monkeypatch) -> None:
     from tests.test_unit_gguf_bulk_prefill_workspace_release import _fake_session
 

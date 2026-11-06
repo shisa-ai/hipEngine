@@ -14673,9 +14673,18 @@ class Qwen35GGUFResidentSession:
             return
         runtime = self.runtime or get_hip_runtime()
         key_cache, value_cache = self._dms_prefill_oracle_pair
-        free(value_cache, runtime=runtime)
-        free(key_cache, runtime=runtime)
         self._dms_prefill_oracle_pair = None
+        failure = None
+        for buffer in (value_cache, key_cache):
+            try:
+                free(buffer, runtime=runtime)
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+                else:
+                    failure.add_note(f"DMS prefill oracle cleanup also failed: {error!r}")
+        if failure is not None:
+            raise failure
 
     def _release_dense_prefill_layer(self, physical_layer: int, *, runtime: HipRuntime) -> None:
         """Release one dense BF16 prefill layer's planes after its compact pack.
