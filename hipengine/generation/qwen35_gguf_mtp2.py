@@ -896,7 +896,9 @@ class Qwen35GGUFMTP2Adapter:
         self.provider_key = "qwen_nextn_dense"
         from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
 
-        self.physical_target_arithmetic = PhysicalTargetArithmeticPlan()
+        self.physical_target_arithmetic = getattr(
+            self.generator, "physical_target_arithmetic", PhysicalTargetArithmeticPlan()
+        )
         self.policy_prefix = "dense-nextn"
         profile = getattr(self.generator, "execution_profile", None)
         profile = getattr(profile, "value", profile)

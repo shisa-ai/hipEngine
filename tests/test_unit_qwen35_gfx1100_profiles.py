@@ -98,6 +98,8 @@ def test_qwen36_dense_gfx1100_strict_profile_resolves_exact_c1_route(
     generator = resolved.construct_generator(lambda: SimpleNamespace())
 
     assert generator.execution_profile == "strict"
+    from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
+    assert generator.physical_target_arithmetic == PhysicalTargetArithmeticPlan()
     assert resolved.fell_back_to_strict is False
     assert resolved.manifest["kv_policy"] == "paged_bf16"
     assert resolved.manifest["graph_policy"] == "specdec2_eager_c1"

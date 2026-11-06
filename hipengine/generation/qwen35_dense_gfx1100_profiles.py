@@ -57,6 +57,9 @@ def _env_bool(name: str, raw: str) -> bool:
 def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
     del resolved
     from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner
+    from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
+
+    generator.physical_target_arithmetic = PhysicalTargetArithmeticPlan()
     generator.launch_decision_owner = LaunchDecisionOwner()
     generator.use_q6_dp4a_grouped = False
     generator.target_fp16_recurrent_state = False

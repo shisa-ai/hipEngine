@@ -71,6 +71,8 @@ def test_manifest_identity_stays_on_each_generator(order, ambient, monkeypatch):
     for profile in order:
         resolved = _resolve(profile)
         generator = resolved.construct_generator(SimpleNamespace)
+        from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
+        assert generator.physical_target_arithmetic == PhysicalTargetArithmeticPlan()
         owners.append((generator, resolved))
         assert os.environ.get(name) == ambient
         for owner, expected in reversed(owners):
