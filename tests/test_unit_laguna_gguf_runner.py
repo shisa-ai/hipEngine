@@ -471,10 +471,9 @@ def test_laguna_selected_natural_tile8_decode_switch_is_session_scoped() -> None
     session = object.__new__(runner_module.LagunaGGUFResidentSession)
     session.use_selected_natural_tile8_decode = False
 
-    session.set_selected_natural_tile8_decode(True)
-    assert session.use_selected_natural_tile8_decode is True
-
-    session.set_selected_natural_tile8_decode(False)
+    assert not hasattr(type(session), "set_selected_natural_tile8_decode")
+    with session.selected_natural_tile8_diagnostic(True):
+        assert session.use_selected_natural_tile8_decode is True
     assert session.use_selected_natural_tile8_decode is False
 
 

@@ -4300,11 +4300,6 @@ class LagunaGGUFResidentSession:
         finally:
             self.use_selected_natural_tile8_decode = previous
 
-    def set_selected_natural_tile8_decode(self, enabled: bool) -> None:
-        """Select the exact tile8 natural gate/up sibling."""
-
-        self.use_selected_natural_tile8_decode = bool(enabled)
-
     def set_decode_swa_assume_exp(self, enabled: bool) -> None:
         """Select exact domain-specialized SWA expf or its rollback."""
 

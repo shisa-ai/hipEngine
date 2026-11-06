@@ -91,15 +91,16 @@ def test_profile_tile8_comparison_owns_residency_and_holds_later_overlays_off(mo
     )
     monkeypatch.setattr(moe, "_SELECTED_GATE_UP_ABIS", {"test": lambda route, *a, **kw: selected.append(route.label)})
     session = object.__new__(LagunaGGUFResidentSession)
+    session.use_selected_natural_tile8_decode = False
     for enabled in (False, True):
-        session.set_selected_natural_tile8_decode(enabled)
-        moe._launch_selected_gate_up(
-            10, SimpleNamespace(weight=lambda name: weight),
-            SimpleNamespace(plan=plan, selected_experts=SimpleNamespace(ptr=12)),
-            x_rows=row_count, lanes=row_count * 3, stream=7, runtime=object(), libraries=None,
-            use_natural=True, use_natural_tile8=session.use_selected_natural_tile8_decode,
-            use_natural_tile8_parallel=kw.get("use_selected_natural_tile8_parallel_decode") is not False,
-            use_natural_tile8_parallel_silu=kw.get("use_selected_natural_tile8_parallel_silu_decode") is not False,
-        )
+        with session.selected_natural_tile8_diagnostic(enabled):
+            moe._launch_selected_gate_up(
+                10, SimpleNamespace(weight=lambda name: weight),
+                SimpleNamespace(plan=plan, selected_experts=SimpleNamespace(ptr=12)),
+                x_rows=row_count, lanes=row_count * 3, stream=7, runtime=object(), libraries=None,
+                use_natural=True, use_natural_tile8=session.use_selected_natural_tile8_decode,
+                use_natural_tile8_parallel=kw.get("use_selected_natural_tile8_parallel_decode") is not False,
+                use_natural_tile8_parallel_silu=kw.get("use_selected_natural_tile8_parallel_silu_decode") is not False,
+            )
     expected = ["natural16", "tile8"] if compare else ["interleaved", "interleaved"]
     assert selected == (expected if row_count == 1 or not compare else ["retained", "retained"])
