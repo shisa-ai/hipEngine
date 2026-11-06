@@ -4238,11 +4238,12 @@
       "ledger_line": 3410,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/generation/qwen35_gguf.py:439 onward retains slow-route gapped suffix cost guard independent of fast gather."
+        "Retain supported cost policy for disabled/missing gather or resource denial; 2beba90cd repairs headroom admission.122 focused tests pass.",
+        "Public actual fragmented demand execution matches independent fresh recompute in all eight groups; clean teardown. worklog/entries/20261106T032201.559086Z-lhl-r0074-disposition-ca8962.md"
       ],
-      "next_action": "Inventory reachable slow populations and retain supported guard or measure cost replacement; public fragmentation/continuation parity required for removal.",
+      "next_action": "None; keep supported knob and decline branch for reachable slow routes. No optimization-driven removal selected.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "product_decision",

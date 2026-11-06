@@ -2581,25 +2581,6 @@ the repair, and extend `test_batched_suffix_extend_is_bit_exact_against_recomput
 exactness contract applies. Do not treat passing a test that requires inequality as proof of
 numerical correctness or remove it merely to clear the ledger.
 
-### R0074 — Decide when to remove the slow-route gapped-prefix cost guard
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `hipengine/generation/qwen35_gguf.py`, `_gguf_prefix_gapped_fast_route_available`;
-`HIPENGINE_GGUF_PREFIX_GAPPED_SUFFIX_MAX`.
-
-**Deferred policy decision:** retain the cost guard for reachable slow-route configurations, replace
-it with a measured cost policy, or remove it after improving those routes. Before an
-optimization-driven removal, profile the actual fallback populations against private recomputation
-with fragmented placement, short and long suffixes, and allocation-boundary cases. Preserve resource
-checks and cache ownership regardless of the policy selected.
-
-Done when: run `tests/test_unit_gguf_prefix_cache_runner.py`, covering slow-route decline,
-short-suffix reuse and long-suffix fast-gather reuse; exercise public generation with forced
-fragmentation and continuation, and verify route telemetry and correctness against independent
-recomputation. Retire the environment knob and decline branch together only when the selected policy
-no longer needs them.
-
 ### R0127 — Choose whether to replace host grammar selection
 
 Owner: `hipengine/generation/grammar.py`.
