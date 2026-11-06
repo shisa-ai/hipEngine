@@ -80,6 +80,19 @@ def test_prefill_scratch_plan_matches_the_allocator(monkeypatch, rows, capacity,
     assert measured == expected
 
 
+def test_capacity_workspace_prices_optional_head_major_pair(monkeypatch):
+    monkeypatch.setattr(
+        gguf_runner, "_gguf_aotriton_head_major_kv_scratch_nbytes", lambda **kw: 0,
+    )
+    base = _route_terms(monkeypatch, storage="bf16", mtp=False, server_pool=False)
+    before = base["prefill_workspace_bytes_resolver"](1024)
+    monkeypatch.setattr(
+        gguf_runner, "_gguf_aotriton_head_major_kv_scratch_nbytes", lambda **kw: 123456,
+    )
+    updated = _route_terms(monkeypatch, storage="bf16", mtp=False, server_pool=False)
+    assert updated["prefill_workspace_bytes_resolver"](1024) == before + 123456
+
+
 def test_packed_state_linear_bytes_match_the_state_allocator() -> None:
     runner = _dense_27b_runner()
     per_slot = gguf_runner._gguf_packed_state_linear_bytes(runner, slot_count=1)

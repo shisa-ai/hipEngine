@@ -2906,6 +2906,7 @@ class Qwen35GGUFBringupGenerator:
             _full_stack_scratch_plan,
         )
         from hipengine.runtime.qwen35_gguf_runner import (
+            _gguf_aotriton_head_major_kv_scratch_nbytes,
             _gguf_packed_state_linear_bytes,
             _gguf_prefill_hidden_buffer_count,
             _gguf_prefill_scratch_nbytes,
@@ -3001,6 +3002,10 @@ class Qwen35GGUFBringupGenerator:
         def prefill_workspace(max_positions: int) -> int:
             total = _gguf_prefill_scratch_nbytes(
                 shared_runner, rows=bulk_rows(max_positions), capacity=max_positions
+            )
+            total += _gguf_aotriton_head_major_kv_scratch_nbytes(
+                backend=shared_runner.backend, capacity_tokens=max_positions,
+                kv_width=int(shared_runner.kv_width),
             )
             plan = lifetime_plan(max_positions)
             if plan is not None and plan.mode == "layer_outer_shared_oracle":
