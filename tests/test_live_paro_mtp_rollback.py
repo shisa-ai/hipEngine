@@ -65,7 +65,7 @@ def _snapshot_diff(before,after):
 
 def _result_probe(proposer):
     try:
-        proposer.device_candidate_token_ids()
+        proposer.vocab_topk()
     except RuntimeError as exc:
         return str(exc)
     return None

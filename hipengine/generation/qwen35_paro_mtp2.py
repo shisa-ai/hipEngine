@@ -1331,10 +1331,22 @@ class Qwen35ParoMTP2Adapter:
     ) -> None:
         if state.journal is None:
             return
+        rollback_error = None
         try:
             state.journal.rollback()
-        finally:
+        except BaseException as error:
+            rollback_error = error
+        try:
             session.runtime.device_synchronize()
+        except BaseException as error:
+            if rollback_error is not None:
+                raise BaseExceptionGroup(
+                    "PARO MTP2 rollback and synchronization failed",
+                    [rollback_error, error],
+                ) from None
+            raise
+        if rollback_error is not None:
+            raise rollback_error
         state.checkpoint = None
         state.journal = None
         state.draft_snapshots = ()

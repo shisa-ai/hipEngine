@@ -770,6 +770,58 @@ def test_proposal_failure_leaves_a_rollbackable_provider_journal() -> None:
     assert adapter.owner._session.copies == []
 
 
+@pytest.mark.parametrize("sync_failure", [False, True])
+def test_failed_target_restore_retains_journal_for_retry(sync_failure) -> None:
+    proposer = _ChainProposer(token=201, drafted=(202, 203))
+    adapter = _adapter(depth=3, proposer=proposer)
+    plan = _plan(adapter, desired=3)
+    adapter.propose_batch(plan, (_semantics(),))
+    state = adapter._states[REQUEST_ID]
+    session = adapter.owner._session
+    adapter._checkpoint_target(state, session)
+    journal = state.journal
+    copy = session.copy_slot_state
+    sync_calls = []
+
+    def fail_copy(source, destination, *, kv_rows):
+        raise RuntimeError("target restore failed")
+
+    def sync():
+        sync_calls.append(True)
+        if sync_failure:
+            raise RuntimeError("synchronization failed")
+
+    session.copy_slot_state = fail_copy
+    session.runtime.device_synchronize = sync
+    with pytest.raises(ExceptionGroup) as failure:
+        adapter.rollback_cycle(plan, None, RuntimeError("cycle failed"))
+
+    def messages(error):
+        return [str(error)] + [
+            message for child in getattr(error, "exceptions", ())
+            for message in messages(child)
+        ]
+
+    assert "target restore failed" in messages(failure.value)
+    if sync_failure:
+        assert any("synchronization failed" in str(child)
+                   for child in failure.value.exceptions)
+    assert sync_calls == [True]
+    assert state.journal is journal
+    assert journal.pending
+    assert state.checkpoint is not None
+    assert proposer.calls.count(("restore", 0)) == 1
+
+    session.copy_slot_state = copy
+    session.runtime.device_synchronize = lambda: None
+    adapter.rollback_cycle(plan, None, RuntimeError("retry"))
+    assert state.journal is None
+    assert state.checkpoint is None
+    assert state.draft_snapshots == ()
+    assert proposer.calls.count(("restore", 0)) == 1
+    assert session.copies[-1] == (1, 0, 0)
+
+
 def test_cancel_after_verify_restores_both_owners_and_publishes_nothing() -> None:
     steps: list = []
     owner = _owner(steps=steps)
