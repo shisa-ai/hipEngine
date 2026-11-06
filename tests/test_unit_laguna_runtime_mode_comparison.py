@@ -163,6 +163,8 @@ def test_rows64_comparison_restores_down_selection_before_close(monkeypatch, fai
 
 
 def test_selected_moe_diagnostic_validates_before_mutation_and_restores():
+    assert not hasattr(LagunaGGUFResidentSession, "set_selected_down_mode")
+    assert not hasattr(LagunaGGUFResidentSession, "set_selected_gate_up_mode")
     session = object.__new__(LagunaGGUFResidentSession)
     session.backend = "hip_gfx1151"
     session.selected_gate_up_mode = "grouped_exact"

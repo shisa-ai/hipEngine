@@ -4105,14 +4105,6 @@ class LagunaGGUFResidentSession:
         assert self.weights is not None
         return self.weights.config
 
-    def set_selected_down_mode(self, mode: str) -> None:
-        """Select the explicit diagnostic sparse-down route for later row runs."""
-
-        self.selected_down_mode = resolve_laguna_selected_down_mode(
-            self.backend,
-            mode,
-        )
-
     @contextlib.contextmanager
     def selected_moe_diagnostic(self, *, gate_up: str | None = None, down: str | None = None):
         """Restore owner-local selected-MoE reference variants after comparison."""
@@ -4130,14 +4122,6 @@ class LagunaGGUFResidentSession:
             yield
         finally:
             self.selected_gate_up_mode, self.selected_down_mode = previous
-
-    def set_selected_gate_up_mode(self, mode: str) -> None:
-        """Select the explicit compact selected gate/up prefill candidate."""
-
-        self.selected_gate_up_mode = resolve_laguna_selected_gate_up_mode(
-            self.backend,
-            mode,
-        )
 
     @contextlib.contextmanager
     def fused_selected_silu_pack_diagnostic(self, enabled: bool):
