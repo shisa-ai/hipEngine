@@ -9003,6 +9003,14 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             default=0,
         )
         retained_kv_bytes = len(retained_blocks) * page_bytes
+        provider_store = getattr(getattr(self, "_mtp2_adapter", None),
+                                 "_prefix_checkpoint_store_instance", None)
+        provider_device_bytes = 0 if provider_store is None else provider_store.nbytes
+        provider_host_bytes = 0 if provider_store is None else provider_store.host_nbytes
+        retained_keys = tuple(key for key, entry in
+                              getattr(self, "_prefix_state_snapshots", {}).items()
+                              if entry.retained)
+        retained_owner_bytes = self._retained_prefix_device_bytes(retained_keys)
         pool_capacity_bytes = 0
         if pool is not None:
             stats = pool.stats
@@ -9078,6 +9086,9 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             "phase_ms": dict(getattr(self, "_prefix_phase_ms", {})),
             "phase_calls": dict(getattr(self, "_prefix_phase_calls", {})),
             "snapshot_bytes": snapshot_bytes,
+            "provider_checkpoint_device_bytes": provider_device_bytes,
+            "provider_checkpoint_host_bytes": provider_host_bytes,
+            "retained_checkpoint_owner_device_bytes": retained_owner_bytes,
             "retained_kv_pages": len(retained_blocks),
             "retained_kv_bytes": retained_kv_bytes,
             "resident_bytes": snapshot_bytes + retained_kv_bytes,
