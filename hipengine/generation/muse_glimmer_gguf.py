@@ -61,6 +61,7 @@ class MuseGlimmerGGUFGenerator:
     _session: MuseGlimmerResidentSession | None = field(default=None, init=False, repr=False)
     _vision_runner: Any = field(default=None, init=False, repr=False)
     _vision_reader: Any = field(default=None, init=False, repr=False)
+    _speculative_provider: Any = field(default=None, init=False, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
     _load_seconds: float | None = field(default=None, init=False, repr=False)
@@ -93,6 +94,47 @@ class MuseGlimmerGGUFGenerator:
     @property
     def supports_vision(self) -> bool:
         return self.vision_model_path is not None
+
+    # -- speculative attachment --------------------------------------------
+    @property
+    def supports_speculative(self) -> bool:
+        return self._speculative_provider is not None
+
+    def attach_speculative_provider(self, provider: Any) -> None:
+        """Attach one registry-resolved provider before target materialization."""
+
+        if provider is None:
+            raise TypeError("speculative provider must not be None")
+        for name in ("generate_detailed", "stream_detailed", "capabilities", "close"):
+            if not callable(getattr(provider, name, None)):
+                raise TypeError(f"speculative provider must implement {name}()")
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("the Muse Glimmer generator is closed")
+            if self._session is not None:
+                raise RuntimeError("speculative provider must attach before target materialization")
+            if self._speculative_provider is not None:
+                raise RuntimeError("a speculative provider is already attached")
+            self._speculative_provider = provider
+
+    def speculative_capabilities(self) -> dict[str, Any]:
+        provider = self._speculative_provider
+        return {} if provider is None else dict(provider.capabilities())
+
+    def generate_speculative_detailed(self, request) -> list:
+        provider = self._speculative_provider
+        if provider is None:
+            raise NotImplementedError("Muse Glimmer speculative provider is not configured")
+        return list(provider.generate_detailed(request))
+
+    def stream_speculative_detailed(self, request):
+        from hipengine.generation.registry import GenerationStreamChunk
+
+        provider = self._speculative_provider
+        if provider is None:
+            raise NotImplementedError("Muse Glimmer speculative provider is not configured")
+        for chunk in provider.stream_detailed(request):
+            yield GenerationStreamChunk.from_value(chunk)
 
     @staticmethod
     def _validate_execution_profile(value: str | None) -> str | None:
@@ -170,6 +212,9 @@ class MuseGlimmerGGUFGenerator:
             if self._closed:
                 return
             self._closed = True
+            if self._speculative_provider is not None:
+                self._speculative_provider.close()
+                self._speculative_provider = None
             if self._vision_runner is not None:
                 self._vision_runner.close()
                 self._vision_runner = None

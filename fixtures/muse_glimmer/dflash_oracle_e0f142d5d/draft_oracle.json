@@ -1,0 +1,83 @@
+{
+ "prompt_ids": [
+  200000,
+  954,
+  7963,
+  323,
+  11698,
+  373
+ ],
+ "target_argmax": 13796,
+ "block_size": 16,
+ "mask_token": 201818,
+ "draft_argmax": [
+  24093,
+  328,
+  328,
+  290,
+  323,
+  328,
+  328,
+  328,
+  328,
+  328,
+  328,
+  328,
+  328,
+  328,
+  200023
+ ],
+ "source": {
+  "binary": "scripts/muse_glimmer_dflash_oracle.cpp",
+  "llama_cpp_build": "0.8.0-dev build 12005 commit e0f142d5d",
+  "config": "GPU, GGML_CUDA_CUBLAS_COMPUTE_TYPE=f32, flash disabled, llama_set_causal_attn(ctx_dft,false)",
+  "note": "Q4_K MMQ int8 activations remain on RDNA3 (env cannot reach MMQ); reference matches 16/16 argmax, cosine 0.9998, mean|err| 0.196. Full logits local-only."
+ },
+ "full_sha256": "6101f1b57e9aae58ce4f154fa78bce049064a7def4008b5e87a904d303e44b7c",
+ "sampled_rows": {
+  "0": {
+   "argmax": 13796,
+   "edge6": [
+    18.451984405517578,
+    17.845212936401367,
+    19.07266616821289,
+    19.749330520629883,
+    17.694684982299805,
+    18.480070114135742
+   ]
+  },
+  "1": {
+   "argmax": 24093,
+   "edge6": [
+    8.468045234680176,
+    9.033888816833496,
+    9.06717300415039,
+    10.711343765258789,
+    8.834973335266113,
+    10.050836563110352
+   ]
+  },
+  "8": {
+   "argmax": 328,
+   "edge6": [
+    -1.81593656539917,
+    -3.394697666168213,
+    -2.760033130645752,
+    -0.7514946460723877,
+    -3.18351149559021,
+    -1.3273977041244507
+   ]
+  },
+  "15": {
+   "argmax": 200023,
+   "edge6": [
+    5.856698036193848,
+    4.569736003875732,
+    4.955690383911133,
+    6.791426658630371,
+    4.42857551574707,
+    6.286138534545898
+   ]
+  }
+ }
+}

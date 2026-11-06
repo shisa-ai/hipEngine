@@ -263,7 +263,89 @@ class MuseGlimmerResidentSession:
             np.asarray([int(token_id)], dtype=np.int64), position_offset=self._length
         )
 
-    def _forward_block(self, ids: np.ndarray, *, position_offset: int) -> np.ndarray:
+    # -- speculative (DFlash) surface --------------------------------------
+    def prefill_with_taps(
+        self, token_ids: Sequence[int], tap_layers: Sequence[int]
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Prompt pass capturing layer-input taps; returns (last logits, taps).
+
+        ``taps`` is [n_tokens, len(tap_layers), n_embd] F32 in tap_layers order
+        (the DFlash feature-fusion input).
+        """
+
+        self._require_open()
+        ids = np.asarray(token_ids, dtype=np.int64)
+        if ids.ndim != 1 or ids.size == 0:
+            raise ValueError("prefill needs a non-empty 1-D token sequence")
+        if ids.size > self.max_context:
+            raise ValueError("prompt exceeds the KV cache")
+        self._length = 0
+        logits: np.ndarray | None = None
+        tap_chunks: list[np.ndarray] = []
+        for begin in range(0, ids.size, self.prefill_chunk):
+            block = ids[begin:begin + self.prefill_chunk]
+            logits, taps = self._forward_block(
+                block, position_offset=begin, tap_layers=tap_layers
+            )
+            tap_chunks.append(taps)
+        assert logits is not None
+        return logits, np.concatenate(tap_chunks, axis=0)
+
+    def decode_with_taps(
+        self, token_id: int, tap_layers: Sequence[int]
+    ) -> tuple[np.ndarray, np.ndarray]:
+        self._require_open()
+        if self._length >= self.max_context:
+            raise ValueError("the KV cache is full")
+        return self._forward_block(
+            np.asarray([int(token_id)], dtype=np.int64),
+            position_offset=self._length, tap_layers=tap_layers,
+        )
+
+    def verify_with_taps(
+        self, token_ids: Sequence[int], tap_layers: Sequence[int]
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Append a draft block; return (logits for every row, taps).
+
+        Exactness contract: each row is processed by the same single-row
+        decode path AR uses, so the committed KV is bit-identical to true AR
+        (multi-row projection dispatch is not batch-invariant at bring-up and
+        its bf16 rounding can flip near-tie argmaxes). The batched-invariant
+        block verify is the recorded performance-phase replacement. The
+        caller compares each row's argmax against the draft and ``truncate``s
+        to the accepted prefix (+1 corrected token).
+        """
+
+        self._require_open()
+        ids = np.asarray(token_ids, dtype=np.int64)
+        if ids.ndim != 1 or ids.size == 0:
+            raise ValueError("verify needs a non-empty block")
+        if self._length + ids.size > self.max_context:
+            raise ValueError("verify block overruns the KV cache")
+        rows: list[np.ndarray] = []
+        taps: list[np.ndarray] = []
+        for token in ids:
+            logits, row_taps = self._forward_block(
+                np.asarray([int(token)], dtype=np.int64),
+                position_offset=self._length, tap_layers=tap_layers,
+            )
+            rows.append(np.asarray(logits)[None, :])
+            taps.append(row_taps)
+        return np.concatenate(rows, axis=0), np.concatenate(taps, axis=0)
+
+    def truncate(self, length: int) -> None:
+        """Roll the KV back to ``length`` (contiguous cache: data beyond is
+        overwritten by the next append)."""
+
+        self._require_open()
+        if not 0 <= length <= self._length:
+            raise ValueError("truncate must move the length backward")
+        self._length = int(length)
+
+    def _forward_block(
+        self, ids: np.ndarray, *, position_offset: int,
+        tap_layers: Sequence[int] | None = None, all_logits: bool = False,
+    ) -> tuple[np.ndarray, np.ndarray] | np.ndarray:
         cfg, rt = self.config, self.runtime
         tokens = int(ids.size)
         keys = position_offset + tokens
@@ -308,9 +390,24 @@ class MuseGlimmerResidentSession:
         )
         src, dst = self.hidden_b, self.hidden_a
 
+        tap_set = set(int(l) for l in tap_layers) if tap_layers is not None else set()
+        tap_buf = None
+        if tap_set:
+            from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
+
+            n_taps = len(tap_layers)
+            tap_buf = malloc(tokens * n_taps * hidden * 4, runtime=rt)
+        tap_index = {int(l): i for i, l in enumerate(tap_layers or ())}
+
         for layer in range(cfg.n_layers):
             p = f"blk.{layer}."
             is_swa = cfg.swa_pattern[layer]
+            if layer in tap_set:
+                slot = tap_index[layer]
+                bf16_to_f32(
+                    src.ptr, tap_buf.ptr + slot * tokens * hidden * 4,
+                    tokens * hidden, runtime=rt,
+                )
             gemma4_rmsnorm_f32w_bf16(
                 src.ptr, self.loaded.ptr(p + "attn_norm.weight"), self.normed.ptr,
                 tokens, hidden, cfg.rms_eps, runtime=rt,
@@ -417,25 +514,56 @@ class MuseGlimmerResidentSession:
             src, dst = dst, src
 
         self._length = keys
-        # Only the final row feeds generation; the head runs on that row alone.
-        last_row_ptr = src.ptr + (tokens - 1) * hidden * 2
-        gemma4_rmsnorm_f32w_bf16(
-            last_row_ptr, self.loaded.ptr("output_norm.weight"), self.normed.ptr,
-            1, hidden, cfg.rms_eps, runtime=rt,
-        )
-        launch_gguf_linear(
-            self.loaded.weight("output.weight"), self.normed.ptr,
-            self.logits_f32.ptr, 1, hidden, cfg.vocab_size,
-            output_dtype="f32", backend=self.backend, runtime=rt,
-        )
-        copy_device_to_host(
-            self._logits_host.ctypes.data, self.logits_f32, runtime=rt
-        )
-        logits = self._logits_host * np.float32(cfg.logit_scale)
+        if all_logits:
+            # Verification head: every block row (bounded by the draft block).
+            logits_buf = malloc(tokens * cfg.vocab_size * 4, runtime=rt)
+            try:
+                gemma4_rmsnorm_f32w_bf16(
+                    src.ptr, self.loaded.ptr("output_norm.weight"), self.normed.ptr,
+                    tokens, hidden, cfg.rms_eps, runtime=rt,
+                )
+                launch_gguf_linear(
+                    self.loaded.weight("output.weight"), self.normed.ptr,
+                    logits_buf.ptr, tokens, hidden, cfg.vocab_size,
+                    output_dtype="f32", backend=self.backend, runtime=rt,
+                )
+                logits_host = np.empty((tokens, cfg.vocab_size), dtype=np.float32)
+                copy_device_to_host(logits_host.ctypes.data, logits_buf, runtime=rt)
+            finally:
+                free(logits_buf, runtime=rt)
+        else:
+            # Only the final row feeds generation; the head runs on that row alone.
+            last_row_ptr = src.ptr + (tokens - 1) * hidden * 2
+            gemma4_rmsnorm_f32w_bf16(
+                last_row_ptr, self.loaded.ptr("output_norm.weight"), self.normed.ptr,
+                1, hidden, cfg.rms_eps, runtime=rt,
+            )
+            launch_gguf_linear(
+                self.loaded.weight("output.weight"), self.normed.ptr,
+                self.logits_f32.ptr, 1, hidden, cfg.vocab_size,
+                output_dtype="f32", backend=self.backend, runtime=rt,
+            )
+            copy_device_to_host(
+                self._logits_host.ctypes.data, self.logits_f32, runtime=rt
+            )
+            logits_host = self._logits_host[None, :]
+        logits = logits_host * np.float32(cfg.logit_scale)
         cap = cfg.final_logit_softcapping
         if cap:
             logits = np.float32(cap) * np.tanh(logits / np.float32(cap))
-        return np.ascontiguousarray(logits, dtype=np.float32)
+        logits = np.ascontiguousarray(logits, dtype=np.float32)
+        if tap_layers is None:
+            return logits[0] if not all_logits else logits
+        if len(tap_layers) == 0:
+            return (logits if all_logits else logits[0]), np.empty((tokens, 0, hidden), dtype=np.float32)
+        assert tap_buf is not None
+        try:
+            staging = np.empty((len(tap_layers), tokens, hidden), dtype=np.float32)
+            copy_device_to_host(staging.ctypes.data, tap_buf, runtime=rt)
+            tap_host = np.ascontiguousarray(staging.transpose(1, 0, 2))
+        finally:
+            free(tap_buf, runtime=rt)
+        return (logits if all_logits else logits[0]), tap_host
 
     def _upload_keep_mask(self, tokens: int, position_offset: int, keys: int) -> None:
         """Build both layer-kind masks once per block and upload them.

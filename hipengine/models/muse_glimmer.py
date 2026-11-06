@@ -26,6 +26,23 @@ class MuseGlimmerGGUFModel:
     )
     default_quant: str = "gguf_q4_k_m"
     default_backend: str = "auto"
+    speculative_mtp_provider: str = "dflash"
+
+    @staticmethod
+    def resolve_speculative_mtp_draft_model(model_path: str):
+        """Discover the DFlash sidecar shipped beside the target artifact.
+
+        Capability-based automatic selection: a sibling ``dflash-*.gguf`` is
+        admitted by the provider's structural checks (architecture, hidden
+        size, head_dim, target_layers), never by name/hash allowlists. Absent
+        sidecar -> plain AR; ``speculative_mtp_serving='off'`` opts out.
+        """
+
+        from pathlib import Path
+
+        directory = Path(model_path).expanduser().resolve().parent
+        heads = tuple(sorted(directory.glob("dflash-*.gguf")))
+        return heads[0] if len(heads) == 1 else None
     weight_name_templates: tuple[str, ...] = (
         "token_embd.weight",
         "output_norm.weight",

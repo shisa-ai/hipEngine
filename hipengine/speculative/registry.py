@@ -351,6 +351,7 @@ def register_builtin_speculative_providers() -> None:
         return
     from hipengine.generation import gemma4_mtp as _gemma4_mtp  # noqa: F401
     from hipengine.generation import laguna_dflash as _laguna_dflash  # noqa: F401
+    from hipengine.generation import muse_glimmer_dflash as _muse_glimmer_dflash  # noqa: F401
     from hipengine.generation import qwen4_exp_mtp as _qwen4_exp_mtp  # noqa: F401
 
     _BUILTINS_REGISTERED = True

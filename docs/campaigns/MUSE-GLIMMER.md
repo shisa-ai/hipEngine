@@ -297,6 +297,29 @@ provenance diagnostic outside the tree.
 
 ### P3 — DFlash speculative decode
 
+Design record (2026-11-06): the draft is a 5-layer pre-norm decoder (no gate,
+no post-norms; raw HF norm weights applied as-is — the draft conversion folds
+nothing) with NEOX RoPE (HF layout kept). Dual mode per `dflash.cpp`:
+injection (target taps [2,14,26,38,50] concat → fc → enc norm → per-layer K/V
+→ K head-norm+rope → draft KV) and token mode ([anchor, MASK×15] through the
+shared target embd, **non-causal** attention over [context + block], shared
+target lm_head; mask-row logits are the draft). The driver reads block rows
+1..15; verification is target-corrected greedy with contiguous-KV truncate
+rollback. On partial acceptance the verify row at the mismatch processed the
+rejected draft token — its KV/logits are invalid for the committed sequence,
+so the corrected token is reprocessed fresh (truncate to the accepted prefix,
+decode the correction, inject its taps). **Batch-invariance contract:** the
+bring-up verify runs the single-row decode path per token because multi-row
+projection dispatch is not batch-invariant (bf16 rounding flips near-tie
+argmaxes; measured ≤0.05 logit shift). Exactness requires verify-written KV to
+be bit-identical to AR. The batched-invariant block verify (row-independent
+GEMV + decode-equivalent attention) is P4 work — until it lands, block verify
+costs k forwards and DFlash cannot beat AR on speed. Oracle tooling must call
+`llama_set_causal_attn(ctx_dft, false)` —
+without it the mask rows diverge while the anchor row matches. Draft logit
+parity vs llama.cpp is distributional (MMQ int8 drift, as with text/vision);
+the binding gate is exact greedy ID equality vs true AR.
+
 1. Draft loader (NEOX rope, KV heads 8, mask token), target residual capture at
    layers [2,14,26,38,50], block-16 draft/verify/commit through the speculative
    provider registry.
