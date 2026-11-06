@@ -3153,10 +3153,18 @@ Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
 
 Scope: `Qwen35GGUFMTP2Adapter`.
 
-Done when: Validate `Qwen35GGUFMTP2Adapter` with its batched MoE NextN provider through public C2 serving.
-Confirm physical grouping, rejected proposals, cancellation, independent peer progress, reuse and
-balanced teardown. Preserve complete C1 legacy cycles and explicit refusals for unsupported direct
-staged calls.
+Public gfx1151 production C2 generation now confirms packed physical target calls,
+accepted and rejected proposals, and the intended arithmetic-plan binding. Group stream
+close produces accepted disconnect cancellations for both requests, followed by healthy
+C2 reuse and zero tracked allocations after close. See
+[plan engagement](../worklog/entries/20261106T104328.194555Z-lhl-r0193-public-plan-3d6d60.md)
+and [disconnect attribution](../worklog/entries/20261106T104953.816152Z-lhl-r0192-cancel-attribution-f685eb.md).
+These checks do not establish single-row cancellation with surviving peer progress or
+exact device rollback-state parity.
+
+Done when: complete public single-row cancellation/refill and independent peer progress
+with the batched MoE NextN provider. Preserve complete C1 legacy cycles and explicit
+refusals for unsupported direct staged calls.
 
 ### R0193 — Replace MoE numerical-scope transport without changing arithmetic
 
