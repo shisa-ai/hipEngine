@@ -5846,7 +5846,7 @@ def test_c8_frontier_padded_boundaries_follow_the_campaign_table() -> None:
     assert physical_group_pad_rows((6,), 8, 8 * 7, max_rows=65) == 0
 
 
-def test_adapter_frontier_geometry_derives_from_declared_budget() -> None:
+def test_adapter_frontier_geometry_derives_from_declared_budget(monkeypatch) -> None:
     """Adapter frontier/accept geometry must scale with the declared budget."""
 
     import hipengine.generation.qwen35_gguf_mtp2 as module
@@ -5864,6 +5864,8 @@ def test_adapter_frontier_geometry_derives_from_declared_budget() -> None:
         return real(backend, name, default)
 
     module.backend_package_capability = fake
+    import hipengine.generation.physical_target_rows as rows_module
+    monkeypatch.setattr(rows_module, "backend_package_capability", fake)
     try:
         adapter = Qwen35GGUFMTP2Adapter(
             _width_bound_owner(profile="production", capacity=8),

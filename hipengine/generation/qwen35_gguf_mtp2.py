@@ -135,7 +135,6 @@ from hipengine.speculative.transaction import (
 )
 
 
-_EXACT_TARGET_ROWS_ENV = "HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS"
 _Q6_MIXED_TARGET_ROWTILES_ENV = (
     "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES"
 )
@@ -943,48 +942,16 @@ class Qwen35GGUFMTP2Adapter:
             )
             and _env_enabled(_Q6_MIXED_TARGET_ROWTILES_ENV, default=True)
         )
-        self.production_target_pad_row_counts = (
-            tuple(
-                int(value)
-                for value in backend_package_capability(
-                    str(self.generator.backend),
-                    "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
-                    (),
-                )
+        from hipengine.generation.physical_target_rows import resolve_physical_target_rows
+
+        rows_plan = getattr(self.generator, "physical_target_rows", None)
+        if rows_plan is None:
+            rows_plan = resolve_physical_target_rows(
+                str(getattr(self.generator, "backend", "")), str(profile),
             )
-            if str(profile) == "production"
-            else ()
-        )
-        exact_target_rows: set[int] = set()
-        if str(profile) == "production" and _env_enabled(
-            _EXACT_TARGET_ROWS_ENV, default=True
-        ):
-            exact_target_rows.update(
-                int(value)
-                for value in backend_package_capability(
-                    str(self.generator.backend),
-                    "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS",
-                    (),
-                )
-            )
-            for capability in (
-                "GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY",
-                "GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY",
-            ):
-                wide_exact_policy = backend_package_capability(
-                    str(self.generator.backend), capability, {}
-                )
-                enabled_env = wide_exact_policy.get("enabled_env")
-                enabled_default = bool(wide_exact_policy.get("enabled_default", False))
-                if wide_exact_policy and (
-                    enabled_default if enabled_env is None
-                    else _env_enabled(str(enabled_env), default=enabled_default)
-                ):
-                    exact_target_rows.update(
-                        int(value)
-                        for value in wide_exact_policy.get("rows", ())
-                    )
-        self.production_exact_target_row_counts = tuple(sorted(exact_target_rows))
+        self.physical_target_rows = rows_plan
+        self.production_target_pad_row_counts = rows_plan.pad_counts
+        self.production_exact_target_row_counts = rows_plan.exact_counts
         self._target_pad_token_scratch: DeviceBuffer | None = None
         self._target_pad_token_capacity = 0
         self.physical_width_depths = _physical_width_depths(self.generator)

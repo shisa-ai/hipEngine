@@ -73,6 +73,10 @@ def test_manifest_identity_stays_on_each_generator(order, ambient, monkeypatch):
         generator = resolved.construct_generator(SimpleNamespace)
         from hipengine.core.specdec2_scope import PhysicalTargetArithmeticPlan
         assert generator.physical_target_arithmetic == PhysicalTargetArithmeticPlan()
+        from hipengine.generation.physical_target_rows import resolve_physical_target_rows
+        assert generator.physical_target_rows == resolve_physical_target_rows(
+            "hip_gfx1151", profile.value,
+        )
         owners.append((generator, resolved))
         assert os.environ.get(name) == ambient
         for owner, expected in reversed(owners):
