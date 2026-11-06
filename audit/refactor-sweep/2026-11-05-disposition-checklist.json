@@ -4974,9 +4974,11 @@
       "review_status": "reviewed",
       "disposition": "locally_actionable",
       "evidence": [
-        "hipengine/generation/qwen35_gguf_mtp2.py:885,997,5786 retains explicit device-chain oracle route."
+        "d4ddd2430 extracts the comparison into hipengine/benchmark/device_chain_oracle.py, preserving explicit lazy diagnostic routing.",
+        "eaa419539 records 167 focused tests and strict/production agreement on all 10 canonical prompt IDs (short output), with 52 oracle comparisons per profile and clean teardown.",
+        "32a1060b6 records no Python runtime D2H between physical target entry and bounded accept readback; 949411230 and 0be7e05d7 cover CPU P4 prefixes and synthetic GPU P4 ABI."
       ],
-      "next_action": "Extract oracle into maintained test adapter only after an equivalent explicit route exists, preserving GPU/CPU accept, every partial commit and no pre-accept D2H checks.",
+      "next_action": "Extraction is complete; audit remaining full-quality/model-state/failure protocol coverage and proposal-before-target copy boundary. Do not rerun short smoke or infer full qualification from the complete prompt ID inventory.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
