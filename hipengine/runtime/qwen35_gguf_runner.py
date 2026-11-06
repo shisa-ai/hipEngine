@@ -10148,10 +10148,12 @@ def _try_allocate_gguf_aotriton_head_major_kv_scratch(
     try:
         key_buffer = malloc(per_buffer_bytes, runtime=runtime)
         value_buffer = malloc(per_buffer_bytes, runtime=runtime)
-    except (HipError, MemoryError):
+    except BaseException as exc:
         if key_buffer is not None:
             free(key_buffer, runtime=runtime)
-        return None
+        if isinstance(exc, (HipError, MemoryError)):
+            return None
+        raise
     return key_buffer, value_buffer
 
 
@@ -12693,10 +12695,12 @@ def _gguf_gapped_slot_head_major_scratch(
         try:
             key_buffer = malloc(per_buffer_bytes, runtime=runtime)
             value_buffer = malloc(per_buffer_bytes, runtime=runtime)
-        except (HipError, MemoryError):
+        except BaseException as exc:
             if key_buffer is not None:
                 free(key_buffer, runtime=runtime)
-            return layer_scratch
+            if isinstance(exc, (HipError, MemoryError)):
+                return layer_scratch
+            raise
         if cached is not None:
             free(cached[2], runtime=runtime)
             free(cached[1], runtime=runtime)

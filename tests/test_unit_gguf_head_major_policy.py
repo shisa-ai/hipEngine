@@ -83,6 +83,26 @@ def test_head_major_memory_query_failure_keeps_best_effort_allocation(monkeypatc
     assert len(buffers) == 2
 
 
+def test_head_major_interrupted_second_allocation_frees_first(monkeypatch):
+    allocated = []
+    freed = []
+
+    def allocate(nbytes, **kwargs):
+        if allocated:
+            raise KeyboardInterrupt("allocation interrupted")
+        result = DeviceBuffer(4096, nbytes)
+        allocated.append(result)
+        return result
+
+    monkeypatch.setattr(runner, "malloc", allocate)
+    monkeypatch.setattr(runner, "free", lambda b, **kwargs: freed.append(b))
+    with pytest.raises(KeyboardInterrupt, match="allocation interrupted"):
+        runner._try_allocate_gguf_aotriton_head_major_kv_scratch(
+            backend="hip_gfx1151", capacity_tokens=37, kv_width=128, runtime=object(),
+        )
+    assert freed == allocated
+
+
 @pytest.mark.parametrize("cap_env,cap", [
     ("_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS_ENV", "36"),
     ("_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_BYTES_ENV", "18943"),
