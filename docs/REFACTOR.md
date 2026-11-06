@@ -2915,9 +2915,13 @@ Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
 Scope: `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS`,
 `HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES`.
 
-**Deferred ownership decision:** consolidate exact rows, mixed-Q6 partitions, prompt streaming and
-padding into a profile-resolved physical-target manifest keyed by concurrency, target rows and
-shape. Reuse RF-1/RF-10 ownership rather than add a parallel selector. Retire the two rollback flags
+**Partial ownership migration:** exact rows and padding are immutable
+`PhysicalTargetRowsPlan` values bound by dense gfx1100/gfx1151 and MoE gfx1151
+profile construction. Direct callers use the same resolver. See
+[`row-owner checkpoint`](../worklog/entries/20261106T094204.248065Z-lhl-r0195-row-owner-2c7013.md).
+Mixed-Q6 partitions, prompt streaming and concurrency/shape policy still need
+consolidation into the profile-resolved physical-target manifest.
+Reuse RF-1/RF-10 ownership rather than add a parallel selector. Retire the two rollback flags
 only with explicit coverage of their replacement policies and diagnostic controls.
 
 Preserve padded rows6 decomposition, repeated-R6 and serial-row strict owners, ordinary-prefill
@@ -3119,7 +3123,14 @@ Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
 
 Scope: `moe_physical_c2_numerics_session(...)`.
 
-Done when: Deferred profile transport: replace the ContextVar with the physical-target manifest while
+Construction now binds an immutable arithmetic plan on dense gfx1100/gfx1151
+and MoE gfx1151 profile owners. Physical verification carries it through one
+request-local plan binding; supported diagnostic scopes replace one field and
+restore the previous plan. See
+[`transport checkpoint`](../worklog/entries/20261106T093416.260440Z-lhl-r0193-plan-transport-c46791.md)
+and [`profile-owner checkpoint`](../worklog/entries/20261106T093803.590732Z-lhl-r0193-profile-owner-89e0f8.md).
+
+Done when: finish physical-target manifest integration while
 preserving C1/strict fallbacks, nested disabled scopes, exception restoration and independent
 execution-context isolation. Reuse RF-1's owner boundary and keep this migration separate from
 numerical tuning. Run `tests/test_unit_moe_target_arithmetic_scopes.py` and affected adapter tests;

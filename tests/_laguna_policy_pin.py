@@ -43,23 +43,10 @@ LAGUNA_POLICY: dict[str, str] = {
         "selected_grouped_prefill_compact_k1024_wave32_bf16_bf16_out"
     ),
 }""",
-    "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS": """LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = {
-    _H5Q_IQ3_ACTIVE_EXPERT_VARIANT: "grouped_raw_iq_active_experts",
-    _H5Z_IQ3_ACTIVATION_RESIDENT_VARIANT: "grouped_raw_iq_active_experts",
-    _H6D_IQ3_ROW_INTERLEAVED_VOPD_VARIANT: "grouped_raw_iq_active_experts",
-    _H6F_IQ3_PAIRED_OUTPUT_VARIANT: "grouped_raw_iq_active_experts",
-    _H6I_IQ3_TRIPLE_OUTPUT_VARIANT: "grouped_raw_iq_active_experts",
-    _H6P_IQ3_STAGED_WAVE_PUBLICATION_VARIANT: (
-        "grouped_raw_iq_active_experts"
-    ),
-    _H6Q_IQ3_COMPACT_SHUFFLE_LOOP_VARIANT: (
-        "grouped_raw_iq_active_experts"
-    ),
-    _H6R_IQ3_DPP_PEER_EXCHANGE_VARIANT: (
-        "grouped_raw_iq_active_experts"
-    ),
-    _H6T_IQ3_FUSED_DPP_ADD_VARIANT: "grouped_raw_iq_active_experts",
-}""",
+    "LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS": """LAGUNA_GROUPED_IQ_DOWN_VARIANT_ABIS = dict.fromkeys(
+    _LAGUNA_GROUPED_IQ_ACTIVE_EXPERT_VARIANTS,
+    "grouped_raw_iq_active_experts",
+)""",
     "LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANTS": """LAGUNA_GROUPED_PAIR16_GATE_UP_VARIANTS = {
     "gguf_iq2_xs": _H6L_IQ2_PAIR16_ROWBATCH16_VARIANT
 }""",

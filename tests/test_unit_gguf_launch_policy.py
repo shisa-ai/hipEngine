@@ -45,8 +45,11 @@ def test_dense_profile_binder_gives_each_generator_an_independent_owner():
     from hipengine.generation.qwen35_dense_gfx1100_profiles import _strict_binder
 
     first, second = SimpleNamespace(), SimpleNamespace()
-    _strict_binder(first, None)
-    _strict_binder(second, None)
+    resolved = SimpleNamespace(
+        manifest={"backend": "hip_gfx1100"}, profile=SimpleNamespace(value="strict"),
+    )
+    _strict_binder(first, resolved)
+    _strict_binder(second, resolved)
     assert isinstance(first.launch_decision_owner, LaunchDecisionOwner)
     assert first.launch_decision_owner is not second.launch_decision_owner
 
@@ -86,7 +89,13 @@ def test_qwen_profiles_isolate_decisions_in_both_construction_orders():
             generators = {}
             for profile in order:
                 generator = SimpleNamespace()
-                getattr(module, f'_{profile}_binder')(generator, None)
+                resolved = SimpleNamespace(
+                    manifest={"backend": (
+                        "hip_gfx1100" if module is dense1100 else "hip_gfx1151"
+                    )},
+                    profile=SimpleNamespace(value=profile),
+                )
+                getattr(module, f'_{profile}_binder')(generator, resolved)
                 generators[profile] = generator
             decisions = {profile: Decision(1, profile) for profile in order}
             for profile in (*order, *reversed(order)):

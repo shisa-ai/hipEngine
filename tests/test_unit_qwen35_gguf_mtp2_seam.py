@@ -1420,6 +1420,19 @@ def test_exact_target_rows_are_production_defaults_with_rollbacks(
     assert default._target_group_pad_rows(request_count=1, candidate_rows=3) == 2
     default.close()
 
+    # A profile-bound owner is not retargeted by later diagnostic env changes.
+    owner.generator.physical_target_rows = default.physical_target_rows
+    monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS", "0")
+    bound = Qwen35GGUFMTP2Adapter(
+        owner, enabled=True, target_verify_mode="native", candidate_budget=3,
+    )
+    assert bound.physical_target_rows is default.physical_target_rows
+    assert bound.production_exact_target_row_counts == (8, 28, 32)
+    assert bound._target_group_pad_rows(request_count=2, candidate_rows=6) == 0
+    bound.close()
+    del owner.generator.physical_target_rows
+    monkeypatch.delenv("HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS")
+
     monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS", "0")
     c8_rollback = Qwen35GGUFMTP2Adapter(
         owner,
