@@ -97,13 +97,16 @@ def test_final_logits_match_cpu_reference(session, oracle) -> None:
     ref_logits, _, _ = forward(oracle["token_ids"], gguf_weight_source(reader), config)
     ref = ref_logits[-1]
     assert int(np.argmax(logits)) == int(np.argmax(ref))
+    max_err = 0.0
     for row in oracle["final_logits"]["top20"]:
         i = int(row["id"])
         err = abs(float(logits[i]) - float(ref[i]))
-        # 0.06: the T16 production layout rounds Q/K projections to BF16
-        # before the fused QK-norm (observed max 0.0501); KL and top-1 remain
-        # the strict semantic anchors.
-        assert err <= 0.06, f"id {i}: runner vs f32 reference |err| {err} > 0.06"
+        max_err = max(max_err, err)
+        # 0.07: the T16 layout rounds Q/K projections to BF16 before the fused
+        # QK-norm (observed 0.0501), and the WMMA flash-prefill attention adds
+        # online-softmax reduction-order drift (observed max 0.0615). KL and
+        # top-1 remain the strict semantic anchors below.
+        assert err <= 0.07, f"id {i}: runner vs f32 reference |err| {err} > 0.07"
 
     def _softmax(x: np.ndarray) -> np.ndarray:
         x = x.astype(np.float64)

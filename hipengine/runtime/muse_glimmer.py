@@ -660,30 +660,39 @@ class MuseGlimmerResidentSession:
             key_begin = (
                 max(0, position_offset - cfg.sliding_window + 1) if is_swa else 0
             )
-            if tokens == 1:
-                span = keys - key_begin
-                n_splits = 64
-            elif self._exact_multirow:
-                # Decode-equivalent block verify: each row is computed
-                # independently with the decode split count (64) and the
-                # kernel's per-row causal+SWA clamp, so row i matches a
-                # single decode step at position_offset+i bit-for-bit.
-                n_splits = 64
-                key_begin = 0
+            if tokens > 1 and not self._exact_multirow:
+                # Bulk prefill: WMMA GQA-packed flash attention (16 Q heads
+                # share each KV read; QK^T/PV on the 16x16x16 f16 WMMA).
+                # Measured 1.3-1.6x over the scalar key-split owner.
+                from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_flash_prefill import (
+                    muse_glimmer_flash_prefill,
+                )
+                muse_glimmer_flash_prefill(
+                    self.q_bf16.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
+                    n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
+                    key_begin=0, key_end=keys, tokens=tokens,
+                    window=cfg.sliding_window if is_swa else 0,
+                    scale=float(d) ** -0.5, runtime=rt,
+                )
             else:
-                # Prefill rows parallelize over queries (tokens x 8 groups,
-                # GQA-packed so 16 Q heads share each KV read); 4 key splits
-                # shorten the serial walk and balance long causal rows.
-                n_splits = 4
-                key_begin = 0
-            muse_glimmer_decode_attention(
-                self.q_bf16.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
-                self.attn_partials.ptr,
-                n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
-                key_begin=key_begin, key_end=keys, n_splits=n_splits,
-                tokens=tokens, window=cfg.sliding_window if is_swa else 0,
-                scale=float(d) ** -0.5, runtime=rt,
-            )
+                if tokens == 1:
+                    span = keys - key_begin
+                    n_splits = 64
+                else:
+                    # Decode-equivalent block verify: each row is computed
+                    # independently with the decode split count (64) and the
+                    # kernel's per-row causal+SWA clamp, so row i matches a
+                    # single decode step at position_offset+i bit-for-bit.
+                    n_splits = 64
+                    key_begin = 0
+                muse_glimmer_decode_attention(
+                    self.q_bf16.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
+                    self.attn_partials.ptr,
+                    n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
+                    key_begin=key_begin, key_end=keys, n_splits=n_splits,
+                    tokens=tokens, window=cfg.sliding_window if is_swa else 0,
+                    scale=float(d) ** -0.5, runtime=rt,
+                )
             gguf_gate_mul_bf16(
                 self.attn_out.ptr, self.gate_bf16.ptr, self.attn_out.ptr,
                 tokens * q_dim, runtime=rt,
