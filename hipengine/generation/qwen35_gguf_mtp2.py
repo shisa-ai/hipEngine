@@ -1775,6 +1775,11 @@ class Qwen35GGUFMTP2Adapter:
         checkpoint_by_id = {} if checkpoints is None else dict(checkpoints)
         try:
             for request_id, row, target in zip(pending, rows, targets, strict=True):
+                # Publish provisional ownership before any fallible setup so
+                # rollback also drains a reset row that never obtained a sink.
+                self._prompt_streaming_group_keys[request_id] = group.key
+                group.request_ids.add(request_id)
+                created.append(request_id)
                 group.provider.reset_request(request_id)
                 checkpoint = checkpoint_by_id.get(request_id)
                 if checkpoint is None:
@@ -1887,6 +1892,10 @@ class Qwen35GGUFMTP2Adapter:
                             int(request_id),
                             target=target,
                         )
+                        group.provider.release_request(request_id)
+                        group.request_ids.discard(request_id)
+                        self._prompt_streaming_group_keys.pop(request_id, None)
+                        created.remove(request_id)
                         continue
                     sink_tokens, sink_start_position, sink_initial_hidden = restored
                 sink = _StreamingNextNPromptSink(
@@ -1910,9 +1919,6 @@ class Qwen35GGUFMTP2Adapter:
                     ),
                 )
                 self._prompt_streaming_sinks[request_id] = sink
-                self._prompt_streaming_group_keys[request_id] = group.key
-                group.request_ids.add(request_id)
-                created.append(request_id)
         except Exception:
             self._abort_prompt_streaming(tuple(created), stream=0)
             for request_id in pending:
@@ -1921,6 +1927,11 @@ class Qwen35GGUFMTP2Adapter:
                 self._provider_groups.pop(group.key, None)
             self._active_prompt_claims = None
             raise
+        if acquired and not group.request_ids:
+            self._provider_groups.pop(group.key, None)
+            self.generator._release_mtp_draft_runner(group.provider_pool_key, group.provider)
+        if not self._prompt_streaming_sinks:
+            self._active_prompt_claims = None
         return tuple(
             self._prompt_streaming_sinks.get(request_id) for request_id in ids
         )

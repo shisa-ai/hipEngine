@@ -3956,11 +3956,11 @@ def test_packed_prompt_hidden_sinks_consume_post_output_norm_rows(monkeypatch) -
     ) == 0x4000
 
 
-@pytest.mark.parametrize("acquire_fails", [False, True])
+@pytest.mark.parametrize("setup_failure", [None, "acquire", "first_sink", "sink"])
 @pytest.mark.parametrize("released_bulk", [False, True])
 @pytest.mark.parametrize("split_finish", [False, True])
 def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
-    monkeypatch, released_bulk, split_finish, acquire_fails,
+    monkeypatch, released_bulk, split_finish, setup_failure,
 ) -> None:
     class Runtime:
         pass
@@ -4103,7 +4103,7 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     adapter.register_request(8, 2)
     adapter.physical_prompt_streaming = True
 
-    if acquire_fails:
+    if setup_failure == "acquire":
         acquire = generator._acquire_dense_mtp_draft_provider
         def fail_acquire(*args, **kwargs):
             raise MemoryError("provider allocation failed")
@@ -4114,6 +4114,31 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
         assert adapter._prompt_streaming_sinks == {}
         assert adapter._provider_groups == {}
         generator._acquire_dense_mtp_draft_provider = acquire
+    if setup_failure in ("first_sink", "sink"):
+        failed_request = 7 if setup_failure == "first_sink" else 8
+        class FailingSink(Sink):
+            def __init__(self, **kwargs):
+                if kwargs["request_id"] == failed_request:
+                    raise MemoryError("sink allocation failed")
+                super().__init__(**kwargs)
+        monkeypatch.setattr(mtp2_module, "_StreamingNextNPromptSink", FailingSink)
+        with pytest.raises(MemoryError, match="sink allocation failed"):
+            adapter.begin_prompt_streaming((7, 8), checkpoints={})
+        assert provider.released == ([7] if failed_request == 7 else [7, 8])
+        assert released_pool == [("pool", provider)]
+        assert adapter.prompt_activation_available()
+        assert adapter._prompt_streaming_sinks == {}
+        assert adapter._prompt_streaming_group_keys == {}
+        assert adapter._provider_groups == {}
+        assert adapter._prompt_streaming_norm_buffers == {}
+        assert freed_norm == ([0x9000] if failed_request == 7 else [0x9000, 0xA000])
+        provider.reset.clear()
+        provider.released.clear()
+        released_pool.clear()
+        finish_calls.clear()
+        freed_norm.clear()
+        norm_allocations = iter((DeviceBuffer(0x9000, 16), DeviceBuffer(0xA000, 16)))
+        monkeypatch.setattr(mtp2_module, "_StreamingNextNPromptSink", Sink)
     sinks = adapter.begin_prompt_streaming((7, 8), checkpoints={})
     assert adapter._active_prompt_claims is not None
     assert sinks[0].transform_hidden_rows(0xB000, 2, 3) == 0x9000
