@@ -4548,6 +4548,18 @@ class Qwen35GGUFMTP2Adapter:
         )
         return metadata[0]
 
+    def _record_target_submission_shape(self, jobs, *, pad_rows: int) -> None:
+        submitted = sum(len(job["input_token_ids"]) for job in jobs)
+        previous = getattr(self, "_last_target_shape_contract", {})
+        self._last_target_shape_contract = {
+            "logical_rows": submitted - int(pad_rows),
+            "pad_rows": int(pad_rows),
+            "selected_rows": submitted,
+            "reason": previous.get("reason", "padding_not_applicable"),
+            "submitted_rows": submitted,
+            "request_count": len(jobs),
+        }
+
     def _target_group_pad_rows(self, *, request_count: int, candidate_rows: int) -> int:
         """Return inactive pad rows lifting a physical group to admitted multiples."""
 
@@ -5325,6 +5337,7 @@ class Qwen35GGUFMTP2Adapter:
         lifetime. Converging them requires packed graph capture and a matched
         public C1 comparison, not simply redirecting singleton dispatch here.
         """
+        self._last_target_shape_contract = {}
         ids = tuple(int(value) for value in plan.speculative_request_ids)
         states = tuple(self._states[request_id] for request_id in ids)
         rows = tuple(self.owner._row(request_id) for request_id in ids)
@@ -5536,6 +5549,7 @@ class Qwen35GGUFMTP2Adapter:
                 )
             )
         target_finished_ns = time.perf_counter_ns()
+        self._record_target_submission_shape(jobs, pad_rows=pad_rows)
         target_seconds = (target_finished_ns - target_started_ns) / 1e9
         physical_target_rows = sum(len(job["input_token_ids"]) for job in jobs)
         for row in rows:

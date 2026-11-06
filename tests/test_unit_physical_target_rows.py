@@ -7,6 +7,34 @@ import pytest
 from hipengine.generation.physical_target_rows import resolve_physical_target_rows
 
 
+def test_target_submission_shape_tracks_jobs_and_clears_on_new_cycle():
+    from types import SimpleNamespace
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._last_target_shape_contract = {"reason": "padded_to_row_multiple"}
+    jobs = [{"input_token_ids": (1, 2, 3)}, {"input_token_ids": (4, 5, 6)}]
+    adapter._record_target_submission_shape(jobs, pad_rows=2)
+    assert adapter.physical_width_contract()["last_target_shape"] == {
+        "logical_rows": 4, "pad_rows": 2, "selected_rows": 6,
+        "reason": "padded_to_row_multiple", "submitted_rows": 6, "request_count": 2,
+    }
+    adapter._states = {}
+    # Stop at request lookup, after entering the real cycle boundary.
+    with pytest.raises(KeyError):
+        adapter._execute_target_frontier_batch(
+            SimpleNamespace(speculative_request_ids=(7,)), None, None,
+            cancelled_request_ids=lambda: (),
+        )
+    assert adapter.physical_width_contract()["last_target_shape"] == {}
+    adapter._record_target_submission_shape(jobs[:1], pad_rows=0)
+    assert adapter.physical_width_contract()["last_target_shape"] == {
+        "logical_rows": 3, "pad_rows": 0, "selected_rows": 3,
+        "reason": "padding_not_applicable", "submitted_rows": 3, "request_count": 1,
+    }
+
+
+
 @pytest.mark.parametrize("profile", ["strict", "production", "batch_invariant"])
 def test_rows_plan_snapshots_rollbacks(monkeypatch, profile):
     import hipengine.generation.physical_target_rows as module
