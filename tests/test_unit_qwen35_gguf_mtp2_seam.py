@@ -3751,6 +3751,37 @@ def test_eager_cycle_commit_implements_only_the_greedy_chain_eos_finish_rule() -
     )
 
 
+def test_refill_replay_failure_releases_only_provisional_provider_request(monkeypatch):
+    released = []
+    reset = []
+    provider = SimpleNamespace(
+        reset_request=lambda rid: reset.append(rid),
+        release_request=lambda rid: released.append(rid),
+    )
+    group = mtp2_module._MTP2ProviderGroup(
+        key=(7, 8), provider=provider, provider_pool_key="pool", request_ids={8},
+    )
+    target = SimpleNamespace(_last_target_hidden_ptr=123)
+    row = SimpleNamespace(lease=SimpleNamespace(session=target), prompt_ids=(1, 2))
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(_row=lambda rid: row)
+    adapter._prompt_hidden_rows = {7: object()}
+    adapter._target_profile_supported = lambda selected: True
+    adapter._bind_target_profile_metadata = lambda selected: None
+    failure = RuntimeError("prompt replay failed")
+    def fail(*args):
+        raise failure
+    adapter._catch_up_provider = fail
+
+    with pytest.raises(RuntimeError, match="prompt replay failed") as caught:
+        adapter._attach_request_to_group(7, group)
+
+    assert caught.value is failure
+    assert reset == released == [7]
+    assert group.request_ids == {8}
+    assert target._last_target_hidden_ptr == 123
+
+
 def test_refill_reuses_live_provider_group_before_opening_singleton() -> None:
     provider = SimpleNamespace(executor=SimpleNamespace(max_requests=2))
     group = mtp2_module._MTP2ProviderGroup(

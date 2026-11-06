@@ -6882,14 +6882,21 @@ class Qwen35GGUFMTP2Adapter:
         if not self._target_profile_supported(target):
             raise RuntimeError("GGUF MTP2 target execution profile is unsupported")
         self._bind_target_profile_metadata(target)
-        group.provider.reset_request(request_id)
-        root_hidden = self._catch_up_provider(
-            group.provider,
-            request_id,
-            row.prompt_ids,
-            self._prompt_hidden_rows[request_id],
-            target,
-        )
+        try:
+            group.provider.reset_request(request_id)
+            root_hidden = self._catch_up_provider(
+                group.provider,
+                request_id,
+                row.prompt_ids,
+                self._prompt_hidden_rows[request_id],
+                target,
+            )
+        except BaseException as error:
+            try:
+                group.provider.release_request(request_id)
+            except BaseException as cleanup_error:
+                error.add_note(f"provider refill rollback failed: {cleanup_error!r}")
+            raise
         target._last_target_hidden_ptr = int(root_hidden.ptr)
         group.request_ids.add(request_id)
         return _MTP2RequestState(
