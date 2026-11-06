@@ -11,6 +11,10 @@ from scripts import laguna_long_context_profile as profiler
 
 
 def test_tile8_diagnostic_restores_owner_after_nested_failure():
+    import inspect
+    assert 'use_selected_natural_tile8_decode' not in inspect.signature(
+        LagunaGGUFResidentSession
+    ).parameters
     owner = object.__new__(LagunaGGUFResidentSession)
     peer = object.__new__(LagunaGGUFResidentSession)
     owner.use_selected_natural_tile8_decode = False
@@ -61,7 +65,7 @@ def test_profile_tile8_comparison_owns_residency_and_holds_later_overlays_off(mo
         assert kw["use_selected_natural_decode"] is True
         assert kw["use_selected_natural_tile8_parallel_decode"] is False
         assert kw["use_selected_natural_tile8_parallel_silu_decode"] is False
-        assert kw["use_selected_natural_tile8_decode"] is False
+        assert "use_selected_natural_tile8_decode" not in kw
     else:
         for name in (
             "use_q4_expert_t16_dual_interleaved", "use_selected_natural_decode",

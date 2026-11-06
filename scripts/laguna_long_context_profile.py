@@ -779,11 +779,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_selected_natural_decode=(
                 True if args.compare_selected_natural_tile8_decode else None
             ),
-            use_selected_natural_tile8_decode=(
-                False
-                if args.compare_selected_natural_tile8_decode
-                else None
-            ),
+
             use_selected_natural_tile8_parallel_decode=(
                 False if args.compare_selected_natural_tile8_decode else None
             ),
@@ -1413,6 +1409,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "selected_natural_tile8_comparison_basis": (
                 "ordinary_t16_natural16_vs_tile8_without_parallel_silu"
+                if args.compare_selected_natural_tile8_decode else None
+            ),
+            "selected_natural_tile8_diagnostic_owner": (
+                "selected_natural_tile8_diagnostic"
                 if args.compare_selected_natural_tile8_decode else None
             ),
             "q4_decode_t16_sidecar": active_q4_decode_t16_sidecar,

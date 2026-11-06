@@ -3000,7 +3000,6 @@ class LagunaGGUFResidentSession:
         iq3_c1_down_schedule: str | None = None,
         use_iq2_grid64: bool | None = None,
         use_selected_natural_decode: bool | None = None,
-        use_selected_natural_tile8_decode: bool | None = None,
         use_selected_natural_tile8_parallel_decode: bool | None = None,
         use_selected_natural_tile8_parallel_silu_decode: bool | None = None,
         use_selected_halfdot_decode: bool | None = None,
@@ -3204,8 +3203,6 @@ class LagunaGGUFResidentSession:
                 "LAGUNA_SELECTED_NATURAL_TILE8_DECODE",
                 False,
             )
-            if use_selected_natural_tile8_decode is None
-            else use_selected_natural_tile8_decode
         )
         self.use_selected_natural_tile8_parallel_decode = bool(
             backend_package_capability(
