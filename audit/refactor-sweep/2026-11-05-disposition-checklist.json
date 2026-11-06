@@ -1750,7 +1750,7 @@
       "evidence": [
         "hipengine/runtime/qwen35_gguf_runner.py:9193-9195,10793-10889 retains three independent selected-pair controls."
       ],
-      "next_action": "Scoped pair/down/Q6-down diagnostic and Q4 gate migration completed in c2609e289 (69 tests). Gate metadata now separates effective session/package-floor scope from unchanged ambient values (19 metadata/scope tests). Remaining: public native/serial/sparse/refill attribution and compatibility reader retirement after external-caller review; preserve request-local width floors and defaults.",
+      "next_action": "Same-thread scope/gate/metadata migration completed (c2609e289/fd5072e5a). Public gfx1151 direct-call trace confirms Q4/Q6 pairreuse at C8 and non-pair owners at C1/C3 with clean teardown, but forced-off caller scope does NOT cross EngineService: callables observe diagnostic None in both arms. Bind explicit diagnostic to request/session execution ownership (including mixed-policy packed grouping), then repeat actual public off/on attribution before reader retirement. See worklog/entries/20261106T120908.110646Z-lhl-r0281-selected-pair-driver-9efcc1.md.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
