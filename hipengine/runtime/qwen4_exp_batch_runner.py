@@ -1997,15 +1997,27 @@ class Qwen4ExpGGUFBatchRunner:
             destination_attention = attention_states[layer]
             index_state = self.index_states[layer]
             index_row_bytes = index_state.index_dim * DType.FP32.itemsize
+            buffers = (
+                (state.key_cache, destination_attention.key_cache, row_bytes),
+                (state.value_cache, destination_attention.value_cache, row_bytes),
+                (source_index[layer].raw_keys, index_state.raw_keys, index_row_bytes),
+            )
+            for logical in range(needed_blocks):
+                rows = min(self.block_size, position - logical * self.block_size)
+                for source, destination, width in buffers:
+                    for buffer, block in (
+                        (source, source_blocks[layer][logical]),
+                        (destination, slot_blocks[logical]),
+                    ):
+                        end = (operator.index(block) * self.block_size + rows) * width
+                        if block < 0 or end > buffer.nbytes:
+                            raise ValueError("import block prefix is outside its owned buffer")
             copy_plans.append(_block_table_copy_plan(
                 source_blocks=source_blocks[layer][:needed_blocks],
                 destination_blocks=slot_blocks[:needed_blocks],
                 position=position, block_size=self.block_size,
-                operands=(
-                    (state.key_cache.ptr, destination_attention.key_cache.ptr, row_bytes),
-                    (state.value_cache.ptr, destination_attention.value_cache.ptr, row_bytes),
-                    (source_index[layer].raw_keys.ptr, index_state.raw_keys.ptr, index_row_bytes),
-                ),
+                operands=tuple((source.ptr, destination.ptr, width)
+                               for source, destination, width in buffers),
             ))
         return tuple(copy_plans)
 

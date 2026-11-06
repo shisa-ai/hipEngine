@@ -954,7 +954,7 @@ def test_publish_position_rejects_stale_owner_and_capacity_before_mutation() -> 
         runner.publish_position(0, owner, 8)
 
 
-@pytest.mark.parametrize("invalid_mapping", [False, True])
+@pytest.mark.parametrize("invalid_mapping", [None, "negative", "source_extent", "destination_extent"])
 def test_import_copies_each_block_prefix_from_its_own_physical_block(
     monkeypatch, invalid_mapping,
 ) -> None:
@@ -974,13 +974,15 @@ def test_import_copies_each_block_prefix_from_its_own_physical_block(
     source_attention = _FakeAttention(1, 2)
     source_attention.block_host[0] = np.asarray([7, 9], dtype=np.int32)
     source_attention.key_cache = DeviceBuffer(
-        0x1100000, source_attention.key_cache.nbytes
+        0x1100000, 10 * source_attention.block_size * source_attention.kv_heads * source_attention.head_dim * 2
     )
     source_attention.value_cache = DeviceBuffer(
-        0x1200000, source_attention.value_cache.nbytes
+        0x1200000, source_attention.key_cache.nbytes
     )
     source_index = _FakeIndex(1)
-    source_index.raw_keys = DeviceBuffer(0x1300000, source_index.raw_keys.nbytes)
+    source_index.raw_keys = DeviceBuffer(
+        0x1300000, 10 * source_attention.block_size * fixture.INDEX_DIM * 4,
+    )
     source_index.count = 300
     source_index.capacity = fixture.MAX_POSITIONS
     source = SimpleNamespace(
@@ -1004,13 +1006,19 @@ def test_import_copies_each_block_prefix_from_its_own_physical_block(
     )
     runner.runtime.calls.clear()
     if invalid_mapping:
-        source_attention.block_host[0, 1] = -1
+        if invalid_mapping == "negative":
+            source_attention.block_host[0, 1] = -1
+        elif invalid_mapping == "source_extent":
+            source_attention.block_host[0, 1] = 10
+        else:
+            attention.block_host[0, 1] = 100
         with pytest.raises(ValueError):
             runner.import_prefilled(0, owner, source=source)
         assert not [call for call in runner.runtime.calls if call[0] == "memcpy"]
         assert runner.poisoned_slots == ()
         assert runner.position(0) == 0
         source_attention.block_host[0, 1] = 9
+        attention.block_host[0, 1] = 3
     assert runner.import_prefilled(0, owner, source=source) == 300
 
     row_bytes = attention.kv_heads * attention.head_dim * 2
