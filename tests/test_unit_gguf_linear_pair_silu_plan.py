@@ -491,6 +491,19 @@ def test_pair_silu_plan_executes_exact_operands(
     assert events[0][2] == expected_args
 
 
+def test_pair_silu_plan_rejects_registry_change(monkeypatch):
+    weight_a = _Weight('a', Q4_PACK8_DECODE.quant, decode_tiles=True)
+    weight_b = _Weight('b', Q4_PACK8_DECODE.quant, decode_tiles=True)
+    _patch(monkeypatch, dispatch_a=_dispatch(Q4_PACK8_DECODE),
+           dispatch_b=_dispatch(Q4_PACK8_DECODE))
+    plan = _resolve(weight_a, weight_b, rows=1)
+    assert plan.operation is not None
+    original_generation = gguf_linear_module.generation()
+    monkeypatch.setattr(gguf_linear_module, 'generation', lambda: original_generation + 1)
+    with pytest.raises(ValueError, match='registry changed'):
+        _execute(plan, weight_a, weight_b, events=[], monkeypatch=monkeypatch)
+
+
 @pytest.mark.parametrize('mode', ['variant', 'quant', 'absent', 'none'])
 def test_pair_silu_variant_library_precedes_legacy_key(monkeypatch, mode):
     weight_a = _Weight('a', Q4_PACK8_DECODE.quant, decode_tiles=True)

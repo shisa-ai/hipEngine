@@ -8099,6 +8099,7 @@ class _GGUFPairSiluPlan:
     layer_id: int | None
     r28_enabled: bool | None
     fallback_reason: str | None
+    registry_generation: int
 
 
 def _resolve_gguf_linear_pair_silu_plan(
@@ -8169,6 +8170,7 @@ def _resolve_gguf_linear_pair_silu_plan(
             layer_id=layer_id,
             r28_enabled=r28_enabled,
             fallback_reason=fallback_reason,
+            registry_generation=generation(),
         )
 
     dispatch_a = resolve_gguf_linear_dispatch(
@@ -8996,6 +8998,8 @@ def _execute_gguf_linear_pair_silu_plan(
     operation = plan.operation
     if operation is None:
         return False
+    if generation() != plan.registry_generation:
+        raise ValueError("GGUF pair-SiLU plan registry changed since resolution")
     for index, (weight, operand) in enumerate(
         zip((weight_a, weight_b), plan.operands)
     ):
