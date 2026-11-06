@@ -1476,9 +1476,10 @@ class Qwen35GGUFBringupGenerator:
     # Profile-owned verifier capture mode. ``None`` keeps the unbound/direct
     # diagnostic environment input, resolved once at session construction.
     target_verifier_prefill_gdn_capture: bool | None = None
+    # Explicit packed-decode diagnostic; None uses the legacy adapter during migration.
+    ar_packed_decode: bool | None = None
     # Profile-owned cooperative F32 router policy. ``None`` selects the
     # runner's construction defaults.
-    ar_packed_decode: bool | None = None
     target_router_f32w_coop: bool | None = None
     target_router_f32w_persistent_counter: bool | None = None
     # Profile-owned broad Q8T16 rowtile admission. ``True`` admits the backend
@@ -12001,7 +12002,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 serial_fallback_reason = "mixed_sampler_routes"
             elif group.physical_rows > packed_decode_limit:
                 serial_fallback_reason = "packed_decode_width_unqualified"
-            elif self._ar_packed_decode_enabled() and (
+            elif self.generator._ar_packed_decode_enabled() and (
                 group.active_rows > 1 or group.physical_rows > 1
             ):
                 packed = self._step_native_chunk(

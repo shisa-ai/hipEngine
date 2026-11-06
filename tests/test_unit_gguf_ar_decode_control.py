@@ -16,6 +16,8 @@ def test_resident_decode_preserves_explicit_control_and_capability_fallback(
 ):
     runner = object.__new__(qwen35_gguf.Qwen35GGUFResidentModelRunner)
     runner._resident_batch_owner = object()
+    runner.generator = object.__new__(qwen35_gguf.Qwen35GGUFBringupGenerator)
+    runner.generator.ar_packed_decode = enabled
     runner._shared_runner = SimpleNamespace(backend="hip_gfx1151")
     runner._last_execution_manifest = {}
     runner._last_physical_group_plan = {}
