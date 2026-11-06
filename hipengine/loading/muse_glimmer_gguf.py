@@ -35,6 +35,10 @@ from hipengine.loading.materialize import (
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight, GGUFWeightSpec
 
 LAYOUT_RAW_GGUF = "raw_gguf"
+LAYOUT_Q4_K_PACK8 = "q4_k_pack8"
+LAYOUT_GGUF_Q4_K_T16 = "gguf_q4_k_t16_v1"
+LAYOUT_GGUF_Q5_K_T16 = "gguf_q5_k_t16_v1"
+LAYOUT_GGUF_Q6_K_T16 = "gguf_q6_k_t16_v1"
 
 #: Raw-layout quant keys this loader uploads. The runtime dispatch surface
 #: resolves GEMV/prefill owners per key; admission never consults this map.
@@ -150,12 +154,76 @@ class MuseGlimmerDeviceWeight:
 
     spec: MuseGlimmerWeightSpec
     backend: str
-    _allocation: DeviceTensorAllocation
+    _allocations: Mapping[str, DeviceTensorAllocation]
 
     def allocation(self, name: str | None = None) -> DeviceTensorAllocation:
-        if name not in (None, "raw"):
-            raise ValueError(f"Glimmer raw weights expose only 'raw', not {name!r}")
-        return self._allocation
+        if name is None:
+            name = "raw" if "raw" in self._allocations else next(iter(self._allocations))
+        return self._allocations[name]
+
+
+def upload_glimmer_tensor(
+    name: str,
+    raw: np.ndarray,
+    ggml_type_name: str,
+    *,
+    backend: str,
+    runtime: HipRuntime,
+    row_perm: np.ndarray | None = None,
+    force_raw: bool = False,
+) -> tuple[MuseGlimmerDeviceWeight, dict[str, DeviceTensorAllocation]]:
+    """Upload one tensor in its production resident layout.
+
+    Q4_K takes the lossless pack8 repack (the tuned gfx11 GEMV/WMMA owners);
+    other quants stay raw; F32 norms upload as-is. ``row_perm`` reorders output
+    rows before packing (the NORM->NEOX RoPE transform) — a pure byte/row
+    gather, no requantization.
+    """
+
+    from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_pack8, repack_gguf_q4_k_tile16
+    from hipengine.quant.gguf_t16 import (
+        repack_gguf_q5_k_tile16,
+        repack_gguf_q6_k_tile16,
+    )
+
+    if row_perm is not None:
+        raw = np.ascontiguousarray(raw[row_perm])
+    allocs: dict[str, DeviceTensorAllocation] = {}
+    if ggml_type_name == "F32":
+        allocs["raw"] = load_host_array_to_device(name, raw, runtime=runtime)
+        spec = MuseGlimmerWeightSpec(layout="dense_f32", quant_key="f32")
+    elif ggml_type_name == "Q4_K" and not force_raw:
+        packed = repack_gguf_q4_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
+        allocs["tiles"] = load_host_array_to_device_as_dtype(
+            name + ".tiles", np.ascontiguousarray(packed.tiles), DType.INT8,
+            source_dtype="I8", runtime=runtime,
+        )
+        spec = MuseGlimmerWeightSpec(layout=LAYOUT_GGUF_Q4_K_T16, quant_key="gguf_q4_k_t16_v1")
+    elif ggml_type_name == "Q6_K":
+        packed = repack_gguf_q6_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
+        allocs["tiles"] = load_host_array_to_device_as_dtype(
+            name + ".tiles", np.ascontiguousarray(packed.tiles), DType.INT8,
+            source_dtype="I8", runtime=runtime,
+        )
+        spec = MuseGlimmerWeightSpec(layout=LAYOUT_GGUF_Q6_K_T16, quant_key="gguf_q6_k_t16_v1")
+    elif ggml_type_name == "Q5_K":
+        packed = repack_gguf_q5_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
+        allocs["tiles"] = load_host_array_to_device_as_dtype(
+            name + ".tiles", np.ascontiguousarray(packed.tiles), DType.INT8,
+            source_dtype="I8", runtime=runtime,
+        )
+        spec = MuseGlimmerWeightSpec(layout=LAYOUT_GGUF_Q5_K_T16, quant_key="gguf_q5_k_t16_v1")
+    elif ggml_type_name in RAW_QUANT_KEYS:
+        allocs["raw"] = load_host_array_to_device_as_dtype(
+            name, raw, DType.INT8, source_dtype="I8", runtime=runtime
+        )
+        spec = MuseGlimmerWeightSpec(layout=LAYOUT_RAW_GGUF, quant_key=RAW_QUANT_KEYS[ggml_type_name])
+    else:
+        raise ValueError(
+            f"Muse Glimmer tensor {name!r} has unsupported storage type "
+            f"{ggml_type_name!r}; no resident route is registered"
+        )
+    return MuseGlimmerDeviceWeight(spec=spec, backend=backend, _allocations=allocs), allocs
 
 
 @dataclass(frozen=True)
@@ -200,42 +268,26 @@ def materialize_muse_glimmer_weights(
         for name in required_tensor_names(config):
             tensor = reader.tensor_info(name)
             raw = np.ascontiguousarray(reader.tensor_data(name))
-            quant_key = ""
-            if tensor.ggml_type_name == "F32":
-                if name.endswith(("attn_q_norm.weight", "attn_k_norm.weight")):
-                    layer = int(name.split(".")[1])
-                    if config.swa_pattern[layer]:
-                        perm = norm_to_neox_row_permutation(1, config.head_dim)
-                        raw = np.ascontiguousarray(raw[perm])
-                allocation = load_host_array_to_device(name, raw, runtime=runtime)
-            elif tensor.ggml_type_name in RAW_QUANT_KEYS:
-                quant_key = RAW_QUANT_KEYS[tensor.ggml_type_name]
-                if name.endswith(("attn_q.weight", "attn_k.weight")):
-                    layer = int(name.split(".")[1])
-                    if config.swa_pattern[layer]:
-                        n_heads = (
-                            config.n_heads if name.endswith("attn_q.weight")
-                            else config.n_kv_heads
-                        )
-                        perm = norm_to_neox_row_permutation(n_heads, config.head_dim)
-                        raw = np.ascontiguousarray(raw[perm])
-                allocation = load_host_array_to_device_as_dtype(
-                    name, raw, DType.INT8, source_dtype="I8", runtime=runtime
-                )
-            else:
-                raise ValueError(
-                    f"Muse Glimmer tensor {name!r} has unsupported storage type "
-                    f"{tensor.ggml_type_name!r}; no raw resident route is registered"
-                )
-            allocations[name] = allocation
-            weights[name] = MuseGlimmerDeviceWeight(
-                spec=MuseGlimmerWeightSpec(
-                    layout=LAYOUT_RAW_GGUF if quant_key else "dense_f32",
-                    quant_key=quant_key or "f32",
-                ),
-                backend=backend,
-                _allocation=allocation,
+            row_perm = None
+            if name.endswith(("attn_q.weight", "attn_k.weight")):
+                layer = int(name.split(".")[1])
+                if config.swa_pattern[layer]:
+                    n_heads = (
+                        config.n_heads if name.endswith("attn_q.weight")
+                        else config.n_kv_heads
+                    )
+                    row_perm = norm_to_neox_row_permutation(n_heads, config.head_dim)
+            elif name.endswith(("attn_q_norm.weight", "attn_k_norm.weight")):
+                layer = int(name.split(".")[1])
+                if config.swa_pattern[layer]:
+                    row_perm = norm_to_neox_row_permutation(1, config.head_dim)
+            weight, allocs = upload_glimmer_tensor(
+                name, raw, tensor.ggml_type_name,
+                backend=backend, runtime=runtime, row_perm=row_perm,
+                force_raw=(name == "token_embd.weight"),
             )
+            weights[name] = weight
+            allocations.update(allocs)
     except Exception:
         DeviceWeightMap(tensors=allocations).free(runtime=runtime)
         raise

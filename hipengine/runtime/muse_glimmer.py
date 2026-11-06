@@ -154,6 +154,7 @@ class MuseGlimmerResidentSession:
             self.ff_act = scratch.alloc(t_max * cfg.n_ff * bf16, rt)
             self.ff_out = scratch.alloc(t_max * hidden * bf16, rt)
             self.logits_f32 = scratch.alloc(cfg.vocab_size * f32, rt)
+            self.logits_bf16 = scratch.alloc(t_max * cfg.vocab_size * bf16, rt)
             self.token_ids = scratch.alloc(t_max * 8, rt)
             self.positions = scratch.alloc(t_max * 8, rt)
             self.cos_table = scratch.alloc(self.max_context * cfg.head_dim * f32, rt)
@@ -162,6 +163,7 @@ class MuseGlimmerResidentSession:
             self.identity_sin = scratch.alloc(self.max_context * cfg.head_dim * f32, rt)
             self.keep_mask_full = scratch.alloc(t_max * self.max_context, rt)
             self.keep_mask_swa = scratch.alloc(t_max * self.max_context, rt)
+            self.attn_partials = scratch.alloc(64 * cfg.n_heads * 130 * 4, rt)
             self._logits_host = np.empty(cfg.vocab_size, dtype=np.float32)
             self._mask_host = np.empty((t_max, self.max_context), dtype=np.uint8)
             self._ids_host = np.empty(t_max, dtype=np.int64)
@@ -412,22 +414,26 @@ class MuseGlimmerResidentSession:
                 src.ptr, self.loaded.ptr(p + "attn_norm.weight"), self.normed.ptr,
                 tokens, hidden, cfg.rms_eps, runtime=rt,
             )
-            launch_gguf_linear(
+            self._linear(
                 self.loaded.weight(p + "attn_q.weight"), self.normed.ptr,
-                self.q_f32.ptr, tokens, hidden, q_dim,
-                output_dtype="f32", backend=self.backend, runtime=rt,
+                self.q_bf16.ptr, tokens, hidden, q_dim,
+                output_dtype="bf16", backend=self.backend, runtime=rt,
             )
-            launch_gguf_linear(
+            self._linear(
                 self.loaded.weight(p + "attn_k.weight"), self.normed.ptr,
-                self.k_f32.ptr, tokens, hidden, kv_dim,
-                output_dtype="f32", backend=self.backend, runtime=rt,
+                self.k_bf16.ptr, tokens, hidden, kv_dim,
+                output_dtype="bf16", backend=self.backend, runtime=rt,
             )
-            launch_gguf_linear(
+            from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
+
+            bf16_to_f32(self.q_bf16.ptr, self.q_f32.ptr, tokens * q_dim, runtime=rt)
+            bf16_to_f32(self.k_bf16.ptr, self.k_f32.ptr, tokens * kv_dim, runtime=rt)
+            self._linear(
                 self.loaded.weight(p + "attn_v.weight"), self.normed.ptr,
                 self.v_bf16.ptr, tokens, hidden, kv_dim,
                 backend=self.backend, runtime=rt,
             )
-            launch_gguf_linear(
+            self._linear(
                 self.loaded.weight(p + "attn_gate.weight"), self.normed.ptr,
                 self.gate_bf16.ptr, tokens, hidden, q_dim,
                 backend=self.backend, runtime=rt,
@@ -458,20 +464,38 @@ class MuseGlimmerResidentSession:
                 v_cache.ptr + position_offset * row_bytes, self.v_bf16.ptr,
                 tokens * row_bytes, MemcpyKind.DEVICE_TO_DEVICE,
             )
-            gemma4_attention_prefill_bf16(
-                self.q_bf16.ptr, k_cache.ptr, v_cache.ptr,
-                (self.keep_mask_swa if is_swa else self.keep_mask_full).ptr,
-                self.attn_out.ptr,
-                tokens=tokens, num_heads=cfg.n_heads, num_kv_heads=cfg.n_kv_heads,
-                head_dim=d, scale=float(d) ** -0.5, keys=keys,
-                window=cfg.sliding_window if is_swa else 0,
-                row_offset=position_offset, runtime=rt,
-            )
+            if tokens == 1:
+                from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
+                    muse_glimmer_decode_attention,
+                )
+
+                key_begin = (
+                    max(0, position_offset - cfg.sliding_window + 1) if is_swa else 0
+                )
+                span = keys - key_begin
+                n_splits = min(64, max(1, (span + 31) // 32))
+                muse_glimmer_decode_attention(
+                    self.q_bf16.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
+                    self.attn_partials.ptr,
+                    n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
+                    key_begin=key_begin, key_end=keys, n_splits=n_splits,
+                    scale=float(d) ** -0.5, runtime=rt,
+                )
+            else:
+                gemma4_attention_prefill_bf16(
+                    self.q_bf16.ptr, k_cache.ptr, v_cache.ptr,
+                    (self.keep_mask_swa if is_swa else self.keep_mask_full).ptr,
+                    self.attn_out.ptr,
+                    tokens=tokens, num_heads=cfg.n_heads, num_kv_heads=cfg.n_kv_heads,
+                    head_dim=d, scale=float(d) ** -0.5, keys=keys,
+                    window=cfg.sliding_window if is_swa else 0,
+                    row_offset=position_offset, runtime=rt,
+                )
             gguf_gate_mul_bf16(
                 self.attn_out.ptr, self.gate_bf16.ptr, self.attn_out.ptr,
                 tokens * q_dim, runtime=rt,
             )
-            launch_gguf_linear(
+            self._linear(
                 self.loaded.weight(p + "attn_output.weight"), self.attn_out.ptr,
                 self.attn_proj.ptr, tokens, q_dim, hidden,
                 backend=self.backend, runtime=rt,
@@ -487,12 +511,12 @@ class MuseGlimmerResidentSession:
                 src.ptr, self.loaded.ptr(p + "ffn_norm.weight"), self.normed.ptr,
                 tokens, hidden, cfg.rms_eps, runtime=rt,
             )
-            launch_gguf_linear(
+            self._linear(
                 self.loaded.weight(p + "ffn_gate.weight"), self.normed.ptr,
                 self.ff_gate.ptr, tokens, hidden, cfg.n_ff,
                 backend=self.backend, runtime=rt,
             )
-            launch_gguf_linear(
+            self._linear(
                 self.loaded.weight(p + "ffn_up.weight"), self.normed.ptr,
                 self.ff_up.ptr, tokens, hidden, cfg.n_ff,
                 backend=self.backend, runtime=rt,
@@ -501,7 +525,7 @@ class MuseGlimmerResidentSession:
                 self.ff_gate.ptr, self.ff_up.ptr, self.ff_act.ptr,
                 tokens, cfg.n_ff, runtime=rt,
             )
-            launch_gguf_linear(
+            self._linear(
                 self.loaded.weight(p + "ffn_down.weight"), self.ff_act.ptr,
                 self.ff_out.ptr, tokens, cfg.n_ff, hidden,
                 backend=self.backend, runtime=rt,
@@ -514,19 +538,23 @@ class MuseGlimmerResidentSession:
             src, dst = dst, src
 
         self._length = keys
+        from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
+
         if all_logits:
             # Verification head: every block row (bounded by the draft block).
+            gemma4_rmsnorm_f32w_bf16(
+                src.ptr, self.loaded.ptr("output_norm.weight"), self.normed.ptr,
+                tokens, hidden, cfg.rms_eps, runtime=rt,
+            )
+            self._linear(
+                self.loaded.weight("output.weight"), self.normed.ptr,
+                self.logits_bf16.ptr, tokens, hidden, cfg.vocab_size,
+                output_dtype="bf16", backend=self.backend, runtime=rt,
+            )
             logits_buf = malloc(tokens * cfg.vocab_size * 4, runtime=rt)
             try:
-                gemma4_rmsnorm_f32w_bf16(
-                    src.ptr, self.loaded.ptr("output_norm.weight"), self.normed.ptr,
-                    tokens, hidden, cfg.rms_eps, runtime=rt,
-                )
-                launch_gguf_linear(
-                    self.loaded.weight("output.weight"), self.normed.ptr,
-                    logits_buf.ptr, tokens, hidden, cfg.vocab_size,
-                    output_dtype="f32", backend=self.backend, runtime=rt,
-                )
+                bf16_to_f32(self.logits_bf16.ptr, logits_buf.ptr,
+                            tokens * cfg.vocab_size, runtime=rt)
                 logits_host = np.empty((tokens, cfg.vocab_size), dtype=np.float32)
                 copy_device_to_host(logits_host.ctypes.data, logits_buf, runtime=rt)
             finally:
@@ -538,11 +566,13 @@ class MuseGlimmerResidentSession:
                 last_row_ptr, self.loaded.ptr("output_norm.weight"), self.normed.ptr,
                 1, hidden, cfg.rms_eps, runtime=rt,
             )
-            launch_gguf_linear(
+            self._linear(
                 self.loaded.weight("output.weight"), self.normed.ptr,
-                self.logits_f32.ptr, 1, hidden, cfg.vocab_size,
-                output_dtype="f32", backend=self.backend, runtime=rt,
+                self.logits_bf16.ptr, 1, hidden, cfg.vocab_size,
+                output_dtype="bf16", backend=self.backend, runtime=rt,
             )
+            bf16_to_f32(self.logits_bf16.ptr, self.logits_f32.ptr,
+                        cfg.vocab_size, runtime=rt)
             copy_device_to_host(
                 self._logits_host.ctypes.data, self.logits_f32, runtime=rt
             )
@@ -564,6 +594,15 @@ class MuseGlimmerResidentSession:
         finally:
             free(tap_buf, runtime=rt)
         return (logits if all_logits else logits[0]), tap_host
+
+    def _linear(self, weight, x_ptr, out_ptr, rows, in_features, out_features, **kwargs):
+        # WMMA prefill opt-in: the dispatcher rewrites rows>1 raw-Q4_K/Q6_K
+        # projections to the registered WMMA family; rows<=1 (decode) is a
+        # no-op, so the GEMV decode path and its KV arithmetic are unchanged.
+        launch_gguf_linear(
+            weight, x_ptr, out_ptr, rows, in_features, out_features,
+            use_wmma_prefill=True, use_q4_pack8_wmma=True, **kwargs,
+        )
 
     def _upload_keep_mask(self, tokens: int, position_offset: int, keys: int) -> None:
         """Build both layer-kind masks once per block and upload them.

@@ -89,30 +89,16 @@ class MuseGlimmerDFlashDrafter:
         allocations: dict[str, DeviceTensorAllocation] = {}
         rt = self.runtime
         try:
+            from hipengine.loading.muse_glimmer_gguf import upload_glimmer_tensor
+
             for tensor in reader.info.tensors:
                 name = tensor.name
                 raw = np.ascontiguousarray(reader.tensor_data(name))
-                if tensor.ggml_type_name == "F32":
-                    alloc = load_host_array_to_device(name, raw, runtime=rt)
-                    quant_key = ""
-                elif tensor.ggml_type_name in _RAW_QUANT_KEYS:
-                    quant_key = _RAW_QUANT_KEYS[tensor.ggml_type_name]
-                    alloc = load_host_array_to_device_as_dtype(
-                        name, raw, DType.INT8, source_dtype="I8", runtime=rt
-                    )
-                else:
-                    raise ValueError(
-                        f"draft tensor {name!r} has unsupported type {tensor.ggml_type_name!r}"
-                    )
-                allocations[name] = alloc
-                self._weights[name] = MuseGlimmerDeviceWeight(
-                    spec=MuseGlimmerWeightSpec(
-                        layout="raw_gguf" if quant_key else "dense_f32",
-                        quant_key=quant_key or "f32",
-                    ),
-                    backend=backend,
-                    _allocation=alloc,
+                weight, allocs = upload_glimmer_tensor(
+                    name, raw, tensor.ggml_type_name, backend=backend, runtime=rt,
                 )
+                self._weights[name] = weight
+                allocations.update(allocs)
             self._map = DeviceWeightMap(tensors=allocations)
 
             cfg = config
@@ -135,9 +121,10 @@ class MuseGlimmerDFlashDrafter:
             self.ff_up = self._alloc(b * cfg.n_ff * 2)
             self.ff_act = self._alloc(b * cfg.n_ff * 2)
             self.ff_out = self._alloc(b * h * 2)
-            self.feat_buf = self._alloc(b * len(cfg.target_layers) * h * 4)
+            self.feat_buf = self._alloc(b * len(cfg.target_layers) * h * 2)
             self.fused = self._alloc(b * h * 4)
             self.logits_f32 = self._alloc(b * self.vocab_size * 4)
+            self.logits_bf16 = self._alloc(b * self.vocab_size * 2)
             self.token_ids = self._alloc(b * 8)
             self.positions = self._alloc(b * 8)
             self.keep_mask = self._alloc(b * self.max_context)
@@ -228,11 +215,16 @@ class MuseGlimmerDFlashDrafter:
                 self.inject(features[begin:begin + cfg.block_size], position_offset + begin)
             return
         h, kv_dim, d = cfg.n_embd, cfg.n_kv_heads * cfg.head_dim, cfg.head_dim
-        copy_host_array_to_device(DeviceBuffer(self.feat_buf.ptr, features.nbytes),
-                                  features, runtime=rt)
-        self._linear(self.feat_buf.ptr, "fc.weight", self.fused.ptr, tokens,
-                     len(cfg.target_layers) * h, h, f32_out=True, f32_in=True)
-        f32_to_bf16(self.fused.ptr, self.hidden_a.ptr, tokens * h, runtime=rt)
+        # Taps are BF16-origin (target hidden states captured bf16->f32), so
+        # the round trip back to BF16 bits is lossless and matches the pack8
+        # activation contract.
+        from hipengine.loading.materialize import float_array_to_bf16_bits
+
+        bits = float_array_to_bf16_bits(features)
+        copy_host_array_to_device(DeviceBuffer(self.feat_buf.ptr, bits.nbytes),
+                                  bits, runtime=rt)
+        self._linear(self.feat_buf.ptr, "fc.weight", self.hidden_a.ptr, tokens,
+                     len(cfg.target_layers) * h, h)
         gemma4_rmsnorm_f32w_bf16(
             self.hidden_a.ptr, self._ptr("enc.output_norm.weight"), self.normed.ptr,
             tokens, h, cfg.rms_eps, runtime=rt,
@@ -243,8 +235,11 @@ class MuseGlimmerDFlashDrafter:
         copy_host_array_to_device(self.positions, self._pos_host[:tokens], runtime=rt)
         for il in range(cfg.n_layers):
             p = f"blk.{il}."
-            self._linear(self.normed.ptr, p + "attn_k.weight", self.k_f32.ptr, tokens,
-                         h, kv_dim, f32_out=True)
+            self._linear(self.normed.ptr, p + "attn_k.weight", self.k_bf16.ptr, tokens,
+                         h, kv_dim)
+            from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
+
+            bf16_to_f32(self.k_bf16.ptr, self.k_f32.ptr, tokens * kv_dim, runtime=rt)
             self._linear(self.normed.ptr, p + "attn_v.weight", self.v_bf16.ptr, tokens,
                          h, kv_dim)
             # K head-norm + NEOX rope via the fused F32 kernel; Q is a dummy
@@ -314,10 +309,14 @@ class MuseGlimmerDFlashDrafter:
                 src.ptr, self._ptr(p + "attn_norm.weight"), self.normed.ptr,
                 tokens, h, cfg.rms_eps, runtime=rt,
             )
-            self._linear(self.normed.ptr, p + "attn_q.weight", self.q_f32.ptr, tokens,
-                         h, q_dim, f32_out=True)
-            self._linear(self.normed.ptr, p + "attn_k.weight", self.k_f32.ptr, tokens,
-                         h, kv_dim, f32_out=True)
+            self._linear(self.normed.ptr, p + "attn_q.weight", self.q_bf16.ptr, tokens,
+                         h, q_dim)
+            self._linear(self.normed.ptr, p + "attn_k.weight", self.k_bf16.ptr, tokens,
+                         h, kv_dim)
+            from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
+
+            bf16_to_f32(self.q_bf16.ptr, self.q_f32.ptr, tokens * q_dim, runtime=rt)
+            bf16_to_f32(self.k_bf16.ptr, self.k_f32.ptr, tokens * kv_dim, runtime=rt)
             self._linear(self.normed.ptr, p + "attn_v.weight", self.v_bf16.ptr, tokens,
                          h, kv_dim)
             gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
@@ -369,9 +368,13 @@ class MuseGlimmerDFlashDrafter:
         )
         launch_gguf_linear(
             self.target_weights.weight("output.weight"), self.normed.ptr,
-            self.logits_f32.ptr, tokens, h, self.vocab_size,
-            output_dtype="f32", backend=self.backend, runtime=rt,
+            self.logits_bf16.ptr, tokens, h, self.vocab_size,
+            output_dtype="bf16", backend=self.backend, runtime=rt,
         )
+        from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
+
+        bf16_to_f32(self.logits_bf16.ptr, self.logits_f32.ptr,
+                    tokens * self.vocab_size, runtime=rt)
         copy_device_to_host(
             self._logits_host.ctypes.data,
             DeviceBuffer(self.logits_f32.ptr, tokens * self.vocab_size * 4), runtime=rt,
