@@ -110,7 +110,12 @@ def test_attention_comparison_child_owns_only_its_declared_overrides(monkeypatch
     owner = SimpleNamespace(weights=object(), runtime=object())
     module._child_session(owner, **{flag: enabled})
     kwargs = calls.pop()
-    assert kwargs[flag] is enabled
-    assert {name: value for name, value in kwargs.items() if name in {"prefill_cached_meta", "prefill_global_qrow6", "prefill_dense_initial"}} == {flag: enabled, **fixed}
+    from hipengine.runtime.laguna_prefill_policy import resolve_laguna_cached_prefill_policy
+    expected = resolve_laguna_cached_prefill_policy(
+        "hip_gfx1151", **{key.removeprefix("prefill_"): value
+                           for key, value in {flag: enabled, **fixed}.items()},
+    )
+    assert kwargs["cached_prefill_policy"] == expected
+    assert not {"prefill_cached_meta", "prefill_global_qrow6", "prefill_dense_initial"} & kwargs.keys()
     assert kwargs["resident_weights"] is owner.weights and kwargs["runtime"] is owner.runtime
     assert kwargs["backend"] == "hip_gfx1151" and kwargs["require_cached_build"] is True

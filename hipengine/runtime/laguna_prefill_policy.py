@@ -14,7 +14,8 @@ class LagunaCachedPrefillPolicy:
 
 
 def resolve_laguna_cached_prefill_policy(
-    backend: str, *, kv_preappend: bool | None = None,
+    backend: str, *, policy: LagunaCachedPrefillPolicy | None = None,
+    kv_preappend: bool | None = None,
     cached_meta: bool | None = None, global_qrow6: bool | None = None,
     dense_initial: bool | None = None,
 ) -> LagunaCachedPrefillPolicy:
@@ -23,6 +24,12 @@ def resolve_laguna_cached_prefill_policy(
         "kv_preappend": kv_preappend, "cached_meta": cached_meta,
         "global_qrow6": global_qrow6, "dense_initial": dense_initial,
     }
+    if policy is not None:
+        if not isinstance(policy, LagunaCachedPrefillPolicy):
+            raise TypeError("cached prefill policy must be LagunaCachedPrefillPolicy")
+        if any(value is not None for value in requested.values()):
+            raise ValueError("cached prefill policy cannot be combined with legacy overrides")
+        return policy
     return LagunaCachedPrefillPolicy(**{
         name: bool(backend_package_capability(
             backend, "LAGUNA_PREFILL_" + name.upper(), False,

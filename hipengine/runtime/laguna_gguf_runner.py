@@ -119,7 +119,9 @@ from hipengine.runtime.laguna_moe import (
     run_laguna_moe_rows,
     validate_laguna_moe_layer,
 )
-from hipengine.runtime.laguna_prefill_policy import resolve_laguna_cached_prefill_policy
+from hipengine.runtime.laguna_prefill_policy import (
+    LagunaCachedPrefillPolicy, resolve_laguna_cached_prefill_policy,
+)
 from hipengine.runtime.laguna_rope import (
     LagunaDeviceRoPETables,
     launch_laguna_head_rmsnorm_rope,
@@ -2952,6 +2954,7 @@ class LagunaGGUFResidentSession:
         global_prefill_variant: str | None = None,
         swa_decode_variant: str | None = None,
         swa_prefill_variant: str | None = None,
+        cached_prefill_policy: LagunaCachedPrefillPolicy | None = None,
         prefill_kv_preappend: bool | None = None,
         prefill_cached_meta: bool | None = None,
         prefill_global_qrow6: bool | None = None,
@@ -3403,7 +3406,7 @@ class LagunaGGUFResidentSession:
             self.backend
         )
         self.cached_prefill_policy = resolve_laguna_cached_prefill_policy(
-            self.backend, kv_preappend=prefill_kv_preappend,
+            self.backend, policy=cached_prefill_policy, kv_preappend=prefill_kv_preappend,
             cached_meta=prefill_cached_meta, global_qrow6=prefill_global_qrow6,
             dense_initial=prefill_dense_initial,
         )

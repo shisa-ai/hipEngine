@@ -13,6 +13,7 @@ import numpy as np
 
 from hipengine.core.hip import get_hip_runtime
 from hipengine.loading.gguf import GGUFReader
+from hipengine.runtime.laguna_prefill_policy import resolve_laguna_cached_prefill_policy
 from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
 from hipengine.tokenization.gguf import LagunaGGUFTokenizer
 from scripts.laguna_matrix_chunk_bench import _device_digest, _kv_digest
@@ -56,7 +57,9 @@ def _child_session(
         require_cached_build=True,
         prefill_chunk_size=512,
         prefill_attention_chunk_size=128,
-        prefill_cached_meta=prefill_cached_meta,
+        cached_prefill_policy=resolve_laguna_cached_prefill_policy(
+            "hip_gfx1151", cached_meta=prefill_cached_meta,
+        ),
     )
 
 
