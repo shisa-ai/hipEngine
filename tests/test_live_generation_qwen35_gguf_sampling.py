@@ -475,7 +475,9 @@ def test_gguf_generator_prepares_explicit_int8_session_policy_and_rejects_switch
 ) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED", "1")
     generator = _generator()
-    int8_request = _request(kv_storage="int8_per_token_head", kv_scale_dtype="fp16")
+    generator.model_plugin = Qwen35GGUFModel()
+    generator.weight_index = SimpleNamespace(file_type_name="MOSTLY_Q4_K_M")
+    int8_request = _request(kv_storage="int8_per_token_head", kv_scale_dtype="fp32")
 
     generator._prepare_kv_policy(int8_request)
 
@@ -483,19 +485,16 @@ def test_gguf_generator_prepares_explicit_int8_session_policy_and_rejects_switch
     assert kwargs["kv_policy"].storage_dtype.value == "int8_per_token_head"
     assert kwargs["kv_policy"].storage_layout == "uniform"
     assert kwargs["kv_policy"].scale_granularity == "per_token_head"
-    assert kwargs["kv_scale_dtype"] == "fp16"
+    assert kwargs["kv_scale_dtype"] == "fp32"
     assert kwargs["kv_scale_granularity"] == "per_token_head"
-    assert kwargs["kv_capability"]["runtime_action"] == "diagnostic_override"
-    assert kwargs["kv_capability"]["promotion_eligible"] is False
+    assert kwargs["kv_capability"]["runtime_action"] == "admit"
     assert generator._prepared_kv_signature == (
         "int8_per_token_head",
         "uniform",
-        "fp16",
+        "fp32",
         "per_token_head",
     )
-    assert generator.kv_capability_provenance["status"] == "unsupported"
-    assert generator.kv_capability_provenance["runtime_action"] == "diagnostic_override"
-    assert generator.kv_capability_provenance["promotion_eligible"] is False
+    assert generator.kv_capability_provenance["runtime_action"] == "admit"
 
     with pytest.raises(ValueError, match="cannot change after preparation"):
         generator._prepare_kv_policy(_request(kv_storage="bf16"))
