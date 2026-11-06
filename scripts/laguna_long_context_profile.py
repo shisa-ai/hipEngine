@@ -54,6 +54,15 @@ def _configure_selected_moe_comparison(stack: ExitStack, owner, args, *, mode: s
         stack.enter_context(owner.selected_moe_diagnostic(gate_up=gate, down="grouped_exact"))
 
 
+def _close_profile_scopes(owner, *scopes: ExitStack) -> None:
+    # ExitStack drains every callback even if an earlier restore fails.
+    with ExitStack() as cleanup:
+        if owner is not None:
+            cleanup.callback(owner.close)
+        for scope in reversed(scopes):
+            cleanup.callback(scope.close)
+
+
 def _configure_attention_comparison(stack: ExitStack, owner, args, *, mode: str) -> None:
     stack.close()
     choices = {
@@ -1203,12 +1212,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     )
         resident_nbytes = owner.resident_nbytes
     finally:
-        attention_scopes.close()
-        selected_moe_scopes.close()
-        decode_scopes.close()
-        diagnostic_scopes.close()
-        if owner is not None:
-            owner.close()
+        _close_profile_scopes(
+            owner, attention_scopes, selected_moe_scopes, decode_scopes, diagnostic_scopes,
+        )
     tracked_after = memory_stats()
     gpu_free_after, gpu_total_after = runtime.mem_get_info()
     if gpu_total_after != gpu_total:

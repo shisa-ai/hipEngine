@@ -44,6 +44,34 @@ def test_attention_profiler_arms_restore_owner_on_switch_and_failure(field, opti
     assert vars(owner) == before
 
 
+def test_profile_cleanup_drains_all_scopes_before_owner_on_restore_failure():
+    from types import SimpleNamespace
+    from scripts.laguna_long_context_profile import _close_profile_scopes
+
+    events = []
+
+    def close(name, fail=False):
+        events.append(name)
+        if fail:
+            raise RuntimeError(name)
+
+    owner = SimpleNamespace(close=lambda: close("owner"))
+    scopes = [SimpleNamespace(close=lambda name=name: close(name, name == "attention"))
+              for name in ("attention", "selected", "decode", "diagnostic")]
+    with pytest.raises(RuntimeError, match="attention"):
+        _close_profile_scopes(owner, *scopes)
+    assert events == ["attention", "selected", "decode", "diagnostic", "owner"]
+
+
+def test_profile_cleanup_without_owner_still_drains_scopes():
+    from types import SimpleNamespace
+    from scripts.laguna_long_context_profile import _close_profile_scopes
+
+    events = []
+    _close_profile_scopes(None, SimpleNamespace(close=lambda: events.append("scope")))
+    assert events == ["scope"]
+
+
 @pytest.mark.parametrize("pair16", [False, True])
 def test_selected_moe_profiler_arms_restore_previous_policy(pair16):
     from contextlib import ExitStack
