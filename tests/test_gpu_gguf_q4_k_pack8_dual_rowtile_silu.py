@@ -506,6 +506,7 @@ def test_dense_runner_c1_retains_unfused_chain(monkeypatch: pytest.MonkeyPatch) 
         "silu_mul_separate_out_bf16",
         lambda *args, **kwargs: calls.append("silu"),
     )
+    monkeypatch.setattr(qwen35_runner, "launch_gguf_linear_residual", lambda *a, **k: False)
     monkeypatch.setattr(qwen35_runner, "launch_gguf_linear", lambda *a, **k: calls.append("down"))
     monkeypatch.setattr(qwen35_runner, "gguf_bf16_add", lambda *a, **k: calls.append("add"))
 
@@ -553,6 +554,7 @@ def test_dense_runner_qualified_c1_consumes_registered_fused_schedule(
         "silu_mul_separate_out_bf16",
         lambda *args, **kwargs: pytest.fail("qualified fused route must skip separate SiLU"),
     )
+    monkeypatch.setattr(qwen35_runner, "launch_gguf_linear_residual", lambda *a, **k: False)
     monkeypatch.setattr(qwen35_runner, "launch_gguf_linear", lambda *a, **k: calls.append(("linear", a, k)))
     monkeypatch.setattr(qwen35_runner, "gguf_bf16_add", lambda *a, **k: calls.append(("add", a, k)))
 
