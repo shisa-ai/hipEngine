@@ -654,6 +654,9 @@ def speculative_output_accounting(row: Any) -> dict[str, Any] | None:
                 ).items())
             },
         }
+        reasons = getattr(row, "mtp2_target_shape_reasons", None)
+        if reasons:
+            block["physical_execution"]["target_shape_reasons"] = dict(reasons)
     if output_span_recording_enabled():
         # Diagnostic only: the span list is added, never substituted for the
         # counters above, so a response read without it is unchanged.

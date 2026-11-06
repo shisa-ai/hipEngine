@@ -6953,6 +6953,7 @@ class _GGUFResidentLoopRow:
     mtp2_proposal_physical_rows: list[int] = field(default_factory=list)
     mtp2_target_batch_calls: int = 0
     mtp2_target_physical_rows: list[int] = field(default_factory=list)
+    mtp2_target_shape_reasons: dict[str, int] = field(default_factory=dict)
     mtp2_target_pass_ms: list[float] = field(default_factory=list)
     mtp2_target_pass_start_ns: list[int] = field(default_factory=list)
     mtp2_target_pass_end_ns: list[int] = field(default_factory=list)

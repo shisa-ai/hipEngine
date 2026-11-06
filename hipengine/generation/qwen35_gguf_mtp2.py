@@ -5553,6 +5553,10 @@ class Qwen35GGUFMTP2Adapter:
         target_seconds = (target_finished_ns - target_started_ns) / 1e9
         physical_target_rows = sum(len(job["input_token_ids"]) for job in jobs)
         for row in rows:
+            reasons = getattr(row, "mtp2_target_shape_reasons", None)
+            if reasons is not None:
+                reason = str(self._last_target_shape_contract["reason"])
+                reasons[reason] = reasons.get(reason, 0) + 1
             row.mtp2_target_batch_calls += 1
             row.mtp2_target_physical_rows.append(physical_target_rows)
             row.mtp2_target_pass_ms.append(float(target_seconds) * 1000.0)

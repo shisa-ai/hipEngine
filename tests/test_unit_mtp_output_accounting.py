@@ -263,8 +263,13 @@ def test_physical_mtp_execution_is_not_inferred_from_http_group_width() -> None:
     row.mtp2_target_batch_calls = 2
     row.mtp2_target_physical_rows = [16, 8]
     row.mtp2_target_pass_ms = [1.0, 2.0, 3.0]
+    row.mtp2_target_shape_reasons = {"exact_row_count": 1, "padded_to_row_multiple": 1}
     accounting = speculative_output_accounting(row)
+    assert accounting["physical_execution"]["target_shape_reasons"] == {
+        "exact_row_count": 1, "padded_to_row_multiple": 1,
+    }
     assert accounting["physical_execution"] == {
+        "target_shape_reasons": {"exact_row_count": 1, "padded_to_row_multiple": 1},
         "proposal_batch_calls": 6,
         "proposal_rows_histogram": {"2": 3, "4": 3},
         "target_pass_count": 3,
