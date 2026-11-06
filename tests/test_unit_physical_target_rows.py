@@ -7,6 +7,48 @@ import pytest
 from hipengine.generation.physical_target_rows import resolve_physical_target_rows
 
 
+@pytest.mark.parametrize(
+    "request_count,candidate_rows,capacity,pad,reason",
+    [
+        (1, 3, 64, 2, "padded_to_row_multiple"),
+        (2, 6, 64, 0, "exact_row_count"),
+        (3, 9, 64, 0, "aligned_row_multiple"),
+        (4, 12, 64, 2, "padded_to_row_multiple"),
+        (5, 15, 20, 0, "accept_capacity_fallback"),
+        (7, 21, 64, 0, "exact_row_count"),
+        (8, 24, 64, 0, "exact_row_count"),
+        (0, 0, 64, 0, "empty_group"),
+    ],
+)
+@pytest.mark.parametrize("profile", ["production", "strict", "batch_invariant"])
+def test_target_shape_attribution_matrix(
+    monkeypatch, profile, request_count, candidate_rows, capacity, pad, reason,
+):
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+
+    for name in ("HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS",
+                 "HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS",
+                 "HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS"):
+        monkeypatch.delenv(name, raising=False)
+    plan = resolve_physical_target_rows("hip_gfx1100", profile)
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.production_target_pad_row_counts = plan.pad_counts
+    adapter.production_exact_target_row_counts = plan.exact_counts
+    adapter.physical_accept_max_rows = capacity
+    if profile != "production":
+        pad = 0
+        reason = "no_padding_policy" if request_count + candidate_rows else "empty_group"
+    assert adapter._target_group_pad_rows(
+        request_count=request_count, candidate_rows=candidate_rows,
+    ) == pad
+    assert adapter.physical_width_contract()["last_target_shape"] == {
+        "logical_rows": request_count + candidate_rows,
+        "pad_rows": pad,
+        "selected_rows": request_count + candidate_rows + pad,
+        "reason": reason,
+    }
+
+
 def test_target_submission_shape_tracks_jobs_and_clears_on_new_cycle():
     from types import SimpleNamespace
     from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
