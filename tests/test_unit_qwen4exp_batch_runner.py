@@ -954,8 +954,9 @@ def test_publish_position_rejects_stale_owner_and_capacity_before_mutation() -> 
         runner.publish_position(0, owner, 8)
 
 
+@pytest.mark.parametrize("invalid_mapping", [False, True])
 def test_import_copies_each_block_prefix_from_its_own_physical_block(
-    monkeypatch,
+    monkeypatch, invalid_mapping,
 ) -> None:
     """The import is a per-block copy, not a scatter through one block table.
 
@@ -1002,6 +1003,14 @@ def test_import_copies_each_block_prefix_from_its_own_physical_block(
         ple_hash_states={0: SimpleNamespace(tokens=(1, 2), next_position=300)},
     )
     runner.runtime.calls.clear()
+    if invalid_mapping:
+        source_attention.block_host[0, 1] = -1
+        with pytest.raises(ValueError):
+            runner.import_prefilled(0, owner, source=source)
+        assert not [call for call in runner.runtime.calls if call[0] == "memcpy"]
+        assert runner.poisoned_slots == ()
+        assert runner.position(0) == 0
+        source_attention.block_host[0, 1] = 9
     assert runner.import_prefilled(0, owner, source=source) == 300
 
     row_bytes = attention.kv_heads * attention.head_dim * 2

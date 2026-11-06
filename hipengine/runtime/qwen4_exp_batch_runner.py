@@ -1956,6 +1956,11 @@ class Qwen4ExpGGUFBatchRunner:
                 name="PLE conv history",
             )
 
+        copy_plans = self._prefilled_copy_plans(
+            parsed, position=position, needed_blocks=needed_blocks,
+            source_attention=source_attention, source_blocks=source_blocks,
+            source_index=source_index,
+        )
         # Copy phase. The slot is admitted and zeroed, so every write below is
         # the slot's first state. A failure part-way through leaves the slot
         # holding a mix of copied and zeroed state, so it is poisoned rather
@@ -1964,10 +1969,7 @@ class Qwen4ExpGGUFBatchRunner:
             self._copy_prefilled_state(
                 parsed,
                 position=position,
-                needed_blocks=needed_blocks,
-                source_attention=source_attention,
-                source_blocks=source_blocks,
-                source_index=source_index,
+                copy_plans=copy_plans,
                 source_decode=source_decode,
                 ple_hash_state=(
                     source.ple_hash_states[0] if self.ple_state is not None else None
@@ -1979,23 +1981,12 @@ class Qwen4ExpGGUFBatchRunner:
         self._positions[parsed] = position
         return position
 
-    def _copy_prefilled_state(
-        self,
-        slot: int,
-        *,
-        position: int,
-        needed_blocks: int,
-        source_attention: Sequence[object],
-        source_blocks: Sequence[np.ndarray],
+    def _prefilled_copy_plans(
+        self, slot: int, *, position: int, needed_blocks: int,
+        source_attention: Sequence[object], source_blocks: Sequence[np.ndarray],
         source_index: Sequence[object],
-        source_decode: object,
-        ple_hash_state: PLEHashState | None,
-    ) -> None:
-        """Copy a validated source's per-slot state into ``slot``.
-
-        Only the valid prefix of the last paged block is copied: the source's
-        unwritten tail must not land in this slot.
-        """
+    ) -> tuple[tuple[tuple[int, int, int], ...], ...]:
+        """Validate all copy mappings before entering the mutating phase."""
 
         attention_states = self._require_attention_states()
         attention = attention_states[0]
@@ -2016,7 +2007,15 @@ class Qwen4ExpGGUFBatchRunner:
                     (source_index[layer].raw_keys.ptr, index_state.raw_keys.ptr, index_row_bytes),
                 ),
             ))
-        # Validate every layer's mapping before the first device write.
+        return tuple(copy_plans)
+
+    def _copy_prefilled_state(
+        self, slot: int, *, position: int,
+        copy_plans: Sequence[Sequence[tuple[int, int, int]]],
+        source_decode: object, ple_hash_state: PLEHashState | None,
+    ) -> None:
+        """Execute validated prefix copies and copy request-private GDN/PLE state."""
+
         for index_state, copies in zip(self.index_states, copy_plans, strict=True):
             for destination, source, nbytes in copies:
                 self.runtime.memcpy(
