@@ -91,6 +91,28 @@ STRICT_ENVIRONMENT = {
 
 
 @contextmanager
+def route_owner(session, values: Mapping[str, str]) -> Iterator[None]:
+    """Bind the comparison to its live runner without changing process state."""
+
+    unknown = sorted(set(values) - set(_ROUTE_ENV_KEYS))
+    missing = sorted(set(_ROUTE_ENV_KEYS) - set(values))
+    if unknown or missing:
+        raise ValueError(f"route environment mismatch; missing={missing}, unknown={unknown}")
+    if any(str(value) not in {"0", "1"} for value in values.values()):
+        raise ValueError("router comparison values must be 0 or 1")
+    owner = session.runner
+    names = ("router_f32w_coop", "router_f32w_persistent_counter")
+    previous = {name: getattr(owner, name) for name in names}
+    try:
+        for name, key in zip(names, _ROUTE_ENV_KEYS):
+            setattr(owner, name, values[key] == "1")
+        yield
+    finally:
+        for name, value in previous.items():
+            setattr(owner, name, value)
+
+
+@contextmanager
 def route_environment(values: Mapping[str, str]) -> Iterator[None]:
     """Apply a complete c1 route environment and restore the caller exactly."""
 
@@ -238,7 +260,7 @@ def _capture(
         for index, row in enumerate(prompt_rows):
             prompt_id = str(row["id"])
             tokens = prompt_tokens[prompt_id]
-            with route_environment(STRICT_ENVIRONMENT):
+            with route_owner(session, STRICT_ENVIRONMENT):
                 strict = tuple(
                     _run_logits_trajectory(
                         session,
@@ -254,7 +276,7 @@ def _capture(
             runs: list[tuple[Mapping[str, object], ...]] = []
             state_runs: list[dict[str, Any]] = []
             for _ in range(int(args.repeat_runs)):
-                with route_environment(candidate.environment):
+                with route_owner(session, candidate.environment):
                     run = tuple(
                         _run_teacher_forced_candidate(
                             session,

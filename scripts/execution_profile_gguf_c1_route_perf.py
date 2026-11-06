@@ -27,7 +27,7 @@ from scripts.execution_profile_gguf_c1_route_gate import (
     CANDIDATES,
     KIND as QUALITY_KIND,
     STRICT_ENVIRONMENT,
-    route_environment,
+    route_owner,
 )
 from scripts.gguf_gdn_semantic_gate import (
     DEFAULT_MODEL,
@@ -174,7 +174,7 @@ def _run_route(
     environment: Mapping[str, str],
     args: argparse.Namespace,
 ) -> tuple[float, float, list[int]]:
-    with route_environment(environment):
+    with route_owner(session, environment):
         session.reset()
         result = session.prefill(
             [int(token) for token in prompt_tokens],

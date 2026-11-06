@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import os
 
+from contextlib import nullcontext
+from types import SimpleNamespace
+
 import pytest
 
 from scripts import execution_profile_gguf_c1_route_gate as gate
@@ -31,6 +34,27 @@ def test_route_environment_is_complete_and_restores(monkeypatch: pytest.MonkeyPa
 
     assert os.environ[first] == "caller"
     assert second not in os.environ
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_route_owner_is_nested_restored_and_environment_independent(monkeypatch, fail):
+    for key in gate._ROUTE_ENV_KEYS:
+        monkeypatch.setenv(key, "caller")
+    runner = SimpleNamespace(router_f32w_coop=None, router_f32w_persistent_counter=True)
+    session = SimpleNamespace(runner=runner)
+    with pytest.raises(RuntimeError) if fail else nullcontext():
+        with gate.route_owner(session, gate.STRICT_ENVIRONMENT):
+            assert runner.router_f32w_coop is False
+            assert runner.router_f32w_persistent_counter is False
+            with gate.route_owner(session, gate.CANDIDATES['router_f32w_coop_persistent'].environment):
+                assert runner.router_f32w_coop is True
+                assert runner.router_f32w_persistent_counter is True
+            assert runner.router_f32w_coop is False
+            assert all(os.environ[key] == "caller" for key in gate._ROUTE_ENV_KEYS)
+            if fail:
+                raise RuntimeError("comparison failure")
+    assert runner.router_f32w_coop is None
+    assert runner.router_f32w_persistent_counter is True
 
 
 def test_route_environment_rejects_partial_manifest() -> None:
