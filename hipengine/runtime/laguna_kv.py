@@ -474,6 +474,7 @@ class LagunaKVCache:
                     "Laguna ctx4096 operand prefetch must be 1, 4, 8, or 16"
                 )
         self._global_issue_reference_variant: str | None = None
+        self._swa_issue_reference_variant: str | None = None
         self.global_fused_fixedshape = bool(global_fused_fixedshape)
         self.global_gqa2_vstage64_fixedshape = bool(
             global_gqa2_vstage64_fixedshape
@@ -1635,6 +1636,13 @@ class LagunaKVCache:
                     )
                 else:
                     variant = "global_context_split_exact_gated_spans"
+            swa_reference = self._swa_issue_reference_variant
+            if (
+                state.attention_type == SLIDING_ATTENTION
+                and use_gated and use_tile16 and swa_reference is not None
+                and live_count == 512 and state.capacity == 512
+            ):
+                variant = swa_reference
             fn = self._resolve("laguna_attention_decode", variant)
             gated_args = (
                 (int(gate_ptr), int(gated_out_ptr)) if use_gated else ()

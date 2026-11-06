@@ -90,7 +90,7 @@ def test_swa_issue_scope_restores_nested_policies_and_failed_body(owner, failure
         outer = vars(cache).copy()
         try:
             with swa_issue_comparison(owner, SimpleNamespace(compare_swa_assume_exp=True)):
-                assert not cache.swa_mixed32_exp8_vstage64_vec16_direct_assume_exp_fixed512
+                assert cache._swa_issue_reference_variant.endswith("gqa3_vstage64_vec16_direct_fixed512_spans")
                 with swa_issue_arm(owner, SimpleNamespace(compare_swa_assume_exp=True), candidate=True):
                     if failure:
                         raise RuntimeError("synthetic comparison failure")
@@ -107,10 +107,13 @@ def test_swa_arm_restores_nested_stage_and_failed_exit(owner, candidate, failure
     before = vars(owner.kv_cache).copy()
     try:
         with swa_issue_arm(owner, args, candidate=candidate):
-            assert owner.kv_cache.swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512 is candidate
+            selected = owner.kv_cache._swa_issue_reference_variant
+            assert ("mixed32_exp16_" in selected) is candidate
+            assert all(value == before[key] for key, value in vars(owner.kv_cache).items()
+                       if key != "_swa_issue_reference_variant")
             outer = vars(owner.kv_cache).copy()
             with swa_issue_arm(owner, args, candidate=not candidate):
-                assert owner.kv_cache.swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512 is not candidate
+                assert ("mixed32_exp16_" in owner.kv_cache._swa_issue_reference_variant) is not candidate
             assert vars(owner.kv_cache) == outer
             if failure:
                 raise RuntimeError("synthetic arm failure")
@@ -166,7 +169,10 @@ def test_profile_enters_and_restores_swa_scope_before_owner_cleanup(owner, monke
 
         @property
         def prefill_chunk_size(self):
-            assert not cache.swa_mixed32_exp16_vstage64_vec16_direct_assume_exp_fixed512
+            assert cache._swa_issue_reference_variant == (
+                "swa_context_fused_exact_gated_mixed32_exp4_"
+                "vstage64_vec16_direct_assume_exp_fixed512_spans"
+            )
             assert cache.swa_mixed32_exp4_vstage64_vec16_direct_assume_exp_fixed512
             raise RuntimeError("profile reached scoped policy")
 
