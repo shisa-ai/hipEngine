@@ -6,17 +6,19 @@ owns: Muse Glimmer 30B gfx1151 bring-up campaign: text/vision/DFlash implementat
 
 Last updated: 2026-11-06
 
-Status: **P0 baseline retained; P1 text, P2 vision, and P3 DFlash bring-up
-landed with correctness gates green (oracle argmax exact, f32 reference KL gate,
-vision distributional oracle gates, DFlash == true AR exact greedy). P4 (Gate A
-AR perf) is CHECKPOINTED at `b5efff468` by lead decision: prefill 320/300/240 vs
-394/386/376 and decode 11.17/11.06/10.85 vs 12.24/12.17/12.05 at 512/1K/4K
-(diagnostic artifact
-`benchmarks/results/2026-11-06-gfx1151-muse-glimmer-hipengine-ar-checkpoint.json`).**
+Status: **P0 baseline retained; P1 text, P2 vision, P3 DFlash bring-up landed
+with correctness gates green. Gate B (DFlash) PASSED: hipEngine 21.6 tok/s vs
+llama.cpp draft-dflash 21.30 on the mtpbench suite, exact greedy IDs == true AR
+(rolled up). Gate A (AR perf) IN PROGRESS: prefill 333/333/300 vs 394/386/376
+and decode 11.13/11.03/10.83 vs 12.24/12.17/12.05 at 512/1K/4K. The WMMA GQA
+flash-prefill attention (2.1-2.9x over scalar) and prefill chunk 1024 lifted
+prefill from the 320/300/240 checkpoint; the Q4/Q6 projection kernels (~35% of
+bf16 peak) are the remaining prefill gap and decode is memory-bound GEMV near
+roofline.**
 Lead sequencing (2026-11-06): verify vision end-to-end after the perf changes,
 then capture the llama.cpp `draft-dflash` mtpbench baseline and make hipEngine
-DFlash beat it (Gate B), then return to the Gate A AR kernel campaign. Gate A is
-not passed; the checkpoint is not a retained win.
+DFlash beat it (Gate B, done), then return to the Gate A AR kernel campaign
+(in progress). Gate A is not yet passed.
 
 Lead directive (2026-11-06): implement full Muse Glimmer inference in hipEngine —
 text, vision stack, and MTP/DFlash — with an initial correctness pass, and do not
