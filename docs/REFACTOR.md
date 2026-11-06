@@ -1848,26 +1848,6 @@ role-policy and dense-metadata contracts; then GPU global/SWA parity across part
 and verifier cases plus public `LLM.generate()` at short, boundary-neighbor and unrelated lengths.
 Confirm selected variants, append ordering, state/output equality and cleanup.
 
-### R0312 — Head-major K/V resource-budget integration
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV`, `HIPENGINE_GGUF_GAPPED_GATHER`,
-`HIPENGINE_GGUF_AOTRITON_HEAD_MAJOR_KV_MAX_TOKENS`.
-
-**Remaining work:** reserve rounded demand-allocated gapped scratch in the planner and exercise
-actual public gapped allocation (not an already-admitted contiguous workspace pair).
-The private token/byte controls are removed; both allocators use common memory admission,
-with requested-context sizing, rounding and partial-allocation cleanup preserved. Host,
-GPU-copy and public short/long validation is recorded in
-`worklog/entries/20261106T030744.058682Z-lhl-r0312-common-policy-ea5330.md`.
-
-Done when: migrate the planner, contiguous allocator and gapped allocator/admission
-together. Run head-major policy, capacity-route terms, gapped-slot and request-ownership tests plus
-head-major GPU copy fixtures. A resource-policy replacement also needs public short/long/gapped
-requests, allocation-denial fallback and zero tracked cleanup. Do not use historical copy-inclusive
-speed rows as evidence for a changed capacity policy.
-
 ### R0281-PARO-PROVIDER — Manual provider and private-scorer migration
 
 Owner: `hipengine/speculative/paro_mtp_profiles.py`.

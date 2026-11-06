@@ -2644,11 +2644,12 @@
       "ledger_line": 2044,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:8830-8838,10083-10084 keeps gapped and head-major context resource ceilings."
+        "Common admission replaces private caps; planner prices contiguous and rounded per-slot gather owners. Host119 and GPU copy/ownership37 tests pass.",
+        "Public fault-injected optional-pair denial:704 actual gapped demand gather calls,4096/8192 capacities, clean teardown. worklog/entries/20261106T031326.723866Z-lhl-r0312-close-590cb0.md"
       ],
-      "next_action": "Integrate context-rounded head-major/gapped allocation into common scratch budget, with partial allocation cleanup and resource-denial fallback tests.",
+      "next_action": "None; R0312 removed from ledger after public short/long/gapped ownership and fallback coverage.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
