@@ -10,7 +10,7 @@ from scripts import laguna_attention_packed_output_gate_ab as comparison
 
 @pytest.mark.parametrize("stage_verifier", [False, True])
 @pytest.mark.parametrize("mode", tuple(comparison._COMPARISONS["packed_output_gate"]))
-@pytest.mark.parametrize("rows", [128, 257, 384])
+@pytest.mark.parametrize("rows", [17, 127, 128, 129, 257, 384])
 @pytest.mark.parametrize("direct_fp16", [False, True])
 def test_output_comparison_arms_reach_distinct_real_layer_gate_routes(monkeypatch, mode, rows, direct_fp16, stage_verifier):
     calls = []
