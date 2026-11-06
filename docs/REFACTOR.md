@@ -2960,10 +2960,11 @@ preserve each block's valid prefix; GDN and PLE copies retain their existing own
 still uses host-issued device-to-device copies. A batched device operation remains separate work;
 profile the import boundary before claiming a benefit from a new kernel.
 
-**Deferred admission design:** unify the runner's `_owners`/`_positions` mirrors, owner `prepare`
-row order and `Qwen4ExpARBatchOwner._leases` under one admission object. Preserve physical-slot
-identity, cancellation/reuse, preflight failure and poisoned-step cleanup; publishing partial
-admission is not acceptable.
+**Remaining admission design:** the runner now stores owner token and cursor in one per-slot
+admission record; release detaches it and reuse creates a new record. Mixed-target consumers use
+checked runner methods. Unify request leases and owner row planning with this record next.
+Preserve physical-slot identity, cancellation/reuse, preflight failure and poisoned-step cleanup;
+publishing partial admission is not acceptable.
 
 Done when: Clearing gates remain `tests/test_unit_qwen4exp_batch_runner.py`,
 `tests/test_unit_qwen4exp_ar_batch_decode.py`, `tests/test_unit_qwen4exp_ar_batch_capacity.py` and

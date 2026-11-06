@@ -399,10 +399,9 @@ def _fake_runner(*, slots: int = 3) -> Qwen4ExpGGUFBatchRunner:
     runner.closing = False
     runner._owned = []
     runner._buffers = None
-    runner._owners = [0] * slots
+    runner._admissions = [None] * slots
     runner._poisoned = set()
     runner._next_owner = 0
-    runner._positions = np.zeros(slots, dtype=np.int64)
     runner._ple_hash_states = {}
     runner._ple_layers = frozenset(config.ple_layers)
     runner._graphs = None
@@ -684,7 +683,7 @@ def test_step_rejects_a_bad_row_set_before_any_prepare(monkeypatch) -> None:
     assert ple_state.prepared == []
     assert runner.position(2) == 0
     # Capacity is checked against the per-slot position mirror before dispatch.
-    runner._positions[2] = fixture.MAX_POSITIONS
+    runner._admissions[2].position = fixture.MAX_POSITIONS
     with pytest.raises(ValueError, match="capacity"):
         runner.step([1], slots=[2], owners=[owner])
     assert attention.prepared == []
@@ -712,7 +711,7 @@ def test_admission_ownership_and_release(monkeypatch) -> None:
     third = runner.admit(0)
     assert third not in (first, second)
     # reset_slot keeps the owner token but rewinds the position and history.
-    runner._positions[0] = 4
+    runner._admissions[0].position = 4
     runner._ple_hash_states[0] = SimpleNamespace(tokens=(1, 2), next_position=4)
     runner.reset_slot(0, third)
     assert runner.owner_of(0) == third
@@ -854,7 +853,7 @@ def test_admission_resets_the_index_owner_generation(monkeypatch) -> None:
     owner = runner.admit(1)
     assert index_state.resets == [1]
     assert int(index_state.reset_generation[1]) == 1
-    runner._positions[1] = 3
+    runner._admissions[1].position = 3
     runner.reset_slot(1, owner)
     assert index_state.resets == [1, 1]
     assert int(index_state.reset_generation[1]) == 2
@@ -937,6 +936,23 @@ def test_block_table_copy_plan_rejects_invalid_mapping(source, destination) -> N
             source_blocks=source, destination_blocks=destination,
             position=300, block_size=256, operands=((10000, 20000, 2),),
         )
+
+
+def test_runner_admission_record_tracks_owner_cursor_and_reuse() -> None:
+    runner = _fake_runner(slots=2)
+    owner = runner.admit(0)
+    record = runner._admissions[0]
+    assert record.owner == owner
+    assert record.position == 0
+    runner.publish_position(0, owner, 7)
+    assert record.position == 7
+    runner.release(0, owner)
+    assert runner.owner_of(0) == 0
+    assert record.owner == owner  # A retired record cannot alias the next admission.
+    again = runner.admit(0)
+    assert runner._admissions[0] is not record
+    assert again != owner
+    assert runner.position(0) == 0
 
 
 def test_publish_position_rejects_stale_owner_and_capacity_before_mutation() -> None:
@@ -1195,7 +1211,7 @@ def test_preflight_rejection_never_poisons_a_slot(monkeypatch) -> None:
     _install_step_fakes(monkeypatch)
     runner = _fake_runner(slots=3)
     owner = runner.admit(2)
-    runner._positions[2] = fixture.MAX_POSITIONS
+    runner._admissions[2].position = fixture.MAX_POSITIONS
     for call in (
         dict(token_ids=[1], slots=[2], owners=[owner]),
         dict(token_ids=[fixture.VOCAB], slots=[2], owners=[owner]),
@@ -1345,8 +1361,8 @@ def test_step_uploads_packed_metadata_once_for_every_qsa_layer(monkeypatch) -> N
     assert metadata is not None
     owner_two = runner.admit(0)
     owner_zero = runner.admit(1)
-    runner._positions[0] = 5
-    runner._positions[1] = 9
+    runner._admissions[0].position = 5
+    runner._admissions[1].position = 9
     for index_state in runner.index_states:
         index_state.cursor_host[0] = 6
         index_state.cursor_host[1] = 10
@@ -1398,8 +1414,8 @@ def test_step_packs_permuted_rows_in_the_callers_row_order(monkeypatch) -> None:
     assert metadata is not None
     owner_two = runner.admit(2)
     owner_zero = runner.admit(0)
-    runner._positions[2] = 11
-    runner._positions[0] = 2
+    runner._admissions[2].position = 11
+    runner._admissions[0].position = 2
     runner.index_states[0].cursor_host[2] = 12
     runner.index_states[0].cursor_host[0] = 3
     result = runner.step(
@@ -1425,7 +1441,7 @@ def test_step_restages_the_packed_metadata_after_slot_reuse(monkeypatch) -> None
     metadata = runner.step_metadata
     assert metadata is not None
     first = runner.admit(1)
-    runner._positions[1] = 4
+    runner._admissions[1].position = 4
     runner.step([7], slots=[1], owners=[first], capture_logits=False)
     assert _packed_payload(runner)[0, STEP_POSITION_COLUMN, 0] == 4
     buffer_ptr = metadata.buffer.ptr

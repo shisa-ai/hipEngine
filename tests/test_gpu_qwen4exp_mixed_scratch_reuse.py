@@ -30,7 +30,7 @@ def test_mixed_scratch_growth_shrink_and_repeat_preserve_scores(model):
         for slot, owner, runner, prompt in zip(slots, owners, references, prompts, strict=True):
             runner.prefill(prompt)
             batch.import_prefilled(slot, owner, source=runner)
-        positions = tuple(batch._positions)
+        positions = tuple(batch.position(slot) for slot in slots)
         for depth in (0, 4, 1, 3, 0, 4):
             requests = (
                 Qwen4ExpMixedRequest(10, slots[0], owners[0], len(prompts[0]), 11,
@@ -60,7 +60,7 @@ def test_mixed_scratch_growth_shrink_and_repeat_preserve_scores(model):
             target = None
             assert not scratch.closed
             assert scratch.borrowers == 0
-            assert tuple(batch._positions) == positions
+            assert tuple(batch.position(slot) for slot in slots) == positions
             previous_scratch = scratch
         batch.close()
         assert previous_scratch.closed

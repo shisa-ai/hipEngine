@@ -177,6 +177,12 @@ class Qwen4ExpBatchDecodeResult:
         return len(self.slot_ids)
 
 
+@dataclass
+class _SlotAdmission:
+    owner: int
+    position: int = 0
+
+
 @dataclass(frozen=True)
 class _StepPlan:
     rows: int
@@ -1246,10 +1252,9 @@ class Qwen4ExpGGUFBatchRunner:
         # The stateless half of a mixed target pass, kept at the widest capacity
         # admitted so far. Created on the first pass and released by ``close``.
         self._mixed_target_scratch: Qwen4ExpMixedTargetScratch | None = None
-        self._owners = [0] * slots
+        self._admissions: list[_SlotAdmission | None] = [None] * slots
         self._poisoned: set[int] = set()
         self._next_owner = 0
-        self._positions = np.zeros(slots, dtype=np.int64)
         self._ple_hash_states: dict[int, PLEHashState] = {}
         self.gdn_bindings: Mapping[int, Qwen4ExpGDNLayerDeviceWeights] = {}
         self.qsa_bindings: Mapping[int, Qwen4ExpQSALayerDeviceWeights] = {}
@@ -1568,7 +1573,7 @@ class Qwen4ExpGGUFBatchRunner:
 
         if not self.pooled:
             return sum(
-                self._blocks_per_request for owner in self._owners if not owner
+                self._blocks_per_request for admission in self._admissions if admission is None
             )
         return len(self._free_blocks)
 
@@ -1607,23 +1612,24 @@ class Qwen4ExpGGUFBatchRunner:
         the slots were admitted in.
         """
 
-        return tuple(slot for slot, owner in enumerate(self._owners) if owner)
+        return tuple(slot for slot, admission in enumerate(self._admissions) if admission is not None)
 
     @property
     def free_slots(self) -> tuple[int, ...]:
-        return tuple(slot for slot, owner in enumerate(self._owners) if not owner)
+        return tuple(slot for slot, admission in enumerate(self._admissions) if admission is None)
 
     def owner_of(self, slot: int) -> int:
         """Owner token of ``slot``, or 0 when it is free."""
 
-        return self._owners[self._require_slot(slot)]
+        admission = self._admissions[self._require_slot(slot)]
+        return 0 if admission is None else admission.owner
 
     def position(self, slot: int) -> int:
         """Next append position of an admitted slot."""
 
         parsed = self._require_slot(slot)
         self._require_admitted(parsed)
-        return int(self._positions[parsed])
+        return self._admissions[parsed].position
 
     def publish_position(self, slot: int, owner: int, position: int) -> None:
         """Publish a committed cursor only for the current physical admission."""
@@ -1640,7 +1646,7 @@ class Qwen4ExpGGUFBatchRunner:
             raise ValueError("position must be an integer") from None
         if not 0 <= cursor <= min(self.max_positions, self.slot_capacity(parsed)):
             raise ValueError("committed position exceeds the slot capacity")
-        self._positions[parsed] = cursor
+        self._admissions[parsed].position = cursor
 
     @property
     def ple_hash_states(self) -> Mapping[int, PLEHashState]:
@@ -1683,9 +1689,9 @@ class Qwen4ExpGGUFBatchRunner:
 
         self._require_open()
         parsed = self._require_slot(slot)
-        if self._owners[parsed]:
+        if self.owner_of(parsed):
             raise RuntimeError(
-                f"slot {parsed} is already owned by request {self._owners[parsed]}"
+                f"slot {parsed} is already owned by request {self.owner_of(parsed)}"
             )
         if positions is not None:
             self.blocks_for_positions(positions)
@@ -1728,8 +1734,7 @@ class Qwen4ExpGGUFBatchRunner:
             self._zero_slot(parsed)
         self._poisoned.discard(parsed)
         self._next_owner += 1
-        self._owners[parsed] = self._next_owner
-        self._positions[parsed] = 0
+        self._admissions[parsed] = _SlotAdmission(self._next_owner)
         self._ple_hash_states.pop(parsed, None)
         return self._next_owner
 
@@ -1741,8 +1746,7 @@ class Qwen4ExpGGUFBatchRunner:
         self._require_owner(parsed, owner)
         self._zero_slot(parsed)
         self._poisoned.discard(parsed)
-        self._owners[parsed] = 0
-        self._positions[parsed] = 0
+        self._admissions[parsed] = None
         self._ple_hash_states.pop(parsed, None)
         if self.pooled:
             held = self._slot_blocks[parsed]
@@ -1766,7 +1770,7 @@ class Qwen4ExpGGUFBatchRunner:
         self._require_owner(parsed, owner)
         self._zero_slot(parsed)
         self._poisoned.discard(parsed)
-        self._positions[parsed] = 0
+        self._admissions[parsed].position = 0
         self._ple_hash_states.pop(parsed, None)
 
     def _zero_slot(self, slot: int) -> None:
@@ -1807,7 +1811,7 @@ class Qwen4ExpGGUFBatchRunner:
         parsed = self._require_slot(slot)
         self._require_owner(parsed, owner)
         self._require_healthy(parsed)
-        if int(self._positions[parsed]) != 0 or any(
+        if self.position(parsed) != 0 or any(
             state.cursor_host[parsed] for state in self.index_states
         ):
             raise ValueError(
@@ -1978,7 +1982,7 @@ class Qwen4ExpGGUFBatchRunner:
         except BaseException:
             self._poisoned.add(parsed)
             raise
-        self._positions[parsed] = position
+        self._admissions[parsed].position = position
         return position
 
     def _prefilled_copy_plans(
@@ -2651,7 +2655,8 @@ class Qwen4ExpGGUFBatchRunner:
                 runtime=self.runtime,
             )
             tokens_out = np.ascontiguousarray(ids, dtype=np.int64)
-        self._positions[list(plan.slots)] = position_host + 1
+        for slot, position in zip(plan.slots, position_host, strict=True):
+            self._admissions[slot].position = int(position) + 1
         return Qwen4ExpBatchDecodeResult(
             slot_ids=plan.slots,
             positions=position_host,
@@ -2730,7 +2735,7 @@ class Qwen4ExpGGUFBatchRunner:
             self._require_healthy(slot)
         if np.any(tokens < 0) or np.any(tokens >= int(cfg.vocab_size)):
             raise ValueError("token ids must be inside the model vocabulary")
-        positions = np.ascontiguousarray(self._positions[list(chosen)])
+        positions = np.ascontiguousarray([self.position(slot) for slot in chosen], dtype=np.int64)
         if np.any(positions < 0) or np.any(positions >= self.max_positions):
             raise ValueError(
                 "a step position reached the per-slot decode capacity "
@@ -2799,7 +2804,7 @@ class Qwen4ExpGGUFBatchRunner:
         return parsed
 
     def _require_admitted(self, slot: int) -> None:
-        if not self._owners[slot]:
+        if self._admissions[slot] is None:
             raise RuntimeError(
                 f"slot {slot} is not admitted; admit it before using it in a step"
             )
@@ -2810,11 +2815,11 @@ class Qwen4ExpGGUFBatchRunner:
                 f"owner token must be an integer, got {type(owner).__name__}"
             )
         parsed = int(owner)
-        if not self._owners[slot]:
+        if not self.owner_of(slot):
             raise RuntimeError(f"slot {slot} is not admitted")
-        if parsed != self._owners[slot]:
+        if parsed != self.owner_of(slot):
             raise RuntimeError(
-                f"slot {slot} is owned by request {self._owners[slot]}, not {parsed}"
+                f"slot {slot} is owned by request {self.owner_of(slot)}, not {parsed}"
             )
 
     def _require_attention_states(self) -> tuple[Qwen4ExpBatchAttentionState, ...]:

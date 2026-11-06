@@ -36,7 +36,7 @@ def test_two_attention_layers_depth_four_and_abort_restore_visibility(two_qsa_mo
         requests = (Qwen4ExpMixedRequest(10, 2, owners[0], 3, 11, (13, 15, 17, 19)),
                     Qwen4ExpMixedRequest(20, 0, owners[1], 2, 21))
         layout = compile_mixed_layout(requests, physical_row_order=(5, 0, 1, 2, 3, 4) if permuted else None)
-        before_positions = tuple(batch._positions)
+        before_positions = tuple(batch.position(slot) for slot in slots)
         before_cursors = tuple(index.cursor_host.copy() for index in batch.index_states)
         before_gdn = tuple((_download(state.recurrent_state, (state.recurrent_state.nbytes,), np.uint8, batch.runtime),
                             _download(state.conv_state, (state.conv_state.nbytes,), np.uint8, batch.runtime))
@@ -47,7 +47,7 @@ def test_two_attention_layers_depth_four_and_abort_restore_visibility(two_qsa_mo
         target.abort()
         target.close()
         target = None
-        assert tuple(batch._positions) == before_positions
+        assert tuple(batch.position(slot) for slot in slots) == before_positions
         for index, cursor in zip(batch.index_states, before_cursors, strict=True):
             np.testing.assert_array_equal(index.cursor_host, cursor)
             assert index.pending_rollback is None
@@ -94,17 +94,17 @@ def test_shared_target_scores_and_selected_prefix_match_request_oracles(model, a
         requests = (Qwen4ExpMixedRequest(10, 2, owners[0], 3, 11, (13, 15)),
                     Qwen4ExpMixedRequest(20, 0, owners[1], 2, 17))
         layout = compile_mixed_layout(requests, physical_row_order=(3, 0, 1, 2) if permuted else None)
-        before = tuple(batch._positions)
+        before = tuple(batch.position(slot) for slot in (0, 2))
         target_pass = Qwen4ExpMixedTargetPass(batch, layout)
         result = target_pass.verify()
-        assert tuple(batch._positions) == before
+        assert tuple(batch.position(slot) for slot in (0, 2)) == before
         for request, runner in zip(requests, references, strict=True):
             for row in layout.rows_for_request(request.request_id):
                 ref = runner.step(row.token)
                 np.testing.assert_allclose(result.logits[row.physical_row], ref.logits,
                                            atol=LOGIT_ATOL, rtol=LOGIT_RTOL)
         target_pass.commit((accepted, 0))
-        assert tuple(batch._positions) == (3, 0, 4 + accepted)
+        assert tuple(batch.position(slot) for slot in (0, 2)) == (3, 4 + accepted)
         for slot, owner, runner, request, depth in zip((2, 0), owners, references, requests, (accepted, 0), strict=True):
             # Rebuild only the selected prefix, not the rejected scored suffix.
             runner.prefill((2, 5, 3) if slot == 2 else (7, 4))
