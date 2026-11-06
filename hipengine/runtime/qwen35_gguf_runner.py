@@ -100,7 +100,9 @@ from hipengine.runtime.qwen35_gguf_prefill_plan import (
 from hipengine.runtime.qwen35_gguf_prefix_state import (
     Qwen35GGUFPrefixStateSnapshot, _GGUFPrefixSnapshotArenaPool,
 )
-from hipengine.runtime.gguf_packed_backing import select_packed_arena_backing
+from hipengine.runtime.gguf_packed_backing import (
+    acquire_standalone_packed_backing, select_packed_arena_backing,
+)
 from hipengine.runtime.qwen35_gguf_workspace import (
     PackedWorkspaceOwner as _PackedWorkspaceState,
     StandalonePackedBackingLease,
@@ -2609,7 +2611,7 @@ class _GGUFPackedTargetState:
     # chunk uses the identity mapping; a GlobalDeviceKVPool workspace lease
     # supplies arbitrary arena pages (task #5 contract unification).
     page_ids: tuple[int, ...] = ()
-    # "private" = owned chunk allocated by this state; "pool_lease" = planes
+    # "private" = standalone storage lease; "pool_lease" = planes
     # borrowed from the GlobalDeviceKVPool arena under the workspace lease.
     kv_backing_kind: str = "private"
     backing_lease: StandalonePackedBackingLease | None = None
@@ -2745,7 +2747,6 @@ class _GGUFPackedTargetState:
         state_buffers: list[object] = []
         kv_cache_fields: dict[str, tuple] | None = None
         backing_lease = None
-        private_workspace_token = None
         resident_charge_token = None
         growth_lease_key: str | None = None
         try:
@@ -2866,17 +2867,10 @@ class _GGUFPackedTargetState:
                     backing_kind = "pool_lease"
                     owned_buffers = tuple(state_buffers)
                 else:
-                    backing_lease = StandalonePackedBackingLease.acquire(
-                        pages=total_pages,
-                        page_bytes=_qwen35_gguf_kv_page_bytes(cfg, kv_layout),
-                        pool=kv_pool,
-                        allocate=lambda: _allocate_qwen35_gguf_kv_chunk(
-                            _kv_allocation_config(runner),
-                            runtime=runtime,
-                            start_block_id=0,
-                            pages=total_pages,
-                            layout=kv_layout,
-                        ),
+                    backing_lease = acquire_standalone_packed_backing(
+                        config=_kv_allocation_config(runner), runtime=runtime,
+                        layout=kv_layout, pages=total_pages, pool=kv_pool,
+                        allocate=_allocate_qwen35_gguf_kv_chunk,
                     )
                     kv_backing = backing_lease.backing
                     page_ids = ()
@@ -2889,8 +2883,6 @@ class _GGUFPackedTargetState:
                 kv_pool.release_workspace(growth_lease_key)
             if backing_lease is not None:
                 backing_lease.close(runtime=runtime, release=free)
-            if private_workspace_token is not None:
-                kv_pool.release_private_workspace(private_workspace_token)
             if resident_charge_token is not None:
                 kv_pool.release_private_workspace(resident_charge_token)
             raise
@@ -2918,8 +2910,6 @@ class _GGUFPackedTargetState:
             page_ids=page_ids,
             kv_backing_kind=backing_kind,
             backing_lease=backing_lease,
-            private_workspace_pool=kv_pool if private_workspace_token is not None else None,
-            private_workspace_token=private_workspace_token,
             resident_charge_pool=kv_pool if resident_charge_token is not None else None,
             resident_charge_token=resident_charge_token,
             growth_lease_pool=kv_pool if growth_lease_key is not None else None,

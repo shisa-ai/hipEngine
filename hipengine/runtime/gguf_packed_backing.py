@@ -2,6 +2,21 @@
 from __future__ import annotations
 
 
+from hipengine.runtime.qwen35_gguf_workspace import StandalonePackedBackingLease
+
+
+def acquire_standalone_packed_backing(*, config, runtime, layout, pages, pool, allocate):
+    """Construct fallback KV behind the storage adapter, not packed arithmetic."""
+    from hipengine.runtime.qwen35_gguf_kv import _qwen35_gguf_kv_page_bytes
+
+    return StandalonePackedBackingLease.acquire(
+        pages=pages, page_bytes=_qwen35_gguf_kv_page_bytes(config, layout), pool=pool,
+        allocate=lambda: allocate(
+            config, runtime=runtime, start_block_id=0, pages=pages, layout=layout,
+        ),
+    )
+
+
 def select_packed_arena_backing(
     pool, *, total_pages: int, layout, eager_key: str, lease_growth, on_shortfall,
 ):
