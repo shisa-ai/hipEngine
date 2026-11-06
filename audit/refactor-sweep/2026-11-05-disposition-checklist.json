@@ -3209,11 +3209,13 @@
       "ledger_line": 2551,
       "owner": "`hipengine/kernels/hip_gfx1151/__init__.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:3152-3165 resolves short-C1 thread input."
+        "Retain short-C1 thread-width diagnostic, runtime entry point and strict fallback; no default/reduction change.",
+        "15 control and 86 dispatch/layer tests pass; numerical gate --help succeeds.",
+        "worklog/entries/20261106T004211.891346Z-lhl-r0381-thread-control-385061.md"
       ],
-      "next_action": "Move explicit thread gate selection to caller-owned policy and migrate fixed256 consumers with leaf-cache separation, keeping default and strict numerical reference.",
+      "next_action": "None; R0427 fixed256 consumers remain separately inventoried.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",

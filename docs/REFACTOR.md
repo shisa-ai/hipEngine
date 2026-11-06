@@ -1943,26 +1943,6 @@ independently.
 Preserve dtype frozen before allocation across decode, prefill, snapshots and selected-state commit;
 do not reinterpret storage after changing policy.
 
-### R0381 — Short-C1 attention thread comparison ownership
-
-Owner: `hipengine/kernels/hip_gfx1151/__init__.py`.
-
-Scope: `GGUF_SHORT_C1_BATCH_ATTN_THREADS`, `scripts/execution_profile_gguf_c1_threads_gate.py`;
-`HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS`.
-
-**Decision needed:** retain the thread-width comparison interface or migrate it to an explicit
-caller-owned diagnostic plan before retiring the environment reader/runtime-width entry point. R0427
-records the other live fixed256 consumers. Do not collapse the body to a single constexpr while the
-numerical gate still selects both widths.
-
-Done when: migrate resolver, leaf-cache boundaries, gate provenance, strict registration
-and callers together. Run `tests/test_unit_gguf_c1_threads_control.py`, decode-repack-dispatch and
-layer-execution tests plus the gate's `--help`. Runtime changes need the full thread-gate suite and
-public short-C1 requests on gfx1151, including both sides of the context route boundary and
-unrelated lengths, repeated strict/candidate order, output/state comparison and teardown. Keep the
-package default and strict fallback during interface migration; any changed reduction default
-requires its execution-profile numerical/task gate.
-
 ### R0382 — Long-context staged verifier and scalar-reference ownership
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
