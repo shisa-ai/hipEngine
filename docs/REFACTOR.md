@@ -2396,10 +2396,17 @@ Owner: `scripts/int8_mtp_prefix_gate.py`.
 Scope: `_evict_prefix_snapshot`, `discard_prefix_checkpoint`;
 `HIPENGINE_MTP2_PREFIX_CHECKPOINT_ENTRIES`.
 
-**Deferred budget decision:** define how provider recurrent-state/KV snapshot bytes count against
-the target cache budget, including shared allocations, replacement, failed capture and
-pressure-driven eviction. Then replace the independent entry-count control with bounded shared
-accounting. Do not remove the bound before that owner exists, or remove capture without restore.
+**Current implementation:** retained trimming counts the union of target/provider device
+owners, including target arena padding, and reviews provider capture/replacement. Idle arena
+pools consume remaining allowance; quarantine is charged but never reclaimed before retirement.
+Host KV bytes are reported separately. Independent provider count remains bounded; its replacement
+and host-memory policy are unfinished.
+
+Public pressure checks show low-budget miss versus normal-budget 512-token reuse, speculative
+cycles and zero tracked allocations after close. Their output tokens differ, so this is lifecycle
+evidence, not numerical parity. The server gate also exposes Japanese AR/speculative divergence
+that repeats with caching off. See
+`worklog/entries/20261106T014443.162771Z-lhl-r0509-pressure-result-5a1eb1.md`.
 
 Done when: Keep the rollback until shared accounting and coordinated eviction are tested. Run
 `scripts/int8_mtp_prefix_gate.py` against a radix-enabled server: require real prefix hits, compact
