@@ -1626,10 +1626,12 @@ Owner: `hipengine/runtime/f16_weight_linear.py`.
 
 Scope: `HIPENGINE_LAGUNA_F16_DECODE`.
 
-**Remaining work:** move process-global comparison selection into a scoped source-F16 diagnostic
-owner and migrate profiler environment restoration and result readers before retiring the selector.
-Real GPU/public validation of the shape repair is still outstanding: validation requires a ROCm host
-and Laguna artifact (R0273).
+**Comparison migration implemented:** `f16_decode_strategy(...)` supplies context-local
+selection, and the long-context profiler no longer mutates the process environment for
+baseline/candidate comparisons. The environment control remains a compatibility input.
+See `worklog/entries/20261106T112718.560230Z-lhl-r0340-decode-scope-b2f8f1.md`.
+Real public model validation still needs the Laguna artifact (R0273); GPU leaf shape
+validation can run independently of model weights.
 
 Done when: run shape-policy, F16 projection, backend, runner and profiler tests. On a ROCm
 host, execute generic-K widths below/above/unrelated to the fixed set, single/triple and alternate

@@ -656,7 +656,7 @@ def test_laguna_f16_projection_single_dual_triple_match_cpu(q_heads: int) -> Non
     )
 
 
-@pytest.mark.parametrize("in_features", [256, 512])
+@pytest.mark.parametrize("in_features", [256, 512, 3071, 3073, 4096, 9217])
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_laguna_f16_projection_onebarrier_matches_gemv_bytes(
     in_features: int,

@@ -2415,7 +2415,7 @@
       "evidence": [
         "hipengine/runtime/f16_weight_linear.py:23,108-114 reads source-F16 decode mode and backend capability."
       ],
-      "next_action": "Replace ambient comparison selection with scoped F16 owner and migrate profiler restore/result parsing; GPU leaf tests can run locally, full Laguna public waits for weights.",
+      "next_action": "Context-local decode strategy and profiler environment migration completed in 8a6893fc4 (29 shape/decode and 68 profiler tests). Finish GPU generic-K/single/triple/alternate-launch shape matrix; public Laguna remains blocked by absent model artifact under R0273. Preserve legacy environment compatibility until reader migration is complete.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
