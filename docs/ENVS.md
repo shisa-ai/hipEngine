@@ -463,8 +463,8 @@ F32 flags select per-stage diagnostic arithmetic to localize divergence.
 | `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE` | unset | Replays the selected-expert intermediate in F32. |
 | `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` | unset | Replays the shared-expert down projection in F32. |
 | `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` | false for unbound/direct sessions | Construction-time diagnostic input. Qwen3.8 gfx1151 profile-bound generators carry their strict/production choice directly to each session without rewriting this variable; the owner value takes precedence. |
-| `HIPENGINE_GGUF_ROUTER_F32W_COOP` | true for unbound/direct callers | Cooperative BF16-hidden/F32-weight c1 router when registered; `0` uses separate logits/select. The gfx1151 MoE profiles bind strict `false` and production `true` on the owner without rewriting this diagnostic input; ambient changes cannot retarget a bound owner. |
-| `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER` | true for unbound/direct callers | Cooperative router counter policy: `1` uses the dedicated self-resetting scratch counter; `0` uses the selected-ID alias and launch-time reset. Only used when cooperative routing runs. The gfx1151 MoE profiles bind strict `false` and production `true` on the owner; this remains the unbound/direct diagnostic input. |
+| `HIPENGINE_GGUF_ROUTER_F32W_COOP` | retired | No runtime reader. Construction and explicit resident-owner choices select cooperative or separate projections/top-k; strict/production profile semantics are unchanged. Stale values have no effect. |
+| `HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER` | retired | No runtime reader. The resident router plan selects dedicated self-resetting scratch or the nonpersistent cooperative variant. Explicit comparison owner controls remain available; stale values have no effect. |
 
 ### GGUF backend-package capability seams (gfx1100)
 

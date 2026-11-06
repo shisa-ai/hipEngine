@@ -27,4 +27,4 @@ def test_direct_router_environment_is_snapshotted(monkeypatch):
     monkeypatch.setenv('HIPENGINE_GGUF_ROUTER_F32W_COOP', '0')
     plan = qgr._resolve_gguf_router_plan(owner)
     monkeypatch.setenv('HIPENGINE_GGUF_ROUTER_F32W_COOP', '1')
-    assert plan.variant == 'separate_projections_topk'
+    assert plan.variant == 'coop_out_bf16_hidden_persistent'

@@ -196,17 +196,17 @@ def test_router_flags_prefer_bound_owner_over_ambient(monkeypatch) -> None:
     assert flags.router_f32w_persistent_counter_enabled() is True
 
 
-def test_router_flags_keep_ambient_reads_for_unbound_runner(monkeypatch) -> None:
+def test_router_flags_ignore_retired_environment_for_unbound_runner(monkeypatch) -> None:
     from hipengine.runtime import qwen35_gguf_runner as runner_mod
 
     runner = _bare_runner(coop=None, persistent=None)
     monkeypatch.setenv(ROUTER_COOP_ENV, "0")
     monkeypatch.setenv(ROUTER_PERSISTENT_ENV, "0")
     flags = runner_mod._layer_ffn_flags(runner)
-    assert flags.router_f32w_coop_enabled() is False
-    assert flags.router_f32w_persistent_counter_enabled() is False
+    assert flags.router_f32w_coop_enabled() is True
+    assert flags.router_f32w_persistent_counter_enabled() is True
 
-    # Unbound direct diagnostics keep the historical per-call environment read.
+    # Stale direct diagnostics cannot retarget the default router.
     monkeypatch.setenv(ROUTER_COOP_ENV, "1")
     monkeypatch.setenv(ROUTER_PERSISTENT_ENV, "1")
     assert flags.router_f32w_coop_enabled() is True
@@ -239,7 +239,7 @@ def test_router_owners_are_interleaved_order_independent(monkeypatch) -> None:
     monkeypatch.setenv(ROUTER_PERSISTENT_ENV, "0")
     assert runner_mod._layer_ffn_flags(strict).router_f32w_coop_enabled() is False
     assert runner_mod._layer_ffn_flags(production).router_f32w_coop_enabled() is True
-    assert runner_mod._layer_ffn_flags(unbound).router_f32w_coop_enabled() is False
+    assert runner_mod._layer_ffn_flags(unbound).router_f32w_coop_enabled() is True
 
 
 # ------------------------------------------------------------ rowtile reads
