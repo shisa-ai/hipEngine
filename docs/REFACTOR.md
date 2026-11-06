@@ -1916,28 +1916,6 @@ pair+SiLU dispatch at values below, within and above their row bounds. Preserve 
 registered strict fallbacks. Run the rowtile-control and GEMV dispatch unit tests, raw-K and pack8
 GPU parity files and public generation with route attribution, reset/reuse and cleanup.
 
-### R0285 / R0286 — Draft and target synchronized profiling ownership
-
-Owner: `hipengine/runtime/gguf_native_spec_cycle.py`.
-
-Scope: `Qwen35GGUFResidentMTPDraftRunner.sync_stage_timings`, `gguf_mtp_draft_rocprof.py`.
-
-**Decision needed:** retain the explicit synchronized comparisons, or replace them with one
-profiling policy across draft/target runners, benchmark cache key/provenance, profiler parent/child
-and named `draftsync`/`allsync` suite routes. Preserve the distinction between device-wide target
-boundaries and stream-aware draft boundaries rather than changing either mode silently. Keep
-instrumentation off by default; do not infer retirement from a campaign's closed status or promote
-diagnostic synchronization to remove a switch.
-
-Done when: demonstrate matching bucket/phase coverage and output under the proposed
-replacement, including stream zero/nonzero, absent/present sink, multiple depths, Q6 raw/X8 top-1
-staging and event failure/close paths. Cover target linear/full-attention and exact/DP4A
-selected-MoE buckets, empty prefixes, direct state commit and the native graph's host-timing
-rejection. Run resident-draft, target timing/selected-MoE, metrics/suite and both profiler unit
-tests plus real proposal/verify/commit/reset/close comparisons. Runtime wiring changes need public
-and compatibility requests with output and selected instrumentation recorded; any timing claim
-compares complete windows under a matched protocol.
-
 ### R0287 — Verifier FP32 arithmetic policy and probe provenance
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
