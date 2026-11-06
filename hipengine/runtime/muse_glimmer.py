@@ -54,7 +54,7 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
 )
 from hipengine.loading.muse_glimmer_gguf import MuseGlimmerLoadedWeights
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
-from hipengine.runtime.gguf_linear import launch_gguf_linear
+from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_exact_rows
 
 #: Prefill chunk bound for the bring-up scratch and keep-mask sizing.
 DEFAULT_PREFILL_CHUNK = 512
@@ -497,11 +497,12 @@ class MuseGlimmerResidentSession:
     ) -> tuple[np.ndarray, np.ndarray]:
         """Append a draft block; return (logits for every row, taps).
 
-        Exactness contract: each row is processed by the same single-row
-        decode path AR uses, so the committed KV is bit-identical to true AR
-        (multi-row projection dispatch is not batch-invariant at bring-up and
-        its bf16 rounding can flip near-tie argmaxes). The batched-invariant
-        block verify is the recorded performance-phase replacement. The
+        Exactness contract: the whole block runs in one forward whose
+        projections use the bit-identical row-independent decode owners
+        (weight-amortized rowtile / row-independent GEMV) and whose attention
+        is decode-equivalent (per-row causal+SWA clamp at the decode split
+        count). Each row's KV and logits therefore equal true AR decode
+        bit-for-bit, while the weight reads amortize across the block. The
         caller compares each row's argmax against the draft and ``truncate``s
         to the accepted prefix (+1 corrected token).
         """
@@ -512,16 +513,11 @@ class MuseGlimmerResidentSession:
             raise ValueError("verify needs a non-empty block")
         if self._length + ids.size > self.max_context:
             raise ValueError("verify block overruns the KV cache")
-        rows: list[np.ndarray] = []
-        taps: list[np.ndarray] = []
-        for token in ids:
-            logits, row_taps = self._forward_block(
-                np.asarray([int(token)], dtype=np.int64),
-                position_offset=self._length, tap_layers=tap_layers,
-            )
-            rows.append(np.asarray(logits)[None, :])
-            taps.append(row_taps)
-        return np.concatenate(rows, axis=0), np.concatenate(taps, axis=0)
+        logits, taps = self._forward_block(
+            ids, position_offset=self._length, tap_layers=tap_layers,
+            all_logits=True, exact_multirow=True,
+        )
+        return np.asarray(logits), np.asarray(taps)
 
     def truncate(self, length: int) -> None:
         """Roll the KV back to ``length`` (contiguous cache: data beyond is
@@ -535,8 +531,13 @@ class MuseGlimmerResidentSession:
     def _forward_block(
         self, ids: np.ndarray, *, position_offset: int,
         tap_layers: Sequence[int] | None = None, all_logits: bool = False,
+        exact_multirow: bool = False,
     ) -> tuple[np.ndarray, np.ndarray] | np.ndarray:
         cfg, rt = self.config, self.runtime
+        # Exact multirow (speculative block verify): projections take the
+        # bit-identical row-independent decode owners and attention uses the
+        # decode split count, so every row's KV/logits match true AR decode.
+        self._exact_multirow = bool(exact_multirow)
         tokens = int(ids.size)
         keys = position_offset + tokens
         if keys > self.max_context:
@@ -662,6 +663,13 @@ class MuseGlimmerResidentSession:
             if tokens == 1:
                 span = keys - key_begin
                 n_splits = 64
+            elif self._exact_multirow:
+                # Decode-equivalent block verify: each row is computed
+                # independently with the decode split count (64) and the
+                # kernel's per-row causal+SWA clamp, so row i matches a
+                # single decode step at position_offset+i bit-for-bit.
+                n_splits = 64
+                key_begin = 0
             else:
                 # Prefill rows parallelize over queries (tokens x 8 groups,
                 # GQA-packed so 16 Q heads share each KV read); 4 key splits
@@ -781,6 +789,16 @@ class MuseGlimmerResidentSession:
         return (logits if all_logits else logits[0]), tap_host
 
     def _linear(self, weight, x_ptr, out_ptr, rows, in_features, out_features, **kwargs):
+        if getattr(self, "_exact_multirow", False):
+            # Bit-identical row-independent decode owners (weight-amortized
+            # rowtile / row-independent GEMV); never the reassociating WMMA
+            # prefill family, so verify-written KV equals true AR.
+            launch_gguf_linear_exact_rows(
+                weight, x_ptr, out_ptr, rows, in_features, out_features,
+                backend=kwargs.pop("backend", self.backend),
+                runtime=kwargs.pop("runtime", self.runtime), **kwargs,
+            )
+            return
         # WMMA prefill opt-in: the dispatcher rewrites rows>1 raw-Q4_K/Q6_K
         # projections to the registered WMMA family; rows<=1 (decode) is a
         # no-op, so the GEMV decode path and its KV arithmetic are unchanged.

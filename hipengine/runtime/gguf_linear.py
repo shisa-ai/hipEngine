@@ -4960,6 +4960,98 @@ def launch_gguf_linear_decode_rows(
         out_ptr + reference_rows * output_stride, remaining, in_features, out_features, kwargs)
 
 
+# Exact row-independent multi-row owners for speculative block verify. Each
+# entry preserves the parent rows=1 decode GEMV reduction bit-for-bit per row:
+# either a registered weight-amortized rowtile sibling (rows 2..max) computes
+# every row with the identical reduction, or the parent kernel is itself
+# row-independent (one independent row per grid slot, reduction unchanged by
+# the row count). Verified bit-identical to per-row decode on gfx1151 for Q4_K
+# T16 (dense_rowtile) and Q5_K/Q6_K T16 (t16_gemv_decode). Keyed by the parent
+# rows=1 registry variant, never by model identity.
+_EXACT_VERIFY_ROWTILE_SIBLING = {
+    "dense_single_local32_bf16_bf16_out": ("dense_rowtile_gemv_bf16_bf16_out", 8),
+}
+_EXACT_VERIFY_ROW_INDEPENDENT = {
+    "t16_gemv_decode_bf16_bf16_out": 64,
+    "t16_gemv_decode_bf16_f32_out": 64,
+}
+
+
+def launch_gguf_linear_exact_rows(
+    weight: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    activation_dtype: str = GGUF_ACTIVATION_BF16,
+    output_dtype: str = GGUF_OUTPUT_BF16,
+    backend: str | None = None,
+    stream: int = 0,
+    runtime=None,
+) -> None:
+    """Batch a verify block with bit-identical per-row decode arithmetic.
+
+    Resolves the rows=1 decode owner, then runs the block through its exact
+    row-independent multi-row form: a registered weight-amortized rowtile
+    sibling (rows 2..8, chunked) or the same row-independent kernel. Any owner
+    without a declared exact multi-row form falls back to sequential rows=1
+    launches, so the result is always bit-identical to AR decode -- never a
+    silently changed arithmetic. This is the projection primitive for the
+    batched-invariant speculative block verify (campaign MUSE-GLIMMER.md P3).
+    """
+    if rows <= 0:
+        raise ValueError("exact verify rows must be positive")
+    common = dict(activation_dtype=activation_dtype, output_dtype=output_dtype,
+                  backend=backend, stream=stream, runtime=runtime)
+    if rows == 1:
+        launch_gguf_linear(weight, x_ptr, out_ptr, 1, in_features, out_features, **common)
+        return
+    parent = resolve_gguf_linear_dispatch(
+        weight, activation_dtype=activation_dtype, output_dtype=output_dtype,
+        backend=backend, rows=1,
+    )
+    in_stride = in_features * (4 if activation_dtype == GGUF_ACTIVATION_F32 else 2)
+    out_stride = out_features * (4 if output_dtype == GGUF_OUTPUT_F32 else 2)
+    kwargs = {"stream": stream, "runtime": runtime}
+    sibling = _EXACT_VERIFY_ROWTILE_SIBLING.get(parent.key.variant)
+    if sibling is not None:
+        rowtile_variant, max_rows = sibling
+        key = KernelKey(parent.key.backend, parent.key.layer, parent.key.quant, rowtile_variant)
+        if is_registered(key):
+            fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+            offset = 0
+            while offset < rows:
+                chunk = min(max_rows, rows - offset)
+                if chunk == 1:
+                    launch_gguf_linear(
+                        weight, x_ptr + offset * in_stride, out_ptr + offset * out_stride,
+                        1, in_features, out_features, **common)
+                else:
+                    _LAUNCH_ABI[parent.abi](
+                        fn, weight, x_ptr + offset * in_stride, out_ptr + offset * out_stride,
+                        chunk, in_features, out_features, kwargs)
+                offset += chunk
+            return
+    row_independent_max = _EXACT_VERIFY_ROW_INDEPENDENT.get(parent.key.variant)
+    if row_independent_max is not None:
+        fn = resolve(backend=parent.key.backend, layer=parent.key.layer,
+                     quant=parent.key.quant, variant=parent.key.variant)
+        offset = 0
+        while offset < rows:
+            chunk = min(row_independent_max, rows - offset)
+            _LAUNCH_ABI[parent.abi](
+                fn, weight, x_ptr + offset * in_stride, out_ptr + offset * out_stride,
+                chunk, in_features, out_features, kwargs)
+            offset += chunk
+        return
+    for offset in range(rows):
+        launch_gguf_linear(
+            weight, x_ptr + offset * in_stride, out_ptr + offset * out_stride,
+            1, in_features, out_features, **common)
+
+
 def _source_f16_span_launch_supported(
     *,
     activation_dtype: str,
