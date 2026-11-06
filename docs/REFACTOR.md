@@ -1386,10 +1386,18 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 
 Scope: `HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS`.
 
-**Decision needed:** keep the tail control as a supported diagnostic, give the graph comparison an
-explicit unchained construction policy, or retire that per-layer graph route and its caller
-coherently. A defaults-only milestone does not migrate this dependency. Do not disable production
-chaining or change the slot-weighted arithmetic to make a diagnostic graph engage.
+**Implemented:** the live graph comparison explicitly requests unchained execution through
+`moe_tail_next_rms=False`. Session selection overrides runner/environment input without mutating
+a shared runner; owned construction forwards the choice. Unspecified input preserves production
+chaining and the legacy diagnostic adapter. Routing/dispatch checks pass (25 tests), constructor
+checks pass (71 tests), and BF16/FP16 fused/unfused primitive checks pass on gfx1151 (13 tests).
+See `worklog/entries/20261106T143829.922143Z-lhl-r0281-tail-owner-d6fc2d.md`.
+
+**Remaining:** the live graph parity fixture skipped because its configured
+`/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` artifact is absent. Run actual capture/replay and
+public short/long/ragged decode output/state/cleanup validation before retiring the legacy
+reader. Host owner transport and primitive equality do not establish full-model graph parity.
+Do not disable production chaining or change slot-weighted arithmetic to make a graph engage.
 
 Done when: run `tests/test_unit_qwen35_gguf_moe_tail_next_rms_routing.py` and
 `tests/test_unit_qwen35_gguf_iq_dispatch.py`, plus BF16/FP16 primitive fused/ unfused parity gates.
