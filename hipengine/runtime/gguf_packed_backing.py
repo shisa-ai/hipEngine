@@ -17,6 +17,23 @@ def acquire_standalone_packed_backing(*, config, runtime, layout, pages, pool, a
     )
 
 
+def acquire_packed_backing(
+    *, config, runtime, layout, pages, pool, allocate, eager_key, lease_growth, on_shortfall,
+):
+    """Resolve arena or standalone storage and transfer one ownership result."""
+    backing, page_ids, growth_key = select_packed_arena_backing(
+        pool, total_pages=pages, layout=layout, eager_key=eager_key,
+        lease_growth=lease_growth, on_shortfall=on_shortfall,
+    )
+    if backing is not None:
+        return backing, page_ids, "pool_lease", None, growth_key
+    lease = acquire_standalone_packed_backing(
+        config=config, runtime=runtime, layout=layout, pages=pages,
+        pool=pool, allocate=allocate,
+    )
+    return lease.backing, tuple(range(pages)), "private", lease, None
+
+
 def select_packed_arena_backing(
     pool, *, total_pages: int, layout, eager_key: str, lease_growth, on_shortfall,
 ):

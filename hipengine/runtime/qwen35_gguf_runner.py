@@ -100,9 +100,7 @@ from hipengine.runtime.qwen35_gguf_prefill_plan import (
 from hipengine.runtime.qwen35_gguf_prefix_state import (
     Qwen35GGUFPrefixStateSnapshot, _GGUFPrefixSnapshotArenaPool,
 )
-from hipengine.runtime.gguf_packed_backing import (
-    acquire_standalone_packed_backing, select_packed_arena_backing,
-)
+from hipengine.runtime.gguf_packed_backing import acquire_packed_backing
 from hipengine.runtime.qwen35_gguf_workspace import (
     PackedWorkspaceOwner as _PackedWorkspaceState,
     StandalonePackedBackingLease,
@@ -2836,46 +2834,18 @@ class _GGUFPackedTargetState:
                             "blocks_per_slot": int(blocks_per_slot),
                             "max_sequence_length": int(max_sequence_length),
                         })
-                arena_backing, backing_page_ids, growth_lease_key = select_packed_arena_backing(
-                    kv_pool, total_pages=total_pages, layout=kv_layout,
+                kv_backing, page_ids, backing_kind, backing_lease, growth_lease_key = acquire_packed_backing(
+                    config=_kv_allocation_config(runner), runtime=runtime,
+                    layout=kv_layout, pages=total_pages, pool=kv_pool,
+                    allocate=_allocate_qwen35_gguf_kv_chunk,
                     eager_key=_GGUF_PACKED_WORKSPACE_LEASE_KEY,
                     lease_growth=_lease_packed_workspace_growth,
                     on_shortfall=record_shortfall,
                 )
-                if arena_backing is not None:
-                    # Pool-leased backing: the arena planes back the
-                    # workspace and page_ids select this state's pages
-                    # inside them. The lease pages stay pinned by the
-                    # pool; this state never frees them.
-                    if arena_backing is None:
-                        arena_backing = getattr(kv_pool, "backing", None)
-                    if arena_backing is None or getattr(arena_backing, "layout", None) != kv_layout:
-                        raise RuntimeError(
-                            "packed workspace lease has no layout-compatible KV backing"
-                        )
-                    kv_cache_fields = {
-                        "full_key_caches": arena_backing.full_key_caches,
-                        "full_value_caches": arena_backing.full_value_caches,
-                        "full_bf16_mirror_key_caches": arena_backing.full_bf16_mirror_key_caches,
-                        "full_bf16_mirror_value_caches": arena_backing.full_bf16_mirror_value_caches,
-                        "full_k_scale_caches": arena_backing.full_k_scale_caches,
-                        "full_v_scale_caches": arena_backing.full_v_scale_caches,
-                        "full_kv_scale_metadata": arena_backing.full_kv_scale_metadata,
-                    }
-                    kv_backing = arena_backing
-                    page_ids = backing_page_ids
-                    backing_kind = "pool_lease"
-                    owned_buffers = tuple(state_buffers)
-                else:
-                    backing_lease = acquire_standalone_packed_backing(
-                        config=_kv_allocation_config(runner), runtime=runtime,
-                        layout=kv_layout, pages=total_pages, pool=kv_pool,
-                        allocate=_allocate_qwen35_gguf_kv_chunk,
-                    )
-                    kv_backing = backing_lease.backing
-                    page_ids = ()
-                    backing_kind = "private"
-                    owned_buffers = (*tuple(state_buffers), *kv_backing.buffers)
+                owned_buffers = (
+                    (*tuple(state_buffers), *kv_backing.buffers)
+                    if backing_lease is not None else tuple(state_buffers)
+                )
         except Exception:
             for buffer in reversed(state_buffers):
                 free(buffer, runtime=runtime)
