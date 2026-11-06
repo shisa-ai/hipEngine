@@ -1905,6 +1905,11 @@ execution-owner-local configuration. Removing a dormant environment switch does 
 existing global setter thread-local. Coordinate this with other GGUF session control ownership
 rather than deleting strict reference kernels or silently altering concurrent calls.
 
+Current: `e28cc6700` replaced global state with `ContextVar`; host isolation tests pass.
+Caller-thread scopes do not propagate through the engine-service worker: a public explicit-off
+probe resolves default-on. Request transport or worker-owned diagnostic binding remains open;
+see `worklog/entries/20261106T001419.973039Z-lhl-rowtile-worker-transport-c01722.md`.
+
 Done when: migrate resolver consumers and comparison tests together; exercise
 nested/exception restoration and concurrent independent owners, plus singleton, pair and fused
 pair+SiLU dispatch at values below, within and above their row bounds. Preserve WMMA precedence and
