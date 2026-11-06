@@ -39,11 +39,34 @@ from scripts.laguna_grouped_down_category_bench import (
     _teacher_forced_quality,
 )
 
+@pytest.mark.parametrize("failure", [False, True])
+def test_selected_down_prefill_scopes_variant_and_restores(monkeypatch, failure):
+    from hipengine.runtime.laguna_gguf_runner import LagunaGGUFResidentSession
+    session = object.__new__(LagunaGGUFResidentSession)
+    session.backend = "hip_gfx1151"
+    session.selected_gate_up_mode = "grouped_exact"
+    session.selected_down_mode = "grouped_exact"
+    mode = benchmark.GROUPED_DOWN_COMPARISON.modes[0]
+
+    def prefill(tokens):
+        assert session.selected_down_mode == mode
+        if failure:
+            raise RuntimeError("synthetic")
+        return "result"
+
+    session.prefill = prefill
+    if failure:
+        with pytest.raises(RuntimeError, match="synthetic"):
+            benchmark._prefill_for_mode(session, [1, 2], mode, benchmark.GROUPED_DOWN_COMPARISON)
+    else:
+        assert benchmark._prefill_for_mode(session, [1, 2], mode, benchmark.GROUPED_DOWN_COMPARISON) == "result"
+    assert session.selected_down_mode == session.selected_gate_up_mode == "grouped_exact"
+
+
 HORIZONS = (16, 32)
 
 
 @pytest.mark.parametrize("comparison", [
-    benchmark.GROUPED_DOWN_COMPARISON,
     CUMULATIVE_CONTROL_COMPARISON,
 ])
 def test_mode_configuration_failure_closes_new_session(monkeypatch, comparison):

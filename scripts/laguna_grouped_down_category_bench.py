@@ -352,6 +352,9 @@ def _prefill_for_mode(
     mode: str,
     comparison: CategoryComparison,
 ):
+    if comparison.execution_mode == "selected_down":
+        with session.selected_moe_diagnostic(down=mode):
+            return session.prefill(token_ids)
     f16_mode: str | None = None
     if comparison.execution_mode == "f16_prefill":
         f16_mode = mode
@@ -400,9 +403,8 @@ def _session_for_mode(
     session = _session(owner, args)
     with ExitStack() as cleanup:
         cleanup.callback(session.close)
-        if comparison.execution_mode == "selected_down":
-            session.set_selected_down_mode(mode)
-        elif comparison.execution_mode not in {
+        if comparison.execution_mode not in {
+            "selected_down",
             "f16_prefill",
             "global_prefill",
             "cumulative_prefill",
