@@ -17,6 +17,9 @@ from hipengine.kernels.backends import (
     load_backend_kernel_package,
 )
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
+from hipengine.runtime.laguna_prefill_policy import (
+    LagunaCachedPrefillPolicy, resolve_laguna_cached_prefill_policy,
+)
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.laguna_gguf import FULL_ATTENTION, SLIDING_ATTENTION
 
@@ -220,15 +223,20 @@ class LagunaKVCache:
         swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512: bool,
         swa_mixed40_local512_exp32_producer_max_gate_stage_pcache_tail_producer_value_tail_idle_vec4_denom_probability_vstage64_vec16_direct_assume_exp_fixed512: bool,
         runtime: HipRuntime,
+        cached_prefill_policy: LagunaCachedPrefillPolicy | None = None,
     ) -> None:
         self.layers = layers
         self._buffers = buffers
         self.context_length = int(context_length)
         self.sliding_window = int(sliding_window)
         self.backend = str(backend)
-        self.prefill_cached_meta = bool(prefill_cached_meta)
-        self.prefill_global_qrow6 = bool(prefill_global_qrow6)
-        self.prefill_dense_initial = bool(prefill_dense_initial)
+        self.cached_prefill_policy = cached_prefill_policy or LagunaCachedPrefillPolicy(
+            False, bool(prefill_cached_meta), bool(prefill_global_qrow6),
+            bool(prefill_dense_initial),
+        )
+        self.prefill_cached_meta = self.cached_prefill_policy.cached_meta
+        self.prefill_global_qrow6 = self.cached_prefill_policy.global_qrow6
+        self.prefill_dense_initial = self.cached_prefill_policy.dense_initial
         self.swa_prefill_role_variants = dict(swa_prefill_role_variants)
         self.prefill_preappend_role_scoped = bool(prefill_preappend_role_scoped)
         self.prefill_preappend_role_variants = dict(
@@ -2590,9 +2598,10 @@ def allocate_laguna_kv_cache(
     global_prefill_variant: str | None = None,
     swa_decode_variant: str | None = None,
     swa_prefill_variant: str | None = None,
-    prefill_cached_meta: bool = False,
-    prefill_global_qrow6: bool = False,
-    prefill_dense_initial: bool = False,
+    cached_prefill_policy: LagunaCachedPrefillPolicy | None = None,
+    prefill_cached_meta: bool | None = None,
+    prefill_global_qrow6: bool | None = None,
+    prefill_dense_initial: bool | None = None,
     prefill_global_preappend_package_default: bool | None = None,
     prefill_preappend_package_default: bool | None = None,
     global_split_min_live: int | None = None,
@@ -2605,6 +2614,17 @@ def allocate_laguna_kv_cache(
 ) -> LagunaKVCache:
     """Allocate per-layer BF16 payloads and complete device span metadata."""
 
+    if cached_prefill_policy is not None:
+        resolved_cached_policy = resolve_laguna_cached_prefill_policy(
+            backend, policy=cached_prefill_policy, cached_meta=prefill_cached_meta,
+            global_qrow6=prefill_global_qrow6, dense_initial=prefill_dense_initial,
+        )
+    else:
+        # Direct cache callers historically default each control to false.
+        resolved_cached_policy = LagunaCachedPrefillPolicy(
+            False, bool(prefill_cached_meta), bool(prefill_global_qrow6),
+            bool(prefill_dense_initial),
+        )
     context = int(context_length)
     if context <= 0:
         raise ValueError("context_length must be positive")
@@ -3289,9 +3309,10 @@ def allocate_laguna_kv_cache(
             context_length=context,
             sliding_window=sliding_window,
             backend=backend,
-            prefill_cached_meta=prefill_cached_meta,
-            prefill_global_qrow6=prefill_global_qrow6,
-            prefill_dense_initial=prefill_dense_initial,
+            cached_prefill_policy=resolved_cached_policy,
+            prefill_cached_meta=resolved_cached_policy.cached_meta,
+            prefill_global_qrow6=resolved_cached_policy.global_qrow6,
+            prefill_dense_initial=resolved_cached_policy.dense_initial,
             swa_prefill_role_variants=parsed_swa_prefill_role_variants,
             prefill_preappend_role_scoped=prefill_preappend_role_scoped,
             prefill_preappend_role_variants=(

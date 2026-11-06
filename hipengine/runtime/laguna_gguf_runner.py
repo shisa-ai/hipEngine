@@ -3918,9 +3918,7 @@ class LagunaGGUFResidentSession:
                 global_prefill_variant=self.global_prefill_variant,
                 swa_decode_variant=self.swa_decode_variant,
                 swa_prefill_variant=self.swa_prefill_variant,
-                prefill_cached_meta=self.prefill_cached_meta,
-                prefill_global_qrow6=self.prefill_global_qrow6,
-                prefill_dense_initial=self.prefill_dense_initial,
+                cached_prefill_policy=self.cached_prefill_policy,
                 prefill_global_preappend_package_default=(
                     self._global_prefill_package_default
                 ),

@@ -1316,8 +1316,16 @@ def test_laguna_dense_initial_policy_falls_back_after_explicit_eviction() -> Non
         cache.free()
 
 
-def test_laguna_cached_metadata_policy_has_explicit_full_rollback() -> None:
+@pytest.mark.parametrize("explicit_policy", [False, True])
+def test_laguna_cached_metadata_policy_has_explicit_full_rollback(explicit_policy) -> None:
     from hipengine.runtime.laguna_kv import allocate_laguna_kv_cache
+    from hipengine.runtime.laguna_prefill_policy import LagunaCachedPrefillPolicy
+
+    policy = LagunaCachedPrefillPolicy(True, False, False, False)
+    controls = ({"cached_prefill_policy": policy} if explicit_policy else {
+        "prefill_cached_meta": False, "prefill_global_qrow6": False,
+        "prefill_dense_initial": False,
+    })
 
     runtime = _FakeRuntime()
     cache = allocate_laguna_kv_cache(
@@ -1325,10 +1333,10 @@ def test_laguna_cached_metadata_policy_has_explicit_full_rollback() -> None:
         context_length=512,
         backend="hip_gfx1151",
         runtime=runtime,
-        prefill_cached_meta=False,
-        prefill_global_qrow6=False,
-        prefill_dense_initial=False,
+        **controls,
     )
+    if explicit_policy:
+        assert cache.cached_prefill_policy is policy
     variants: list[str] = []
 
     def resolve(layer: str, variant: str):
