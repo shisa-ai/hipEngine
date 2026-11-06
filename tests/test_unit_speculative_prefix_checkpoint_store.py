@@ -32,6 +32,21 @@ def _store(capacity: int = 4) -> tuple[PrefixCheckpointStore, _Recorder]:
     return PrefixCheckpointStore(capacity=capacity, release=recorder), recorder
 
 
+def test_device_trim_counts_shared_owners_and_unpaired_payloads():
+    from types import SimpleNamespace
+    store, recorder = _store()
+    first = SimpleNamespace(nbytes=1, device_allocations=((4096, 100),))
+    second = SimpleNamespace(nbytes=1, device_allocations=((4096, 100), (8192, 40)))
+    store.put((1,), (10,), first)
+    store.put((2,), (11,), second)
+    assert store.owning_device_nbytes == 140
+    assert store.trim_device_bytes(100) == 2
+    assert recorder.released == [first, second]
+    assert store.owning_device_nbytes == 0
+    with pytest.raises(ValueError):
+        store.trim_device_bytes(-1)
+
+
 def test_host_byte_trim_evicts_lru_without_changing_device_semantics():
     from types import SimpleNamespace
     store, recorder = _store()

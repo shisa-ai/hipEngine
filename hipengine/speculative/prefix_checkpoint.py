@@ -110,6 +110,22 @@ class PrefixCheckpointStore:
                    for entry in self._entries.values() if not entry.released)
 
     @property
+    def owning_device_nbytes(self) -> int:
+        """Unique owning allocation bytes, including unpaired checkpoints."""
+        allocations: dict[int, int] = {}
+        legacy: dict[int, int] = {}
+        for entry in self._entries.values():
+            if entry.released:
+                continue
+            inventory = getattr(entry.payload, "device_allocations", None)
+            if inventory is None:
+                legacy[id(entry.payload)] = int(getattr(entry.payload, "nbytes", 0))
+            else:
+                for ptr, size in inventory:
+                    allocations[int(ptr)] = max(allocations.get(int(ptr), 0), int(size))
+        return sum(allocations.values()) + sum(legacy.values())
+
+    @property
     def host_nbytes(self) -> int:
         """Host checkpoint storage, separate from device residency."""
         return sum(int(getattr(entry.payload, "host_nbytes", 0))
@@ -243,6 +259,17 @@ class PrefixCheckpointStore:
                 continue
             entry = self._entries.pop(key)
             self._release_entry(entry)
+            dropped += 1
+        return dropped
+
+    def trim_device_bytes(self, max_bytes: int) -> int:
+        """Bound all provider device owners, not just target-paired records."""
+        if int(max_bytes) < 0:
+            raise ValueError("checkpoint device-byte bound must be non-negative")
+        dropped = 0
+        while self._entries and self.owning_device_nbytes > int(max_bytes):
+            self.drop(next(iter(self._entries)))
+            self._evicted += 1
             dropped += 1
         return dropped
 
