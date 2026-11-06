@@ -40,6 +40,17 @@ def test_generation_change_discards_old_decisions_and_capacity_is_bounded():
         assert own_launch_decision(replacement) is replacement
 
 
+def test_dense_profile_binder_gives_each_generator_an_independent_owner():
+    from types import SimpleNamespace
+    from hipengine.generation.qwen35_dense_gfx1100_profiles import _strict_binder
+
+    first, second = SimpleNamespace(), SimpleNamespace()
+    _strict_binder(first, None)
+    _strict_binder(second, None)
+    assert isinstance(first.launch_decision_owner, LaunchDecisionOwner)
+    assert first.launch_decision_owner is not second.launch_decision_owner
+
+
 def test_session_restores_owner_after_failure():
     owner = LaunchDecisionOwner()
     decision = Decision(1, 'pair')

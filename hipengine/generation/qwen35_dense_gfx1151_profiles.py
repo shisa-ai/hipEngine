@@ -49,6 +49,8 @@ def _binder(
     fp16_state: bool,
     q4_verifier_rowtile: bool,
 ) -> None:
+    from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner
+    generator.launch_decision_owner = LaunchDecisionOwner()
     # Rowtile and recurrent-state decisions are frozen on the generator before
     # any resident session exists. The environment remains the unbound/direct
     # diagnostic input, but it is no longer the carrier between profile owners.

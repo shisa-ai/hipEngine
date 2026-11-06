@@ -463,6 +463,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
     q8_t16_two_wave_prefill_session,
 )
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
+from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner, launch_decision_session
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_BF16,
     GGUF_ACTIVATION_F32,
@@ -13147,6 +13148,7 @@ class Qwen35GGUFResidentSession:
     target_verify_f32_residual: bool | None = None
     target_verify_f32_post_norm: bool | None = None
     target_q4_t16_dual_silu_r28: bool | None = None
+    launch_decision_owner: LaunchDecisionOwner | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch = resident_state_field("canonical", "scratch")
     _target_scratch_owner = resident_state_field("canonical", "scratch_owner")
@@ -18846,6 +18848,7 @@ class Qwen35GGUFResidentSession:
         """
 
         with (
+            launch_decision_session(getattr(self, "launch_decision_owner", None)),
             bulk_prefill_ffn_session(),
             q4_t16_unequal_pair_prefill_session(
                 _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
@@ -23364,7 +23367,7 @@ class Qwen35GGUFResidentSession:
             layer_recurrent_states=packed_state.layer_recurrent_states,
         )
         full_kv_row_nbytes = self._packed_full_kv_row_nbytes()
-        with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+        with launch_decision_session(getattr(self, "launch_decision_owner", None)), wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
             for layer_id in range(layer_start, layer_end):
                 layer_type = state.layer_types[layer_id]
                 for entry in chunk_plans:
@@ -23988,7 +23991,7 @@ class Qwen35GGUFResidentSession:
             layer_recurrent_states=packed_state.layer_recurrent_states,
         )
         full_kv_row_nbytes = self._packed_full_kv_row_nbytes()
-        with wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+        with launch_decision_session(getattr(self, "launch_decision_owner", None)), wmma_prefill_session(self.use_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 if layer_type == LINEAR_ATTENTION:
                     with source_f16_slab_spans_session(slab_spans):

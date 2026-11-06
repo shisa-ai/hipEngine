@@ -590,6 +590,17 @@ def test_generator_owner_session_kwargs() -> None:
     assert generator._target_q8_t16_rowtile_all_session_kwargs() == {
         "target_q8_t16_rowtile_all": True
     }
+    from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner
+    owner = LaunchDecisionOwner()
+    generator.launch_decision_owner = owner
+    assert generator._target_q8_t16_rowtile_all_session_kwargs() == {
+        "target_q8_t16_rowtile_all": True,
+        "launch_decision_owner": owner,
+    }
+    generator.target_q8_t16_rowtile_all = None
+    assert generator._target_q8_t16_rowtile_all_session_kwargs() == {
+        "launch_decision_owner": owner,
+    }
 
 
 def test_generator_transports_owners_to_shared_runner(monkeypatch) -> None:

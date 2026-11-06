@@ -56,6 +56,8 @@ def _env_bool(name: str, raw: str) -> bool:
 
 def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
     del resolved
+    from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner
+    generator.launch_decision_owner = LaunchDecisionOwner()
     generator.use_q6_dp4a_grouped = False
     generator.target_fp16_recurrent_state = False
     # The capture mode is an owner decision, not a process-global env write:

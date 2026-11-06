@@ -1838,12 +1838,16 @@ class Qwen35GGUFBringupGenerator:
         return kwargs
 
     def _target_q8_t16_rowtile_all_session_kwargs(self) -> dict[str, Any]:
-        """Carry the owner-bound broad Q8T16 rowtile admission into every owner."""
+        """Carry broad Q8T16 policy and the launch-decision owner into sessions."""
 
         requested = getattr(self, "target_q8_t16_rowtile_all", None)
-        if requested is None:
-            return {}
-        return {"target_q8_t16_rowtile_all": bool(requested)}
+        kwargs = {}
+        owner = getattr(self, "launch_decision_owner", None)
+        if owner is not None:
+            kwargs["launch_decision_owner"] = owner
+        if requested is not None:
+            kwargs["target_q8_t16_rowtile_all"] = bool(requested)
+        return kwargs
 
     def _target_verify_f32_session_kwargs(self) -> dict[str, Any]:
         """Carry owner-bound verifier F32 diagnostics into every session."""
