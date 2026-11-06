@@ -898,14 +898,6 @@ class Qwen35GGUFMTP2Adapter:
         self.policy_prefix = "dense-nextn"
         profile = getattr(self.generator, "execution_profile", None)
         profile = getattr(profile, "value", profile)
-        self.physical_prompt_streaming = bool(
-            str(profile) == "production"
-            and backend_package_capability(
-                str(self.generator.backend),
-                "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_PROMPT_STREAMING",
-                False,
-            )
-        )
         from hipengine.generation.physical_target_rows import resolve_physical_target_rows
 
         rows_plan = getattr(self.generator, "physical_target_rows", None)
