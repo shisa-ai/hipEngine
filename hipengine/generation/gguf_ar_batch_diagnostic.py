@@ -8,6 +8,48 @@ from typing import Any
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 
 
+def ar_serving_slot_chunks(live_slots: list[Any]) -> list[list[Any]]:
+    from hipengine.generation.qwen35_gguf import _GGUF_AR_NATIVE_MAX_SLOTS
+
+    chunks = []
+    index = 0
+    while index < len(live_slots):
+        remaining = len(live_slots) - index
+        take = min(_GGUF_AR_NATIVE_MAX_SLOTS, remaining)
+        if remaining > _GGUF_AR_NATIVE_MAX_SLOTS and remaining - take == 1:
+            take -= 1
+        chunks.append(live_slots[index:index + take])
+        index += take
+    return chunks
+
+
+def record_ar_serving_token(generator: Any, slot: Any, token_id: int, request: Any) -> None:
+    from hipengine.generation.qwen35_gguf import _gguf_finished
+
+    token = int(token_id)
+    slot.generated_ids.append(token)
+    slot.prev_token = token
+    slot.seq_position += 1
+    slot.done = (
+        len(slot.generated_ids) >= int(request.max_tokens)
+        or _gguf_finished(slot.generated_ids, generator.tokenizer, request)
+    )
+
+
+def step_ar_serving_slot_serial(generator: Any, slot: Any, request: Any) -> None:
+    from hipengine.generation.qwen35_gguf import _timing_add
+
+    if slot.done:
+        return
+    generator._flush_ar_packed_decode_owners([slot])
+    raise_if_generation_deadline_expired(request)
+    decode_start = time.perf_counter()
+    step = slot.session.step(slot.prev_token, return_logits=False)
+    _timing_add(slot.timing, "decode_ms", decode_start)
+    generator._record_ar_serving_token(slot, int(step.token_id), request)
+    slot.serial_decode_steps += 1
+
+
 def run_ar_serving_slots(generator: Any, slots: list[Any], request: Any) -> None:
     from hipengine.generation.qwen35_gguf import (
         _gguf_ar_packed_decode_enabled,
