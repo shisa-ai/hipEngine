@@ -9381,22 +9381,36 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         discard_provider = getattr(
             getattr(self, "_mtp2_adapter", None), "discard_prefix_checkpoint", None,
         )
+        failures: list[BaseException] = []
+
+        def release(action, *args) -> None:
+            try:
+                action(*args)
+            except BaseException as exc:
+                failures.append(exc)
+
         if callable(discard_provider):
-            discard_provider(token_tuple)
+            release(discard_provider, token_tuple)
         if entry.retained:
             cache = self._prefix_cache
             pool = self._kv_pool
             if cache is None or pool is None:
-                raise RuntimeError("GGUF retained prefix snapshot outlived cache ownership")
-            cache.evict_entry(token_tuple)
-            pool.release_blocks(entry.block_ids)
+                failures.append(RuntimeError("GGUF retained prefix snapshot outlived cache ownership"))
+            if cache is not None:
+                release(cache.evict_entry, token_tuple)
+            if pool is not None:
+                release(pool.release_blocks, entry.block_ids)
         close = getattr(entry.snapshot, "close", None)
         if callable(close):
-            close()
+            release(close)
         self._prefix_snapshot_evictions += 1
         if entry.retained:
             by_reason = self._prefix_retained_evictions_by_reason
             by_reason[reason] = int(by_reason.get(reason, 0)) + 1
+        if failures:
+            for extra in failures[1:]:
+                failures[0].add_note(f"additional prefix release failure: {extra!r}")
+            raise failures[0]
         return True
 
     def _clear_prefix_snapshots(self) -> None:
