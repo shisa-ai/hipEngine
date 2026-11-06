@@ -9414,8 +9414,16 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         return True
 
     def _clear_prefix_snapshots(self) -> None:
+        failures: list[BaseException] = []
         for tokens in tuple(self._prefix_state_snapshots):
-            self._evict_prefix_snapshot(tokens, reason="clear")
+            try:
+                self._evict_prefix_snapshot(tokens, reason="clear")
+            except BaseException as exc:
+                failures.append(exc)
+        if failures:
+            for extra in failures[1:]:
+                failures[0].add_note(f"additional prefix eviction failure: {extra!r}")
+            raise failures[0]
 
     def evict_prefix_cache_for_pressure(self, required_pages: int) -> int:
         """Release reclaimable prefix pages before device-pool growth.
