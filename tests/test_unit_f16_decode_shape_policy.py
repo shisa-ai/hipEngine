@@ -106,3 +106,23 @@ def test_auto_decode_does_not_borrow_peer_capabilities(monkeypatch):
     assert dispatch._decode_strategy(
         rows=1, activation_dtype="bf16", backend="hip_gfx1100", in_features=3072,
     ) is None
+
+
+def test_decode_diagnostic_scope_restores_nested_error_and_context(monkeypatch):
+    from contextvars import Context
+
+    monkeypatch.setenv('HIPENGINE_LAGUNA_F16_DECODE', 'fixedk')
+    assert dispatch.current_f16_decode_strategy() == 'fixedk'
+    with dispatch.f16_decode_strategy('gemv'):
+        assert dispatch.current_f16_decode_strategy() == 'gemv'
+        assert Context().run(dispatch.current_f16_decode_strategy) == 'fixedk'
+        with pytest.raises(RuntimeError):
+            with dispatch.f16_decode_strategy('onebarrier'):
+                assert dispatch.current_f16_decode_strategy() == 'onebarrier'
+                raise RuntimeError('stop')
+        assert dispatch.current_f16_decode_strategy() == 'gemv'
+    assert dispatch.current_f16_decode_strategy() == 'fixedk'
+    with pytest.raises(ValueError, match='F16 decode strategy'):
+        with dispatch.f16_decode_strategy('unknown'):
+            pass
+    assert dispatch.current_f16_decode_strategy() == 'fixedk'

@@ -22,6 +22,32 @@ _PREFILL_MODES = frozenset({"auto", "gemv", "tiled", "wmma_comp_swa"})
 _PREFILL_STRATEGY: ContextVar[str] = ContextVar("f16_prefill_strategy", default="auto")
 _ENV_DECODE_MODE = "HIPENGINE_LAGUNA_F16_DECODE"
 _DECODE_MODES = frozenset({"auto", "fixedk", "gemv", "onebarrier"})
+_DECODE_STRATEGY: ContextVar[str | None] = ContextVar("f16_decode_strategy", default=None)
+
+
+def current_f16_decode_strategy() -> str:
+    selected = _DECODE_STRATEGY.get()
+    if selected is not None:
+        return selected
+    mode = os.environ.get(_ENV_DECODE_MODE, "auto").strip().lower() or "auto"
+    if mode not in _DECODE_MODES:
+        expected = ", ".join(sorted(_DECODE_MODES))
+        raise ValueError(f"{_ENV_DECODE_MODE} must be one of: {expected}")
+    return mode
+
+
+@contextmanager
+def f16_decode_strategy(mode: str) -> Iterator[None]:
+    """Select a decode comparison in this context, overriding the legacy env."""
+    selected = str(mode).strip().lower() or "auto"
+    if selected not in _DECODE_MODES:
+        expected = ", ".join(sorted(_DECODE_MODES))
+        raise ValueError(f"F16 decode strategy must be one of: {expected}")
+    token = _DECODE_STRATEGY.set(selected)
+    try:
+        yield
+    finally:
+        _DECODE_STRATEGY.reset(token)
 
 
 def current_f16_prefill_strategy() -> str:
@@ -92,10 +118,7 @@ def _decode_strategy(
 ) -> str | None:
     if rows != 1 or activation_dtype != "bf16":
         return None
-    mode = os.environ.get(_ENV_DECODE_MODE, "auto").strip().lower() or "auto"
-    if mode not in _DECODE_MODES:
-        expected = ", ".join(sorted(_DECODE_MODES))
-        raise ValueError(f"{_ENV_DECODE_MODE} must be one of: {expected}")
+    mode = current_f16_decode_strategy()
     if mode == "gemv":
         return None
     if mode == "fixedk":

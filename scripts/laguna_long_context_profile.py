@@ -709,13 +709,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     active_attention_rows = 128
     active_global_attention_rows = 128
     rows: list[dict[str, Any]] = []
-    original_f16_decode_mode = os.environ.get("HIPENGINE_LAGUNA_F16_DECODE")
-    if args.compare_f16_decode_onebarrier:
-        os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = "gemv"
-    if args.compare_f16_decode_fixedk:
-        os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = "onebarrier"
     load_started = time.perf_counter()
     diagnostic_scopes = ExitStack()
+    decode_scopes = ExitStack()
+    from hipengine.runtime.f16_weight_linear import f16_decode_strategy
+
+    if args.compare_f16_decode_onebarrier or args.compare_f16_decode_fixedk:
+        decode_scopes.enter_context(f16_decode_strategy(
+            "onebarrier" if args.compare_f16_decode_fixedk else "gemv"
+        ))
     try:
         owner = LagunaGGUFResidentSession(
             args.model,
@@ -1074,14 +1076,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         owner.set_prefill_dense_contiguous_cache(
                             mode == "candidate"
                         )
-                    if args.compare_f16_decode_onebarrier:
-                        os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = (
+                    if args.compare_f16_decode_onebarrier or args.compare_f16_decode_fixedk:
+                        decode_scopes.close()
+                        decode_mode = (
+                            "fixedk" if mode == "candidate" else "onebarrier"
+                        ) if args.compare_f16_decode_fixedk else (
                             "onebarrier" if mode == "candidate" else "gemv"
                         )
-                    if args.compare_f16_decode_fixedk:
-                        os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = (
-                            "fixedk" if mode == "candidate" else "onebarrier"
-                        )
+                        decode_scopes.enter_context(f16_decode_strategy(decode_mode))
                     if args.compare_swa_fixed512_reduce:
                         owner.kv_cache.swa_split_fixed512_reduce = (
                             mode == "candidate"
@@ -1214,19 +1216,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     )
         resident_nbytes = owner.resident_nbytes
     finally:
+        decode_scopes.close()
         diagnostic_scopes.close()
         if owner is not None:
             owner.close()
-        if (
-            args.compare_f16_decode_onebarrier
-            or args.compare_f16_decode_fixedk
-        ):
-            if original_f16_decode_mode is None:
-                os.environ.pop("HIPENGINE_LAGUNA_F16_DECODE", None)
-            else:
-                os.environ["HIPENGINE_LAGUNA_F16_DECODE"] = (
-                    original_f16_decode_mode
-                )
     tracked_after = memory_stats()
     gpu_free_after, gpu_total_after = runtime.mem_get_info()
     if gpu_total_after != gpu_total:
