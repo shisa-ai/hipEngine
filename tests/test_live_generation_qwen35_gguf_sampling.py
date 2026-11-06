@@ -5824,6 +5824,21 @@ def test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths(monkeypatch
                     max_prompt_tokens=4, max_batch_size=2, release_after_probe=release,
                 )
             assert len([call for call in calls if call[0] == "close"]) == before + 2
+    original_close = FakeSession.close
+    closed_slots = []
+
+    def failing_close(self):
+        closed_slots.append(self.slot_id)
+        original_close(self)
+        if len(closed_slots) == 1:
+            raise RuntimeError("close failed")
+
+    monkeypatch.setattr(FakeSession, "close", failing_close)
+    with pytest.raises(BaseException, match="close failed|cleanup failed"):
+        generator.prepare_request_scratch(
+            max_prompt_tokens=4, max_batch_size=2, release_after_probe=True,
+        )
+    assert len(closed_slots) == 2
 
 
 def test_specdec2_streaming_prompt_missing_adapter_preserves_candidate_budget(

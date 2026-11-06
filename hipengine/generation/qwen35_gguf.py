@@ -1981,6 +1981,21 @@ class Qwen35GGUFBringupGenerator:
             second = min(((int(slot_index) + 1) % max(1, max_token)) + 1, max_token)
             return (first, second)
 
+        def finish_probe_sessions(sessions, keys, *, discard: bool) -> None:
+            failures: list[BaseException] = []
+            while sessions:
+                session = sessions.pop()
+                key = keys.pop()
+                try:
+                    if discard:
+                        session.close()
+                    else:
+                        self._release_shared_session(key, session)
+                except BaseException as exc:
+                    failures.append(exc)
+            if failures:
+                raise BaseExceptionGroup("scratch probe cleanup failed", failures)
+
         warm_prompt_lengths = sorted({min(prompt_len, 40), prompt_len})
         prefill_batch_available = callable(getattr(Qwen35GGUFResidentSession, "prefill_batch_native", None))
 
@@ -2028,18 +2043,10 @@ class Qwen35GGUFBringupGenerator:
                         result["reason"] = f"packed_prefill_unsupported_width_{width}"
                         unsupported = True
                     except BaseException:
-                        for session in sessions:
-                            session.close()
-                        sessions = []
+                        finish_probe_sessions(sessions, keys, discard=True)
                         raise
                     finally:
-                        while sessions:
-                            session = sessions.pop()
-                            key = keys.pop()
-                            if release_after_probe:
-                                session.close()
-                            else:
-                                self._release_shared_session(key, session)
+                        finish_probe_sessions(sessions, keys, discard=release_after_probe)
                     if unsupported:
                         break
                     result["packed_ar_prefill_prompt_lengths"].append(int(target_len))
@@ -2150,18 +2157,10 @@ class Qwen35GGUFBringupGenerator:
                         result["packed_mtp_prefill_reason"] = f"packed_prefill_unsupported_width_{width}"
                         unsupported = True
                     except BaseException:
-                        for session in sessions:
-                            session.close()
-                        sessions = []
+                        finish_probe_sessions(sessions, session_keys, discard=True)
                         raise
                     finally:
-                        while sessions:
-                            session = sessions.pop()
-                            session_key = session_keys.pop()
-                            if release_after_probe:
-                                session.close()
-                            else:
-                                self._release_shared_session(session_key, session)
+                        finish_probe_sessions(sessions, session_keys, discard=release_after_probe)
                     if unsupported:
                         break
                     result["packed_mtp_prefill_prompt_lengths"].append(int(target_len))
