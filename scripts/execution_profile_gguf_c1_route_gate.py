@@ -105,7 +105,7 @@ def route_owner(session, values: Mapping[str, str]) -> Iterator[None]:
     previous = {name: getattr(owner, name) for name in names}
     try:
         for name, key in zip(names, _ROUTE_ENV_KEYS):
-            setattr(owner, name, values[key] == "1")
+            setattr(owner, name, str(values[key]) == "1")
         yield
     finally:
         for name, value in previous.items():

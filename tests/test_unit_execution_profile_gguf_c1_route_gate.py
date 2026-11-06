@@ -57,6 +57,26 @@ def test_route_owner_is_nested_restored_and_environment_independent(monkeypatch,
     assert runner.router_f32w_persistent_counter is True
 
 
+@pytest.mark.parametrize("bad", ["invalid", "true", None])
+def test_route_owner_rejects_invalid_values_without_mutation(bad):
+    runner = SimpleNamespace(router_f32w_coop=None, router_f32w_persistent_counter=True)
+    values = dict(gate.STRICT_ENVIRONMENT)
+    values[gate._ROUTE_ENV_KEYS[0]] = bad
+    with pytest.raises(ValueError, match="0 or 1"):
+        with gate.route_owner(SimpleNamespace(runner=runner), values):
+            pass
+    assert runner.router_f32w_coop is None
+    assert runner.router_f32w_persistent_counter is True
+
+
+def test_route_owner_normalizes_binary_values_consistently():
+    runner = SimpleNamespace(router_f32w_coop=None, router_f32w_persistent_counter=None)
+    values = {key: 1 for key in gate._ROUTE_ENV_KEYS}
+    with gate.route_owner(SimpleNamespace(runner=runner), values):
+        assert runner.router_f32w_coop is True
+        assert runner.router_f32w_persistent_counter is True
+
+
 def test_route_environment_rejects_partial_manifest() -> None:
     with pytest.raises(ValueError, match="missing"):
         with gate.route_environment({gate._ROUTE_ENV_KEYS[0]: "1"}):
