@@ -1380,33 +1380,6 @@ separately, recording which route actually runs, repeat output, shrinking groups
 deadline/cancellation/failure, drained futures and zero leaked streams/allocations. Do not label a
 compatibility-only worker change as a resident scheduler improvement.
 
-### R0281-TAIL-RMS — Chained norms and MoE graph diagnostic migration
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_MOE_TAIL_NEXT_RMS`.
-
-**Implemented:** the graph comparison explicitly requests unchained execution through
-`moe_tail_next_rms=False`; session-local selection does not mutate shared runners. The environment
-reader is retired (`ec9106d64`), with default chaining unchanged and stale values ignored.
-Focused routing/dispatch/constructor checks pass (99 tests), as do 13 BF16/FP16 primitive cases.
-Actual-weight eager/graph token parity and nonzero capture/replay with zero rejects pass on
-Qwen3.6-35B-A3B UD-Q4_K_M (`24785b826`). Public default generation repeats exact tokens across
-three unequal prompts, traces chaining, and releases tracked allocations after close, including
-with stale environment value `0` (`3bb2dede2`, `ec9106d64`).
-
-**Remaining validation:** public unequal prompts above ran serially with one active request;
-they do not establish packed-ragged scheduling or independent cache/recurrent-state/logit parity.
-Complete the named public ragged/state checks before closing this entry; do not remigrate the
-retired reader or repeat completed serial token/cleanup checks.
-
-Done when: run `tests/test_unit_qwen35_gguf_moe_tail_next_rms_routing.py` and
-`tests/test_unit_qwen35_gguf_iq_dispatch.py`, plus BF16/FP16 primitive fused/ unfused parity gates.
-The routing test pins that graph acquisition occurs only for unchained layers. If keeping the graph
-comparison, run its live parity test with real capture/replay counters after migrating its control.
-A reader change also needs public decode with short/long/ragged requests, selected path, repeat
-output and cleanup; independent state/logit comparison still owns any arithmetic claim.
-
 ### R0281-INT8-POLICY — Legacy context and layout diagnostic controls
 
 Owner: `hipengine/generation/qwen35_gguf.py`.

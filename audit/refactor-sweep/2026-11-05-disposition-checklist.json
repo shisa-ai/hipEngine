@@ -1969,11 +1969,12 @@
       "ledger_line": 1477,
       "owner": "`hipengine/runtime/qwen35_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/runtime/qwen35_gguf_runner.py:9190,9459 retains tail norm control; 25741 documents per-layer graph route."
+        "ec9106d64 retires reader; c34e19549 and 5eb65e29c migrate owner and caller; 24785b826 verifies actual-weight graph parity/counters.",
+        "worklog/entries/20261106T145752.531652Z-lhl-r0281-tail-close-384ca2.md records public serial and packed unequal-prompt route/repeat/cleanup and closure limits."
       ],
-      "next_action": "Reader retired in ec9106d64 after owner/caller migration, 99 focused host tests, 13 GPU primitives, actual-weight graph counter/token parity and public serial unequal-prompt route/repeat/zero-allocation teardown. Complete public packed-ragged/state coverage before closing; no checkpoint blocker and no need to repeat completed serial checks.",
+      "next_action": "None: control migration complete, production chaining unchanged. Independent state/logit equality is required only for a future arithmetic claim.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
