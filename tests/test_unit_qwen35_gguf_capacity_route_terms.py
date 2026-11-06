@@ -500,7 +500,8 @@ def test_refused_packed_decode_workspace_falls_back_to_row_decode() -> None:
     owner = Owner()
     sessions = (object(), object())
     slots = [
-        SimpleNamespace(session=session, prev_token=1, seq_position=10, generated_ids=[2])
+        SimpleNamespace(session=session, prev_token=1, seq_position=10, generated_ids=[2],
+                        packed_decode_owner=None)
         for session in sessions
     ]
     rows = [

@@ -75,7 +75,7 @@ def test_resident_sessions_no_longer_pass_a_literal_route_flag():
     """
     import re
 
-    source = SOURCE.read_text()
+    source = SOURCE.read_text() + (SOURCE.parent / "gguf_ar_batch_diagnostic.py").read_text()
     pinned = re.findall(r'pool_name="([a-z_0-9]+)",\s*\n\s*use_wmma_prefill=True,', source)
     # One deliberate exception: the dense speculative MTP route was never part of this seam.
     assert set(pinned) <= {"mtp_target_dense"}, f"unexpected literal-pinned pools: {pinned}"

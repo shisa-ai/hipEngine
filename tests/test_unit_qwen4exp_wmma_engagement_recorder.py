@@ -100,7 +100,12 @@ def test_recorder_is_inert_when_not_installed():
     assert module._wmma_prefill_dispatch_records.get() is None
 
 
-def test_engaged_rewrite_is_recorded_with_the_outgoing_variant():
+def test_engaged_rewrite_is_recorded_with_the_outgoing_variant(monkeypatch):
+    module = _gguf_linear()
+    # This recorder test supplies a registered candidate independently of the
+    # backend catalog; missing candidates have separate decline coverage.
+    monkeypatch.setattr(module, "_ensure_linear_kernel_registered", lambda key: None)
+    monkeypatch.setattr(module, "is_registered", lambda key: True)
     out, record = _decide("prefill_q8_0_f32_f32_out", "raw", rows=512, use_wmma=True)
     assert record["engaged"] is True
     assert record["reason"] == "engaged"

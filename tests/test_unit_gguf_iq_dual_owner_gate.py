@@ -26,6 +26,10 @@ class _FakeAllocation:
 class _FakeWeight:
     backend = "hip_gfx1100"
 
+    class spec:
+        layout = "raw_gguf"
+        quant_key = "gguf_iq4_xs"
+
     def allocation(self, name):
         return _FakeAllocation()
 
