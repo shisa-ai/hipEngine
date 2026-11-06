@@ -7472,6 +7472,15 @@ class _GGUFT16PairOperand:
 
 
 @dataclass(frozen=True)
+class _GGUFPairOperandContract:
+    """Weight metadata needed to bind a pair decision without owning storage."""
+
+    layout: str
+    quant_key: str
+    out_features: int
+
+
+@dataclass(frozen=True)
 class _GGUFLinearPairDecision:
     """Immutable operation selection without resident weights or device pointers."""
 
@@ -7482,6 +7491,7 @@ class _GGUFLinearPairDecision:
     out_features_b: int
     activation_dtype: str
     output_dtype: str
+    operand_contracts: tuple[_GGUFPairOperandContract, _GGUFPairOperandContract]
     operation: str | None
     pair_key: KernelKey | None
     t16_operands: tuple[_GGUFT16PairOperand, ...]
@@ -7496,6 +7506,13 @@ class _GGUFLinearPairDecision:
     def bind(
         self, operands: tuple[_GGUFPairedOperand, _GGUFPairedOperand],
     ) -> _GGUFLinearPairPlan:
+        if len(operands) != 2:
+            raise ValueError("GGUF pair binding needs exactly two operands")
+        for index, (operand, contract) in enumerate(
+            zip(operands, self.operand_contracts, strict=True)
+        ):
+            if _pair_operand_contract(operand) != contract:
+                raise ValueError(f"GGUF pair binding operand {index} contract changed")
         return _GGUFLinearPairPlan(
             **{name: getattr(self, name)
                for name in _GGUFLinearPairDecision.__dataclass_fields__},
@@ -9624,6 +9641,14 @@ def _pair_plan_operand(
     return _GGUFPairedOperand(weight=weight, out_features=int(out_features))
 
 
+def _pair_operand_contract(operand: _GGUFPairedOperand) -> _GGUFPairOperandContract:
+    return _GGUFPairOperandContract(
+        layout=str(operand.weight.spec.layout),
+        quant_key=str(operand.weight.spec.quant_key),
+        out_features=operand.out_features,
+    )
+
+
 def _pair_plan_library(
     plan: _GGUFLinearPairPlan,
     libraries: Mapping[str, ctypes.CDLL] | None,
@@ -9783,6 +9808,7 @@ def _resolve_gguf_linear_pair_plan(
             out_features_b=out_features_b,
             activation_dtype=activation_dtype,
             output_dtype=output_dtype,
+            operand_contracts=tuple(_pair_operand_contract(operand) for operand in operands),
             operation=operation,
             pair_key=pair_key,
             t16_operands=t16_operands,

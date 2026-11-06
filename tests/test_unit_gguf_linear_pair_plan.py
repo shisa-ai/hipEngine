@@ -573,6 +573,13 @@ def test_pair_decision_excludes_resident_operands_and_rebinds_per_launch():
         gl._bind_pair_plan_owners(rebound, *weights[2:])
         with pytest.raises(ValueError, match='owner changed'):
             gl._bind_pair_plan_owners(first, *weights[2:])
+        incompatible = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key='gguf_q8_0')
+        bad_operand = gl._pair_plan_operand(incompatible, out_features=8192)
+        with pytest.raises(ValueError, match='operand 0.*contract'):
+            first.decision.bind((bad_operand, peer.operands[1]))
+        wrong_width = gl._pair_plan_operand(weights[2], out_features=17)
+        with pytest.raises(ValueError, match='operand 0.*contract'):
+            first.decision.bind((wrong_width, peer.operands[1]))
     finally:
         gl.clear_gguf_linear_dispatch_cache()
 
