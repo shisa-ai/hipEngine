@@ -2454,11 +2454,11 @@
       "ledger_line": 1888,
       "owner": "`hipengine/runtime/laguna_gguf_runner.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
         "hipengine/runtime/laguna_gguf_runner.py:2972,4175 retains Q4 activation-sum comparison setter."
       ],
-      "next_action": "Separate shape-default P8 and explicit sum/non-P8 primitive references, coordinating sidecar producer/consumer and leaf callers.",
+      "next_action": "Host migration complete through cb01a8b17: restoring Q4 sum and selected-MoE scopes; persistent setters and unused Q4 constructor override retired; generalized/rows64/grouped/category/oracle/matrix/profiler callers migrated. 247 affected host plus 41 selected-mode/leaf cases pass; full Q4/Q6 synthetic gfx1151 MoE oracle: 2 passed. P8 thresholds, strict non-P8 bodies and explicit leaf sidecar producer/consumer ownership unchanged. Remaining actual-weight comparisons and public varied-chunk selected-state/cleanup need accessible Laguna checkpoint (configured artifacts absent per R0341).",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

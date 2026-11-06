@@ -1678,11 +1678,18 @@ Owner: `hipengine/runtime/laguna_gguf_runner.py`.
 
 Scope: `LLM.generate()`.
 
-**Remaining work:** separate production shape policy from explicit primitive references across
-resident constructor/setters, generalized comparison, leaf tooling and live numerical fixtures.
-Retain non-P8 bodies for sub-512 chunks, and keep sidecar allocation/producer/consumer ownership
-together. Actual-weight and public validation share the local Laguna artifact resource blocker
-recorded in R0313–R0320; no runtime admission rule is added.
+**Host migration complete:** Q4 sum comparisons use `q4_activation_sums_diagnostic`;
+selected gate/down references use `selected_moe_diagnostic`. Persistent setters and the
+unused Q4 sum constructor override are removed. Generalized, rows64, grouped-prefill,
+category/cumulative-oracle, matrix and profiler callers use restoring scopes. Production
+P8 thresholds, non-P8 sub-512 bodies, leaf sidecar producers/consumers and result labels
+are unchanged. See
+`worklog/entries/20261106T131437.754459Z-lhl-r0333-selected-setters-3e855a.md`.
+
+**Remaining dependency:** generalized actual-weight P8/non-P8 and sums comparisons,
+plus public varied-chunk selection/full-state/cleanup checks, need an accessible Laguna
+checkpoint; configured local artifacts are absent. Host affected/leaf checks and synthetic
+full Q4/Q6 MoE numerical cases pass on gfx1151.
 
 Done when: run Q4 P8 policy, selected-MMQ-mode, generalized-comparison, runner and full
 MoE numerical contracts after the coordinated migration. Run the generalized P8/non-P8 and
