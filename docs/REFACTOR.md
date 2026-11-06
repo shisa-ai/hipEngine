@@ -2116,30 +2116,6 @@ optimization. Run the full profile gate and matched whole-model prefill/decode c
 arithmetic or performance candidate, keeping the serial strict fallback. Remove this follow-up only
 after the decode work is completed or the lead explicitly retires it.
 
-### R0422 — Automatic context-sizing control policy
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `hipengine/generation/qwen35_gguf.py`.
-
-**Deferred decision:** retain the five environment controls as explicit calibration/rollback
-interfaces, or replace them with an owned sizing policy. `HIPENGINE_GGUF_AUTO_CONTEXT` controls both
-selection and allocation backoff; `HIPENGINE_GGUF_AUTO_CONTEXT_ATTEMPTS` bounds retries.
-`HIPENGINE_GGUF_KV_CAPACITY_RESERVE_MIB`, `HIPENGINE_GGUF_KV_TRANSIENT_KIB_PER_TOKEN` and
-`HIPENGINE_GGUF_KV_TRANSIENT_FIXED_MIB` override the reserve and transient terms. Route-derived
-pricing does not eliminate the flat-model fallback or the unpriced reserve. A benchmark cycle or
-unspecified production mileage alone does not settle the interface decision.
-
-Done when: choose the control interface, migrate all readers and allocation probes
-together, and preserve default route pricing, unavailable- geometry fallback, explicit context
-handling, retry bounds and rollback semantics. Run `tests/test_unit_qwen35_gguf_capacity.py`,
-`tests/test_unit_qwen35_gguf_capacity_route_terms.py` and
-`tests/test_unit_gguf_server_allocation_probe.py`; exercise the changed policy through a real server
-allocation probe, checking reported versus allocated context and teardown. Recalibrate reserve and
-transient terms together if changing their values, following the capacity protocol in
-`benchmarks/HARNESSES.md`. Do not delete the generator cache without assigning its selection, DMS
-and retry responsibilities to another owner.
-
 ### R0444 — Risk multiplier ownership and repair-grid follow-up
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.

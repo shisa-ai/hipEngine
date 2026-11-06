@@ -3524,11 +3524,13 @@
       "ledger_line": 2827,
       "owner": "`hipengine/generation/qwen35_gguf.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "completed",
       "evidence": [
-        "hipengine/generation/qwen35_gguf.py:600-622 retains five explicit sizing/backoff/reserve controls."
+        "Retain all five sizing calibration/rollback controls and unchanged cache/pricing/backoff semantics.",
+        "160 capacity/route-term/server-probe unit tests pass.",
+        "worklog/entries/20261106T005606.514943Z-lhl-r0422-sizing-controls-78132d.md"
       ],
-      "next_action": "Bind sizing/calibration policy to explicit owner and migrate allocation probes while preserving retry/context semantics; recalibration is separate from control cleanup.",
+      "next_action": "None; no policy/value recalibration or capacity claim.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "diagnostic_disposition",
