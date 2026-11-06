@@ -1575,7 +1575,12 @@ class Qwen4ExpGGUFBatchRunner:
     def blocks_for_positions(self, positions: int) -> int:
         """Paged blocks a request of ``positions`` positions holds."""
 
-        needed = int(positions)
+        if isinstance(positions, (bool, np.bool_)):
+            raise ValueError("positions must be a positive integer")
+        try:
+            needed = operator.index(positions)
+        except TypeError:
+            raise ValueError("positions must be a positive integer") from None
         if needed <= 0:
             raise ValueError("positions must be positive")
         return (needed + self.block_size - 1) // self.block_size
@@ -1682,6 +1687,12 @@ class Qwen4ExpGGUFBatchRunner:
             raise RuntimeError(
                 f"slot {parsed} is already owned by request {self._owners[parsed]}"
             )
+        if positions is not None:
+            self.blocks_for_positions(positions)
+            if positions > self.max_positions:
+                raise ValueError(
+                    f"{positions} positions exceed the per-slot capacity {self.max_positions}"
+                )
         if self.pooled:
             if positions is None:
                 raise ValueError("a pooled batch runner admits a slot with its positions")
@@ -1713,11 +1724,6 @@ class Qwen4ExpGGUFBatchRunner:
                 self._block_host[parsed, :] = 0
                 self._slot_blocks[parsed] = 0
                 raise
-        elif positions is not None and int(positions) > self.max_positions:
-            raise ValueError(
-                f"{int(positions)} positions exceed the per-slot capacity "
-                f"{self.max_positions}"
-            )
         if not self.pooled:
             self._zero_slot(parsed)
         self._poisoned.discard(parsed)

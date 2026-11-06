@@ -884,6 +884,20 @@ def test_block_table_copy_plan_preserves_prefix(position) -> None:
     assert plan == tuple(expected)
 
 
+@pytest.mark.parametrize("positions", [True, 3.5, 0, -1])
+@pytest.mark.parametrize("pooled", [False, True])
+def test_admission_rejects_invalid_extent_before_reserving(positions, pooled) -> None:
+    runner = _fake_runner(slots=2)
+    runner.pooled = pooled
+    runner._free_blocks = [0, 1, 2, 3]
+    before = runner._block_host.copy()
+    with pytest.raises(ValueError):
+        runner.admit(0, positions=positions)
+    assert runner.free_slots == (0, 1)
+    assert runner._free_blocks == [0, 1, 2, 3]
+    np.testing.assert_array_equal(runner._block_host, before)
+
+
 @pytest.mark.parametrize("failure", ["reset", "mapping"])
 def test_pooled_admission_reset_failure_returns_reserved_blocks(monkeypatch, failure) -> None:
     runner = _fake_runner(slots=2)
