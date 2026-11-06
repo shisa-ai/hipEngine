@@ -2631,7 +2631,7 @@
       "evidence": [
         "hipengine/runtime/laguna_gguf_runner.py:2953-2956,3411-3445 retains four independent preappend/meta/qrow/dense controls."
       ],
-      "next_action": "Immutable cached-prefill constructor policy and all three A/B child callers migrated in 176a6f071/1e8dcc92c; explicit resident lifecycle passes (1209ebf87), maintained gfx1151 source/wrap device cases pass (bc78f9a34). Migrate cache consumption before compatibility retirement and complete partial/eviction/verifier coverage. Public selected-state/cleanup matrix still needs accessible Laguna checkpoint; package-role maps remain separate.",
+      "next_action": "Construction and all A/B callers migrated (176a6f071/1e8dcc92c); KV identity forwarding and immutable selection completed (2c37298a9/b77db9c88). Explicit-policy eviction fallback passes (7dbd18599), actual selected initial global/SWA device output equality passes (d7ed80211). Complete GPU partial/eviction/verifier coverage before compatibility retirement; public selected-state/cleanup matrix needs accessible Laguna checkpoint. Package-role maps remain separate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",

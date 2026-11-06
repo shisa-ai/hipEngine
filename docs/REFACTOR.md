@@ -1867,8 +1867,14 @@ KV forwarding and close. Maintained cached-preappend/source and bulk global/SWA 
 comparisons pass on gfx1151. See
 `worklog/entries/20261106T140435.988093Z-lhl-r0321-device-b5271d.md`.
 
-**Remaining work:** migrate cache policy consumption before retiring compatibility fields/inputs;
-complete partial/eviction/verifier coverage and public selected-variant/state/cleanup matrix.
+**Cache migration:** resident construction forwards policy identity into KV allocation, and cached
+attention selection consumes the policy directly. Direct-cache legacy defaults remain false;
+ambiguous policy plus overrides fails before runtime acquisition. Explicit-policy eviction
+fallback and selector-to-device initial global/SWA output equality pass. See
+`worklog/entries/20261106T141438.269623Z-lhl-r0321-device-route-6f4ad7.md`.
+
+**Remaining work:** complete GPU partial/eviction/verifier coverage and public
+selected-variant/state/cleanup matrix before retiring compatibility inputs.
 Public model checks need the accessible Laguna artifact described in R0313–R0320. This dependency
 does not restrict execution or disable defaults.
 
