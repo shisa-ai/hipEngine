@@ -580,6 +580,12 @@ def test_pair_decision_excludes_resident_operands_and_rebinds_per_launch():
         wrong_width = gl._pair_plan_operand(weights[2], out_features=17)
         with pytest.raises(ValueError, match='operand 0.*contract'):
             first.decision.bind((wrong_width, peer.operands[1]))
+        other_backend = _fake_weight(layout=LAYOUT_GGUF_Q8_0_T16,
+                                    quant_key='gguf_q8_0_t16_v1',
+                                    backend='cuda_sm86')
+        other_operand = gl._pair_plan_operand(other_backend, out_features=8192)
+        with pytest.raises(ValueError, match='operand 0.*backend'):
+            first.decision.bind((other_operand, peer.operands[1]))
     finally:
         gl.clear_gguf_linear_dispatch_cache()
 

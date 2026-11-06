@@ -7513,6 +7513,9 @@ class _GGUFLinearPairDecision:
         ):
             if _pair_operand_contract(operand) != contract:
                 raise ValueError(f"GGUF pair binding operand {index} contract changed")
+            resident_backend = getattr(operand.weight, "backend", None)
+            if resident_backend is not None and str(resident_backend) != self.backend:
+                raise ValueError(f"GGUF pair binding operand {index} backend changed")
         return _GGUFLinearPairPlan(
             **{name: getattr(self, name)
                for name in _GGUFLinearPairDecision.__dataclass_fields__},
@@ -8116,6 +8119,9 @@ class _GGUFPairSiluDecision:
             )
             if current != contract:
                 raise ValueError(f"GGUF pair-SiLU binding operand {index} contract changed")
+            resident_backend = getattr(operand.weight, "backend", None)
+            if resident_backend is not None and str(resident_backend) != self.backend:
+                raise ValueError(f"GGUF pair-SiLU binding operand {index} backend changed")
         return _GGUFPairSiluPlan(
             **{name: getattr(self, name)
                for name in _GGUFPairSiluDecision.__dataclass_fields__},

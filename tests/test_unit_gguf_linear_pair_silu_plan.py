@@ -527,6 +527,11 @@ def test_pair_silu_decision_rebinds_without_resident_references(monkeypatch):
     with pytest.raises(ValueError, match='operand 0.*contract'):
         decision.bind((gguf_linear_module._GGUFPairSiluOperand(incompatible),
                        rebound.operands[1]))
+    other_backend = _Weight('a', Q4_PACK8_DECODE.quant, decode_tiles=True)
+    other_backend.backend = 'cuda_sm86'
+    with pytest.raises(ValueError, match='operand 0.*backend'):
+        decision.bind((gguf_linear_module._GGUFPairSiluOperand(other_backend),
+                       rebound.operands[1]))
 
 
 def test_pair_silu_plan_rejects_registry_change(monkeypatch):
