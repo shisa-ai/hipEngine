@@ -9301,8 +9301,9 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 for ptr, size in inventory:
                     allocations[int(ptr)] = max(allocations.get(int(ptr), 0), int(size))
             if store is not None:
-                for ptr, size in store.device_allocations_for(key):
-                    allocations[int(ptr)] = max(allocations.get(int(ptr), 0), int(size))
+                for (kind, identity), size in store.device_owner_charges_for(key):
+                    charges = allocations if kind == "device" else legacy
+                    charges[identity] = max(charges.get(identity, 0), size)
         if all_provider and store is not None:
             for key in store.token_keys():
                 for (kind, identity), size in store.device_owner_charges_for(key):
