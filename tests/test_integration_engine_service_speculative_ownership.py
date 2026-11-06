@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import threading
+import time
 
 import pytest
 
@@ -650,7 +651,7 @@ def test_generic_only_real_adapter_advances_bounded_children() -> None:
         service.close()
 
 
-@pytest.mark.parametrize("terminal", ["cancel", "shutdown", "close_error"])
+@pytest.mark.parametrize("terminal", ["cancel", "shutdown", "close_error", "deadline"])
 def test_generic_only_real_adapter_retires_paused_child(terminal) -> None:
     retired = []
 
@@ -682,12 +683,15 @@ def test_generic_only_real_adapter_retires_paused_child(terminal) -> None:
     adapter = SubmitPollTextGenerator(inner, capacity=1)
     service = EngineService(adapter, idle_wait_seconds=0.001)
     try:
-        handle = service.submit_speculative_child(_request("paused"))
+        request = _request("paused")
+        if terminal == "deadline":
+            request = replace(request, deadline_at=time.monotonic() + 0.05)
+        handle = service.submit_speculative_child(request)
         if terminal == "shutdown":
             service.close()
-        else:
+        elif terminal != "deadline":
             assert handle.cancel()
-        with pytest.raises((GenerationCancelled, RuntimeError)):
+        with pytest.raises((GenerationCancelled, RuntimeError, TimeoutError)):
             handle.result(timeout=2)
         assert len(retired) == 1
         assert not adapter._generic_speculative_children
