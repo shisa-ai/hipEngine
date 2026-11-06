@@ -153,19 +153,6 @@ def _mode_scope(session, runtime_mode):
             yield
 
 
-def _apply_mode(
-    session: LagunaGGUFResidentSession,
-    runtime_mode: str,
-) -> None:
-    selected_down_prefix = "selected_down:"
-    if runtime_mode.startswith(selected_down_prefix):
-        session.set_selected_down_mode(
-            runtime_mode.removeprefix(selected_down_prefix)
-        )
-    else:
-        session.set_selected_gate_up_mode(runtime_mode)
-
-
 def main() -> int:
     args = _parse_args()
     if args.repetitions <= 0:

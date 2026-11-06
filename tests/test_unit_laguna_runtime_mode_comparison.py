@@ -32,19 +32,20 @@ def test_mode_parser_preserves_generalized_arms_and_owns_default_copy():
 
 
 @pytest.mark.parametrize("mode,expected", [
-    ("mmq128x32_d8_f32_wavecols_direct_doublebuf", [("gate", "mmq128x32_d8_f32_wavecols_direct_doublebuf")]),
-    ("selected_down:custom_down", [("down", "custom_down")]),
+    ("mmq128x32_d8_f32_wavecols_direct_doublebuf", {"gate_up": "mmq128x32_d8_f32_wavecols_direct_doublebuf"}),
+    ("selected_down:custom_down", {"down": "custom_down"}),
 ])
 def test_comparison_applies_only_requested_runtime_controls(mode, expected):
     calls = []
-    session = SimpleNamespace(**{
-        method: lambda value, label=label: calls.append((label, value))
-        for method, label in (
-            ("set_selected_gate_up_mode", "gate"), ("set_selected_down_mode", "down"),
-        )
-    })
-    comparison._apply_mode(session, mode)
-    assert calls == expected
+    @contextmanager
+    def diagnostic(**kwargs):
+        calls.append(kwargs)
+        yield
+
+    session = SimpleNamespace(selected_moe_diagnostic=diagnostic)
+    with comparison._mode_scope(session, mode):
+        assert calls == [expected]
+    assert calls == [expected]
 
 
 @pytest.mark.parametrize("failure", [False, True])
