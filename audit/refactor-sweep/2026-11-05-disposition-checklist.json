@@ -3885,11 +3885,11 @@
       "ledger_line": 3135,
       "owner": "`hipengine/generation/engine_loop.py`.",
       "review_status": "reviewed",
-      "disposition": "locally_actionable",
+      "disposition": "concrete_dependency_blocker",
       "evidence": [
-        "hipengine/generation/engine_loop.py:2684-2688,2863 checks activation readiness before admission."
+        "f36d36e93 enables request-scoped overlapping prompt claims; 305ec5a90 verifies interleaved sink payloads and cancellation. Focused adapter/scheduler bundle: 227 passed; sink/priming: 202 passed. ctypes.CDLL('libamdhip64.so') fails locally with missing shared library."
       ],
-      "next_action": "Implement co-activation with provider slot claims and partial-failure isolation, then compare public unequal-length batches against single-request baselines.",
+      "next_action": "Run public unequal-length batches against single-request token/acceptance baselines and verify teardown on a host with HIP and compatible GGUF/NextN artifacts. Co-activation implementation and host payload isolation are complete; do not repeat them.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4835,7 +4835,7 @@
       "evidence": [
         "hipengine/generation/engine_loop.py:697 retains whole-request speculative submission seam."
       ],
-      "next_action": "Inventory non-staged providers and migrate to bounded staged lifecycle before removing synchronous compatibility ownership; preserve direct strict oracle and explicit errors.",
+      "next_action": "Built-in Qwen/Flash-Next staged, Gemma buffered and Laguna generic owners inventoried in d3bac927b. Define bounded contracts for dynamically attached compatibility providers before removing the seam. Partial admission and cleanup-error draining repaired in 9050e09df/70174e5cf/1eb87ec55; 102 focused tests passed. Preserve direct strict controls and run actual-model public validation after migration.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -4855,7 +4855,7 @@
       "evidence": [
         "hipengine/generation/qwen35_gguf_mtp2.py:1041,2304,6956-7007 still stores prompt hidden and catch-up consumers."
       ],
-      "next_action": "Migrate streamed prefix restore/COW/incremental transitions and actual replay consumers before deleting prompt hidden storage; verify serving streaming actually ran.",
+      "next_action": "Migrate streamed prefix restore/COW/incremental transitions and actual replay consumers before deleting prompt hidden storage; verify serving streaming actually ran. Provisional refill release and batch setup drain are repaired in 54399538b/a7494e7f7 with 185 focused tests passing; do not mistake cleanup repair for replay retirement.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
@@ -5058,7 +5058,7 @@
       "evidence": [
         "hipengine/kvcache/ remains dense/DMS allocator owner; current runner still binds base-pointer legacy paths."
       ],
-      "next_action": "Inventory chunk-local/base-pointer consumers, migrate to page-table leases and DMS transient owner before factory/identity retirement; preserve same-arena snapshot ownership.",
+      "next_action": "Migrate chunk-local/base-pointer consumers and DMS transient ownership to page-table leases before factory/identity retirement; preserve same-arena snapshot ownership. Pool/chunk close draining and no-retry ownership repaired in cdb77edfe/0b88d04ea (140-test pool bundle, then 49-test chunk bundle). Actual ordinary/DMS growth and public-device checks remain separate.",
       "prior_audit": {
         "source": "audit/refactor-sweep/2026-10-31-classification.json",
         "primary": "local_implementation",
