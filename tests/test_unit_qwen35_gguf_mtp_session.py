@@ -855,6 +855,54 @@ def test_streaming_prompt_sink_preserves_shifted_rows_across_chunk_partitions(
     assert freed == [pending.ptr]
 
 
+@pytest.mark.parametrize("cancel_short", [False, True])
+def test_streaming_prompt_sinks_keep_shifted_rows_when_interleaved(monkeypatch, cancel_short):
+    memory = {}
+    freed = []
+    allocations = iter((0x1000, 0x2000))
+    def allocate(nbytes, *, runtime):
+        ptr = next(allocations)
+        memory[ptr] = 0
+        return DeviceBuffer(ptr, nbytes)
+    monkeypatch.setattr(mtp_module, "malloc", allocate)
+    monkeypatch.setattr(mtp_module, "free", lambda buffer, **kwargs: freed.append(buffer.ptr))
+    class Runtime:
+        def memset(self, ptr, value, nbytes):
+            memory[int(ptr)] = int(value)
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            memory[int(dst)] = memory[int(src)]
+    seen = {7: [], 8: []}
+    class Executor:
+        def enqueue_prompt_rows(self, request_id, token_ids, *, position_start,
+                                target_hidden_base_ptr, hidden_stride_bytes, stream):
+            for index, token in enumerate(token_ids):
+                seen[request_id].append((token, position_start + index,
+                    memory[target_hidden_base_ptr + index * hidden_stride_bytes]))
+    prompts = {7: tuple(range(101, 110)), 8: (201, 202, 203)}
+    sinks = {rid: mtp_module._StreamingNextNPromptSink(
+        request_id=rid, prompt_tokens=tokens, hidden_size=4,
+        executor=Executor(), runtime=Runtime(), checkpoint=None,
+    ) for rid, tokens in prompts.items()}
+    # Reuse one target chunk slab across both requests, as the real owner does.
+    for rid, start, count in ((7, 0, 4), (8, 0, 2), (7, 4, 4), (8, 2, 1), (7, 8, 1)):
+        if rid == 8 and start == 2 and cancel_short:
+            sinks[8].close()
+            continue
+        for index in range(count):
+            memory[0x4000 + index * 8] = rid * 1000 + start + index
+        sinks[rid].consume(request_id=rid, chunk_start=start,
+                           hidden_ptr=0x4000, rows=count, stream=0)
+    for rid, tokens in prompts.items():
+        length = 2 if rid == 8 and cancel_short else len(tokens)
+        assert seen[rid] == [(tokens[pos], pos, 0 if pos == 0 else rid * 1000 + pos - 1)
+                             for pos in range(length)]
+        if not (rid == 8 and cancel_short):
+            sinks[rid].finish(request_id=rid, total_rows=len(tokens), stream=0)
+            assert memory[sinks[rid].final_pending_hidden.ptr] == rid * 1000 + len(tokens) - 1
+            sinks[rid].close()
+    assert sorted(freed) == [0x1000, 0x2000]
+
+
 def test_streaming_prompt_sink_supports_warm_offset_and_fails_closed_on_owner_mismatch(
     monkeypatch,
 ) -> None:
