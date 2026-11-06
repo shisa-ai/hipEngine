@@ -1746,12 +1746,16 @@ class Qwen35GGUFMTP2Adapter:
                 if automatic_singleton
                 else max(len(pending), self._max_physical_requests())
             )
-            provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
-                targets[0],
-                max_positions=max_positions,
-                pool_enabled=self.owner._shared_runner is not None,
-                max_requests=provider_capacity,
-            )
+            try:
+                provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
+                    targets[0],
+                    max_positions=max_positions,
+                    pool_enabled=self.owner._shared_runner is not None,
+                    max_requests=provider_capacity,
+                )
+            except BaseException:
+                self._active_prompt_claims = None
+                raise
             if not callable(getattr(provider.executor, "enqueue_prompt_rows", None)):
                 self.generator._release_mtp_draft_runner(pool_key, provider)
                 self._active_prompt_claims = None

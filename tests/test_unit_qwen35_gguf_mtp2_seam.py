@@ -3956,10 +3956,11 @@ def test_packed_prompt_hidden_sinks_consume_post_output_norm_rows(monkeypatch) -
     ) == 0x4000
 
 
+@pytest.mark.parametrize("acquire_fails", [False, True])
 @pytest.mark.parametrize("released_bulk", [False, True])
 @pytest.mark.parametrize("split_finish", [False, True])
 def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
-    monkeypatch, released_bulk, split_finish,
+    monkeypatch, released_bulk, split_finish, acquire_fails,
 ) -> None:
     class Runtime:
         pass
@@ -4102,6 +4103,17 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     adapter.register_request(8, 2)
     adapter.physical_prompt_streaming = True
 
+    if acquire_fails:
+        acquire = generator._acquire_dense_mtp_draft_provider
+        def fail_acquire(*args, **kwargs):
+            raise MemoryError("provider allocation failed")
+        generator._acquire_dense_mtp_draft_provider = fail_acquire
+        with pytest.raises(MemoryError, match="provider allocation failed"):
+            adapter.begin_prompt_streaming((7, 8), checkpoints={})
+        assert adapter.prompt_activation_available()
+        assert adapter._prompt_streaming_sinks == {}
+        assert adapter._provider_groups == {}
+        generator._acquire_dense_mtp_draft_provider = acquire
     sinks = adapter.begin_prompt_streaming((7, 8), checkpoints={})
     assert adapter._active_prompt_claims is not None
     assert sinks[0].transform_hidden_rows(0xB000, 2, 3) == 0x9000
