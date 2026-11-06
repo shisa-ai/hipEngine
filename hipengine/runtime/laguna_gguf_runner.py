@@ -4197,6 +4197,16 @@ class LagunaGGUFResidentSession:
         )
         self.raw_k_prefill_variant = "rowbatch"
 
+    @contextlib.contextmanager
+    def f16_boundary_diagnostic(self, enabled: bool):
+        """Restore the owner-local F16 boundary comparison after every exit."""
+        previous = self.fuse_f16_boundaries
+        try:
+            self.set_f16_boundary_fusion(enabled)
+            yield
+        finally:
+            self.fuse_f16_boundaries = previous
+
     def set_f16_boundary_fusion(self, enabled: bool) -> None:
         """Fuse exact BF16-to-FP16 boundaries in range-direct prefill."""
 

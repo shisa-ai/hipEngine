@@ -65,6 +65,7 @@ def test_f16_projection_and_output_routes_preserve_cast_and_pointer_ownership(mo
 def test_f16_comparison_uses_real_setter_and_closes_on_each_exit(monkeypatch, mode, failure):
     child = object.__new__(runner.LagunaGGUFResidentSession)
     child.position = 511
+    child.fuse_f16_boundaries = not comparison._MODES[mode]
     events = []
     child.runtime = SimpleNamespace(device_synchronize=lambda: events.append("sync"))
     child.close = lambda: events.append("close")
@@ -94,3 +95,20 @@ def test_f16_comparison_uses_real_setter_and_closes_on_each_exit(monkeypatch, mo
         assert record["logits_sha256"] == "logits" and record["kv_sha256"] == "kv"
         assert record["final_hidden_sha256"] == "final" and record["post_layer_hidden_sha256"] == "post"
         assert events == ["sync", "close"]
+    assert child.fuse_f16_boundaries is not comparison._MODES[mode]
+
+
+def test_f16_boundary_diagnostic_restores_nested_and_peer_state():
+    owner = object.__new__(runner.LagunaGGUFResidentSession)
+    owner.fuse_f16_boundaries = True
+    peer = object.__new__(runner.LagunaGGUFResidentSession)
+    peer.fuse_f16_boundaries = True
+    with owner.f16_boundary_diagnostic(False):
+        assert owner.fuse_f16_boundaries is False
+        assert peer.fuse_f16_boundaries is True
+        with pytest.raises(RuntimeError, match="nested"):
+            with owner.f16_boundary_diagnostic(True):
+                assert owner.fuse_f16_boundaries is True
+                raise RuntimeError("nested")
+        assert owner.fuse_f16_boundaries is False
+    assert owner.fuse_f16_boundaries is True

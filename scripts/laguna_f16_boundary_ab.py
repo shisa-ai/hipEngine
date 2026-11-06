@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import json
 from pathlib import Path
 import statistics
@@ -74,8 +75,9 @@ def _run(
     tokens: list[int],
 ) -> dict[str, float | int | str]:
     child = _child_session(owner)
+    scopes = ExitStack()
     try:
-        child.set_f16_boundary_fusion(_MODES[mode])
+        scopes.enter_context(child.f16_boundary_diagnostic(_MODES[mode]))
         started = time.perf_counter()
         result = child.prefill(tokens)
         child.runtime.device_synchronize()
@@ -104,7 +106,10 @@ def _run(
             "final_position": int(child.position),
         }
     finally:
-        child.close()
+        try:
+            scopes.close()
+        finally:
+            child.close()
 
 
 def main() -> int:
@@ -138,9 +143,9 @@ def main() -> int:
         for enabled in _MODES.values():
             warm_session = _child_session(owner)
             try:
-                warm_session.set_f16_boundary_fusion(enabled)
-                warm_session.prefill(tokens[:128])
-                runtime.device_synchronize()
+                with warm_session.f16_boundary_diagnostic(enabled):
+                    warm_session.prefill(tokens[:128])
+                    runtime.device_synchronize()
             finally:
                 warm_session.close()
         for repetition in range(args.repetitions):
