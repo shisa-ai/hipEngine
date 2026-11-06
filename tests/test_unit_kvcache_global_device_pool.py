@@ -52,6 +52,25 @@ def test_workspace_root_binding_rejects_appended_chunks():
         pool.workspace_backing_for_pages(())
 
 
+def test_workspace_lease_can_require_one_backing_chunk():
+    pool, _ = _pool(pages=2)
+    pool._grow_storage = lambda count, start: (
+        {role: tuple(0xD000 + i * 256 for i in range(count))
+         for role in ('layer0.key', 'layer0.value')},
+        {'layer0.key': 0xE000, 'layer0.value': 0xF000}, {'arena': 2},
+    )
+    pool.grow(4)
+    occupied = pool.lease_workspace('occupy', 1)
+    pages = pool.lease_workspace('packed', 3, within_one_chunk=True)
+    assert occupied == (0,)
+    assert all(page >= 2 for page in pages)
+    binding = pool.workspace_backing_for_pages(pages)
+    assert binding is not None and binding[0] == {'arena': 2}
+    pool.release_workspace('packed')
+    pool.release_workspace('occupy')
+    pool.close()
+
+
 @pytest.mark.parametrize("fragmented", [False, True])
 @pytest.mark.parametrize("max_pages", [4, 8])
 def test_private_allocation_grows_a_whole_chunk_or_refuses(

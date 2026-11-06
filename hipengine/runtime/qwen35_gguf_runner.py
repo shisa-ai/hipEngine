@@ -2571,7 +2571,11 @@ def _lease_packed_workspace_growth(
         return None
     key = f"{_GGUF_PACKED_WORKSPACE_LEASE_KEY}.growth.{next(_PACKED_WORKSPACE_GROWTH_LEASES)}"
     try:
-        pages = lease(key, int(needed_pages))
+        pages = (
+            lease(key, int(needed_pages), within_one_chunk=True)
+            if isinstance(kv_pool, GlobalDeviceKVPool)
+            else lease(key, int(needed_pages))
+        )
     except (MemoryError, MemoryAdmissionRefused):
         return None
     return key, tuple(int(page) for page in pages)

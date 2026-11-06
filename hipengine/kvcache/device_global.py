@@ -416,6 +416,7 @@ class GlobalDeviceKVPool:
         pages: int,
         *,
         now_seconds: float = 0.0,
+        within_one_chunk: bool = False,
     ) -> tuple[int, ...]:
         """Lease pinned non-request pages for a persistent execution workspace.
 
@@ -440,11 +441,16 @@ class GlobalDeviceKVPool:
                 raise ValueError(f"workspace lease {name!r} already exists")
             self._ensure_free_pages(count, now_seconds=now_seconds)
             try:
-                lease = self.global_pool.allocate(
-                    lease_id,
-                    private_pages=count,
-                    growth_credit_pages=0,
-                )
+                if within_one_chunk:
+                    lease = self._allocate_within_one_chunk(
+                        lease_id, private_pages=count, require_contiguous=False,
+                    )
+                else:
+                    lease = self.global_pool.allocate(
+                        lease_id,
+                        private_pages=count,
+                        growth_credit_pages=0,
+                    )
             except MemoryError:
                 self._allocation_failures += 1
                 raise
