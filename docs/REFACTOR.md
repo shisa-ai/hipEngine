@@ -2329,25 +2329,6 @@ cancellation and provider cleanup and confirm streaming actually ran. Unit adapt
 does not close it. Keep explicit capability failures and strict replay semantics until consumers
 migrate.
 
-### R0193 — Replace MoE numerical-scope transport without changing arithmetic
-
-Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
-
-Scope: `moe_physical_c2_numerics_session(...)`.
-
-Construction now binds an immutable arithmetic plan on dense gfx1100/gfx1151
-and MoE gfx1151 profile owners. Physical verification carries it through one
-request-local plan binding; supported diagnostic scopes replace one field and
-restore the previous plan. See
-[`transport checkpoint`](../worklog/entries/20261106T093416.260440Z-lhl-r0193-plan-transport-c46791.md)
-and [`profile-owner checkpoint`](../worklog/entries/20261106T093803.590732Z-lhl-r0193-profile-owner-89e0f8.md).
-
-Done when: finish public validation of the integrated physical-target plan while
-preserving C1/strict fallbacks, nested disabled scopes, exception restoration and independent
-execution-context isolation. Reuse RF-1's owner boundary and keep this migration separate from
-numerical tuning. Run `tests/test_unit_moe_target_arithmetic_scopes.py` and affected adapter tests;
-verify public C1/C2 selected arithmetic and rollback state before retiring the scope.
-
 ### R0201 — Public repeat after planar-Q6 selector cleanup
 
 Owner: `hipengine/runtime/gguf_linear.py`.
