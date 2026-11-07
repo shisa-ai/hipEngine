@@ -52,6 +52,11 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
     gemma4_rmsnorm_f32w_bf16,
     gemma4_rmsnorm_weightless_bf16,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_t16_grouped_gemv import (
+    Q4_GROUPED_VARIANT,
+    Q6_HOISTED_VARIANT,
+)
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.muse_glimmer_gguf import MuseGlimmerLoadedWeights
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import (
@@ -373,18 +378,12 @@ class MuseGlimmerResidentSession:
                 src.ptr, self.loaded.ptr(p + "attn_norm.weight"), self.normed.ptr,
                 1, hidden, cfg.rms_eps, **kw,
             )
-            self._linear(self.loaded.weight(p + "attn_q.weight"), self.normed.ptr,
-                         self.q_bf16.ptr, 1, hidden, q_dim, output_dtype="bf16",
-                         backend=self.backend, **kw)
-            self._linear(self.loaded.weight(p + "attn_k.weight"), self.normed.ptr,
-                         self.k_bf16.ptr, 1, hidden, kv_dim, output_dtype="bf16",
-                         backend=self.backend, **kw)
-            self._linear(self.loaded.weight(p + "attn_v.weight"), self.normed.ptr,
-                         self.v_bf16.ptr, 1, hidden, kv_dim,
-                         backend=self.backend, **kw)
-            self._linear(self.loaded.weight(p + "attn_gate.weight"), self.normed.ptr,
-                         self.gate_bf16.ptr, 1, hidden, q_dim,
-                         backend=self.backend, **kw)
+            self._decode_linears(self.normed.ptr, hidden, (
+                (self.loaded.weight(p + "attn_q.weight"), self.q_bf16.ptr, q_dim),
+                (self.loaded.weight(p + "attn_k.weight"), self.k_bf16.ptr, kv_dim),
+                (self.loaded.weight(p + "attn_v.weight"), self.v_bf16.ptr, kv_dim),
+                (self.loaded.weight(p + "attn_gate.weight"), self.gate_bf16.ptr, q_dim),
+            ), waves=self._ATTN_GROUP_WAVES, kw=kw)
             bf16_to_f32(self.q_bf16.ptr, self.q_f32.ptr, q_dim, **kw)
             bf16_to_f32(self.k_bf16.ptr, self.k_f32.ptr, kv_dim, **kw)
             gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
@@ -415,9 +414,9 @@ class MuseGlimmerResidentSession:
             )
             gguf_gate_mul_bf16(self.attn_out.ptr, self.gate_bf16.ptr,
                                self.attn_out.ptr, q_dim, **kw)
-            self._linear(self.loaded.weight(p + "attn_output.weight"), self.attn_out.ptr,
-                         self.attn_proj.ptr, 1, q_dim, hidden,
-                         backend=self.backend, **kw)
+            self._decode_linears(self.attn_out.ptr, q_dim, (
+                (self.loaded.weight(p + "attn_output.weight"), self.attn_proj.ptr, hidden),
+            ), waves=self._ATTN_OUTPUT_WAVES, kw=kw)
             gemma4_add_rmsnorm_scale_bf16(
                 self.attn_proj.ptr, src.ptr,
                 self.loaded.ptr(p + "post_attention_norm.weight"), 0,
@@ -428,17 +427,15 @@ class MuseGlimmerResidentSession:
                 src.ptr, self.loaded.ptr(p + "ffn_norm.weight"), self.normed.ptr,
                 1, hidden, cfg.rms_eps, **kw,
             )
-            self._linear(self.loaded.weight(p + "ffn_gate.weight"), self.normed.ptr,
-                         self.ff_gate.ptr, 1, hidden, cfg.n_ff,
-                         backend=self.backend, **kw)
-            self._linear(self.loaded.weight(p + "ffn_up.weight"), self.normed.ptr,
-                         self.ff_up.ptr, 1, hidden, cfg.n_ff,
-                         backend=self.backend, **kw)
+            self._decode_linears(self.normed.ptr, hidden, (
+                (self.loaded.weight(p + "ffn_gate.weight"), self.ff_gate.ptr, cfg.n_ff),
+                (self.loaded.weight(p + "ffn_up.weight"), self.ff_up.ptr, cfg.n_ff),
+            ), waves=self._FFN_GROUP_WAVES, kw=kw)
             silu_mul_separate_out_bf16(self.ff_gate.ptr, self.ff_up.ptr,
                                        self.ff_act.ptr, 1, cfg.n_ff, **kw)
-            self._linear(self.loaded.weight(p + "ffn_down.weight"), self.ff_act.ptr,
-                         self.ff_out.ptr, 1, cfg.n_ff, hidden,
-                         backend=self.backend, **kw)
+            self._decode_linears(self.ff_act.ptr, cfg.n_ff, (
+                (self.loaded.weight(p + "ffn_down.weight"), self.ff_out.ptr, hidden),
+            ), waves=self._FFN_DOWN_WAVES, kw=kw)
             gemma4_add_rmsnorm_scale_bf16(
                 self.ff_out.ptr, src.ptr,
                 self.loaded.ptr(p + "post_ffw_norm.weight"), 0,
@@ -818,6 +815,48 @@ class MuseGlimmerResidentSession:
         finally:
             free(tap_buf, runtime=rt)
         return (logits if all_logits else logits[0]), tap_host
+
+    # Rows-1 decode projection owners. Both are bit-identical to the
+    # launch_gguf_linear decode owners they replace (dense_single_local32 Q4,
+    # qmicro-planar Q6), so the exact-rows verify owners that match those
+    # parents still match the AR decode KV. Wave counts are the per-launch
+    # optimum measured on gfx1151 at the Glimmer shapes: grouped Q/K/V/gate
+    # 1.19x at 2 waves, gate/up 1.04x at 1, attn_output 1.06x at 4, Q4 down
+    # 1.02x at 1; the hoisted planar Q6 is 1.09x on down and 1.7x on narrow V.
+    _ATTN_GROUP_WAVES = 2
+    _ATTN_OUTPUT_WAVES = 4
+    _FFN_GROUP_WAVES = 1
+    _FFN_DOWN_WAVES = 1
+
+    def _decode_linears(self, x_ptr, in_features, items, *, waves, kw):
+        """Launch rows-1 projections that share ``x_ptr``.
+
+        Weights whose quant has a registered ``linear_group`` owner run as one
+        grouped launch per quant; a quant with the registered hoisted single
+        owner runs that; anything else takes ``_linear``.
+        """
+
+        groups: dict[str, list[tuple[int, int, int]]] = {}
+        for weight, out_ptr, out_features in items:
+            quant = weight.spec.quant_key
+            group_key = KernelKey(self.backend, "linear_group", quant, Q4_GROUPED_VARIANT)
+            single_key = KernelKey(self.backend, "linear", quant, Q6_HOISTED_VARIANT)
+            if is_registered(group_key):
+                groups.setdefault(quant, []).append(
+                    (weight.allocation("tiles").tensor.ptr, out_ptr, out_features)
+                )
+            elif is_registered(single_key):
+                fn = resolve(backend=self.backend, layer="linear", quant=quant,
+                             variant=Q6_HOISTED_VARIANT)
+                fn(x_ptr, weight.allocation("tiles").tensor.ptr, out_ptr, 1,
+                   in_features, out_features, **kw)
+            else:
+                self._linear(weight, x_ptr, out_ptr, 1, in_features, out_features,
+                             backend=self.backend, **kw)
+        for quant, segments in groups.items():
+            fn = resolve(backend=self.backend, layer="linear_group", quant=quant,
+                         variant=Q4_GROUPED_VARIANT)
+            fn(x_ptr, segments, in_features, waves=waves, **kw)
 
     def _linear(self, weight, x_ptr, out_ptr, rows, in_features, out_features, **kwargs):
         if getattr(self, "_exact_multirow", False):
