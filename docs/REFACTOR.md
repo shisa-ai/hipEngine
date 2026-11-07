@@ -2372,39 +2372,6 @@ Keep map rebuild and capacity checks.
 Done when: paged index storage clears the cap with boundary/resource/reuse checks;
 interference policy meets the frozen campaign criteria.
 
-### R0007 — Batch import-copy and admission ownership after reset repair
-
-Owner: `hipengine/generation/qwen4_exp_ar_batch.py`.
-
-Scope: `import_prefilled`; `_owners`; `_positions`.
-
-**Copy-plan extraction implemented:** `import_prefilled` builds explicit source/destination
-block-table copy plans for QSA keys, values and index keys before the first device write. Plans
-preserve each block's valid prefix; GDN and PLE copies retain their existing ownership. Execution
-still uses host-issued device-to-device copies. A batched device operation remains separate work;
-profile the import boundary before claiming a benefit from a new kernel.
-
-**Remaining admission design:** the runner now stores owner token and cursor in one per-slot
-admission record; release detaches it and reuse creates a new record. Request leases reference
-that same record rather than copying physical slot and owner fields; mixed-target consumers use
-checked runner methods. Owner row planning preserves the caller's request order through these
-records. Device validation passed the batch runner and serving fixtures (one pooled-capacity
-fixture repaired); the named CPU bundle passed. Public gfx1151 production reuse with
-`protect_ttft`, two requests and a fixed horizon confirmed two imports and seven width-two
-steps per call, matching repeated token IDs and zero tracked allocations after close.
-Default scheduling produced different shape sequences and tokens; this is not evidence of
-same-shape failure or batch-composition invariance. See
-[public validation](../worklog/entries/20261106T102915.238841Z-lhl-r0007-public-admission-0fa288.md).
-Preserve physical-slot identity, cancellation/reuse, preflight failure and poisoned-step cleanup;
-publishing partial admission is not acceptable.
-
-Done when: Clearing gates remain `tests/test_unit_qwen4exp_batch_runner.py`,
-`tests/test_unit_qwen4exp_ar_batch_decode.py`, `tests/test_unit_qwen4exp_ar_batch_capacity.py` and
-`tests/test_gpu_qwen4exp_ar_batch_decode.py`. Verify dispatch shape, copy prefix layout, reset,
-capacity/isolation, MTP exclusion, two imports/two-row steps, per-row forced-token identity and
-c1-chain agreement. Exercise public serving and teardown, and keep repeatability distinct from
-batch-composition invariance.
-
 ### R0010 — Flash-Next physical MTP ownership and shared-target regression
 
 Owner: `hipengine/generation/qwen4_exp_gguf.py`.

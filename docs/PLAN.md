@@ -4730,6 +4730,7 @@ the applicable numerical gate before any default changes.
 | Gemma 4 decode-graph crossover | `hipengine/runtime/gemma4_decode_graph.py` | Reduce capture/replay overhead or remeasure the graph crossover per physical host before changing `_CAPTURE_MAX_KEYS`; keep fallback telemetry until no caller needs it. |
 | Device grammar selection | `hipengine/generation/grammar.py` | Optionally replace host grammar mask application/selection with a registered device implementation that preserves request-local matcher state, speculative commit/rollback and streaming. |
 | Per-primitive AR width planner (D2) | `hipengine/generation/qwen35_gguf.py` | Consolidate capability maps, sidecar cases and manual ladders through cold registry resolution without flattening per-primitive row limits; optional D2 cost-artifact promotion needs server goodput/TTFT/ITL evidence. |
+| Batched Qwen4Exp import copy | `hipengine/generation/qwen4_exp_ar_batch.py` | `import_prefilled` executes its explicit block-table copy plans as host-issued device-to-device copies; profile the import boundary before replacing them with one batched device operation. |
 
 ### Feature and architecture work
 
