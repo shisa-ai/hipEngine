@@ -1955,24 +1955,6 @@ INT8, speculative cycles and parity with the same prefix-reusing AR route. A cac
 response is not a pass. Include budget pressure, overwrite, target eviction and shutdown release
 tests.
 
-### R0510 — Define bounded-context startup warmup ownership and coverage
-
-Owner: `hipengine/server/api.py`.
-
-Scope: `_startup_probe_width_reduction`, `max_sequence_length`.
-
-**Bounded session implementation complete:** startup probes use temporary bounded-context
-sessions sharing immutable weights and release probe allocations on success, failure and
-cancellation. Configured 4 GiB KV-budget server checks passed at width four for AR and
-MTP startup, with ordinary concurrent HTTP requests succeeding. See
-[MTP server checkpoint](../worklog/entries/20261106T024942.449109Z-lhl-r0510-mtp-server-f8fd1d.md).
-These runs do not establish physical low-free-memory behavior or full-context/graph coverage.
-
-Done when: wide startup probes and subsequent public concurrent requests succeed under
-physical constrained memory, with failure/cancellation releasing all probe resources.
-Preserve actual request context limits and capacity estimates; short probes must not certify
-full-context capacity or graph buckets. Keep the width-reduction guard until that validation.
-
 ### R0515 — Decide retirement of the Gemma 4 gate/up MMQ rollback
 
 Owner: `hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`.
