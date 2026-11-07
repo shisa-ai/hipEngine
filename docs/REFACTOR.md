@@ -1004,25 +1004,6 @@ both HIP backends, tracing storage/scales, graph/MTP engagement, cancellation, r
 Kernel-arithmetic changes require their independent quality and state gates; control migration alone
 must not change arithmetic or defaults.
 
-### R0281-PARO-INT8-PREFILL — Oracle/streaming resource-policy ownership
-
-Owner: `hipengine/runtime/qwen35_paro_runner.py`.
-
-Scope: `HIPENGINE_QWEN35_INT8_PREFILL_`.
-
-**Decision needed:** retain operator resource overrides, or move them into the resolved
-prefill/resource plan and update result metadata. A faster memory-safe alternative is separate
-kernel work, not a prerequisite to exercising either implemented route. Preserve explicit
-invalid-value errors, mixed-layout policy, shared scratch/oracle lifetimes and capability fallbacks.
-
-Done when: migrate both ordinary and packed prefill metadata/readers, workspace-policy
-tests and any external diagnostic callers together; update ENVS. Run
-`tests/test_unit_qwen35_prefill_workspace_policy.py`,
-`tests/test_unit_qwen35_resident_batch_layout.py` and the native mixed-KV suite contracts. Exercise
-public uniform and mixed requests with oracle/direct selection, short/long/ragged prompts, resource
-rejection, reset/cancellation and cleanup. Verify actual attention sources and transient oracle
-owners.
-
 ### R0313 / R0314 / R0315 / R0316 / R0318 / R0320 — Laguna legacy MMQ selector migration
 
 Owner: `hipengine/runtime/laguna_moe.py`.
@@ -2213,22 +2194,6 @@ exact registry mappings. Explicitly account for build-cache keys, cached-only op
 lifetime and graph-held symbols after any source split. Run affected family parity/lifecycle tests
 and public generation with selected-symbol attribution; keep mechanical movement separate from
 arithmetic or default changes.
-
-### R0189 — Packed-PARO transaction storage after journal integration
-
-Owner: `hipengine/generation/qwen35_paro_mtp2.py`.
-
-Scope: `_checkpoint_target`, `hipengine/generation/qwen35_paro_mtp2.py`, `kv_rows=0`.
-
-**Deferred storage design:** decide whether remaining target result, acceptance, selected-commit and
-provider-update metadata and mutable backups should share stable claim-backed slabs. Preserve one
-journal and explicit buffer lifetimes; do not replace the working rollback with a second
-coordinator. Verify exact state/cursors/live KV on rejected, partial and full acceptance,
-capture/restore failure, cancellation and request reuse before retiring the spare-slot path.
-
-Done when: Any multi-request expansion must implement physical proposal and target ownership rather than
-broaden the singleton adapter's admission. Compare full request wall time with matched AR/direct
-controls when claiming a performance benefit.
 
 ### R0195 — Consolidate physical-target policy without changing admission
 

@@ -4746,6 +4746,7 @@ the applicable numerical gate before any default changes.
 | Overlapping chunked prompt activation | `hipengine/generation/engine_loop.py` | Co-activate chunked prefill rows while keeping provider-slot ownership and failure isolation; compare tokens and acceptance against single-request runs. |
 | Captured-accept logprobs | `hipengine/generation/qwen35_gguf_mtp2.py` | Emit processed logprobs and top-logprobs for every published speculative token from the captured-graph accept path. |
 | Device forced-token inputs | `hipengine/generation/qwen35_gguf_mtp2.py` | Carry per-row forced-token overrides and a committed-only queue position into device sampling and accept. |
+| Packed-PARO transaction slabs | `hipengine/generation/qwen35_paro_mtp2.py` | Decide whether target result, acceptance, selected-commit and provider-update metadata plus mutable backups share stable claim-backed slabs under the one existing journal; multi-request PARO MTP needs physical proposal/target ownership, not a broader singleton admission. |
 
 ## Open Research Questions
 
