@@ -1224,26 +1224,6 @@ with any reader removal. A runtime migration also needs the primitive pair-reuse
 public C8 MoE generation on both intended backends, with selected callables, neighboring/non-C8
 widths and cleanup recorded. A release-window deadline alone cannot replace these contracts.
 
-### R0281-MTP-CAP — Packed MTP batch policy and caller separation
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `_MTP_SERVING_PREFILL_MAX_SLOTS`, `_MTP_SERVING_VERIFY_MAX_SLOTS`,
-`_MTP_WARMUP_BATCH_MAX_SLOTS` in `hipengine/generation/qwen35_gguf.py`.
-
-Done when: validate the independently named bounded prefill, verifier and warmup
-policies through the public route. All three limits remain four; the shared
-constant has been removed without widening any path. Unit coverage pins chunk
-order, singleton-tail avoidance and verifier independence from the other limits.
-Do not change prompt-prefill admission as a side effect of verifier tuning. **Clearing action:** run
-`tests/test_unit_gguf_mtp_serving_chunk_policy.py` and the batch-verifier, packed-prefill and MTP
-warmup nodes in `tests/test_live_generation_qwen35_gguf_sampling.py`. A runtime policy change also
-needs public explicit-MTP requests at neighboring, unrelated and larger widths, selected
-chunk/owner/stream traces, exact commit/rollback and refusal-after-progress checks, repeated
-requests and cleanup. Compare complete-wall and latency on the intended backend against the bounded
-policy before choosing a tuning result. Keep per-slot unsupported-shape fallback and request-local
-state isolation.
-
 ### R0281-PARO-NATIVE — Provider graph and selected-commit control migration
 
 Owner: `hipengine/runtime/qwen35_paro_runner.py`.
