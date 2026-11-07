@@ -640,10 +640,6 @@ class MuseGlimmerResidentSession:
                 self.k_bf16.ptr, tokens, hidden, kv_dim,
                 output_dtype="bf16", backend=self.backend, runtime=rt,
             )
-            from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
-
-            bf16_to_f32(self.q_bf16.ptr, self.q_f32.ptr, tokens * q_dim, runtime=rt)
-            bf16_to_f32(self.k_bf16.ptr, self.k_f32.ptr, tokens * kv_dim, runtime=rt)
             self._linear(
                 self.loaded.weight(p + "attn_v.weight"), self.normed.ptr,
                 self.v_bf16.ptr, tokens, hidden, kv_dim,
@@ -654,32 +650,57 @@ class MuseGlimmerResidentSession:
                 self.gate_bf16.ptr, tokens, hidden, q_dim,
                 backend=self.backend, runtime=rt,
             )
-            # QK-norm always; rotation only on SWA layers. Full (NoPE) layers
-            # take identity tables: cos=1/sin=0 leaves every element exact.
-            gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
-                self.q_f32.ptr, self.k_f32.ptr,
-                self.loaded.ptr(p + "attn_q_norm.weight"),
-                self.loaded.ptr(p + "attn_k_norm.weight"),
-                (self.cos_table if is_swa else self.identity_cos).ptr,
-                (self.sin_table if is_swa else self.identity_sin).ptr,
-                self.positions.ptr,
-                self.q_rot_f32.ptr, self.k_rot_f32.ptr,
-                cfg.rms_eps, tokens, cfg.n_heads, cfg.n_kv_heads, d, d,
-                self.max_context, runtime=rt,
-            )
-            f32_to_bf16(self.q_rot_f32.ptr, self.q_bf16.ptr, tokens * q_dim, runtime=rt)
-            f32_to_bf16(self.k_rot_f32.ptr, self.k_bf16.ptr, tokens * kv_dim, runtime=rt)
-
             k_cache, v_cache = self._kv[layer]
-            row_bytes = kv_dim * 2
-            rt.memcpy(
-                k_cache.ptr + position_offset * row_bytes, self.k_bf16.ptr,
-                tokens * row_bytes, MemcpyKind.DEVICE_TO_DEVICE,
-            )
-            rt.memcpy(
-                v_cache.ptr + position_offset * row_bytes, self.v_bf16.ptr,
-                tokens * row_bytes, MemcpyKind.DEVICE_TO_DEVICE,
-            )
+            if self._exact_multirow:
+                # Fused decode glue: Q/K head-norm + rotary + K/V append in one
+                # launch, bit-identical per row to the seven-launch chain in the
+                # else branch. Rotated Q lands in the decode-idle q_rot_f32
+                # scratch (BF16); K/V go straight to the cache rows.
+                from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
+                    muse_glimmer_qk_norm_rope_kv_append,
+                )
+                muse_glimmer_qk_norm_rope_kv_append(
+                    self.q_bf16.ptr, self.k_bf16.ptr, self.v_bf16.ptr,
+                    self.loaded.ptr(p + "attn_q_norm.weight"),
+                    self.loaded.ptr(p + "attn_k_norm.weight"),
+                    (self.cos_table if is_swa else self.identity_cos).ptr,
+                    (self.sin_table if is_swa else self.identity_sin).ptr,
+                    self.positions.ptr, self.q_rot_f32.ptr, k_cache.ptr, v_cache.ptr,
+                    eps=cfg.rms_eps, n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
+                    head_dim=d, max_positions=self.max_context, tokens=tokens,
+                    runtime=rt,
+                )
+                q_attn_ptr = self.q_rot_f32.ptr
+            else:
+                from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
+
+                bf16_to_f32(self.q_bf16.ptr, self.q_f32.ptr, tokens * q_dim, runtime=rt)
+                bf16_to_f32(self.k_bf16.ptr, self.k_f32.ptr, tokens * kv_dim, runtime=rt)
+                # QK-norm always; rotation only on SWA layers. Full (NoPE) layers
+                # take identity tables: cos=1/sin=0 leaves every element exact.
+                gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
+                    self.q_f32.ptr, self.k_f32.ptr,
+                    self.loaded.ptr(p + "attn_q_norm.weight"),
+                    self.loaded.ptr(p + "attn_k_norm.weight"),
+                    (self.cos_table if is_swa else self.identity_cos).ptr,
+                    (self.sin_table if is_swa else self.identity_sin).ptr,
+                    self.positions.ptr,
+                    self.q_rot_f32.ptr, self.k_rot_f32.ptr,
+                    cfg.rms_eps, tokens, cfg.n_heads, cfg.n_kv_heads, d, d,
+                    self.max_context, runtime=rt,
+                )
+                f32_to_bf16(self.q_rot_f32.ptr, self.q_bf16.ptr, tokens * q_dim, runtime=rt)
+                f32_to_bf16(self.k_rot_f32.ptr, self.k_bf16.ptr, tokens * kv_dim, runtime=rt)
+                row_bytes = kv_dim * 2
+                rt.memcpy(
+                    k_cache.ptr + position_offset * row_bytes, self.k_bf16.ptr,
+                    tokens * row_bytes, MemcpyKind.DEVICE_TO_DEVICE,
+                )
+                rt.memcpy(
+                    v_cache.ptr + position_offset * row_bytes, self.v_bf16.ptr,
+                    tokens * row_bytes, MemcpyKind.DEVICE_TO_DEVICE,
+                )
+                q_attn_ptr = self.q_bf16.ptr
             from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
                 muse_glimmer_decode_attention,
             )
@@ -695,7 +716,7 @@ class MuseGlimmerResidentSession:
                     muse_glimmer_flash_prefill,
                 )
                 muse_glimmer_flash_prefill(
-                    self.q_bf16.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
+                    q_attn_ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
                     n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
                     key_begin=0, key_end=keys, tokens=tokens,
                     window=cfg.sliding_window if is_swa else 0,
@@ -714,17 +735,21 @@ class MuseGlimmerResidentSession:
                             f"exact verify supports at most {self._MAX_VERIFY_ROWS} rows"
                         )
                 muse_glimmer_decode_attention(
-                    self.q_bf16.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
+                    q_attn_ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
                     self.attn_partials.ptr,
                     n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
                     key_begin=key_begin, key_end=keys, n_splits=n_splits,
                     tokens=tokens, window=cfg.sliding_window if is_swa else 0,
+                    gate_ptr=self.gate_bf16.ptr if self._exact_multirow else 0,
                     scale=float(d) ** -0.5, runtime=rt,
                 )
-            gguf_gate_mul_bf16(
-                self.attn_out.ptr, self.gate_bf16.ptr, self.attn_out.ptr,
-                tokens * q_dim, runtime=rt,
-            )
+            if not self._exact_multirow:
+                # Verify fuses the sigmoid gate into the attention combine
+                # (gate_ptr above, bit-identical); prefill/eager decode gate here.
+                gguf_gate_mul_bf16(
+                    self.attn_out.ptr, self.gate_bf16.ptr, self.attn_out.ptr,
+                    tokens * q_dim, runtime=rt,
+                )
             self._linear(
                 self.loaded.weight(p + "attn_output.weight"), self.attn_out.ptr,
                 self.attn_proj.ptr, tokens, q_dim, hidden,
