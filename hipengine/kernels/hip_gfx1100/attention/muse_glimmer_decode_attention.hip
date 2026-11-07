@@ -23,6 +23,7 @@
 #define GLIMMER_HEAD_DIM 128
 #define GLIMMER_DIMS_PER_LANE 4
 #define GLIMMER_Q_PER_BLOCK 4
+#define GLIMMER_KEY_UNROLL 8
 
 __device__ __forceinline__ float bf16_to_f32(uint16_t v) {
   uint32_t u = static_cast<uint32_t>(v) << 16;
@@ -45,7 +46,7 @@ __device__ __forceinline__ float wave_sum(float v) {
 // Multi-row (prefill) mode: grid.z = tokens, each block owns one query row;
 // key range is causal+SWA clamped per row. With n_splits == 1 the split
 // kernel writes the normalized BF16 output directly (no combine pass).
-__global__ __launch_bounds__(128, 4) void muse_glimmer_decode_attn_split_kernel(
+__global__ __launch_bounds__(32 * GLIMMER_Q_PER_BLOCK) void muse_glimmer_decode_attn_split_kernel(
     const uint16_t* __restrict__ q,        // [tokens, n_q_heads, 128] bf16
     const uint16_t* __restrict__ k_cache,  // [max_ctx, n_kv_heads, 128] bf16
     const uint16_t* __restrict__ v_cache,
@@ -86,23 +87,42 @@ __global__ __launch_bounds__(128, 4) void muse_glimmer_decode_attn_split_kernel(
   float acc[GLIMMER_DIMS_PER_LANE] = {0.0f, 0.0f, 0.0f, 0.0f};
 
   const int64_t kv_stride = n_kv_heads * GLIMMER_HEAD_DIM;
-  for (int64_t key = beg; key < end; key++) {
-    const uint16_t* krow = k_cache + key * kv_stride + kvh * GLIMMER_HEAD_DIM;
-    float dot = 0.0f;
+  // Keys run in groups of GLIMMER_KEY_UNROLL: the K/V loads, dots and wave
+  // reductions of a group are independent and overlap, then the online
+  // softmax updates apply in ascending key order. Every per-key operation and
+  // the update order equal the one-key-at-a-time loop, so results are
+  // bit-identical to it; the unroll only removes the serial load latency.
+  const uint16_t* kbase = k_cache + kvh * GLIMMER_HEAD_DIM + lane * GLIMMER_DIMS_PER_LANE;
+  const uint16_t* vbase = v_cache + kvh * GLIMMER_HEAD_DIM + lane * GLIMMER_DIMS_PER_LANE;
+  for (int64_t key0 = beg; key0 < end; key0 += GLIMMER_KEY_UNROLL) {
+    float dot[GLIMMER_KEY_UNROLL];
+    uint2 vraw[GLIMMER_KEY_UNROLL];
 #pragma unroll
-    for (int i = 0; i < GLIMMER_DIMS_PER_LANE; i++)
-      dot += qreg[i] * bf16_to_f32(krow[lane * GLIMMER_DIMS_PER_LANE + i]);
-    dot = wave_sum(dot) * scale;
-
-    float m_new = fmaxf(m, dot);
-    float alpha = __expf(m - m_new);
-    float p = __expf(dot - m_new);
-    l = l * alpha + p;
-    const uint16_t* vrow = v_cache + key * kv_stride + kvh * GLIMMER_HEAD_DIM;
+    for (int u = 0; u < GLIMMER_KEY_UNROLL; u++) {
+      const int64_t key = key0 + u < end ? key0 + u : end - 1;
+      const uint2 kraw = *reinterpret_cast<const uint2*>(kbase + key * kv_stride);
+      vraw[u] = *reinterpret_cast<const uint2*>(vbase + key * kv_stride);
+      const uint16_t* kb = reinterpret_cast<const uint16_t*>(&kraw);
+      float d = 0.0f;
 #pragma unroll
-    for (int i = 0; i < GLIMMER_DIMS_PER_LANE; i++)
-      acc[i] = acc[i] * alpha + p * bf16_to_f32(vrow[lane * GLIMMER_DIMS_PER_LANE + i]);
-    m = m_new;
+      for (int i = 0; i < GLIMMER_DIMS_PER_LANE; i++) d += qreg[i] * bf16_to_f32(kb[i]);
+      dot[u] = d;
+    }
+#pragma unroll
+    for (int u = 0; u < GLIMMER_KEY_UNROLL; u++) dot[u] = wave_sum(dot[u]) * scale;
+#pragma unroll
+    for (int u = 0; u < GLIMMER_KEY_UNROLL; u++) {
+      if (key0 + u >= end) break;
+      const float m_new = fmaxf(m, dot[u]);
+      const float alpha = __expf(m - m_new);
+      const float p = __expf(dot[u] - m_new);
+      l = l * alpha + p;
+      const uint16_t* vb = reinterpret_cast<const uint16_t*>(&vraw[u]);
+#pragma unroll
+      for (int i = 0; i < GLIMMER_DIMS_PER_LANE; i++)
+        acc[i] = acc[i] * alpha + p * bf16_to_f32(vb[i]);
+      m = m_new;
+    }
   }
 
   if (n_splits == 1) {
@@ -143,6 +163,7 @@ __global__ void muse_glimmer_decode_attn_combine_kernel(
   for (int64_t s = 0; s < n_splits; s++) {
     const float* p = partials + s * tstride + base * stride;
     float ms = p[GLIMMER_HEAD_DIM];
+    if (ms == -INFINITY) continue;  // empty split: contributes exactly zero
     float ls = p[GLIMMER_HEAD_DIM + 1];
     float w = __expf(ms - m);
     l += w * ls;
@@ -185,6 +206,7 @@ __global__ void muse_glimmer_decode_attn_combine_gated_kernel(
   for (int64_t s = 0; s < n_splits; s++) {
     const float* p = partials + s * tstride + base * stride;
     float ms = p[GLIMMER_HEAD_DIM];
+    if (ms == -INFINITY) continue;  // empty split: contributes exactly zero
     float ls = p[GLIMMER_HEAD_DIM + 1];
     float w = __expf(ms - m);
     l += w * ls;
@@ -226,7 +248,7 @@ extern "C" int hipengine_muse_glimmer_decode_attn(
   dim3 grid(static_cast<unsigned>(n_splits),
             static_cast<unsigned>(n_q_heads / GLIMMER_Q_PER_BLOCK),
             static_cast<unsigned>(tokens));
-  muse_glimmer_decode_attn_split_kernel<<<grid, 128, 0, stream>>>(
+  muse_glimmer_decode_attn_split_kernel<<<grid, 32 * GLIMMER_Q_PER_BLOCK, 0, stream>>>(
       q, k, v, partials, out, n_q_heads, n_kv_heads, key_begin, key_end,
       n_splits, tokens, window, scale, key_end_dev);
   hipError_t err = hipGetLastError();
@@ -472,7 +494,7 @@ extern "C" int hipengine_muse_glimmer_decode_attn_gated(
   dim3 grid(static_cast<unsigned>(n_splits),
             static_cast<unsigned>(n_q_heads / GLIMMER_Q_PER_BLOCK),
             static_cast<unsigned>(tokens));
-  muse_glimmer_decode_attn_split_kernel<<<grid, 128, 0, stream>>>(
+  muse_glimmer_decode_attn_split_kernel<<<grid, 32 * GLIMMER_Q_PER_BLOCK, 0, stream>>>(
       q, k, v, partials, out, n_q_heads, n_kv_heads, key_begin, key_end,
       n_splits, tokens, window, scale, key_end_dev);
   hipError_t err = hipGetLastError();

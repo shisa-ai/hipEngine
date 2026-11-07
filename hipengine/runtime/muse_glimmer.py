@@ -171,7 +171,12 @@ class MuseGlimmerResidentSession:
             self.sin_table = scratch.alloc(self.max_context * cfg.head_dim * f32, rt)
             self.identity_cos = scratch.alloc(self.max_context * cfg.head_dim * f32, rt)
             self.identity_sin = scratch.alloc(self.max_context * cfg.head_dim * f32, rt)
-            self.attn_partials = scratch.alloc(max(64, 4 * t_max) * cfg.n_heads * 130 * 4, rt)
+            self._attn_partial_rows = max(
+                self._DECODE_ATTN_SPLITS * self._MAX_VERIFY_ROWS, 4 * t_max
+            )
+            self.attn_partials = scratch.alloc(
+                self._attn_partial_rows * cfg.n_heads * 130 * 4, rt
+            )
             # Bounded F16 activation staging workspace for the WMMA prefill
             # pre-cast route (one row-block x the widest projection input).
             self._f16_staging = scratch.alloc(
@@ -414,7 +419,7 @@ class MuseGlimmerResidentSession:
                 q_rope.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
                 self.attn_partials.ptr,
                 n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
-                key_begin=0, key_end=self.max_context, n_splits=64,
+                key_begin=0, key_end=self.max_context, n_splits=self._DECODE_ATTN_SPLITS,
                 tokens=1, window=cfg.sliding_window if is_swa else 0,
                 key_end_dev=self._g_key_end.ptr, gate_ptr=self.gate_bf16.ptr,
                 scale=float(d) ** -0.5, **kw,
@@ -697,16 +702,17 @@ class MuseGlimmerResidentSession:
                     scale=float(d) ** -0.5, runtime=rt,
                 )
             else:
-                if tokens == 1:
-                    span = keys - key_begin
-                    n_splits = 64
-                else:
+                n_splits = self._DECODE_ATTN_SPLITS
+                if tokens > 1:
                     # Decode-equivalent block verify: each row is computed
-                    # independently with the decode split count (64) and the
+                    # independently with the decode split count and the
                     # kernel's per-row causal+SWA clamp, so row i matches a
                     # single decode step at position_offset+i bit-for-bit.
-                    n_splits = 64
                     key_begin = 0
+                    if tokens * n_splits > self._attn_partial_rows:
+                        raise ValueError(
+                            f"exact verify supports at most {self._MAX_VERIFY_ROWS} rows"
+                        )
                 muse_glimmer_decode_attention(
                     self.q_bf16.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
                     self.attn_partials.ptr,
@@ -826,6 +832,11 @@ class MuseGlimmerResidentSession:
     # optimum measured on gfx1151 at the Glimmer shapes: grouped Q/K/V/gate
     # 1.19x at 2 waves, gate/up 1.04x at 1, attn_output 1.06x at 4, Q4 down
     # 1.02x at 1; the hoisted planar Q6 is 1.09x on down and 1.7x on narrow V.
+    # Decode attention split count (shared by AR decode and the
+    # decode-equivalent verify) and the largest verify block the partial
+    # scratch holds.
+    _DECODE_ATTN_SPLITS = 64
+    _MAX_VERIFY_ROWS = 32
     _ATTN_GROUP_WAVES = 2
     _ATTN_OUTPUT_WAVES = 4
     _FFN_GROUP_WAVES = 1
