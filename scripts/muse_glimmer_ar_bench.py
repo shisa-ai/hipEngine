@@ -2,10 +2,13 @@
 """Muse Glimmer AR prefill/decode bench matched to the P0 llama-bench protocol.
 
 Workloads: 512/128, 1024/128, 4096/128 (prompt tokens / generated tokens).
-Timing boundary: the resident session's synchronized prefill and decode-step
-walls (the model-step boundary llama-bench reports as pp/tg); sampling and
-detokenization are outside the timed window. Warmup prebuilds every kernel;
-the timed process never spawns hipcc. >=3 measured repetitions, median reported.
+Timing boundary: two explicitly named decode measurements are reported.
+``decode_model_step_tok_s`` times only the resident session's synchronized
+``decode_step`` calls (the model-step boundary llama-bench reports as tg);
+``decode_tok_s`` is the user-facing generation wall including the greedy
+``argmax`` sampling between steps. Prefill is the synchronized session wall.
+Detokenization is outside both. Warmup prebuilds every kernel; the timed
+process never spawns hipcc. >=3 measured repetitions, median reported.
 
 This is the Gate A measurement instrument (campaign MUSE-GLIMMER.md). It is a
 diagnostic until a retained rollup attaches the correctness gate + provenance.
@@ -90,7 +93,7 @@ def main() -> int:
         "model": str(args.model),
         "quant": "gguf_q4_k_m",
         "backend": "hip_gfx1151",
-        "timing_boundary": "session prefill / decode-step synchronized wall; sampling excluded",
+        "timing_boundary": "decode_model_step = sum of synchronized decode_step walls (llama-bench tg boundary); decode = user-facing wall incl greedy argmax; prefill = synchronized session wall",
         "repeats": args.repeats,
         "warmup": "32-token prefill + 4 decode steps (kernel prebuild)",
         "execution_path": session.execution_path(),
@@ -98,34 +101,43 @@ def main() -> int:
     }
     for pp, tg in workloads:
         prompt = build_prompt_ids(tokenizer, pp)
-        prefill_samples, decode_samples = [], []
+        prefill_samples, decode_samples, decode_step_samples = [], [], []
         for rep in range(args.repeats):
             session.reset()
             t0 = time.perf_counter()
             logits = session.prefill(prompt)
             t1 = time.perf_counter()
             token = int(np.argmax(logits))
+            step_wall = 0.0
             for _ in range(tg):
+                ts = time.perf_counter()
                 logits = session.decode_step(token)
+                step_wall += time.perf_counter() - ts
                 token = int(np.argmax(logits))
             t2 = time.perf_counter()
             prefill_samples.append(t1 - t0)
             decode_samples.append(t2 - t1)
+            decode_step_samples.append(step_wall)
         pp_med = statistics.median(prefill_samples)
         tg_med = statistics.median(decode_samples)
+        step_med = statistics.median(decode_step_samples)
         row = {
             "prompt_tokens": pp,
             "gen_tokens": tg,
             "prefill_tok_s": pp / pp_med,
             "decode_tok_s": tg / tg_med,
+            "decode_model_step_tok_s": tg / step_med,
             "prefill_s_samples": prefill_samples,
             "decode_s_samples": decode_samples,
+            "decode_model_step_s_samples": decode_step_samples,
             "prefill_s_median": pp_med,
             "decode_s_median": tg_med,
+            "decode_model_step_s_median": step_med,
         }
         rows.append(row)
         print(f"{pp}/{tg}: prefill {row['prefill_tok_s']:.3f} tok/s, "
-              f"decode {row['decode_tok_s']:.3f} tok/s "
+              f"decode {row['decode_tok_s']:.3f} tok/s (user-facing), "
+              f"model-step {row['decode_model_step_tok_s']:.3f} tok/s "
               f"(medians of {args.repeats})", flush=True)
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
