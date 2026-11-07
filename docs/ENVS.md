@@ -1136,8 +1136,9 @@ These names appear in the tree but must not be confused with env knobs:
 
 - `HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD`, `HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH`,
   `HIPENGINE_GGUF_SPECDEC2_NGRAM_MIN` and `HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX`
-  are retired and ignored. Diagnostic adapters use explicit `ngram_enabled=True`
-  and `ngram_config=NgramModConfig(...)`; default adapters keep this experiment off.
+  are retired and ignored. The request-local n-gram composition in the dense MTP2
+  adapter was retired; `hipengine.speculative.ngram_mod` remains as a research
+  reference with no runtime consumer.
 
 - `HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE` is retired and ignored. Diagnostics
   explicitly construct `Qwen35GGUFMTP2Adapter` with

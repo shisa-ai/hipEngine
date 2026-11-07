@@ -24,7 +24,7 @@ def target_contexts(generator, budget):
     from hipengine.generation import qwen35_gguf_mtp2 as m
     adapter = m.Qwen35GGUFMTP2Adapter(
         SimpleNamespace(generator=generator, capacity=1), enabled=True,
-        target_verify_mode='bulk', candidate_budget=budget, ngram_enabled=False)
+        target_verify_mode='bulk', candidate_budget=budget)
     pairs = [
         ('production_physical_extra_rowtiles', m.q4_t16_physical_extra_rowtiles_session),
         ('production_exact_target_row_counts', m.physical_exact_rowtiles_session),

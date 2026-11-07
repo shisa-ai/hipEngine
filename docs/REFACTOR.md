@@ -2941,22 +2941,6 @@ full-category checks with GPU/CPU accept agreement. Cache-only traces must show 
 the default route. Public acceptance and lifecycle verification remain required; constructor
 isolation tests alone do not establish them.
 
-### R0204 — Decide the typed request-local ngram composition candidate
-
-Owner: `hipengine/speculative/ngram_mod.py`.
-
-Scope: `ngram_enabled=True`, `ngram_config=NgramModConfig(...)`.
-
-**Deferred candidate decision:** keep the explicit default-off candidate's recorded failures
-visible. The strict D96 SQL terminal-suffix failure and production D120 numerical-tail rejection are
-not repaired by typed settings.
-
-Done when: A wider K>3 frontier or materially different lowering must pass canonical and code train/heldout,
-long-horizon strict/production numerical, task and lifecycle gates and beat true AR. Otherwise
-retire runtime composition after the dedicated wider-frontier campaign, preserving cache/harness
-research references and permanent ordinary MTP/AR miss/failure fallbacks. Do not conflate this
-candidate with other request-local prompt lookup implementations.
-
 ### R0205 — Finish profile-plan coverage before retiring compatibility selection
 
 Owner: `hipengine/execution_profiles.py`.

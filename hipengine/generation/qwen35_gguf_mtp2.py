@@ -103,11 +103,6 @@ from hipengine.speculative.interfaces import (
 )
 from hipengine.speculative.mtp import MtpProposalContext
 from hipengine.speculative.prefix_checkpoint import PrefixCheckpointStore
-from hipengine.speculative.ngram_mod import (
-    NgramModConfig,
-    NgramModProposal,
-    RequestLocalNgramMod,
-)
 from hipengine.speculative.provider import (
     SpeculativeRequestSemantics,
     validate_staged_target_adapter,
@@ -284,33 +279,6 @@ class _MTP2ProviderGroup:
     request_ids: set[int]
 
 
-@dataclass(frozen=True, slots=True)
-class _NgramBatchDeviceProposal:
-    """Host-selected n-gram IDs staged for the existing device accept path."""
-
-    request_ids: tuple[int, ...]
-    root_tokens: tuple[int, ...]
-    root_positions: tuple[int, ...]
-    candidate_counts: tuple[int, ...]
-    token_ids: Tensor
-    probed_tokens: tuple[int, ...]
-
-    def __post_init__(self) -> None:
-        requests = tuple(int(value) for value in self.request_ids)
-        counts = tuple(int(value) for value in self.candidate_counts)
-        if not requests or len(requests) != len(set(requests)):
-            raise ValueError("n-gram proposal request_ids must be non-empty and unique")
-        if any(
-            len(values) != len(requests)
-            for values in (self.root_tokens, self.root_positions, counts, self.probed_tokens)
-        ):
-            raise ValueError("n-gram proposal metadata must align with requests")
-        if any(value <= 0 for value in counts):
-            raise ValueError("n-gram proposal candidate counts must be positive")
-        if self.token_ids.dtype != DType.INT32 or self.token_ids.shape != (sum(counts),):
-            raise ValueError("n-gram proposal token_ids must be packed INT32 candidates")
-
-
 def _trace_prefix_checkpoint(message: str) -> None:
     """Echo prefix-checkpoint capture activity under the opt-in trace flag.
 
@@ -362,10 +330,7 @@ class _MTP2RequestState:
     proposal_context: MtpProposalContext | None = None
     proposal_device: Qwen35GGUFNextNDeviceProposal | None = None
     proposal_device_batch: Qwen35GGUFNextNBatchDeviceProposal | None = None
-    proposal_ngram: _NgramBatchDeviceProposal | None = None
     sampled_accept_plan: "_DeviceSampledAcceptPlan | None" = None
-    ngram_candidate_tokens: tuple[int, ...] = ()
-    proposal_source: str = "mtp2"
     device_chain_prepare_error: str | None = None
 
 
@@ -845,8 +810,6 @@ class Qwen35GGUFMTP2Adapter:
         target_verify_mode: str,
         candidate_budget: int,
         quant: str = "gguf_q4_k_m",
-        ngram_enabled: bool = False,
-        ngram_config: NgramModConfig | None = None,
         device_chain_qualification_oracle: bool = False,
     ) -> None:
         self.owner = owner
@@ -893,11 +856,6 @@ class Qwen35GGUFMTP2Adapter:
         self.physical_prompt_streaming_widths = _physical_prompt_streaming_widths(
             owner,
             self.generator,
-        )
-        self._ngram = (
-            RequestLocalNgramMod(ngram_config or NgramModConfig())
-            if ngram_enabled
-            else None
         )
         self.physical_prompt_streaming = bool(self.physical_prompt_streaming_widths)
         self.device_chain_qualification_oracle = bool(device_chain_qualification_oracle)
@@ -979,7 +937,6 @@ class Qwen35GGUFMTP2Adapter:
         self._cycle_workspace: RuntimeWorkspace | None = None
         self._cycle_proposal_hidden: Tensor | None = None
         self._cycle_repair_hidden: Tensor | None = None
-        self._cycle_ngram_tokens: Tensor | None = None
         self._cycle_workspace_shape: tuple[int, int] | None = None
         validate_staged_target_adapter(self)
 
@@ -3182,19 +3139,9 @@ class Qwen35GGUFMTP2Adapter:
                 shape,
                 DType.BF16,
             )
-            ngram_tokens = (
-                workspace.reserve_tensor(
-                    "gguf_mtp2/cycle/ngram_tokens",
-                    (physical_max_requests * self.candidate_budget,),
-                    DType.INT32,
-                )
-                if getattr(self, "_ngram", None) is not None
-                else None
-            )
             self._cycle_workspace = workspace
             self._cycle_proposal_hidden = proposal
             self._cycle_repair_hidden = repair
-            self._cycle_ngram_tokens = ngram_tokens
             self._cycle_workspace_shape = shape
         elif getattr(self, "_cycle_workspace_shape", None) != shape:
             raise RuntimeError(
@@ -3207,31 +3154,6 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError("GGUF MTP2 cycle hidden workspace is incomplete")
         return self._cycle_proposal_hidden, self._cycle_repair_hidden
 
-    def _stage_ngram_tokens(
-        self,
-        tokens: Sequence[int],
-        *,
-        runtime: Any,
-    ) -> Tensor:
-        values = np.ascontiguousarray(tuple(int(token) for token in tokens), dtype=np.int32)
-        if values.size <= 0 or np.any(values < 0):
-            raise ValueError("n-gram candidate tokens must be non-empty and non-negative")
-        workspace = getattr(self, "_cycle_ngram_tokens", None)
-        if workspace is None or values.size > workspace.numel:
-            raise RuntimeError("n-gram candidate tokens exceed the fixed cycle workspace")
-        copy_host_array_to_device(
-            DeviceBuffer(workspace.ptr, values.nbytes),
-            values,
-            values.nbytes,
-            runtime=runtime,
-        )
-        return Tensor.from_handle(
-            workspace.ptr,
-            (int(values.size),),
-            DType.INT32,
-            workspace.device,
-        )
-
     def _close_cycle_workspace(self) -> None:
         workspace = getattr(self, "_cycle_workspace", None)
         if workspace is not None:
@@ -3239,7 +3161,6 @@ class Qwen35GGUFMTP2Adapter:
         self._cycle_workspace = None
         self._cycle_proposal_hidden = None
         self._cycle_repair_hidden = None
-        self._cycle_ngram_tokens = None
         self._cycle_workspace_shape = None
 
     def physical_width_contract(self) -> dict[str, Any]:
@@ -3299,11 +3220,6 @@ class Qwen35GGUFMTP2Adapter:
                 0
                 if self._cycle_repair_hidden is None
                 else int(self._cycle_repair_hidden.ptr)
-            ),
-            "ngram_tokens_ptr": (
-                0
-                if getattr(self, "_cycle_ngram_tokens", None) is None
-                else int(self._cycle_ngram_tokens.ptr)
             ),
         }
 
@@ -3451,76 +3367,6 @@ class Qwen35GGUFMTP2Adapter:
         else:
             self._open_batch_requests(ids)
 
-    @staticmethod
-    def _add_row_counter(row: Any, name: str, amount: int = 1) -> None:
-        setattr(row, name, int(getattr(row, name, 0)) + int(amount))
-
-    def _try_ngram_proposal(
-        self,
-        ids: tuple[int, ...],
-        rows: tuple[Any, ...],
-        budgets: tuple[int, ...],
-        context: MtpProposalContext,
-    ) -> tuple[_NgramBatchDeviceProposal, tuple[tuple[int, ...], ...]] | None:
-        composer = getattr(self, "_ngram", None)
-        if composer is None:
-            return None
-        proposals: list[NgramModProposal | None] = []
-        for request_id, row, budget, root_token in zip(
-            ids,
-            rows,
-            budgets,
-            context.root_tokens,
-            strict=True,
-        ):
-            self._add_row_counter(row, "mtp2_ngram_lookup_calls")
-            prompt = tuple(int(token) for token in getattr(row, "prompt_ids", ()))
-            generated = tuple(
-                int(token)
-                for token in getattr(getattr(row, "slot", None), "generated_ids", ())
-            )
-            history = (*prompt, *generated)
-            if not history or history[-1] != int(root_token):
-                proposals.append(None)
-                continue
-            proposal = composer.propose(
-                request_id,
-                history,
-                max_candidates=int(budget),
-            )
-            if proposal is not None:
-                self._add_row_counter(row, "mtp2_ngram_lookup_hits")
-            proposals.append(proposal)
-        # Preserve one physical provider source per fairness group. A mixed
-        # hit/miss group falls back wholesale to the ordinary batched MTP path;
-        # it never materializes MTP device candidates just to splice host rows.
-        if any(proposal is None for proposal in proposals):
-            return None
-        selected = tuple(proposal for proposal in proposals if proposal is not None)
-        candidate_rows = tuple(proposal.candidate_tokens for proposal in selected)
-        flat_tokens = tuple(token for values in candidate_rows for token in values)
-        token_ids = self._stage_ngram_tokens(
-            flat_tokens,
-            runtime=rows[0].lease.session.runtime,
-        )
-        descriptor = _NgramBatchDeviceProposal(
-            request_ids=ids,
-            root_tokens=tuple(int(token) for token in context.root_tokens),
-            root_positions=tuple(int(position) for position in context.root_positions),
-            candidate_counts=budgets,
-            token_ids=token_ids,
-            probed_tokens=tuple(int(proposal.probed_tokens) for proposal in selected),
-        )
-        for row, proposal in zip(rows, selected, strict=True):
-            self._add_row_counter(row, "mtp2_ngram_cycles")
-            self._add_row_counter(
-                row,
-                "mtp2_ngram_probed_tokens",
-                int(proposal.probed_tokens),
-            )
-            self._add_row_counter(row, "mtp2_candidate_device_handoffs")
-        return descriptor, candidate_rows
-
     def propose_batch(
         self,
         plan: SpecRequestPlan,
@@ -3609,18 +3455,7 @@ class Qwen35GGUFMTP2Adapter:
             device_draft = None
             device_proposal = None
             sampled_device_plan = None
-            ngram_proposal = None
-            ngram_candidate_rows: tuple[tuple[int, ...], ...] = ()
-            ngram_selection = self._try_ngram_proposal(
-                ids,
-                rows,
-                budgets,
-                context,
-            )
-            if ngram_selection is not None:
-                ngram_proposal, ngram_candidate_rows = ngram_selection
-                draft = None
-            elif len(ids) == 1 and states[0].verifier is not None:
+            if len(ids) == 1 and states[0].verifier is not None:
                 verifier = states[0].verifier
                 remaining_by_id = {
                     int(item.request_id): int(item.remaining_decode)
@@ -3694,14 +3529,7 @@ class Qwen35GGUFMTP2Adapter:
                 )
                 state.proposal_device = device_proposal
                 state.proposal_device_batch = device_draft
-                state.proposal_ngram = ngram_proposal
                 state.sampled_accept_plan = sampled_device_plan
-                state.ngram_candidate_tokens = (
-                    () if ngram_proposal is None else ngram_candidate_rows[index]
-                )
-                state.proposal_source = (
-                    "ngram_mod" if ngram_proposal is not None else "mtp2"
-                )
         except Exception:
             if journal is not None:
                 # The journal owns every backup this proposal captured, so its
@@ -3714,34 +3542,7 @@ class Qwen35GGUFMTP2Adapter:
                 state.provider.executor.restore_request_checkpoint(checkpoint)
                 state.provider.executor.release_request_checkpoint(checkpoint)
             raise
-        if ngram_proposal is not None:
-            candidate_tokens = tuple(
-                token for values in ngram_candidate_rows for token in values
-            )
-            draft_depths = tuple(
-                depth
-                for count in budgets
-                for depth in range(1, count + 1)
-            )
-            row_to_request = tuple(
-                request_id
-                for request_id, count in zip(ids, budgets, strict=True)
-                for _ in range(count)
-            )
-            candidate_token_ids = ngram_proposal.token_ids
-            draft_mode = "verify_chain"
-            draft_metadata = (
-                ("candidate_handoff", "host_exact_device_i32"),
-                ("candidate_rows", sum(budgets)),
-                ("proposal_source", "request_local_ngram_mod"),
-                ("ngram_match", int(getattr(self._ngram.config, "n_match", 0))),
-            )
-            method_key = "ngram_mod+mtp2"
-            policy_fingerprint = (
-                f"request-local-ngram:n{self._ngram.config.n_match}:"
-                f"min{self._ngram.config.min_draft_tokens}:mtp2-catchup"
-            )
-        elif device_draft is None and device_proposal is None:
+        if device_draft is None and device_proposal is None:
             assert draft is not None
             enabled = draft.active_mask or (True,) * draft.draft_rows
             active_indices = tuple(
@@ -4119,22 +3920,7 @@ class Qwen35GGUFMTP2Adapter:
                 remaining_decode=remaining,
             )
             provider_update_started = time.perf_counter()
-            if state.proposal_source == "ngram_mod":
-                hidden_source = (
-                    None
-                    if prepared.device_state_commit_buffers is None
-                    else prepared.device_state_commit_buffers.hidden_taps_src
-                )
-                if hidden_source is None:
-                    hidden_source = state.verifier.journal.hidden_rows_tensor(
-                        batch.rows
-                    )
-                self._repair_provider_states_from_ngram_target_rows(
-                    (state,),
-                    (hidden_source,),
-                    accepted_counts=(accepted,),
-                )
-            elif device_proposal is None:
+            if device_proposal is None:
                 self._repair_provider_state(
                     state,
                     accepted_count=accepted,
@@ -4851,7 +4637,7 @@ class Qwen35GGUFMTP2Adapter:
         self,
         batch: TargetVerifyBatch,
         *,
-        proposal: Qwen35GGUFNextNBatchDeviceProposal | _NgramBatchDeviceProposal,
+        proposal: Qwen35GGUFNextNBatchDeviceProposal,
         target_results: Sequence[Any],
         remaining_decode: Sequence[int],
         transaction_id: int,
@@ -5355,12 +5141,7 @@ class Qwen35GGUFMTP2Adapter:
         targets = tuple(row.lease.session for row in rows)
         batch = frontier.target_batch
         device_draft = states[0].proposal_device_batch
-        ngram_proposal = states[0].proposal_ngram
-        device_candidates = (
-            ngram_proposal if ngram_proposal is not None else device_draft
-        )
-        if any(state.proposal_ngram is not ngram_proposal for state in states):
-            raise RuntimeError("physical requests do not share one n-gram proposal")
+        device_candidates = device_draft
         if batch is None:
             if device_candidates is None or frontier.candidate_graph is None:
                 raise RuntimeError("device target frontier lost its proposal descriptor")
@@ -5449,11 +5230,7 @@ class Qwen35GGUFMTP2Adapter:
             ):
                 device_offsets[int(request_id)] = (offset, int(count))
                 offset += int(count)
-            if (
-                batch is None
-                and ngram_proposal is None
-                and device_draft.request_ids
-            ):
+            if batch is None and device_draft.request_ids:
                 pad_rows = self._target_group_pad_rows(
                     request_count=len(device_draft.request_ids),
                     candidate_rows=sum(
@@ -5522,7 +5299,7 @@ class Qwen35GGUFMTP2Adapter:
         if not callable(verify_batch):
             raise RuntimeError("physical target owner has no packed verifier")
         target_started_ns = time.perf_counter_ns()
-        device_result = batch is None or ngram_proposal is not None
+        device_result = batch is None
         with (
             target_verifier_active_slots_session(len(jobs)),
             q4_t16_physical_extra_rowtiles_session(
@@ -5719,26 +5496,12 @@ class Qwen35GGUFMTP2Adapter:
                     finish_reasons=(None,) * len(ids),
                 )
                 provider_update_started = time.perf_counter()
-                if ngram_proposal is not None:
-                    hidden_sources = tuple(
-                        result.pre_output_norm_hidden for result in results
-                    )
-                    if any(source is None for source in hidden_sources):
-                        raise RuntimeError(
-                            "n-gram target verifier omitted pre-output hidden rows"
-                        )
-                    self._repair_provider_states_from_ngram_target_rows(
-                        states,
-                        tuple(source for source in hidden_sources if source is not None),
-                        accepted_counts=gpu_summary.accepted_counts,
-                    )
-                else:
-                    assert device_draft is not None
-                    self._repair_provider_states_batch_device(
-                        states,
-                        device_draft,
-                        accepted_counts=gpu_summary.accepted_counts,
-                    )
+                assert device_draft is not None
+                self._repair_provider_states_batch_device(
+                    states,
+                    device_draft,
+                    accepted_counts=gpu_summary.accepted_counts,
+                )
                 provider_update_seconds = (
                     time.perf_counter() - provider_update_started
                 )
@@ -5969,114 +5732,6 @@ class Qwen35GGUFMTP2Adapter:
             committed_accept,
             telemetry=telemetry,
         )
-
-    def _repair_provider_states_from_ngram_target_rows(
-        self,
-        states: tuple[_MTP2RequestState, ...],
-        hidden_rows: Sequence[Tensor],
-        *,
-        accepted_counts: Sequence[int],
-    ) -> None:
-        """Catch target-attached MTP state up after a model-free proposal.
-
-        The MTP checkpoint is captured before provider selection. N-gram lookup
-        does not mutate it, while target verification produces the exact trunk
-        hidden row for the root and every candidate. Replaying only root plus
-        the accepted candidate prefix leaves MTP at the same boundary it would
-        own after an ordinary proposal/repair cycle.
-        """
-
-        accepted = tuple(int(value) for value in accepted_counts)
-        sources = tuple(hidden_rows)
-        if not states or len(states) != len(accepted) or len(states) != len(sources):
-            raise ValueError("n-gram MTP catch-up requires aligned request rows")
-        if len({state.provider_group_key for state in states}) != 1:
-            raise RuntimeError("n-gram MTP catch-up requires one provider group")
-        executor = states[0].provider.executor
-        hidden_size = int(executor.hidden_size)
-        normalized: list[Tensor] = []
-        for state, count, source in zip(states, accepted, sources, strict=True):
-            if state.proposal_source != "ngram_mod":
-                raise RuntimeError("n-gram MTP catch-up received another provider source")
-            if count < 0 or count > len(state.ngram_candidate_tokens):
-                raise ValueError("accepted n-gram count is outside the candidate chain")
-            if source.dtype != DType.BF16:
-                raise ValueError("n-gram target hidden rows must use BF16")
-            if source.ndim == 3:
-                if source.shape[0] != 1:
-                    raise ValueError("n-gram target hidden batch must have one owner axis")
-                source = Tensor.from_handle(
-                    source.ptr,
-                    (source.shape[1], source.shape[2]),
-                    source.dtype,
-                    source.device,
-                )
-            if source.shape != (len(state.ngram_candidate_tokens) + 1, hidden_size):
-                raise ValueError("n-gram target hidden rows do not match the verifier chain")
-            checkpoint = state.proposal_checkpoint
-            if checkpoint is None or state.proposal_context is None:
-                raise RuntimeError("n-gram MTP catch-up has no provider checkpoint")
-            executor.restore_request_checkpoint(checkpoint)
-            normalized.append(source)
-
-        _proposal_hidden, packed_hidden = self._cycle_hidden_tensors(
-            executor.runtime,
-            hidden_size=hidden_size,
-        )
-        hidden_nbytes = hidden_size * DType.BF16.itemsize
-        maximum_depth = max(count + 1 for count in accepted)
-        for depth in range(maximum_depth):
-            active = tuple(
-                index for index, count in enumerate(accepted) if depth <= count
-            )
-            tokens: list[int] = []
-            positions: list[int] = []
-            for packed_row, state_index in enumerate(active):
-                state = states[state_index]
-                context = state.proposal_context
-                assert context is not None
-                token = (
-                    int(context.root_tokens[0])
-                    if depth == 0
-                    else int(state.ngram_candidate_tokens[depth - 1])
-                )
-                tokens.append(token)
-                positions.append(int(context.root_positions[0]) + depth)
-                executor.runtime.memcpy(
-                    packed_hidden.ptr + packed_row * hidden_nbytes,
-                    normalized[state_index].ptr + depth * hidden_nbytes,
-                    hidden_nbytes,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                )
-            hidden = Tensor.from_handle(
-                packed_hidden.ptr,
-                (len(active), hidden_size),
-                DType.BF16,
-                packed_hidden.device,
-            )
-            ids = tuple(states[index].request_id for index in active)
-            if len(active) == 1:
-                executor.advance_state_only(
-                    ids[0],
-                    tokens[0],
-                    positions[0],
-                    Tensor.from_handle(
-                        hidden.ptr,
-                        (1, hidden_size),
-                        DType.BF16,
-                        hidden.device,
-                    ),
-                )
-            else:
-                executor.advance_state_batch_only(
-                    ids,
-                    tuple(tokens),
-                    tuple(positions),
-                    hidden,
-                )
-        for state, count in zip(states, accepted, strict=True):
-            row = self.owner._row(state.request_id)
-            self._add_row_counter(row, "mtp2_ngram_accepted_tokens", count)
 
     def _repair_provider_states_batch_device(
         self,
@@ -6553,9 +6208,6 @@ class Qwen35GGUFMTP2Adapter:
         state.proposal_context = None
         state.proposal_device = None
         state.proposal_device_batch = None
-        state.proposal_ngram = None
-        state.ngram_candidate_tokens = ()
-        state.proposal_source = "mtp2"
 
     def rollback_cycle(
         self,
@@ -6689,9 +6341,6 @@ class Qwen35GGUFMTP2Adapter:
 
     def release_request(self, request_id: int) -> None:
         rid = int(request_id)
-        ngram = getattr(self, "_ngram", None)
-        if ngram is not None:
-            ngram.release_request(rid)
         if rid in self._prompt_streaming_sinks:
             self._abort_prompt_streaming((rid,), stream=0)
         self._drop_request(rid, disable=False)
@@ -6745,9 +6394,6 @@ class Qwen35GGUFMTP2Adapter:
         for workspace in getattr(self, "_packed_sampler_workspaces", {}).values():
             workspace.close()
         getattr(self, "_packed_sampler_workspaces", {}).clear()
-        ngram = getattr(self, "_ngram", None)
-        if ngram is not None:
-            ngram.close()
         if self._batch_accept_workspace is not None:
             self._batch_accept_workspace.free()
             self._batch_accept_workspace = None
