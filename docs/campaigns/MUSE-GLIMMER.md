@@ -529,26 +529,35 @@ implementation defect plus a missing activation pre-cast, not a hardware wall.
   `out_features >= 1024` (narrow outputs keep `<3,4,4>`).
 - Corrected the AR bench timing boundary (named model-step vs user-facing).
 
-**Measured prefill (AR bench, was 333/333/300):**
+**Measured prefill (AR bench, was 333/333/300; laptop thermals float the
+absolute rates, the ordering is stable):**
 
 | Shape | hipEngine now | llama.cpp | ratio |
 | --- | ---: | ---: | ---: |
-| 512 | 391 | 394 | 99% |
-| 1024 | 386 | 386 | 100% |
-| 4096 | 343 | 376 | 91% |
+| 512 | 436 | 394 | 111% |
+| 1024 | 442 | 386 | 114% |
+| 4096 | 387 | 376 | 103% |
 
 Numerical gates pass: runner logits match the CPU reference and llama.cpp
 oracle, greedy generation coherent, and DFlash IDs == true AR on the ten-prompt
-suite plus the public speculative surface.
+suite plus the public speculative surface. Long-context sanity (4K/8K/16K/32K)
+runs without OOM; prefill tapers with attention growth (≈346/321/315/242 at
+4K/8K/16K/32K in one thermal state), decode stays ≈10–11 tok/s.
 
 **Decode:** at 98% of the measured 211 GB/s read ceiling (L2 hit 33.8%,
 DRAM-bound); the +10% gap is structural — T16 +2.78% resident-byte expansion,
 the synchronized step boundary, and the lm_head — not fusible overhead. The
 argmax sampling impact is ~0.04% (timing-label fix, not a real cost).
 
-**Remaining Gate A lever (measured, not yet integrated):** the Q6 ffn_down owner
-runs at 11 TF (25.2% of 4K prefill). Dequantize-to-F16 + hipBLASLt GEMM measured
-1.58x deployable / 2.04x resident (cosine 0.99999); the F16 staging sibling is
-registered for Q4/Q5 but not Q6. Integrating the Q6 library route implies ~1.10x
-on 4K (~389 tok/s), which clears Gate A prefill at every shape. The 2D-tiled
-GEMM redesign was dropped as superseded by these targeted wins.
+**Q6 ffn_down full-GEMM route (integrated):** the single-wave Q6 WMMA owner
+(11 TF) is replaced on the shipping prefill path by a registered planar-Q6T16
+dequantize-to-F16 + hipBLASLt full-GEMM sibling (22.7 TF), with a shared weight
+plane and a cached per-shape best algorithm; `prefill_with_taps` shares the
+same F16 staging so DFlash stays exact. This cleared the 4K shape and Gate A
+prefill at 512/1K/4K. A one-time per-shape algorithm-selection warmup runs on
+the first prefill (JIT-style). The 2D-tiled GEMM redesign was dropped as
+superseded by these targeted wins.
+
+**Gate status:** Gate A prefill passes at 512/1K/4K; Gate A decode is still
+≈91% (bandwidth-roofline structural gap). Gate B (DFlash) passes and remains
+exact. Basic validation complete; no large weakness found.
