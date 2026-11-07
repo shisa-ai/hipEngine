@@ -1880,24 +1880,6 @@ long-prefill comparison does not cover the recorded length sensitivity. Preserve
 geometry and multi-tile coverage. This is switch retirement, not reconsideration of the default-on
 decision.
 
-### R0516 — Repair Gemma 4 down-MMQ continuation before retiring its lever
-
-Owner: `hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`.
-
-Scope: `hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py` — Repair Gemma 4 down-MMQ continuation before retiring its lever.
-
-Done when: Deferred numerical repair: diagnose and repair the MMQ owner's generated-history failure, then
-run the unchanged continuation screen and full applicable execution-profile gate, including
-selected-route, repeatability and isolation checks. Use the same model artifact for both arms:
-
-```bash
-HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1 .venv/bin/python scripts/gemma4_generated_history_gate.py \
-  --model <artifact>.gguf --output-dir /tmp/gemma4-down-mmq-repair
-```
-
-Keep the down-MMQ rollback until continuation and full-profile repair gates pass; a teacher-forced
-screen alone does not clear generated-history failure.
-
 ### R0519 — Decide the compensated Gemma WMMA candidate independently of selectors
 
 Owner: `hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`.

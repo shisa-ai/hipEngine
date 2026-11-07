@@ -259,33 +259,11 @@ _GROUPED_VARIANT_COUNTS: dict[str, int] = {}
 # campaign's frozen evaluator has been recorded for this default, delete the flag.
 # See ``docs/REFACTOR.md``.
 _GEMMA4_MOE_GATE_UP_MMQ_ENV = "HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ"
-_GEMMA4_MOE_DOWN_MMQ_ENV = "HIPENGINE_GEMMA4_MOE_DOWN_MMQ"
 
-# Values that turn a route off. Gate/up defaults on; down's documented
-# continuation failure makes its unset default the exact grouped owner.
+# Values that turn a route off. The DS4 MMQ down owner runs only under an
+# explicit ``mmq`` pin: its unpinned opt-in was retired after it failed nine of
+# ten generated-history screens (three-plane feedback still failed seven).
 _MMQ_DISABLING_VALUES = frozenset(("0", "false", "no", "off", "disable", "disabled"))
-
-
-def gemma4_moe_down_mmq_enabled() -> bool:
-    """Whether the Q5_1 DS4 MMQ down-projection route may be selected.
-
-    Automatic selection defaults to the exact grouped owner: one-plane MMQ
-    fails nine of ten paired generated-history screens, and three-plane error
-    feedback still fails seven. The exact-down control matches all 610 strict
-    rows. Explicit ``HIPENGINE_GEMMA4_MOE_DOWN_MMQ=1`` keeps this implementation
-    runnable; a pinned ``mmq`` owner is also unaffected.
-
-    Clearing test: run the paired generated-history regression recorded in
-    worklog/entries/20261003T123946.224463Z-lhl-repair-tiled-expert-default-dispatch-after-gemma-e11ee2.md
-    with this lever enabled and pass the unchanged execution-profile envelope.
-    The full profile gate remains required for arithmetic promotion.
-    """
-
-    import os
-
-    return os.environ.get(_GEMMA4_MOE_DOWN_MMQ_ENV, "0").strip().lower() not in (
-        _MMQ_DISABLING_VALUES
-    )
 
 
 def gemma4_moe_gate_up_mmq_enabled() -> bool:
@@ -870,12 +848,9 @@ def gemma4_experts_forward_bf16(
         wmma_rows = _build_wmma_tile_plan(
             scratch, expert_start.ptr, lanes, stream=stream, runtime=runtime
         )
-    # The down's own MMQ lever, under the same rule as the gate_up's: it rolls
-    # the unpinned default back, and a pinned ``mmq`` keeps the leaf available as
-    # the fallback for the owners that pin prefers.
-    fused_down_mmq_enabled = route_enabled and (
-        use_mmq or (not pinned and gemma4_moe_down_mmq_enabled())
-    )
+    # Only a pinned ``mmq`` selects the DS4 MMQ down leaf; the unpinned default
+    # keeps the exact down owner.
+    fused_down_mmq_enabled = route_enabled and use_mmq
     if mode == "selected":
         if not gemma4_project_experts_selected(
             down_proj,

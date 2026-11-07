@@ -195,7 +195,6 @@ def test_expert_forward_row_zero_is_invariant_with_both_mmq_routes_disabled(
     """
 
     monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ", "0")
-    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", "0")
     runner, weights = expert_context
     hidden = _hidden(weights)
     narrow = _forward_row_zero(runner, weights, hidden, rows=1)

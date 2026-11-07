@@ -774,7 +774,6 @@ def test_the_expert_block_counts_one_gate_up_route_per_projection(
     scratch = _AccountingScratch(
         tokens=8, top_k=1, hidden_size=256, intermediate=64, num_experts=4
     )
-    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", "1")
     before = gemma4_moe_expert_route_counts()
     experts.gemma4_experts_forward_bf16(
         0x1000,
@@ -787,7 +786,9 @@ def test_the_expert_block_counts_one_gate_up_route_per_projection(
         rows=8,
     )
     delta = _route_delta(before, gemma4_moe_expert_route_counts())
-    assert delta == {"gate_up_t16": 1, "down_mmq32": 1}, (
+    # The unpinned down projection takes the exact owner (here the patched
+    # selected-GEMV ladder); the DS4 MMQ down needs an explicit ``mmq`` pin.
+    assert delta == {"gate_up_t16": 1, "selected_gemv": 1}, (
         "one gate/up projection and one down projection ran, so exactly one name "
         f"per projection is expected; the counters moved by {delta}"
     )
@@ -912,8 +913,6 @@ def test_auto_t16_uses_default_mmq_family_and_honors_rollback(monkeypatch, enabl
     calls = []
     monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_PREFILL", "auto")
     monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ", "1" if enabled else "0")
-    # Isolate gate/up dispatch from the independent down-owner default.
-    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", "1")
     for name in (
         "_zero", "qwen35_moe_group_compact_active",
         "qwen35_moe_gather_packed_hidden_lowp", "gemma4_gelu_tanh_mul_bf16",
@@ -942,14 +941,10 @@ def test_auto_t16_uses_default_mmq_family_and_honors_rollback(monkeypatch, enabl
     assert calls == ["default_mmq" if enabled else "ladder"]
 
 
-@pytest.mark.parametrize("value, expected", [(None, False), ("0", False), ("1", True)])
-def test_down_mmq_defaults_to_exact_after_observed_continuation_failure(monkeypatch, value, expected):
-    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import gemma4_moe_down_mmq_enabled
-    if value is None:
-        monkeypatch.delenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", raising=False)
-    else:
-        monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", value)
-    assert gemma4_moe_down_mmq_enabled() is expected
+def test_unpinned_down_mmq_opt_in_is_retired(monkeypatch):
+    import hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts as experts
+    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_DOWN_MMQ", "1")
+    assert not hasattr(experts, "gemma4_moe_down_mmq_enabled")
 
 
 # --- production eight-input-run siblings on the unpinned route --------------
