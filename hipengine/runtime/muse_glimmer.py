@@ -247,6 +247,10 @@ class MuseGlimmerResidentSession:
         if self._scratch is not None:
             self._scratch.close(self.runtime)
             self._scratch = None
+        staging = getattr(self, "_g_staging", None)
+        if staging is not None:
+            free(staging, runtime=self.runtime)
+            self._g_staging = None
         self._kv.clear()
 
     def _require_open(self) -> None:
@@ -310,15 +314,19 @@ class MuseGlimmerResidentSession:
             )
 
             stream = rt.stream_create()
-            self._g_token = malloc(8, runtime=rt)
-            self._g_pos = malloc(8, runtime=rt)
-            self._g_key_end = malloc(8, runtime=rt)
+            # One staging allocation [token, pos, key_end] (int64) so each
+            # replay uploads its position-dependent inputs in a single copy.
+            self._g_staging = malloc(24, runtime=rt)
+            base = self._g_staging.ptr
+            self._g_token = DeviceBuffer(ptr=base, nbytes=8)
+            self._g_pos = DeviceBuffer(ptr=base + 8, nbytes=8)
+            self._g_key_end = DeviceBuffer(ptr=base + 16, nbytes=8)
+            self._g_staging_host = np.zeros(3, dtype=np.int64)
+            self._softcap_host = np.empty(self.config.vocab_size, dtype=np.float32)
             self._graph_stream = stream
             # Warm every kernel on the capture stream outside capture.
-            staging = np.asarray([13796], dtype=np.int64)
-            copy_host_array_to_device(self._g_token, staging, runtime=rt)
-            copy_host_array_to_device(self._g_pos, np.asarray([self._length], dtype=np.int64), runtime=rt)
-            copy_host_array_to_device(self._g_key_end, np.asarray([self._length + 1], dtype=np.int64), runtime=rt)
+            self._g_staging_host[:] = (13796, self._length, self._length + 1)
+            copy_host_array_to_device(self._g_staging, self._g_staging_host, runtime=rt)
             self._decode_graph_body(stream)
             rt.stream_synchronize(stream)
             rt.stream_begin_capture(stream, mode=0)
@@ -336,11 +344,10 @@ class MuseGlimmerResidentSession:
             return self._graph_exec
         except Exception:
             self._graph_failed = True
-            for name in ("_g_token", "_g_pos", "_g_key_end"):
-                buf = getattr(self, name, None)
-                if buf is not None:
-                    free(buf, runtime=rt)
-                    setattr(self, name, None)
+            buf = getattr(self, "_g_staging", None)
+            if buf is not None:
+                free(buf, runtime=rt)
+            self._g_staging = self._g_token = self._g_pos = self._g_key_end = None
             return None
 
     def _decode_graph_body(self, stream: int) -> None:
@@ -454,18 +461,21 @@ class MuseGlimmerResidentSession:
     def _decode_step_graph(self, graph_exec: int, token_id: int) -> np.ndarray:
         rt = self.runtime
         pos = self._length
-        copy_host_array_to_device(self._g_token, np.asarray([token_id], dtype=np.int64), runtime=rt)
-        copy_host_array_to_device(self._g_pos, np.asarray([pos], dtype=np.int64), runtime=rt)
-        copy_host_array_to_device(self._g_key_end, np.asarray([pos + 1], dtype=np.int64), runtime=rt)
+        self._g_staging_host[:] = (token_id, pos, pos + 1)
+        copy_host_array_to_device(self._g_staging, self._g_staging_host, runtime=rt)
         rt.graph_launch(graph_exec, self._graph_stream)
         rt.stream_synchronize(self._graph_stream)
         copy_device_to_host(self._logits_host.ctypes.data, self.logits_f32, runtime=rt)
         self._length = pos + 1
-        logits = self._logits_host * np.float32(self.config.logit_scale)
+        # Same float32 ufunc sequence as the eager path, evaluated in place.
+        logits = self._softcap_host
+        np.multiply(self._logits_host, np.float32(self.config.logit_scale), out=logits)
         cap = self.config.final_logit_softcapping
         if cap:
-            logits = np.float32(cap) * np.tanh(logits / np.float32(cap))
-        return np.ascontiguousarray(logits, dtype=np.float32)
+            np.divide(logits, np.float32(cap), out=logits)
+            np.tanh(logits, out=logits)
+            np.multiply(np.float32(cap), logits, out=logits)
+        return logits.copy()
 
     # -- speculative (DFlash) surface --------------------------------------
     def prefill_with_taps(
