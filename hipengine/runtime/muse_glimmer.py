@@ -617,6 +617,14 @@ class MuseGlimmerResidentSession:
             tap_buf = malloc(tokens * n_taps * hidden * 4, runtime=rt)
         tap_index = {int(l): i for i, l in enumerate(tap_layers or ())}
 
+        if self._exact_multirow:
+            # Fused verify: the first attn pre-norm is standalone; every later
+            # pre-norm is produced by the previous layer's fused residual
+            # boundary (add_rmsnorm_rmsnorm), mirroring the decode graph.
+            gemma4_rmsnorm_f32w_bf16(
+                src.ptr, self.loaded.ptr("blk.0.attn_norm.weight"), self.normed.ptr,
+                tokens, hidden, cfg.rms_eps, runtime=rt,
+            )
         for layer in range(cfg.n_layers):
             p = f"blk.{layer}."
             is_swa = cfg.swa_pattern[layer]
@@ -626,10 +634,11 @@ class MuseGlimmerResidentSession:
                     src.ptr, tap_buf.ptr + slot * tokens * hidden * 4,
                     tokens * hidden, runtime=rt,
                 )
-            gemma4_rmsnorm_f32w_bf16(
-                src.ptr, self.loaded.ptr(p + "attn_norm.weight"), self.normed.ptr,
-                tokens, hidden, cfg.rms_eps, runtime=rt,
-            )
+            if not self._exact_multirow:
+                gemma4_rmsnorm_f32w_bf16(
+                    src.ptr, self.loaded.ptr(p + "attn_norm.weight"), self.normed.ptr,
+                    tokens, hidden, cfg.rms_eps, runtime=rt,
+                )
             self._linear(
                 self.loaded.weight(p + "attn_q.weight"), self.normed.ptr,
                 self.q_bf16.ptr, tokens, hidden, q_dim,
@@ -755,17 +764,30 @@ class MuseGlimmerResidentSession:
                 self.attn_proj.ptr, tokens, q_dim, hidden,
                 backend=self.backend, runtime=rt,
             )
-            gemma4_add_rmsnorm_scale_bf16(
-                self.attn_proj.ptr, src.ptr,
-                self.loaded.ptr(p + "post_attention_norm.weight"), 0,
-                dst.ptr, tokens, hidden, cfg.post_norm_eps, runtime=rt,
-            )
+            if self._exact_multirow:
+                from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
+                    muse_glimmer_add_rmsnorm_rmsnorm,
+                )
+                muse_glimmer_add_rmsnorm_rmsnorm(
+                    self.attn_proj.ptr, src.ptr,
+                    self.loaded.ptr(p + "post_attention_norm.weight"),
+                    self.loaded.ptr(p + "ffn_norm.weight"), dst.ptr, self.normed.ptr,
+                    rows=tokens, hidden_size=hidden, post_eps=cfg.post_norm_eps,
+                    pre_eps=cfg.rms_eps, runtime=rt,
+                )
+            else:
+                gemma4_add_rmsnorm_scale_bf16(
+                    self.attn_proj.ptr, src.ptr,
+                    self.loaded.ptr(p + "post_attention_norm.weight"), 0,
+                    dst.ptr, tokens, hidden, cfg.post_norm_eps, runtime=rt,
+                )
             src, dst = dst, src
 
-            gemma4_rmsnorm_f32w_bf16(
-                src.ptr, self.loaded.ptr(p + "ffn_norm.weight"), self.normed.ptr,
-                tokens, hidden, cfg.rms_eps, runtime=rt,
-            )
+            if not self._exact_multirow:
+                gemma4_rmsnorm_f32w_bf16(
+                    src.ptr, self.loaded.ptr(p + "ffn_norm.weight"), self.normed.ptr,
+                    tokens, hidden, cfg.rms_eps, runtime=rt,
+                )
             self._linear(
                 self.loaded.weight(p + "ffn_gate.weight"), self.normed.ptr,
                 self.ff_gate.ptr, tokens, hidden, cfg.n_ff,
@@ -785,11 +807,24 @@ class MuseGlimmerResidentSession:
                 self.ff_out.ptr, tokens, cfg.n_ff, hidden,
                 backend=self.backend, runtime=rt,
             )
-            gemma4_add_rmsnorm_scale_bf16(
-                self.ff_out.ptr, src.ptr,
-                self.loaded.ptr(p + "post_ffw_norm.weight"), 0,
-                dst.ptr, tokens, hidden, cfg.post_norm_eps, runtime=rt,
-            )
+            if self._exact_multirow:
+                next_norm = (
+                    f"blk.{layer + 1}.attn_norm.weight"
+                    if layer + 1 < cfg.n_layers else "output_norm.weight"
+                )
+                muse_glimmer_add_rmsnorm_rmsnorm(
+                    self.ff_out.ptr, src.ptr,
+                    self.loaded.ptr(p + "post_ffw_norm.weight"),
+                    self.loaded.ptr(next_norm), dst.ptr, self.normed.ptr,
+                    rows=tokens, hidden_size=hidden, post_eps=cfg.post_norm_eps,
+                    pre_eps=cfg.rms_eps, runtime=rt,
+                )
+            else:
+                gemma4_add_rmsnorm_scale_bf16(
+                    self.ff_out.ptr, src.ptr,
+                    self.loaded.ptr(p + "post_ffw_norm.weight"), 0,
+                    dst.ptr, tokens, hidden, cfg.post_norm_eps, runtime=rt,
+                )
             src, dst = dst, src
 
         self._length = keys
@@ -797,10 +832,13 @@ class MuseGlimmerResidentSession:
 
         if all_logits:
             # Verification head: every block row (bounded by the draft block).
-            gemma4_rmsnorm_f32w_bf16(
-                src.ptr, self.loaded.ptr("output_norm.weight"), self.normed.ptr,
-                tokens, hidden, cfg.rms_eps, runtime=rt,
-            )
+            # Fused verify already produced output_norm into ``normed`` at the
+            # last layer's residual boundary; prefill computes it here.
+            if not self._exact_multirow:
+                gemma4_rmsnorm_f32w_bf16(
+                    src.ptr, self.loaded.ptr("output_norm.weight"), self.normed.ptr,
+                    tokens, hidden, cfg.rms_eps, runtime=rt,
+                )
             self._linear(
                 self.loaded.weight("output.weight"), self.normed.ptr,
                 self.logits_bf16.ptr, tokens, hidden, cfg.vocab_size,
