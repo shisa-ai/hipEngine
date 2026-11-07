@@ -634,26 +634,6 @@ cleanup. Selected-mode, category/publication and host MoE tests cover the diagno
 interfaces; they do not establish actual-weight model parity. No reader/mode removal
 is required while these comparisons remain maintained.
 
-### R0277 — GGUF capture-inclusive graph policy and diagnostic interfaces
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `HIPENGINE_GGUF_DECODE_GRAPH`.
-
-Done when: Decision needed: keep the eager override and comparison interfaces as supported controls, or
-retire them after a current same-host, capture-inclusive public-route comparison. The bench defaults
-to graph requests; MTP's default target-graph flag still has consumers in applicable verification
-modes, while the resident preset selects bulk verification. Neither MTP mode is dead solely because
-it differs from scalar AR. **Clearing action:** run `scripts/gguf_decode_graph_g5.py --help`, then
-its state-parity and capture-inclusive comparison with an explicit local model, backend and
-compiler-version file. Compare actual `LLM.generate()` eager and automatic routes at
-below-/above-floor and unrelated horizons, including reset, cancellation and cleanup. Keep queue
-count and KV policy matched; separate capture, first replay and steady replay. Inspect mode
-consumers in `scripts/gguf_mtp_bench.py` before retiring its flags and migrate their comparison
-tests. Run `tests/test_unit_qwen35_gguf_decode_graph.py`,
-`tests/test_unit_qwen35_gguf_decode_graph_kv_floor.py`,
-`tests/test_unit_qwen35_gguf_bench_metadata.py` and `tests/test_unit_gguf_mtp_bench_metrics.py`.
-
 ### R0281-ATTN — Laguna prefill/decode variant interfaces
 
 Owner: `hipengine/runtime/laguna_gguf_runner.py`.
