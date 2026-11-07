@@ -2273,16 +2273,6 @@ cancellation and provider cleanup and confirm streaming actually ran. Unit adapt
 does not close it. Keep explicit capability failures and strict replay semantics until consumers
 migrate.
 
-### R0201 — Public repeat after planar-Q6 selector cleanup
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `hipengine/runtime/gguf_linear.py` — Public repeat after planar-Q6 selector cleanup.
-
-Done when: Deferred validation: perform the later-release defaults-only, same-protocol two-pair full-suite
-C1-C3 public repeat with all categories and heldouts, exact trajectories, native groups, trace
-identity and drain checks. Preserve backend policy and the registered one-wave fallback.
-
 ### R0203 — Extract the explicit device-chain diagnostic oracle
 
 Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
