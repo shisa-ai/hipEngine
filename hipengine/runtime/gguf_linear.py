@@ -8879,7 +8879,8 @@ def _resolve_gguf_linear_pair_silu_plan(
     # Q5 T16 gate/up decode dual: requires the direct-GEMV singles at rows == 1.
     # Tile8 singles do not enter this route. The inherited policy variant must
     # also be registered under Q5; a Q4 policy variant does not satisfy that key.
-    # See R0512 in docs/REFACTOR.md before changing this dispatch condition.
+    # Re-screen against the two-single + SiLU chain before changing this
+    # dispatch condition (docs/PLAN.md, Deferred Engineering Backlog).
     q5_t16_decode = KernelKey(
         resolved_backend,
         "linear",

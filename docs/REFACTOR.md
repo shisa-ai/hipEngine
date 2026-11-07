@@ -654,45 +654,6 @@ tests. Run `tests/test_unit_qwen35_gguf_decode_graph.py`,
 `tests/test_unit_qwen35_gguf_decode_graph_kv_floor.py`,
 `tests/test_unit_qwen35_gguf_bench_metadata.py` and `tests/test_unit_gguf_mtp_bench_metrics.py`.
 
-### R0279 — General compact-DMS undo beyond append-only cycles
-
-Owner: `hipengine/runtime/qwen35_gguf_mtp.py`.
-
-Scope: `hipengine/kvcache/dms.py`; `hipengine/kvcache/dms_device.py`; `_DMSStoreJournal`.
-
-Done when: Remaining work: general eviction/compaction still copies owned extents to host. Choose a bounded
-reversible mutation log or a resource-claimed device-local journal; do not replace it with an
-unpriced prompt-proportional VRAM snapshot. Preserve the bounded append path and exact full fallback
-until the successor covers expiry, movement and changing extent ownership. **Clearing action:**
-implement the chosen owner in `hipengine/kvcache/dms.py`, `hipengine/kvcache/dms_device.py` and
-`_DMSStoreJournal` in `hipengine/runtime/qwen35_gguf_mtp.py`. Restore K/V, INT8 scales, positions,
-eviction/live counts, extent/ledger state and non-KV resident state at the same accepted-prefix
-boundary. Run the append-journal, append-tail, append-integration, cycle-transaction,
-journal-finalize and verifier-journal unit files plus `tests/test_gpu_dms_external_runtime.py` and
-`tests/test_gpu_dms_int8_device_payloads.py`. Exercise public MTP rejection, partial/full commit,
-following cycles, copy-failure retry, cancellation and shutdown. Use a trace to verify
-copy/allocation ownership, not just token IDs.
-
-### R0280 — DMS device ranking and decode control ownership
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `finalize_layer()`, `build_dms_exact_budget_eviction()`.
-
-Done when: Remaining work: implement bounded deterministic device ranking and live-count/position/eviction
-finalization with one owner for host observability, compact extents, prefix reuse and speculative
-rollback. Preserve the one-pass ordering and layer staging/release lifetimes; the current host route
-is the working reference, not an admission failure. Device packing alone is not this successor.
-**Clearing action:** add CPU-oracle RED tests for exact masks including ties, non-finite rejection,
-window edges, non-aligned lengths and per-head counts; then register device primitives and integrate
-collector/decode owners. Run `tests/test_unit_kvcache_dms.py`,
-`tests/test_unit_dms_one_pass_prefill.py`, `tests/test_unit_dms_layer_collector.py`,
-`tests/test_unit_dms_layer_outer_lifetime.py`, `tests/test_unit_dms_prefill_cache.py` and the R0279
-journal bundle, plus `tests/test_gpu_dms_external_runtime.py` and public DMS lifecycle/MTP requests.
-Confirm masks, payload/scales/metadata, accepted-prefix rollback, continuation and cleanup on each
-implemented composition. Profile named operations and transfers with resources priced before
-retiring the host fallback.
-
 ### R0281-ATTN — Laguna prefill/decode variant interfaces
 
 Owner: `hipengine/runtime/laguna_gguf_runner.py`.
@@ -1793,40 +1754,6 @@ readiness/capability/response documents, allocation ownership and teardown. Brac
 short probes, then confirm the chosen context with the full-depth workload; the example context is
 not a maximum.
 
-### R0415 — Register-state GDN decode follow-up
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `gdn_register_prefill`.
-
-**Deferred work:** optimize decode without reopening the lead's accepted prefill-first decision. The
-accepted resource review and rejection of per-column/every8 scheduling barriers still stand.
-
-Done when: profile today's decode path under `OPTIMIZATION.md` before choosing an
-optimization. Run the full profile gate and matched whole-model prefill/decode comparison for any
-arithmetic or performance candidate, keeping the serial strict fallback. Remove this follow-up only
-after the decode work is completed or the lead explicitly retires it.
-
-### R0444 — Risk multiplier ownership and repair-grid follow-up
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT`.
-
-**Deferred ownership decision:** retain an explicit diagnostic multiplier or replace environment
-transport with a profile-owned value. Preserve the bound and unbound semantics, effective-value
-reporting, strict/reference contract and post-binding diagnostic isolation. A repair-grid experiment
-is not permission to change the risk threshold or the repair coverage contract.
-
-Done when: Deferred optimization follow-up: the sparse repair wrapper still defaults to 1024 grid blocks,
-and the runner does not override that count. The device loop is bounded by the queued count and
-capacity, so fixed launch geometry is not fixed repair work. Use
-`scripts/qwen4exp_repair_grid_probe.py` to compare explicit grids and profile the actual repair
-calls before proposing a launch policy. Record effective multiplier, queue counts, overflow handling
-and cache/ stream ownership; run numerical repair parity and public same-profile checks for any
-adopted change. Earlier fixed-cost estimates are historical hypotheses, not a fresh promise of
-recoverable wall time. Kernel traces follow the cached- build protocol in `docs/OPTIMIZATION.md`.
-
 ### R0459 — Row-split GDN recurrence removal decision
 
 Owner: `hipengine/generation/qwen4_exp_profiles.py`.
@@ -1845,28 +1772,6 @@ remaining check needs a Qwen4Exp Q4_K_M checkpoint: load it through
 `hipengine.LLM(..., execution_profile="production")`, verify the resolved strict
 fallback and actual GDN leaf, then generate and close. Do not substitute a
 similarly named model or count the CPU binder test as that public execution.
-
-### R0462 — QSA gather storage and variable-span follow-up
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `runner.qsa_wmma_enabled`, `qsa_wmma_attention`.
-
-**Deferred storage decision:** retain the shared full-context gather or spend per-layer storage to
-cache F16 K/V across chunks. Distinct layers share the output scratch within each chunk. Changing
-only `first_position` to the chunk start would reuse another layer's K/V. **Clearing action:**
-profile a representative long-context workload, choose the memory/reuse trade-off, then implement
-per-layer ownership and admission accounting together if caching is chosen. Validate reset, prefix
-adoption, snapshot restore, speculative rollback, interrupted prefill and teardown, including an
-intervening decode append before more prefill. Do not infer a throughput benefit from the short
-instrumented ownership diagnostic.
-
-Done when: Deferred capability extension: the gather wrapper accepts only uniform BF16 `KVLiveSpans`.
-Before offering this route to a non-dense policy, implement a gather consuming `live_counts`,
-`token_positions` and `evict_mask`, plus matching sparse-mask/attention semantics. Verify
-nonidentity physical pages, evicted positions and policy transitions against the strict reference;
-preserve the existing dense route. This is an implementation prerequisite, not an artifact-identity
-or benchmark-admission gate.
 
 ### R0471 — Optional selected DP4A adapter intent
 
@@ -2038,54 +1943,6 @@ policy on both sides of its limit and an unrelated size through `LLM.generate()`
 validation also needs a locally available checkpoint; the current local cache lacks
 `datalab-to/surya-ocr-2`.
 
-### R0499 — Decide whether to pursue exact dual GEMV scheduling
-
-Owner: `scripts/vibevoice_tts_session_bench.py`.
-
-Scope: `scripts/vibevoice_tts_session_bench.py`; `scripts/vibevoice_tts_quality_suite.py`.
-
-Done when: Deferred research decision: decide whether to fund a different workgroup schedule or output
-partition that preserves the per-output reduction tree. Neither restoring the rejected thread count
-nor repeating shared-memory staging resolves this item. If pursued, profile the current session
-first, compare exact outputs, synchronize cache flushes before isolated timing, and verify through
-`scripts/vibevoice_tts_session_bench.py` and the generated-audio quality suite
-(`scripts/vibevoice_tts_quality_suite.py`), not correctness tests alone. Alternatively close this
-research direction explicitly.
-
-### R0500 — Choose cross-branch VibeVoice batching ownership
-
-Owner: `hipengine/runtime/vibevoice_tts_session.py`.
-
-Scope: `_negative_condition`.
-
-Done when: Deferred architecture decision: choose shared immutable weight ownership and a per-row KV
-interface before implementing speculative cross-branch batching. Specify negative-position rollback
-on non-diffusion tokens, speech-boundary resets, cancellation and errors; preserve RNG consumption
-and feedback ordering. Ordinary multi-row prefill is not a replacement for this transaction
-contract. Implement registered kernel variants only after that contract is chosen, then verify
-branch conditions, token chains, rollback and request reuse through the public synthesis surface and
-generated-audio quality suite. If arithmetic changes, run the applicable execution-profile numerical
-gate as well.
-
-### R0504 — Evaluate overlapping chunked prompt activations
-
-Owner: `hipengine/generation/engine_loop.py`.
-
-Scope: `prefill_activation_ready`, `prefill_needs_activation`.
-
-Prompt activation now owns request-scoped claims and may overlap another
-request's chunked prefill lifetime. Scheduler items admit multiple first chunks;
-provider slots and sinks retain independent completion/abort ownership. CPU
-coverage checks separate openings, peer setup failure, cancellation and claim
-retirement. Public GPU token/acceptance comparison remains outstanding.
-
-Done when: Deferred scheduler work: implement co-activation of chunked rows while preserving provider-slot
-ownership and failure isolation. Exercise unequal prompt lengths, different finish orders, partial
-failures and cancellation. Compare generated tokens and acceptance against independent
-single-request runs through the public generation surface; check that waiting requests keep their
-provider and that all claims and sink buffers are released. The lifecycle fix alone does not enable
-overlap or establish its numerical/acceptance behavior.
-
 ### R0509 — Choose shared target/provider checkpoint memory accounting
 
 Owner: `scripts/int8_mtp_prefix_gate.py`.
@@ -2135,48 +1992,6 @@ physical constrained memory, with failure/cancellation releasing all probe resou
 Preserve actual request context limits and capacity estimates; short probes must not certify
 full-context capacity or graph buckets. Keep the width-reduction guard until that validation.
 
-### R0512 — Revisit Q5 decode-dual dispatch separately from working prefill
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `dense_pair_quant`, `gguf_q5_k_t16_v1`.
-
-Done when: Deferred tuning decision: re-screen the Q5 dual against the currently selected two-single-kernel
-plus SiLU chain on gfx1151 before changing decode selection. If pursuing it, select a Q5-specific
-registered key, verify the intended decode owner and run the applicable numerical and public route
-gates. Do not change the working prefill route as part of this decision.
-
-### R0513 — Define captured-accept logprob outputs for every published token
-
-Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
-
-Scope: `_device_sampled_accept_plan`.
-
-**Deferred graph interface:** emit the selected token's processed logprob and requested top-logprobs
-for accepted draft tokens, rejection corrections and the bonus token. The selected token need not be
-top-1. Bind each result to the target row that predicted it, and discard metadata beyond stop/EOS or
-cancellation. Define buffer ownership, graph replay updates and streaming publication together.
-
-Done when: After removing the decline, run the existing logprobs parity gate with zero delta against AR and
-confirm captured accept actually ran.
-
-### R0514 — Define device forced-token inputs and queue commit semantics
-
-Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
-
-Scope: `supports_native_gpu_sampling`, `_device_sampled_accept_plan`, `_sampled_accept_summary`.
-
-**Deferred device interface:** carry per-row forced-token overrides into sampling and acceptance,
-with request-local queue position and graph replay updates. Advance the queue only for committed
-published tokens, not rejected speculative rows. Preserve queue state across rollback, partial
-acceptance, stop truncation and cancellation; validate token bounds and interactions with
-constraints.
-
-Done when: Remove the refusal only after the forced-token gate compares output tokens and queue positions
-against the host path while telemetry confirms captured-graph accept. Exercise forced sequences
-spanning cycle boundaries and ordinary rows sharing a batch. Host-path test success does not
-establish device support.
-
 ### R0515 — Decide retirement of the Gemma 4 gate/up MMQ rollback
 
 Owner: `hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`.
@@ -2221,41 +2036,6 @@ discussion is historical evidence, not permission to weaken the current gate or 
 defaults. Preserve exact comparison modes, independently useful kernels and current automatic
 dispatch. If retiring candidate modes, inventory their harness callers and remove only
 candidate-specific wiring/tests after preserving the required comparisons.
-
-### R0521 — Revisit backend-specific decode graph engagement separately from telemetry
-
-Owner: `hipengine/runtime/gemma4_decode_graph.py`.
-
-Scope: `gemma4_decode_graph.py`, `_CAPTURE_MAX_KEYS`, `GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS`,
-`launched_fallbacks`.
-
-Done when: Deferred optimization decision: reduce capture/replay overhead or remeasure the crossover on
-each affected physical host before changing its policy. Compare public decode with graph selection
-confirmed, including capture amortization, short and long requests, and contexts on both sides of
-the threshold. Preserve replay parity and request/resource lifetime checks.
-
-Retire graph rollback and fallback telemetry separately only when no supported fallback or
-diagnostic caller remains. Preserve backend independence; broader engagement on one host does not
-establish another host’s crossover.
-
-### R0003 — Choose a DMS layout that preserves interior-expiry semantics
-
-Owner: `hipengine/kvcache/dms.py`.
-
-Scope: `build_dms_live_mask`.
-
-**Deferred design decision:** choose between a prefix-only head-advance fast path with interior
-compaction, or a layout that separately represents retained history and the expiring window. The
-latter requires coordinated attention-reader, allocator, snapshot, prefix-cache and speculative
-rollback changes; neither may silently discard non-evictable history. Account for reserved extent
-bounds and wrap/rebase behavior before changing `base_offsets`.
-
-Done when: cover interior expiry, prefix expiry, no expiry, mixed heads, capacity boundaries
-and repeated wrap/rebase against the host oracle. Run `tests/test_gpu_dms_append_decode_hip.py`,
-INT8 device-payload, compact-attention, prefix and transaction tests, then public DMS generation
-including continuation and rejected speculative suffixes. Profile the selected route before claiming
-an append-cost improvement. Keep the existing race-safe staging until its data movement is replaced
-safely.
 
 ### R0011 — Define bounded generic-provider child ownership
 
@@ -2307,51 +2087,6 @@ profile gates; exercise public prefix reuse and fresh generation with continuati
 the repair, and extend `test_batched_suffix_extend_is_bit_exact_against_recompute` where that
 exactness contract applies. Do not treat passing a test that requires inequality as proof of
 numerical correctness or remove it merely to clear the ledger.
-
-### R0127 — Choose whether to replace host grammar selection
-
-Owner: `hipengine/generation/grammar.py`.
-
-Scope: `hipengine/generation/grammar.py`, `supports_grammar`.
-
-**Deferred implementation choice:** retain host selection or replace its mask application and
-selection with a registered device implementation. Profile the controlled route before choosing an
-optimization. A replacement must preserve request-local matcher state, selected-token handoff, token
-controls and sampling semantics, EOS/content boundaries, cancellation and speculative
-commit/rollback. Do not remove the working host route before its supported inputs have a
-replacement; do not claim a speedup from reduced readback alone.
-
-Done when: run `tests/test_unit_grammar_masks.py` and
-`tests/test_unit_qwen4exp_mtp_structured.py`, add host/device selection parity and mixed-request
-isolation tests for any replacement, then exercise public required/named tool generation with
-streaming, MTP and cancellation. Confirm the intended selection route actually ran before removing
-host-only machinery.
-
-Keep model-owned embedded-template/XML parsing and independent model parsers; replacing host
-selection must not restore generic JSON forced-prefill behavior.
-
-### R0128 — Compose optional resource accounting and implement sparse device-position selection
-
-Owner: `hipengine/loading/qwen4_exp_context.py`.
-
-Scope: `resolve_qwen4_exp_context`.
-
-**Deferred resource-design work:** compose optional MMQ sidecars, graph and verification allocations
-with admission and their actual owner lifetimes. Identify which allocations are already covered
-before adding reservations; avoid double counting as well as over-admission. Preserve
-explicit-request errors and keep native context, QSA dense-equivalent limits and selected-position
-capacity independent. The scratch floor is not proof that every optional combination fits.
-
-**Separate missing capability:** device-position-owned QSA still rejects a position beyond the
-dense-equivalent limit in the decode path. Implement native sparse selection and its graph ownership
-before removing that guard; increasing the limit does not supply sparse selection. This does not
-restrict the separate host-position sparse route.
-
-Done when: run the scratch-plan, QSA-scratch-reserve and chunk-memory-ladder unit tests, then
-exercise public admission with optional resources alone and in combination, including failure
-cleanup and requests around allocation limits. For device-position sparse support, compare
-selection, logits and state against the declared oracle across the dense/sparse boundary and
-unrelated lengths, then exercise public continuation and graph replay.
 
 ### R0131 — Coordinate live-derived Surya split planning with launch bounds
 
@@ -2451,30 +2186,6 @@ the shared-decode follow-ups; do not reopen its completed batch implementation.
 Done when: run AR-batch admission/capacity/decode unit tests and public mixed-prefill/decode
 requests, including transfer, cancellation and continuation. Confirm actual batch engagement and
 staging allocation lifetimes.
-
-### R0152 — Expand vision capacity and integrate typed media ownership separately
-
-Owner: `hipengine/runtime/qwen4_exp_vision.py`.
-
-Scope: `max_patch_tokens`.
-
-**Deferred capacity work:** connect larger supported grids to explicit memory admission and validate
-them against the vision reference before changing public limits. Profile the existing attention
-implementation before selecting a faster replacement; do not treat changing the limit as providing
-its storage or numerical contract.
-
-**Separate lifecycle integration:** replace the dedicated multimodal chat branch only when the
-normal request owner carries typed media, cancellation, exact token accounting and streaming state.
-Current HTTP checks reject streaming, n other than one, tools, sessions, continuation, grammar and
-speculative generation. Those missing semantics are not implemented by widening vision buffers.
-Remote media handling needs an explicit fetching/resource policy; preserve bounded inline decoding
-until that exists.
-
-Done when: run `tests/test_unit_qwen4_exp_multimodal.py` and
-`tests/test_integration_qwen4_exp_server_multimodal.py`; add grid-boundary, allocation-failure and
-mixed-request lifecycle coverage for the chosen extension. Run vision reference/device parity and
-real public HTTP media requests, including cancellation and malformed inputs. Remove only
-restrictions whose replacement semantics actually run.
 
 ### R0173 — Verify owner-bound R28 dispatch on gfx1100
 
@@ -2915,22 +2626,6 @@ re-certifying or replacing non-exact defaults under their arithmetic gates. Afte
 verifies strict fallback and batch-invariant behavior, retire omitted-profile legacy selection and
 duplicate environment adapters, retaining registered strict fallbacks. Verify public resolution and
 fallback attribution across registered, failed and missing-plan cases before removing compatibility.
-
-### R0206 — Per-primitive width planning and optional D2 promotion
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS`; `HIPENGINE_GGUF_AR_D2_COST_ARTIFACT`.
-
-**Deferred planner design:** consolidate capability maps, sidecar cases and manual ladders through
-cold registry/plugin resolution without flattening per-primitive limits into one model-wide bound.
-Q5T16 and planar-qmicro Q6T16 rowtiles cover through eight rows; FP32 LM-head standard-Q6 and
-planar-qmicro bounds differ and must still intersect backend policy. Keep shape/layout misses and
-registered strict kernels explicit.
-
-Done when: Before retiring sidecars, row caps or ladders, require actual-server direct/masked/composed c1-c32
-telemetry, matched counterbalanced D2-versus-ceiling goodput and TTFT/ITL, refill/cancel, memory and
-drain checks.
 
 ### R0207 — Migrate remaining chunk-local KV consumers before allocator retirement
 

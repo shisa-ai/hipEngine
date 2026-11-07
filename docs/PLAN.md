@@ -1754,7 +1754,7 @@ SpecDec is planned as a scheduler + plugin feature that reuses the same target-m
 | Draft Type | Status | Integration shape |
 |------------|--------|-------------------|
 | Medusa-style heads | Planned | Model-advertised heads produce shallow candidate rows. |
-| Lookahead decoding | Partial | Dense GGUF MTP2 has an opt-in request-local exact `ngram-mod` first-refusal composer for qualified K<=3 chains. Repetition-heavy strict C2 D80 is +2.425% vs MTP-only but 0.9875x true AR; canonical production D24 has zero hits. Ordinary MTP/AR remain fallbacks and promotion requires a correct K>3/long-horizon product cell. |
+| Lookahead decoding | Research | The request-local `ngram-mod` composer in dense GGUF MTP2 was retired after strict and production rejections (repetition-heavy strict C2 D80 was 0.9875x true AR; canonical production D24 had zero hits). `hipengine/speculative/ngram_mod.py` remains as a research reference; a revival needs a K>3/long-horizon design that beats true AR. |
 | MTP (multi-token pred) | Research | Qwen3.5 MTP layers provide `DraftBatch` chains attached to the target model; detailed native plan: [`docs/reference/MTP.md`](reference/MTP.md). |
 | EAGLE3 | Research | Draft-model plugin emits feature-conditioned candidate chains/trees. |
 | DFlash (draft model) | Partial | Generic four-axis public-provider registry plus an explicit-only Poolside Laguna B4 library owner; OpenAI routing and broader DFlash/DDTree serving remain. Detailed native plan: [`docs/reference/DFLASH.md`](reference/DFLASH.md). |
@@ -4707,6 +4707,44 @@ wave64 as architecturally possible on gfx1100, not as a retained default. This a
 to gfx1151 / Strix Halo targets: the dual-issue rules remain RDNA3-family, but lower CU
 count and cache/LDS differences make wave32 + explicit ILP/VOPD exposure the safer default
 for AWQ GEMV and grouped-GEMM hot paths.
+
+## Deferred Engineering Backlog
+
+These items moved here from the refactor ledger on 2026-11-07. They are future
+optimization or feature work, not cleanup debt: none has a live defect or a
+candidate path waiting for a keep/kill decision. Each one names the owning module.
+Git history of `docs/REFACTOR.md` keeps the full original entries and their
+completion criteria.
+
+### Optimization follow-ups
+
+Profile first (see `docs/OPTIMIZATION.md`). Each needs its own measured win and
+the applicable numerical gate before any default changes.
+
+| Item | Owner | Idea |
+|---|---|---|
+| GDN register-state decode | `hipengine/runtime/qwen4_exp_runner.py` | Optimize Qwen4Exp decode around the register-state GDN prefill owner, without reopening the prefill-first decision or per-column/every8 barriers. |
+| Sparse repair launch grid | `hipengine/runtime/qwen4_exp_runner.py` | The iu8 risk-repair wrapper launches a fixed 1024-block grid; profile actual repair calls with `scripts/qwen4exp_repair_grid_probe.py` before proposing a queue-sized launch policy. The risk multiplier stays owner-bound. |
+| VibeVoice exact dual GEMV schedule | `scripts/vibevoice_tts_session_bench.py` | A workgroup schedule or output partition that preserves the per-output reduction tree; the earlier thread-count and shared-memory staging attempts are rejected. |
+| Q5 decode-dual re-screen | `hipengine/runtime/gguf_linear.py` | Re-screen a Q5-specific dual against the current two-single-kernel + SiLU decode chain on gfx1151, leaving the working prefill route unchanged. |
+| Gemma 4 decode-graph crossover | `hipengine/runtime/gemma4_decode_graph.py` | Reduce capture/replay overhead or remeasure the graph crossover per physical host before changing `_CAPTURE_MAX_KEYS`; keep fallback telemetry until no caller needs it. |
+| Device grammar selection | `hipengine/generation/grammar.py` | Optionally replace host grammar mask application/selection with a registered device implementation that preserves request-local matcher state, speculative commit/rollback and streaming. |
+| Per-primitive AR width planner (D2) | `hipengine/generation/qwen35_gguf.py` | Consolidate capability maps, sidecar cases and manual ladders through cold registry resolution without flattening per-primitive row limits; optional D2 cost-artifact promotion needs server goodput/TTFT/ITL evidence. |
+
+### Feature and architecture work
+
+| Item | Owner | Scope |
+|---|---|---|
+| DMS interior-expiry layout | `hipengine/kvcache/dms.py` | A prefix-advance fast path with interior compaction, or a split history/window layout, without discarding non-evictable history; covers wrap/rebase and speculative rollback. |
+| General compact-DMS undo | `hipengine/runtime/qwen35_gguf_mtp.py` | General eviction/compaction still copies owned extents to host; replace it with a bounded reversible mutation log or a resource-claimed device journal. |
+| DMS device ranking | `hipengine/runtime/qwen35_gguf_runner.py` | Deterministic device ranking plus live-count/position/eviction finalization with one owner, behind CPU-oracle mask tests (ties, non-finite, window edges). |
+| QSA gather storage | `hipengine/runtime/qwen4_exp_runner.py` | Keep the shared full-context gather or spend per-layer storage to cache F16 K/V across chunks, with admission accounting. |
+| Optional-resource admission and sparse device positions | `hipengine/loading/qwen4_exp_context.py` | Compose MMQ sidecar, graph and verification allocations into context admission without double counting; implement native sparse QSA selection beyond the dense-equivalent position limit. |
+| Vision capacity and typed media ownership | `hipengine/runtime/qwen4_exp_vision.py` | Larger grids with explicit memory admission; replace the dedicated multimodal chat branch once the normal request owner carries typed media, cancellation and streaming. |
+| VibeVoice cross-branch batching | `hipengine/runtime/vibevoice_tts_session.py` | Shared immutable weights plus a per-row KV/negative-position transaction contract before batching conditional and negative branches. |
+| Overlapping chunked prompt activation | `hipengine/generation/engine_loop.py` | Co-activate chunked prefill rows while keeping provider-slot ownership and failure isolation; compare tokens and acceptance against single-request runs. |
+| Captured-accept logprobs | `hipengine/generation/qwen35_gguf_mtp2.py` | Emit processed logprobs and top-logprobs for every published speculative token from the captured-graph accept path. |
+| Device forced-token inputs | `hipengine/generation/qwen35_gguf_mtp2.py` | Carry per-row forced-token overrides and a committed-only queue position into device sampling and accept. |
 
 ## Open Research Questions
 

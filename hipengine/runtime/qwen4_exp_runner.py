@@ -6976,11 +6976,11 @@ def _qwen4_exp_q4_iu8_risk_multiplier(multiplier: float | None = None) -> float:
         value = float(raw)
     except ValueError:
         raise ValueError(
-            "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT must be a positive float"
+            "q4_iu8_risk_mult must be a positive float"
         )
     if not (value > 0.0) or value != value:
         raise ValueError(
-            "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT must be a positive float"
+            "q4_iu8_risk_mult must be a positive float"
         )
     return value
 
