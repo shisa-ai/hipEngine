@@ -108,26 +108,32 @@ def muse_glimmer_qk_norm_rope_kv_append(
     q_ptr: int, k_ptr: int, v_ptr: int, q_weight_ptr: int, k_weight_ptr: int,
     cos_ptr: int, sin_ptr: int, pos_ptr: int, q_out_ptr: int,
     k_cache_ptr: int, v_cache_ptr: int, *, eps: float, n_q_heads: int,
-    n_kv_heads: int, head_dim: int, max_positions: int, stream: int = 0,
+    n_kv_heads: int, head_dim: int, max_positions: int, tokens: int = 1,
+    stream: int = 0,
     library: ctypes.CDLL | None = None, runtime=None,
 ) -> None:
-    """Rows-1 fused Q/K head RMSNorm + rotary + K/V cache append (BF16 I/O).
+    """Fused Q/K head RMSNorm + rotary + K/V cache append (BF16 I/O).
 
     Bit-identical to bf16_to_f32 x2 -> head-norm partial rotary (256 threads,
-    rotary_dim == head_dim) -> f32_to_bf16 x2 -> K/V append at row ``*pos``.
+    rotary_dim == head_dim) -> f32_to_bf16 x2 -> K/V append. ``tokens==1`` is
+    decode (K/V appended at row ``*pos``); ``tokens>1`` runs each block row at
+    ``pos[row]`` with row-offset Q/K/V, bit-identical to the rows-1 kernel per
+    row (the speculative block-verify glue).
     """
 
     library = library or _library()
     runtime = runtime or get_hip_runtime()
+    if tokens <= 0:
+        raise ValueError("tokens must be positive")
     fn = signed_kernel_fn(
         library, "hipengine_muse_glimmer_qk_norm_rope_kv_append",
-        (_P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _F, _I64, _I64, _I64, _I64, _P),
+        (_P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _F, _I64, _I64, _I64, _I64, _I64, _P),
         ctypes.c_int,
     )
     runtime.check(int(fn(
         q_ptr, k_ptr, v_ptr, q_weight_ptr, k_weight_ptr, cos_ptr, sin_ptr, pos_ptr,
         q_out_ptr, k_cache_ptr, v_cache_ptr, float(eps), n_q_heads, n_kv_heads,
-        head_dim, max_positions, stream,
+        head_dim, max_positions, tokens, stream,
     )))
 
 

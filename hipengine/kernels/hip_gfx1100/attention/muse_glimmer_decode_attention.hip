@@ -281,20 +281,28 @@ void muse_glimmer_qk_norm_rope_kv_append_kernel(
     int64_t n_kv_heads, int64_t head_dim, int64_t max_positions) {
   __shared__ float partial[GLIMMER_QK_ROPE_THREADS];
   const int64_t head = blockIdx.x;
+  // blockIdx.y selects the block row; tokens==1 keeps blockIdx.y==0 so the
+  // rows-1 decode launch is unchanged. Each row runs the identical per-head
+  // chain at its own position, so multi-row output equals the rows-1 kernel
+  // applied per row bit-for-bit.
+  const int64_t row = blockIdx.y;
   const int tid = threadIdx.x;
-  const int64_t position = *pos;
+  const int64_t position = pos[row];
   if (position < 0 || position >= max_positions) return;
   const int64_t kv_dim = n_kv_heads * head_dim;
+  const int64_t q_dim = n_q_heads * head_dim;
   if (head == n_q_heads + n_kv_heads) {
     uint16_t* dst = v_cache + position * kv_dim;
-    for (int64_t i = tid; i < kv_dim; i += blockDim.x) dst[i] = v[i];
+    const uint16_t* vsrc = v + row * kv_dim;
+    for (int64_t i = tid; i < kv_dim; i += blockDim.x) dst[i] = vsrc[i];
     return;
   }
   const bool is_query = head < n_q_heads;
   const int64_t local_head = is_query ? head : head - n_q_heads;
-  const uint16_t* src = (is_query ? q : k) + local_head * head_dim;
+  const uint16_t* src = (is_query ? q + row * q_dim : k + row * kv_dim)
+                      + local_head * head_dim;
   const float* weight = is_query ? q_weight : k_weight;
-  uint16_t* dst = is_query ? q_out + local_head * head_dim
+  uint16_t* dst = is_query ? q_out + row * q_dim + local_head * head_dim
                            : k_cache + position * kv_dim + local_head * head_dim;
   const float* cos = cos_table + position * head_dim;
   const float* sin = sin_table + position * head_dim;
@@ -326,14 +334,15 @@ extern "C" int hipengine_muse_glimmer_qk_norm_rope_kv_append(
     const float* k_weight, const float* cos_table, const float* sin_table,
     const int64_t* pos, uint16_t* q_out, uint16_t* k_cache, uint16_t* v_cache,
     float eps, int64_t n_q_heads, int64_t n_kv_heads, int64_t head_dim,
-    int64_t max_positions, hipStream_t stream) {
+    int64_t max_positions, int64_t tokens, hipStream_t stream) {
   if (!q || !k || !v || !q_weight || !k_weight || !cos_table || !sin_table || !pos ||
       !q_out || !k_cache || !v_cache || n_q_heads <= 0 || n_kv_heads <= 0 ||
-      head_dim <= 0 || (head_dim % 2) != 0 || max_positions <= 0) {
+      head_dim <= 0 || (head_dim % 2) != 0 || max_positions <= 0 || tokens <= 0) {
     return hipErrorInvalidValue;
   }
-  const unsigned int blocks = static_cast<unsigned int>(n_q_heads + n_kv_heads + 1);
-  muse_glimmer_qk_norm_rope_kv_append_kernel<<<blocks, GLIMMER_QK_ROPE_THREADS, 0, stream>>>(
+  const dim3 grid(static_cast<unsigned int>(n_q_heads + n_kv_heads + 1),
+                  static_cast<unsigned int>(tokens));
+  muse_glimmer_qk_norm_rope_kv_append_kernel<<<grid, GLIMMER_QK_ROPE_THREADS, 0, stream>>>(
       q, k, v, q_weight, k_weight, cos_table, sin_table, pos, q_out, k_cache, v_cache, eps,
       n_q_heads, n_kv_heads, head_dim, max_positions);
   return static_cast<int>(hipGetLastError());

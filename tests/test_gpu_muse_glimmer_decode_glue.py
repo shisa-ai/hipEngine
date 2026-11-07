@@ -114,6 +114,98 @@ def test_fused_qk_rope_append_matches_chain(position: int, nope: bool) -> None:
             free(b, runtime=rt)
 
 
+@pytest.mark.parametrize("tokens", [2, 5, 8])
+@pytest.mark.parametrize("nope", [False, True])
+def test_fused_qk_rope_append_multirow_matches_per_row_chain(tokens: int, nope: bool) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_array_to_device,
+        free,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
+        muse_glimmer_kv_append,
+        muse_glimmer_qk_norm_rope_kv_append,
+    )
+    from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
+    from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
+        gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
+    )
+
+    rt = get_hip_runtime()
+    rng = np.random.default_rng(tokens * 3 + int(nope))
+    q_dim, kv_dim = N_Q * D, N_KV * D
+    q = _bf16(rng.standard_normal(tokens * q_dim) * 3)
+    k = _bf16(rng.standard_normal(tokens * kv_dim) * 3)
+    v = _bf16(rng.standard_normal(tokens * kv_dim))
+    qw = (rng.random(D) + 0.5).astype(np.float32)
+    kw = np.ones(D, dtype=np.float32)
+    positions = np.asarray([3, 11, 0, 47, 29, 8, 63, 1][:tokens], dtype=np.int64)
+    if nope:
+        cos = np.ones((MAX_POS, D), dtype=np.float32)
+        sin = np.zeros((MAX_POS, D), dtype=np.float32)
+    else:
+        ang = rng.random((MAX_POS, D)).astype(np.float32) * 6.0
+        cos, sin = np.cos(ang).astype(np.float32), np.sin(ang).astype(np.float32)
+
+    bufs = []
+
+    def up(a):
+        b = malloc(a.nbytes, runtime=rt)
+        copy_host_array_to_device(b, np.ascontiguousarray(a), runtime=rt)
+        bufs.append(b)
+        return b
+
+    def zeros(nbytes):
+        return up(np.zeros(nbytes, dtype=np.uint8))
+
+    def read(b, n, dtype=np.uint16):
+        out = np.empty(n, dtype=dtype)
+        rt.device_synchronize()
+        copy_device_to_host(out.ctypes.data, b, runtime=rt)
+        return out
+
+    try:
+        dq, dk, dv = up(q), up(k), up(v)
+        dqw, dkw, dcos, dsin = up(qw), up(kw), up(cos), up(sin)
+        dpos = up(positions)
+        # Per-row reference chain, appended into shared caches.
+        kc_ref, vc_ref = zeros(MAX_POS * kv_dim * 2), zeros(MAX_POS * kv_dim * 2)
+        q_ref_rows = []
+        for row in range(tokens):
+            pos1 = up(np.asarray([positions[row]], dtype=np.int64))
+            qf, kf = zeros(q_dim * 4), zeros(kv_dim * 4)
+            qr, kr = zeros(q_dim * 4), zeros(kv_dim * 4)
+            q_ref, k_ref = zeros(q_dim * 2), zeros(kv_dim * 2)
+            bf16_to_f32(dq.ptr + row * q_dim * 2, qf.ptr, q_dim, runtime=rt)
+            bf16_to_f32(dk.ptr + row * kv_dim * 2, kf.ptr, kv_dim, runtime=rt)
+            gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
+                qf.ptr, kf.ptr, dqw.ptr, dkw.ptr, dcos.ptr, dsin.ptr, pos1.ptr,
+                qr.ptr, kr.ptr, 1e-5, 1, N_Q, N_KV, D, D, MAX_POS, runtime=rt,
+            )
+            f32_to_bf16(qr.ptr, q_ref.ptr, q_dim, runtime=rt)
+            f32_to_bf16(kr.ptr, k_ref.ptr, kv_dim, runtime=rt)
+            muse_glimmer_kv_append(kc_ref.ptr, k_ref.ptr, pos1.ptr, row_elems=kv_dim, n=kv_dim, runtime=rt)
+            muse_glimmer_kv_append(vc_ref.ptr, dv.ptr + row * kv_dim * 2, pos1.ptr,
+                                   row_elems=kv_dim, n=kv_dim, runtime=rt)
+            q_ref_rows.append(read(q_ref, q_dim))
+        # Fused multi-row.
+        q_out = zeros(tokens * q_dim * 2)
+        kc, vc = zeros(MAX_POS * kv_dim * 2), zeros(MAX_POS * kv_dim * 2)
+        muse_glimmer_qk_norm_rope_kv_append(
+            dq.ptr, dk.ptr, dv.ptr, dqw.ptr, dkw.ptr, dcos.ptr, dsin.ptr, dpos.ptr,
+            q_out.ptr, kc.ptr, vc.ptr, eps=1e-5, n_q_heads=N_Q, n_kv_heads=N_KV,
+            head_dim=D, max_positions=MAX_POS, tokens=tokens, runtime=rt,
+        )
+        np.testing.assert_array_equal(read(q_out, tokens * q_dim), np.concatenate(q_ref_rows))
+        np.testing.assert_array_equal(read(kc, MAX_POS * kv_dim), read(kc_ref, MAX_POS * kv_dim))
+        np.testing.assert_array_equal(read(vc, MAX_POS * kv_dim), read(vc_ref, MAX_POS * kv_dim))
+    finally:
+        for b in bufs:
+            free(b, runtime=rt)
+
+
 @pytest.mark.parametrize("hidden", [6656, 4096, 300, 9000])
 def test_fused_add_rmsnorm_rmsnorm_matches_chain(hidden: int) -> None:
     from hipengine.core.hip import get_hip_runtime
