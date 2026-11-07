@@ -622,7 +622,13 @@ This recovered +6% over the prior 21.64 / 1.80x row, part of the speedup lost
 when AR decode got faster. Fusing the residual boundaries into verify is the
 remaining optional launch-reduction lever.
 
-**Remaining decode levers:** decode attention is ~2.5x its bandwidth floor at
-32K and dominates the 128K decode drop (a lane-per-key restructure of the
-shared decode/verify kernel); T16 Q4 scale/min compaction (+2.78% bytes);
-folding silu into the down GEMV input and merging the split/combine launches.
+**Remaining decode levers:** decode attention is ~3.3x its 2.35 ms DRAM floor
+at 32K (7.7 ms/step) and grows to ~28% of the step at 128K, but it is
+L2/compute/latency-bound, not DRAM-bound: a cooperative LDS K/V tiling that
+removes the 4x redundant per-wave reads measured neutral (the redundant reads
+hit L2, not DRAM), so the remaining attention lever is a lane-per-key
+restructure of the shared decode/verify kernel — a larger rewrite with a
+bounded ceiling (~10% at 32K, ~26% at 128K). Decode is weight-bandwidth-bound
+(GEMVs ~87% of the 32K step), so the larger short-context lever is T16 Q4
+scale/min compaction (+2.78% bytes); also folding silu into the down GEMV input
+and merging the split/combine launches.
