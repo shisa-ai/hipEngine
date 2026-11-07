@@ -561,3 +561,64 @@ superseded by these targeted wins.
 **Gate status:** Gate A prefill passes at 512/1K/4K; Gate A decode is still
 ≈91% (bandwidth-roofline structural gap). Gate B (DFlash) passes and remains
 exact. Basic validation complete; no large weakness found.
+
+## 10. Decode and long-context pass (2026-11-08)
+
+Directional diagnostics on the zbook (power-capped at a 70 W PPT, sclk ~2.4
+GHz under load), r=1; formal Gate A rows are a separate clean rerun.
+
+**Decode measurement corrections.** The "211 GB/s ceiling" was a DtoD copy; a
+read-only grid-stride kernel reaches ~240 GB/s on this host, but a read through
+the GEMV access pattern (one wave streaming each tile's K range) tops out near
+222 GB/s, and the in-graph decode GEMVs reach ~219 GB/s. The pre-pass step
+(90.9 ms at 512 ctx) was kernels 84.1 + intra-graph gaps 6.1 (1204 launches,
+~4-5 us per boundary) + host 0.67 ms.
+
+**Landed, all bit-identical to the paths they replace** (DFlash verify owners
+still match AR decode):
+
+- Grouped Q4T16 tile16 GEMV (Q/K/V/gate and gate/up as one launch each) and a
+  hoisted planar Q6T16 GEMV: step 89.0 -> 84.1 ms.
+- Fused decode glue (QK-norm + rope + KV append; post-norm + residual + next
+  pre-norm with all reads issued up front; gated attention combine): 1204 ->
+  554 launches, 84.1 -> 81.4 ms.
+- One staging upload and in-place softcap per step; 8-key unrolled decode
+  attention (32K ctx 91.6 -> 89.7 ms/step; this one is a production
+  association change, shared by decode and verify).
+- Multi-token WMMA flash prefill (eight query tokens share each K/V tile):
+  prefill 4K 387 -> 432, 16K 321 -> 393, 32K 265 -> 354 tok/s. The unused
+  per-chunk keep masks are gone.
+
+**Measured, not kept:** split-K Q4 decode GEMV with consistent verify siblings
+(1.04-1.07x isolated, identical in-graph at the ~219 GB/s ceiling); vector
+header loads; 128 span-sized attention splits; 16 Q heads per decode-attention
+block; 16 tokens per prefill-attention block.
+
+**Sweep (current code, r=1, 512 decode tokens per row):**
+
+| Prompt | Prefill tok/s | Decode tok/s |
+| ---: | ---: | ---: |
+| 512 | 443.9 | 12.21 |
+| 1K | 453.9 | 12.10 |
+| 4K | 427.7 | 11.92 |
+| 8K | 412.9 | 11.81 |
+| 16K | 392.3 | 11.58 |
+| 32K | 357.5 | 11.11 |
+| 128K (130,560) | 221.5 | 8.74 |
+
+Needle-in-a-haystack through `LLM.generate()` recalls the passphrase at 32K
+(depth 0.5) and 128K (130,713 tokens, depth 0.25, ~98K tokens back), so
+long-range recall through the NoPE full layers works. `<|eom|>` (200007) is not
+a stop token in either engine; chat-templated turns end on `<|eot|>`.
+
+**DFlash (mtpbench, budget 4, r=1):** 21.64 tok/s, exact IDs == true AR on
+all ten prompts, acceptance 49.6%, 2.95 tokens per target forward; the AR
+control is now 12.05 tok/s (1.80x). DFlash did not move because block verify
+runs eagerly through the exact multi-row owners rather than the fused decode
+graph; carrying the fused glue and grouped projections into verify is the
+DFlash lever.
+
+**Remaining decode levers:** decode attention is ~2.5x its bandwidth floor at
+32K and dominates the 128K decode drop (a lane-per-key restructure of the
+shared decode/verify kernel); T16 Q4 scale/min compaction (+2.78% bytes);
+folding silu into the down GEMV input and merging the split/combine launches.
