@@ -2030,22 +2030,6 @@ gates across affected geometries, KV layouts and boundary-straddling rows. Verif
 every accepted-prefix state, continuation, rollback and graph/eager route attribution before
 consolidating bounds.
 
-### R0138 — Complete native adapter ownership without blanket embedding refusal
-
-Owner: `hipengine/runtime/gguf_native_spec_cycle.py`.
-
-Scope: `gguf_native_spec_cycle.py`, `_device_token_embedding_weight(reason="native_mtp_graph")`.
-
-**Deferred adapter work:** represent any additional embedding staging or expert sidecar route in the
-actual shared call plan, including pre-allocation shape, dtype, physical operands, lifetime and
-capture behavior. Remove only the corresponding refusal once that implementation exists. Do not
-remove the working device-resident embedding fallback or infer support from a nominal adapter name.
-
-Done when: extend `tests/test_integration_gguf_execution_authorization.py` and
-`tests/test_integration_gguf_native_physical_operands.py` for each added adapter, then test graph
-capture/replay, allocation failure and teardown. Exercise public generation with the intended layout
-and confirm graph versus eager route selection and numerical/state parity.
-
 ### R0139 — Replace file-type policy predicates with actual operand contracts
 
 Owner: `hipengine/loading/qwen35_gguf_policy.py`.
@@ -2066,22 +2050,6 @@ route-audit tests, then public loading/generation for compatible unseen tensor m
 incompatible requests. Any changed arithmetic default must pass its profile gate. Preserve
 source-bound certificate consistency without turning source identity into measured-artifact
 admission.
-
-### R0151 — Separate prefill staging ownership from implemented AR batching
-
-Owner: `hipengine/generation/qwen4_exp_gguf.py`.
-
-Scope: `Qwen4ExpResidentServingRunner._prepare_ar_batch`, `_step_ar_batch`.
-
-**Deferred staging design:** determine whether prefill and remaining c1/MTP consumers can use
-smaller dedicated workspaces or shared state storage without losing independent request ownership.
-Inventory reserve/import/demotion and reclaim consumers before replacing allocations. Preserve
-shared-once weights and PLE, request-local KV/state, cancellation and failure cleanup. R0006 owns
-the shared-decode follow-ups; do not reopen its completed batch implementation.
-
-Done when: run AR-batch admission/capacity/decode unit tests and public mixed-prefill/decode
-requests, including transfer, cancellation and continuation. Confirm actual batch engagement and
-staging allocation lifetimes.
 
 ### R0173 — Verify owner-bound R28 dispatch on gfx1100
 
