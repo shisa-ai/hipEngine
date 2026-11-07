@@ -993,8 +993,8 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
   }
 
   for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
-    const int decode_pair = threadIdx.x >> 2;
-    if (decode_pair < OUT_COLS_PER_BLOCK / 2) {
+    for (int decode_pair = threadIdx.x >> 2;
+         decode_pair < OUT_COLS_PER_BLOCK / 2; decode_pair += WAVES_PER_BLOCK * 8) {
       const int tm = decode_pair / (T16_COLS / 2);
       const int tile_pair = decode_pair % (T16_COLS / 2);
       const int tile_col0 = tile_pair * 2;
