@@ -353,9 +353,11 @@ class MuseGlimmerResidentSession:
         """
 
         from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
-            muse_glimmer_decode_attention, muse_glimmer_kv_append,
+            muse_glimmer_add_rmsnorm_rmsnorm,
+            muse_glimmer_decode_attention,
+            muse_glimmer_qk_norm_rope_kv_append,
         )
-        from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
+        from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
 
         cfg, rt = self.config, self.runtime
         hidden = cfg.n_embd
@@ -371,12 +373,20 @@ class MuseGlimmerResidentSession:
             self.hidden_a.ptr, self.hidden_b.ptr, 1, hidden, cfg.rms_eps, **kw
         )
         src, dst = self.hidden_b, self.hidden_a
+        # Each residual boundary runs as one fused launch, bit-identical to
+        # add_rmsnorm_scale -> rmsnorm: the branch post-norm + residual add,
+        # then the next pre-norm (ffn_norm, the next layer's attn_norm, or
+        # output_norm after the last layer) into ``normed``.
+        gemma4_rmsnorm_f32w_bf16(
+            src.ptr, self.loaded.ptr("blk.0.attn_norm.weight"), self.normed.ptr,
+            1, hidden, cfg.rms_eps, **kw,
+        )
         for layer in range(cfg.n_layers):
             p = f"blk.{layer}."
             is_swa = cfg.swa_pattern[layer]
-            gemma4_rmsnorm_f32w_bf16(
-                src.ptr, self.loaded.ptr(p + "attn_norm.weight"), self.normed.ptr,
-                1, hidden, cfg.rms_eps, **kw,
+            next_norm = (
+                f"blk.{layer + 1}.attn_norm.weight"
+                if layer + 1 < cfg.n_layers else "output_norm.weight"
             )
             self._decode_linears(self.normed.ptr, hidden, (
                 (self.loaded.weight(p + "attn_q.weight"), self.q_bf16.ptr, q_dim),
@@ -384,49 +394,41 @@ class MuseGlimmerResidentSession:
                 (self.loaded.weight(p + "attn_v.weight"), self.v_bf16.ptr, kv_dim),
                 (self.loaded.weight(p + "attn_gate.weight"), self.gate_bf16.ptr, q_dim),
             ), waves=self._ATTN_GROUP_WAVES, kw=kw)
-            bf16_to_f32(self.q_bf16.ptr, self.q_f32.ptr, q_dim, **kw)
-            bf16_to_f32(self.k_bf16.ptr, self.k_f32.ptr, kv_dim, **kw)
-            gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
-                self.q_f32.ptr, self.k_f32.ptr,
+            # Fused bit-identical replacement for bf16_to_f32 x2 -> head-norm
+            # rotary -> f32_to_bf16 x2 -> K/V append: rotated Q lands in the
+            # decode-idle q_rot_f32 scratch (as BF16), K/V go to the cache row.
+            k_cache, v_cache = self._kv[layer]
+            q_rope = self.q_rot_f32
+            muse_glimmer_qk_norm_rope_kv_append(
+                self.q_bf16.ptr, self.k_bf16.ptr, self.v_bf16.ptr,
                 self.loaded.ptr(p + "attn_q_norm.weight"),
                 self.loaded.ptr(p + "attn_k_norm.weight"),
                 (self.cos_table if is_swa else self.identity_cos).ptr,
                 (self.sin_table if is_swa else self.identity_sin).ptr,
-                self._g_pos.ptr,
-                self.q_rot_f32.ptr, self.k_rot_f32.ptr,
-                cfg.rms_eps, 1, cfg.n_heads, cfg.n_kv_heads, d, d,
-                self.max_context, **kw,
+                self._g_pos.ptr, q_rope.ptr, k_cache.ptr, v_cache.ptr,
+                eps=cfg.rms_eps, n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
+                head_dim=d, max_positions=self.max_context, **kw,
             )
-            f32_to_bf16(self.q_rot_f32.ptr, self.q_bf16.ptr, q_dim, **kw)
-            f32_to_bf16(self.k_rot_f32.ptr, self.k_bf16.ptr, kv_dim, **kw)
-            k_cache, v_cache = self._kv[layer]
-            muse_glimmer_kv_append(k_cache.ptr, self.k_bf16.ptr, self._g_pos.ptr,
-                                   row_elems=kv_dim, n=kv_dim, **kw)
-            muse_glimmer_kv_append(v_cache.ptr, self.v_bf16.ptr, self._g_pos.ptr,
-                                   row_elems=kv_dim, n=kv_dim, **kw)
             muse_glimmer_decode_attention(
-                self.q_bf16.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
+                q_rope.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
                 self.attn_partials.ptr,
                 n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
                 key_begin=0, key_end=self.max_context, n_splits=64,
                 tokens=1, window=cfg.sliding_window if is_swa else 0,
-                key_end_dev=self._g_key_end.ptr, scale=float(d) ** -0.5, **kw,
+                key_end_dev=self._g_key_end.ptr, gate_ptr=self.gate_bf16.ptr,
+                scale=float(d) ** -0.5, **kw,
             )
-            gguf_gate_mul_bf16(self.attn_out.ptr, self.gate_bf16.ptr,
-                               self.attn_out.ptr, q_dim, **kw)
             self._decode_linears(self.attn_out.ptr, q_dim, (
                 (self.loaded.weight(p + "attn_output.weight"), self.attn_proj.ptr, hidden),
             ), waves=self._ATTN_OUTPUT_WAVES, kw=kw)
-            gemma4_add_rmsnorm_scale_bf16(
+            muse_glimmer_add_rmsnorm_rmsnorm(
                 self.attn_proj.ptr, src.ptr,
-                self.loaded.ptr(p + "post_attention_norm.weight"), 0,
-                dst.ptr, 1, hidden, cfg.post_norm_eps, **kw,
+                self.loaded.ptr(p + "post_attention_norm.weight"),
+                self.loaded.ptr(p + "ffn_norm.weight"), dst.ptr, self.normed.ptr,
+                rows=1, hidden_size=hidden, post_eps=cfg.post_norm_eps,
+                pre_eps=cfg.rms_eps, **kw,
             )
             src, dst = dst, src
-            gemma4_rmsnorm_f32w_bf16(
-                src.ptr, self.loaded.ptr(p + "ffn_norm.weight"), self.normed.ptr,
-                1, hidden, cfg.rms_eps, **kw,
-            )
             self._decode_linears(self.normed.ptr, hidden, (
                 (self.loaded.weight(p + "ffn_gate.weight"), self.ff_gate.ptr, cfg.n_ff),
                 (self.loaded.weight(p + "ffn_up.weight"), self.ff_up.ptr, cfg.n_ff),
@@ -436,16 +438,14 @@ class MuseGlimmerResidentSession:
             self._decode_linears(self.ff_act.ptr, cfg.n_ff, (
                 (self.loaded.weight(p + "ffn_down.weight"), self.ff_out.ptr, hidden),
             ), waves=self._FFN_DOWN_WAVES, kw=kw)
-            gemma4_add_rmsnorm_scale_bf16(
+            muse_glimmer_add_rmsnorm_rmsnorm(
                 self.ff_out.ptr, src.ptr,
-                self.loaded.ptr(p + "post_ffw_norm.weight"), 0,
-                dst.ptr, 1, hidden, cfg.post_norm_eps, **kw,
+                self.loaded.ptr(p + "post_ffw_norm.weight"),
+                self.loaded.ptr(next_norm), dst.ptr, self.normed.ptr,
+                rows=1, hidden_size=hidden, post_eps=cfg.post_norm_eps,
+                pre_eps=cfg.rms_eps, **kw,
             )
             src, dst = dst, src
-        gemma4_rmsnorm_f32w_bf16(
-            src.ptr, self.loaded.ptr("output_norm.weight"), self.normed.ptr,
-            1, hidden, cfg.rms_eps, **kw,
-        )
         self._linear(self.loaded.weight("output.weight"), self.normed.ptr,
                      self.logits_bf16.ptr, 1, hidden, cfg.vocab_size,
                      output_dtype="bf16", backend=self.backend, **kw)

@@ -43,10 +43,14 @@ def muse_glimmer_decode_attention(
     q_ptr: int, k_ptr: int, v_ptr: int, out_ptr: int, partials_ptr: int,
     *, n_q_heads: int, n_kv_heads: int, key_begin: int, key_end: int,
     n_splits: int, scale: float, tokens: int = 1, window: int = 0,
-    key_end_dev: int = 0, stream: int = 0, library: ctypes.CDLL | None = None,
-    runtime=None,
+    key_end_dev: int = 0, gate_ptr: int = 0, stream: int = 0,
+    library: ctypes.CDLL | None = None, runtime=None,
 ) -> None:
     """Attention over [key_begin, key_end) of the contiguous KV cache.
+
+    A nonzero ``gate_ptr`` (BF16, same shape as ``out``, requires
+    ``n_splits > 1``) applies the Glimmer sigmoid attention gate inside the
+    combine pass, bit-identical to a following ``gguf_gate_mul_bf16``.
 
     ``tokens==1`` is decode; ``tokens>1`` is a causal prefill block whose rows
     occupy the last ``tokens`` positions ending at ``key_end``. ``window>0``
@@ -63,6 +67,18 @@ def muse_glimmer_decode_attention(
         raise ValueError("n_splits and tokens must be positive")
     library = library or _library()
     runtime = runtime or get_hip_runtime()
+    if gate_ptr:
+        if n_splits <= 1:
+            raise ValueError("the gated combine requires n_splits > 1")
+        fn = signed_kernel_fn(
+            library, "hipengine_muse_glimmer_decode_attn_gated",
+            (_P, _P, _P, _P, _P, _P, _I64, _I64, _I64, _I64, _I64, _I64, _I64, _F, _P, _P),
+            ctypes.c_int,
+        )
+        runtime.check(int(fn(q_ptr, k_ptr, v_ptr, gate_ptr, out_ptr, partials_ptr,
+                             n_q_heads, n_kv_heads, key_begin, key_end, n_splits, tokens,
+                             window, float(scale), key_end_dev, stream)))
+        return
     fn = signed_kernel_fn(
         library, "hipengine_muse_glimmer_decode_attn",
         (_P, _P, _P, _P, _P, _I64, _I64, _I64, _I64, _I64, _I64, _I64, _F, _P, _P),
@@ -86,6 +102,58 @@ def muse_glimmer_kv_append(dst_ptr: int, src_ptr: int, pos_ptr: int, *,
         (_P, _P, _P, _I64, _I64, _P), ctypes.c_int,
     )
     runtime.check(int(fn(dst_ptr, src_ptr, pos_ptr, row_elems, n, stream)))
+
+
+def muse_glimmer_qk_norm_rope_kv_append(
+    q_ptr: int, k_ptr: int, v_ptr: int, q_weight_ptr: int, k_weight_ptr: int,
+    cos_ptr: int, sin_ptr: int, pos_ptr: int, q_out_ptr: int,
+    k_cache_ptr: int, v_cache_ptr: int, *, eps: float, n_q_heads: int,
+    n_kv_heads: int, head_dim: int, max_positions: int, stream: int = 0,
+    library: ctypes.CDLL | None = None, runtime=None,
+) -> None:
+    """Rows-1 fused Q/K head RMSNorm + rotary + K/V cache append (BF16 I/O).
+
+    Bit-identical to bf16_to_f32 x2 -> head-norm partial rotary (256 threads,
+    rotary_dim == head_dim) -> f32_to_bf16 x2 -> K/V append at row ``*pos``.
+    """
+
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_muse_glimmer_qk_norm_rope_kv_append",
+        (_P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _P, _F, _I64, _I64, _I64, _I64, _P),
+        ctypes.c_int,
+    )
+    runtime.check(int(fn(
+        q_ptr, k_ptr, v_ptr, q_weight_ptr, k_weight_ptr, cos_ptr, sin_ptr, pos_ptr,
+        q_out_ptr, k_cache_ptr, v_cache_ptr, float(eps), n_q_heads, n_kv_heads,
+        head_dim, max_positions, stream,
+    )))
+
+
+def muse_glimmer_add_rmsnorm_rmsnorm(
+    branch_ptr: int, residual_ptr: int, post_weight_ptr: int, pre_weight_ptr: int,
+    residual_out_ptr: int, normed_out_ptr: int, *, rows: int, hidden_size: int,
+    post_eps: float, pre_eps: float, stream: int = 0,
+    library: ctypes.CDLL | None = None, runtime=None,
+) -> None:
+    """Post-norm + residual add, then the next pre-norm, in one launch.
+
+    Bit-identical to gemma4_add_rmsnorm_scale_bf16 (layer scalar 1) followed
+    by gemma4_rmsnorm_f32w_bf16 on its output. ``residual_out`` must not alias
+    the inputs.
+    """
+
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_muse_glimmer_add_rmsnorm_rmsnorm",
+        (_P, _P, _P, _P, _P, _P, _I64, _I64, _F, _F, _P), ctypes.c_int,
+    )
+    runtime.check(int(fn(
+        branch_ptr, residual_ptr, post_weight_ptr, pre_weight_ptr, residual_out_ptr,
+        normed_out_ptr, rows, hidden_size, float(post_eps), float(pre_eps), stream,
+    )))
 
 
 def register_muse_glimmer_decode_attention_kernels():
