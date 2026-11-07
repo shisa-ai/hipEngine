@@ -1134,25 +1134,6 @@ packet and public `LLM.generate()` on HIP. Check current/older-role engagement, 
 dispatch, 511/512/513 and unrelated lengths, full logits/state, repeated role order and cleanup
 before removing the env readers.
 
-### R0373/R0374 — Maple fused decode efficiency and selector retirement
-
-Owner: `hipengine/runtime/maple.py`.
-
-Scope: `HIPENGINE_MAPLE_FUSE_MOE`, `HIPENGINE_MAPLE_FUSE_QKATTN`.
-
-**Decision needed:** remove the experimental runtime fusion routes while preserving primitive
-references, or profile and repair the efficiency gap before promoting a route and retiring its
-selector. Treat the two fusions independently. Do not delete the mandatory unfused primitive chains,
-and do not reintroduce the serial-expert down/residual design unchanged.
-
-Done when: run `uv run pytest tests/test_unit_maple_graph_selection.py
-tests/test_gpu_maple_runtime.py tests/test_gpu_maple_ternary_kernels.py
-tests/test_gpu_maple_attention_kernels.py`, then use the Maple profiling and c1 benchmark tools for
-same-host eager/graph comparisons. Include both individual selector changes and their combination,
-actual public `LLM.generate()` engagement, full-logit/state parity for strict variants, reset/reuse
-and graph/workspace teardown. A replacement arithmetic variant uses its execution-profile gate
-rather than inheriting strict bit parity.
-
 ### R0368 — LC-D3 global geometry diagnostics and unused repair separation
 
 Owner: `scripts/laguna_global_issue_diagnostic.py`.

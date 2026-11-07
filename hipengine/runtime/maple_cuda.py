@@ -22,7 +22,6 @@ from hipengine.kernels.cuda_sm120a.attention.maple_attention import (
     build_maple_attention,
     maple_attention_decode_splitk_exact_bf16,
     maple_attention_decode_wave32_exact_bf16,
-    maple_attention_fused_qknorm_decode_bf16,
     maple_attention_prefill_ring_bf16,
     maple_attention_prefill_ring_gqa4_bf16,
     maple_kv_span_update,
@@ -56,7 +55,6 @@ from hipengine.kernels.cuda_sm120a.quant.maple_ternary import (
     maple_affine4_embed_batched_bf16,
     maple_affine4_embed_bf16,
     maple_affine4_gemv_wave32_exact_f32,
-    maple_moe_dual_swiglu_bf16,
     maple_selected_ternary_dual_gemv_bf16,
     maple_selected_ternary_dual_grouped_bf16,
     maple_selected_ternary_gemv_bf16,
@@ -78,8 +76,6 @@ from hipengine.runtime.maple import (
     MapleRuntimeBuffers,
     MapleStepResult,
     _BufferOwner,
-    _maple_fuse_moe,
-    _maple_fuse_qkattn,
     _maple_prefill_swa_segments,
 )
 
@@ -188,8 +184,6 @@ class MapleCudaRunner(MapleRunner):
         )
         if capture_hidden:
             captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
-        fuse_qkattn = _maple_fuse_qkattn()
-        fuse_moe = _maple_fuse_moe()
         graph = None if capture_hidden else self._graph_cache()
         splitk_allowed = graph is None
 
@@ -226,11 +220,46 @@ class MapleCudaRunner(MapleRunner):
                     runtime=self.runtime, stream=stream,
                 )
                 rope_dim = spec.rotary_dim if spec.uses_rope(layer_id) else 0
-                if fuse_qkattn:
-                    maple_attention_fused_qknorm_decode_bf16(
+                maple_qknorm_rope_kv_write_bf16(
+                    b.qkv.ptr,
+                    layer_weights.q_norm.ptr,
+                    layer_weights.k_norm.ptr,
+                    kv_layer.key_cache.ptr,
+                    kv_layer.value_cache.ptr,
+                    kv_layer.spans,
+                    q_heads=spec.num_attention_heads,
+                    kv_heads=spec.num_key_value_heads,
+                    head_dim=spec.head_dim,
+                    rope_dim=rope_dim,
+                    eps=spec.rms_norm_eps,
+                    rope_theta=spec.rope_theta,
+                    library=libs.attention,
+                    runtime=self.runtime, stream=stream,
+                )
+                if (
+                    splitk_allowed
+                    and spec.attention_kind(layer_id) == "full_attention"
+                    and position + 1 >= _MAPLE_CUDA_SPLITK_MIN_LIVE
+                ):
+                    maple_attention_decode_splitk_exact_bf16(
                         b.qkv.ptr,
-                        layer_weights.q_norm.ptr,
-                        layer_weights.k_norm.ptr,
+                        kv_layer.key_cache.ptr,
+                        kv_layer.value_cache.ptr,
+                        b.attention.ptr,
+                        self._split_scores.ptr,
+                        kv_layer.spans,
+                        launch_live=position + 1,
+                        score_stride=self.max_context,
+                        q_heads=spec.num_attention_heads,
+                        kv_heads=spec.num_key_value_heads,
+                        head_dim=spec.head_dim,
+                        scale=spec.head_dim**-0.5,
+                        library=libs.attention,
+                        runtime=self.runtime, stream=stream,
+                    )
+                else:
+                    maple_attention_decode_wave32_exact_bf16(
+                        b.qkv.ptr,
                         kv_layer.key_cache.ptr,
                         kv_layer.value_cache.ptr,
                         b.attention.ptr,
@@ -238,65 +267,10 @@ class MapleCudaRunner(MapleRunner):
                         q_heads=spec.num_attention_heads,
                         kv_heads=spec.num_key_value_heads,
                         head_dim=spec.head_dim,
-                        rope_dim=rope_dim,
-                        eps=spec.rms_norm_eps,
-                        rope_theta=spec.rope_theta,
                         scale=spec.head_dim**-0.5,
                         library=libs.attention,
                         runtime=self.runtime, stream=stream,
                     )
-                else:
-                    maple_qknorm_rope_kv_write_bf16(
-                        b.qkv.ptr,
-                        layer_weights.q_norm.ptr,
-                        layer_weights.k_norm.ptr,
-                        kv_layer.key_cache.ptr,
-                        kv_layer.value_cache.ptr,
-                        kv_layer.spans,
-                        q_heads=spec.num_attention_heads,
-                        kv_heads=spec.num_key_value_heads,
-                        head_dim=spec.head_dim,
-                        rope_dim=rope_dim,
-                        eps=spec.rms_norm_eps,
-                        rope_theta=spec.rope_theta,
-                        library=libs.attention,
-                        runtime=self.runtime, stream=stream,
-                    )
-                    if (
-                        splitk_allowed
-                        and spec.attention_kind(layer_id) == "full_attention"
-                        and position + 1 >= _MAPLE_CUDA_SPLITK_MIN_LIVE
-                    ):
-                        maple_attention_decode_splitk_exact_bf16(
-                            b.qkv.ptr,
-                            kv_layer.key_cache.ptr,
-                            kv_layer.value_cache.ptr,
-                            b.attention.ptr,
-                            self._split_scores.ptr,
-                            kv_layer.spans,
-                            launch_live=position + 1,
-                            score_stride=self.max_context,
-                            q_heads=spec.num_attention_heads,
-                            kv_heads=spec.num_key_value_heads,
-                            head_dim=spec.head_dim,
-                            scale=spec.head_dim**-0.5,
-                            library=libs.attention,
-                            runtime=self.runtime, stream=stream,
-                        )
-                    else:
-                        maple_attention_decode_wave32_exact_bf16(
-                            b.qkv.ptr,
-                            kv_layer.key_cache.ptr,
-                            kv_layer.value_cache.ptr,
-                            b.attention.ptr,
-                            kv_layer.spans,
-                            q_heads=spec.num_attention_heads,
-                            kv_heads=spec.num_key_value_heads,
-                            head_dim=spec.head_dim,
-                            scale=spec.head_dim**-0.5,
-                            library=libs.attention,
-                            runtime=self.runtime, stream=stream,
-                        )
                 maple_ternary_gemv_bf16(
                     b.attention.ptr,
                     layer_weights.o_proj.weight.ptr,
@@ -333,94 +307,54 @@ class MapleCudaRunner(MapleRunner):
                     runtime=self.runtime,
                     stream=stream,
                 )
-                if fuse_moe:
-                    maple_moe_dual_swiglu_bf16(
-                        b.normalized.ptr,
-                        layer_weights.expert_gate_proj.weight.ptr,
-                        layer_weights.expert_gate_proj.row_alpha.ptr,
-                        layer_weights.expert_up_proj.weight.ptr,
-                        layer_weights.expert_up_proj.row_alpha.ptr,
-                        b.selected_ids.ptr,
-                        b.expert_intermediate.ptr,
-                        spec.num_experts,
-                        spec.num_experts_per_tok,
-                        spec.hidden_size,
-                        spec.moe_intermediate_size,
-                        library=libs.ternary,
-                        runtime=self.runtime, stream=stream,
-                    )
-                    maple_selected_ternary_gemv_bf16(
-                        b.expert_intermediate.ptr,
-                        layer_weights.expert_down_proj.weight.ptr,
-                        layer_weights.expert_down_proj.row_alpha.ptr,
-                        b.selected_ids.ptr,
-                        b.expert_down.ptr,
-                        spec.num_experts,
-                        spec.num_experts_per_tok,
-                        spec.moe_intermediate_size,
-                        spec.hidden_size,
-                        library=libs.ternary,
-                        runtime=self.runtime, stream=stream,
-                    )
-                    maple_weighted_residual_bf16(
-                        b.residual.ptr,
-                        b.expert_down.ptr,
-                        b.routing_weights.ptr,
-                        b.hidden.ptr,
-                        spec.num_experts_per_tok,
-                        spec.hidden_size,
-                        library=libs.moe,
-                        runtime=self.runtime, stream=stream,
-                    )
-                else:
-                    maple_selected_ternary_dual_gemv_bf16(
-                        b.normalized.ptr,
-                        layer_weights.expert_gate_proj.weight.ptr,
-                        layer_weights.expert_gate_proj.row_alpha.ptr,
-                        layer_weights.expert_up_proj.weight.ptr,
-                        layer_weights.expert_up_proj.row_alpha.ptr,
-                        b.selected_ids.ptr,
-                        b.expert_gate.ptr,
-                        b.expert_up.ptr,
-                        spec.num_experts,
-                        spec.num_experts_per_tok,
-                        spec.hidden_size,
-                        spec.moe_intermediate_size,
-                        library=libs.ternary,
-                        runtime=self.runtime, stream=stream,
-                    )
-                    maple_clamped_swiglu_bf16(
-                        b.expert_gate.ptr,
-                        b.expert_up.ptr,
-                        b.expert_intermediate.ptr,
-                        spec.num_experts_per_tok,
-                        spec.moe_intermediate_size,
-                        library=libs.moe,
-                        runtime=self.runtime, stream=stream,
-                    )
-                    maple_selected_ternary_gemv_bf16(
-                        b.expert_intermediate.ptr,
-                        layer_weights.expert_down_proj.weight.ptr,
-                        layer_weights.expert_down_proj.row_alpha.ptr,
-                        b.selected_ids.ptr,
-                        b.expert_down.ptr,
-                        spec.num_experts,
-                        spec.num_experts_per_tok,
-                        spec.moe_intermediate_size,
-                        spec.hidden_size,
-                        library=libs.ternary,
-                        runtime=self.runtime, stream=stream,
-                    )
-                    maple_weighted_residual_bf16(
-                        b.residual.ptr,
-                        b.expert_down.ptr,
-                        b.routing_weights.ptr,
-                        b.hidden.ptr,
-                        spec.num_experts_per_tok,
-                        spec.hidden_size,
-                        library=libs.moe,
-                        runtime=self.runtime, stream=stream,
-                    )
+                maple_selected_ternary_dual_gemv_bf16(
+                    b.normalized.ptr,
+                    layer_weights.expert_gate_proj.weight.ptr,
+                    layer_weights.expert_gate_proj.row_alpha.ptr,
+                    layer_weights.expert_up_proj.weight.ptr,
+                    layer_weights.expert_up_proj.row_alpha.ptr,
+                    b.selected_ids.ptr,
+                    b.expert_gate.ptr,
+                    b.expert_up.ptr,
+                    spec.num_experts,
+                    spec.num_experts_per_tok,
+                    spec.hidden_size,
+                    spec.moe_intermediate_size,
+                    library=libs.ternary,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_clamped_swiglu_bf16(
+                    b.expert_gate.ptr,
+                    b.expert_up.ptr,
+                    b.expert_intermediate.ptr,
+                    spec.num_experts_per_tok,
+                    spec.moe_intermediate_size,
+                    library=libs.moe,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_selected_ternary_gemv_bf16(
+                    b.expert_intermediate.ptr,
+                    layer_weights.expert_down_proj.weight.ptr,
+                    layer_weights.expert_down_proj.row_alpha.ptr,
+                    b.selected_ids.ptr,
+                    b.expert_down.ptr,
+                    spec.num_experts,
+                    spec.num_experts_per_tok,
+                    spec.moe_intermediate_size,
+                    spec.hidden_size,
+                    library=libs.ternary,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_weighted_residual_bf16(
+                    b.residual.ptr,
+                    b.expert_down.ptr,
+                    b.routing_weights.ptr,
+                    b.hidden.ptr,
+                    spec.num_experts_per_tok,
+                    spec.hidden_size,
+                    library=libs.moe,
+                    runtime=self.runtime, stream=stream,
+                )
                 if capture_hidden:
                     captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
 

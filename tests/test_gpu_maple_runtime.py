@@ -227,36 +227,6 @@ def test_maple_batch_affine4_rowreuse_is_width_bounded() -> None:
         )
 
 
-def test_maple_step_snapshots_decode_selectors_once() -> None:
-    """Per-layer decode must not repeat invariant environment lookups."""
-
-    tree = ast.parse(textwrap.dedent(inspect.getsource(MapleRunner.step)))
-    step = tree.body[0]
-    assert isinstance(step, ast.FunctionDef)
-    decode = next(
-        node
-        for node in step.body
-        if isinstance(node, ast.FunctionDef) and node.name == "_decode_layers_and_tail"
-    )
-    for selector in ("_maple_fuse_qkattn", "_maple_fuse_moe"):
-        all_calls = [
-            node
-            for node in ast.walk(step)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == selector
-        ]
-        nested_calls = [
-            node
-            for node in ast.walk(decode)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == selector
-        ]
-        assert len(all_calls) == 1
-        assert nested_calls == []
-
-
 def test_maple_prefill_native_samples_only_the_final_row(monkeypatch) -> None:
     from hipengine.core.memory import DeviceBuffer
 
@@ -422,58 +392,6 @@ def test_maple_prefill_native_rejects_invalid_chunk_and_token_before_launch() ->
         runner.prefill_native((1,), chunk_size=257)
     with pytest.raises(ValueError, match="token_id"):
         runner.prefill_native((-1,), chunk_size=1)
-
-
-def test_maple_graph_recaptures_between_call_fusion_changes(
-    hip_test_target_arch, monkeypatch,
-) -> None:
-    del hip_test_target_arch
-    from hipengine.core.memory import memory_stats
-    from hipengine.loading.maple import load_maple_checkpoint
-
-    try:
-        checkpoint = load_maple_checkpoint("deepgrove/maple-preview-2bit-mlx")
-    except Exception as exc:  # noqa: BLE001 - checkpoint missing
-        pytest.skip(f"maple checkpoint unavailable: {exc}")
-    monkeypatch.setenv("HIPENGINE_MAPLE_GRAPH", "1")
-    calls = []
-    for name in ("maple_moe_dual_swiglu_bf16",
-                 "maple_attention_fused_qknorm_decode_bf16"):
-        original = getattr(maple_runtime, name)
-        def record(*args, _name=name, _original=original, **kwargs):
-            calls.append(_name)
-            return _original(*args, **kwargs)
-        monkeypatch.setattr(maple_runtime, name, record)
-    baseline = memory_stats()["current_allocated_bytes"]
-    runner = MapleRunner.load(checkpoint, backend="hip_gfx1151", max_context=64)
-    reference = None
-    try:
-        for capture, (qk, moe) in enumerate(
-            ((0, 0), (0, 1), (1, 1), (1, 0), (0, 0)), start=1,
-        ):
-            monkeypatch.setenv("HIPENGINE_MAPLE_FUSE_QKATTN", str(qk))
-            monkeypatch.setenv("HIPENGINE_MAPLE_FUSE_MOE", str(moe))
-            runner.reset()
-            calls.clear()
-            first = runner.step(9707)
-            graph = runner._graph
-            assert graph is not None
-            assert graph.stats == {"capture": capture, "replay": capture - 1,
-                                   "eager": 0, "reject": 0}
-            assert ("maple_moe_dual_swiglu_bf16" in calls) == bool(moe)
-            assert ("maple_attention_fused_qknorm_decode_bf16" in calls) == bool(qk)
-            logits = runner.copy_logits().view(np.uint32)
-            if reference is None:
-                reference = logits.copy()
-            else:
-                np.testing.assert_array_equal(logits, reference)
-            eager_calls = calls.copy()
-            runner.step(first.token_id)
-            assert graph.stats["replay"] == capture
-            assert calls == eager_calls
-    finally:
-        runner.close()
-    assert memory_stats()["current_allocated_bytes"] == baseline
 
 
 def test_maple_prefill_native_matches_serial_step_gate(hip_test_target_arch) -> None:

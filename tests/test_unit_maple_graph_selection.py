@@ -72,9 +72,11 @@ def test_changed_fusion_key_can_retry_after_a_rejected_capture():
         cache.close()
 
 
-def test_step_graph_key_uses_both_sampled_fusion_values():
+def test_step_graph_key_has_no_fusion_selectors():
+    # The experimental Maple fusions were retired; the decode graph has one
+    # unfused chain, so its cache key carries no selector values.
     tree = ast.parse(textwrap.dedent(inspect.getsource(MapleRunner.step)))
     run = next(node for node in ast.walk(tree) if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute) and node.func.attr == "run")
     assert isinstance(run.args[0], ast.Tuple)
-    assert [node.id for node in run.args[0].elts] == ["fuse_qkattn", "fuse_moe"]
+    assert run.args[0].elts == []

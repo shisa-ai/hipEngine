@@ -31,7 +31,6 @@ from hipengine.kernels.hip_gfx1100.attention.maple_attention import (
     build_maple_attention,
     maple_attention_decode_batched_bf16,
     maple_attention_decode_bf16,
-    maple_attention_fused_qknorm_decode_bf16,
     maple_attention_prefill_ring_bf16,
     maple_attention_prefill_ring_gqa4_bf16,
     maple_kv_span_update,
@@ -69,7 +68,6 @@ from hipengine.kernels.hip_gfx1100.quant.maple_ternary import (
     maple_affine4_gemv_batched_f32,
     maple_affine4_gemv_batched_rowreuse_exact_f32,
     maple_affine4_gemv_wave32_exact_f32,
-    maple_moe_dual_swiglu_bf16,
     maple_selected_ternary_dual_gemv_batched_bf16,
     maple_selected_ternary_dual_gemv_bf16,
     maple_selected_ternary_dual_grouped_bf16,
@@ -89,24 +87,6 @@ from hipengine.loading.maple import (
 )
 from hipengine.models.maple import MapleModelSpec
 from hipengine.runtime.maple_graph import MapleGraphCache
-
-
-def _maple_fuse_moe() -> bool:
-    # Default off: the fused maple_moe_dual_swiglu_bf16 is bit-exact and cuts
-    # decode launches 295->271, but the fused kernel is ~9% slower per MoE
-    # layer than the unfused dual+swiglu pair (interleaved micro-benchmark).
-    # That kernel-efficiency regression matters in the optional M1 c1 hipGraph
-    # path where launch overhead is amortized, so the unfused chain stays the
-    # default and the fusion is opt-in via HIPENGINE_MAPLE_FUSE_MOE=1 pending an
-    # efficiency fix. The M6 helper does not use this graph. See docs/REFACTOR.md.
-    return os.environ.get("HIPENGINE_MAPLE_FUSE_MOE", "0") != "0"
-
-
-def _maple_fuse_qkattn() -> bool:
-    # Opt-in: fuse the per-layer qknorm_rope_kv_write + attention_decode pair
-    # into one kernel (maple_attention_fused_qknorm_decode_bf16). Default off;
-    # see docs/REFACTOR.md.
-    return os.environ.get("HIPENGINE_MAPLE_FUSE_QKATTN", "0") != "0"
 
 
 def _maple_batch_affine4_head(rows: int):
@@ -744,8 +724,6 @@ class MapleRunner:
         )
         if capture_hidden:
             captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
-        fuse_qkattn = _maple_fuse_qkattn()
-        fuse_moe = _maple_fuse_moe()
 
         def _decode_body(stream: int) -> None:
             _decode_layers_and_tail(stream)
@@ -780,55 +758,35 @@ class MapleRunner:
                     runtime=self.runtime, stream=stream,
                 )
                 rope_dim = spec.rotary_dim if spec.uses_rope(layer_id) else 0
-                if fuse_qkattn:
-                    maple_attention_fused_qknorm_decode_bf16(
-                        b.qkv.ptr,
-                        layer_weights.q_norm.ptr,
-                        layer_weights.k_norm.ptr,
-                        kv_layer.key_cache.ptr,
-                        kv_layer.value_cache.ptr,
-                        b.attention.ptr,
-                        kv_layer.spans,
-                        q_heads=spec.num_attention_heads,
-                        kv_heads=spec.num_key_value_heads,
-                        head_dim=spec.head_dim,
-                        rope_dim=rope_dim,
-                        eps=spec.rms_norm_eps,
-                        rope_theta=spec.rope_theta,
-                        scale=spec.head_dim**-0.5,
-                        library=libs.attention,
-                        runtime=self.runtime, stream=stream,
-                    )
-                else:
-                    maple_qknorm_rope_kv_write_bf16(
-                        b.qkv.ptr,
-                        layer_weights.q_norm.ptr,
-                        layer_weights.k_norm.ptr,
-                        kv_layer.key_cache.ptr,
-                        kv_layer.value_cache.ptr,
-                        kv_layer.spans,
-                        q_heads=spec.num_attention_heads,
-                        kv_heads=spec.num_key_value_heads,
-                        head_dim=spec.head_dim,
-                        rope_dim=rope_dim,
-                        eps=spec.rms_norm_eps,
-                        rope_theta=spec.rope_theta,
-                        library=libs.attention,
-                        runtime=self.runtime, stream=stream,
-                    )
-                    maple_attention_decode_bf16(
-                        b.qkv.ptr,
-                        kv_layer.key_cache.ptr,
-                        kv_layer.value_cache.ptr,
-                        b.attention.ptr,
-                        kv_layer.spans,
-                        q_heads=spec.num_attention_heads,
-                        kv_heads=spec.num_key_value_heads,
-                        head_dim=spec.head_dim,
-                        scale=spec.head_dim**-0.5,
-                        library=libs.attention,
-                        runtime=self.runtime, stream=stream,
-                    )
+                maple_qknorm_rope_kv_write_bf16(
+                    b.qkv.ptr,
+                    layer_weights.q_norm.ptr,
+                    layer_weights.k_norm.ptr,
+                    kv_layer.key_cache.ptr,
+                    kv_layer.value_cache.ptr,
+                    kv_layer.spans,
+                    q_heads=spec.num_attention_heads,
+                    kv_heads=spec.num_key_value_heads,
+                    head_dim=spec.head_dim,
+                    rope_dim=rope_dim,
+                    eps=spec.rms_norm_eps,
+                    rope_theta=spec.rope_theta,
+                    library=libs.attention,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_attention_decode_bf16(
+                    b.qkv.ptr,
+                    kv_layer.key_cache.ptr,
+                    kv_layer.value_cache.ptr,
+                    b.attention.ptr,
+                    kv_layer.spans,
+                    q_heads=spec.num_attention_heads,
+                    kv_heads=spec.num_key_value_heads,
+                    head_dim=spec.head_dim,
+                    scale=spec.head_dim**-0.5,
+                    library=libs.attention,
+                    runtime=self.runtime, stream=stream,
+                )
                 maple_ternary_gemv_bf16(
                     b.attention.ptr,
                     layer_weights.o_proj.weight.ptr,
@@ -865,94 +823,54 @@ class MapleRunner:
                     runtime=self.runtime,
                     stream=stream,
                 )
-                if fuse_moe:
-                    maple_moe_dual_swiglu_bf16(
-                        b.normalized.ptr,
-                        layer_weights.expert_gate_proj.weight.ptr,
-                        layer_weights.expert_gate_proj.row_alpha.ptr,
-                        layer_weights.expert_up_proj.weight.ptr,
-                        layer_weights.expert_up_proj.row_alpha.ptr,
-                        b.selected_ids.ptr,
-                        b.expert_intermediate.ptr,
-                        spec.num_experts,
-                        spec.num_experts_per_tok,
-                        spec.hidden_size,
-                        spec.moe_intermediate_size,
-                        library=libs.ternary,
-                        runtime=self.runtime, stream=stream,
-                    )
-                    maple_selected_ternary_gemv_bf16(
-                        b.expert_intermediate.ptr,
-                        layer_weights.expert_down_proj.weight.ptr,
-                        layer_weights.expert_down_proj.row_alpha.ptr,
-                        b.selected_ids.ptr,
-                        b.expert_down.ptr,
-                        spec.num_experts,
-                        spec.num_experts_per_tok,
-                        spec.moe_intermediate_size,
-                        spec.hidden_size,
-                        library=libs.ternary,
-                        runtime=self.runtime, stream=stream,
-                    )
-                    maple_weighted_residual_bf16(
-                        b.residual.ptr,
-                        b.expert_down.ptr,
-                        b.routing_weights.ptr,
-                        b.hidden.ptr,
-                        spec.num_experts_per_tok,
-                        spec.hidden_size,
-                        library=libs.moe,
-                        runtime=self.runtime, stream=stream,
-                    )
-                else:
-                    maple_selected_ternary_dual_gemv_bf16(
-                        b.normalized.ptr,
-                        layer_weights.expert_gate_proj.weight.ptr,
-                        layer_weights.expert_gate_proj.row_alpha.ptr,
-                        layer_weights.expert_up_proj.weight.ptr,
-                        layer_weights.expert_up_proj.row_alpha.ptr,
-                        b.selected_ids.ptr,
-                        b.expert_gate.ptr,
-                        b.expert_up.ptr,
-                        spec.num_experts,
-                        spec.num_experts_per_tok,
-                        spec.hidden_size,
-                        spec.moe_intermediate_size,
-                        library=libs.ternary,
-                        runtime=self.runtime, stream=stream,
-                    )
-                    maple_clamped_swiglu_bf16(
-                        b.expert_gate.ptr,
-                        b.expert_up.ptr,
-                        b.expert_intermediate.ptr,
-                        spec.num_experts_per_tok,
-                        spec.moe_intermediate_size,
-                        library=libs.moe,
-                        runtime=self.runtime, stream=stream,
-                    )
-                    maple_selected_ternary_gemv_bf16(
-                        b.expert_intermediate.ptr,
-                        layer_weights.expert_down_proj.weight.ptr,
-                        layer_weights.expert_down_proj.row_alpha.ptr,
-                        b.selected_ids.ptr,
-                        b.expert_down.ptr,
-                        spec.num_experts,
-                        spec.num_experts_per_tok,
-                        spec.moe_intermediate_size,
-                        spec.hidden_size,
-                        library=libs.ternary,
-                        runtime=self.runtime, stream=stream,
-                    )
-                    maple_weighted_residual_bf16(
-                        b.residual.ptr,
-                        b.expert_down.ptr,
-                        b.routing_weights.ptr,
-                        b.hidden.ptr,
-                        spec.num_experts_per_tok,
-                        spec.hidden_size,
-                        library=libs.moe,
-                        runtime=self.runtime, stream=stream,
-                    )
+                maple_selected_ternary_dual_gemv_bf16(
+                    b.normalized.ptr,
+                    layer_weights.expert_gate_proj.weight.ptr,
+                    layer_weights.expert_gate_proj.row_alpha.ptr,
+                    layer_weights.expert_up_proj.weight.ptr,
+                    layer_weights.expert_up_proj.row_alpha.ptr,
+                    b.selected_ids.ptr,
+                    b.expert_gate.ptr,
+                    b.expert_up.ptr,
+                    spec.num_experts,
+                    spec.num_experts_per_tok,
+                    spec.hidden_size,
+                    spec.moe_intermediate_size,
+                    library=libs.ternary,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_clamped_swiglu_bf16(
+                    b.expert_gate.ptr,
+                    b.expert_up.ptr,
+                    b.expert_intermediate.ptr,
+                    spec.num_experts_per_tok,
+                    spec.moe_intermediate_size,
+                    library=libs.moe,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_selected_ternary_gemv_bf16(
+                    b.expert_intermediate.ptr,
+                    layer_weights.expert_down_proj.weight.ptr,
+                    layer_weights.expert_down_proj.row_alpha.ptr,
+                    b.selected_ids.ptr,
+                    b.expert_down.ptr,
+                    spec.num_experts,
+                    spec.num_experts_per_tok,
+                    spec.moe_intermediate_size,
+                    spec.hidden_size,
+                    library=libs.ternary,
+                    runtime=self.runtime, stream=stream,
+                )
+                maple_weighted_residual_bf16(
+                    b.residual.ptr,
+                    b.expert_down.ptr,
+                    b.routing_weights.ptr,
+                    b.hidden.ptr,
+                    spec.num_experts_per_tok,
+                    spec.hidden_size,
+                    library=libs.moe,
+                    runtime=self.runtime, stream=stream,
+                )
                 if capture_hidden:
                     captured.append(self._copy_bf16(b.hidden, spec.hidden_size))
 
@@ -996,7 +914,7 @@ class MapleRunner:
             graph = self._graph_cache()
             if graph is not None and graph.enabled:
                 graph.run(
-                    (fuse_qkattn, fuse_moe),
+                    (),
                     eager=_decode_body,
                     argmax_index_ptr=b.argmax_index.ptr,
                     argmax_value_ptr=b.argmax_value.ptr,

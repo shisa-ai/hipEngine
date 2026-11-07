@@ -52,11 +52,7 @@ DEFAULT_SUITE = REPO_ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
 DEFAULT_HELDOUT = REPO_ROOT / "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
 REQUIRED_CATEGORIES = ("code", "general_en", "general_ja", "mixed_ja_en")
 PINNED_REVISION = "361db5da5e74ff6fcdd852d478e1f266ce11013a"
-PRODUCTION_SELECTORS = (
-    "HIPENGINE_MAPLE_GRAPH",
-    "HIPENGINE_MAPLE_FUSE_MOE",
-    "HIPENGINE_MAPLE_FUSE_QKATTN",
-)
+PRODUCTION_SELECTORS = ("HIPENGINE_MAPLE_GRAPH",)
 
 
 def _capture(command: list[str], *, timeout: float = 30.0) -> dict[str, Any]:
