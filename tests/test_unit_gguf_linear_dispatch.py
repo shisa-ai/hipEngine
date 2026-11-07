@@ -8495,8 +8495,8 @@ def test_iq3s_iq4_mixed_pair_silu_route_rows1_and_declines() -> None:
     sides dispatch correctly for a pair, but the production-shape screen
     ran 0.97-0.99x across four runs against the pre-registered >=1.00
     gate (2026-09-25), so the route does not fire (E6b-5 negative
-    pattern; the kernel stays registered as a dormant owner with a
-    REFACTOR clearing command). The fake owner must never be called at
+    pattern; the dormant fused owner was retired 2026-11-07). A fake
+    owner registered under the old key must never be called at
     rows == 1 or rows == 2, in either order.
     """
     from hipengine.kernels.hip_gfx1100.quant import (
@@ -8638,8 +8638,8 @@ def test_q5_q6_mixed_pair_silu_route_rows1_and_declines() -> None:
     0.60-0.61x across four runs (the Q6 4-wave-chain emulation across
     block waves costs far more than the launch it saves), well below the
     pre-registered >=1.00 gate (2026-09-25), so the route does not fire
-    (E6b-5 negative pattern; the kernel stays registered as a dormant
-    owner with a REFACTOR clearing command). The fake owner must never
+    (E6b-5 negative pattern; the dormant fused owner was retired
+    2026-11-07). A fake owner registered under the old key must never
     be called at rows == 1 or rows == 2.
     """
     gate = _fake_weight(layout=LAYOUT_GGUF_Q5_K_T16, quant_key="gguf_q5_k_t16_v1")

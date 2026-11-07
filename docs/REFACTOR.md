@@ -153,31 +153,6 @@ attribution only. Preserve
 and `admission_basis="implementation"` in both modes. Never invent a fingerprint or use a
 byte-digest match to conflate qwen36-dense and qwen38 execution identity.
 
-### R0058 — Decide dormant ordered-pair redesign and Q3/Q3 capability
-
-Owner: `hipengine/kernels/hip_gfx1100/fused/gguf_iq4_q4_pair.py`.
-
-Scope: `gguf_q3_k+gguf_iq4_xs`, `gguf_iq4_xs+gguf_q3_k`, `gguf_iq3_s+gguf_iq4_xs`,
-`gguf_q5_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1`.
-
-**Deferred redesign/removal decision:** change scheduling or strict-emulation structure before
-repeating `~/ud-e1-census/e6b5_screen.py`, `~/ud-e1-census/e6b7_screen.py` and
-`~/ud-e1-census/e6_closeout_screen.py` (or successors). Require bit-exact parent+SiLU output at
-K5120 and (K5120,N17408), rows1, and the original >=1.00x screen before selecting a candidate.
-Preserve ordered gate/up keys, slot_path and both wrapper ABIs: Q3/IQ3_S strict owners without
-policy or under a pin, IQ4 local32, Q5 tile8 c1, and Q6 direct-planar parents. Do not enable a
-different arithmetic composition.
-
-If the family is redesigned or the relevant quant layouts retire, remove the four dormant
-wrappers/keys and their exclusive B_KIND2/B_KIND3/A_KIND3 bodies and tests together after checking
-consumers. Preserve shipped IQ4_NL/Q5, IQ4_NL/IQ4_NL, existing dense Q4/Q4 and strict unfused
-chains.
-
-Done when: Implement the missing Q3_K/Q3_K side-A strict-Q3 owner, wrapper and registry key before screening it
-against two strict Q3 leaves plus SiLU. If retiring the dormant family instead, remove its exclusive
-wrappers, registrations and tests together after checking shared consumers; preserve shipped
-IQ4_NL/Q5, IQ4_NL/IQ4_NL and dense Q4/Q4 pairs.
-
 ### R0057 — Repair gfx1151 compact attention wave producer
 
 Owner: `hipengine/kernels/hip_gfx1100/attention/dms_compact.hip`.
