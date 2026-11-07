@@ -9,13 +9,13 @@ registered NEOX head-norm+rotary kernel compute Glimmer's interleaved RoPE.
 Bring-up contracts:
 
 * KV is a contiguous per-layer BF16 cache (the gemma4 attention family ABI).
-  SWA is expressed by the caller-supplied keep mask, full layers are NoPE
+  SWA is applied inside the attention kernels from the layer window, full layers are NoPE
   (identity rotary tables), and the paged KVLiveSpans migration is a recorded
   performance-phase decision, not a silent shortcut.
 * Logits leave the device as F32 and take ``logit_scale`` + tanh softcap on the
   host in float32, matching the CPU reference exactly; the device softcap
   kernel is a performance-phase replacement with its own gate.
-* Prefill runs in bounded chunks so the keep-mask and scratch stay small; each
+* Prefill runs in bounded chunks so the scratch stays small; each
   chunk attends over the full live cache through the same registered wrapper.
 """
 
@@ -44,9 +44,6 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_separate_out_bf16
-from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
-    gemma4_attention_prefill_bf16,
-)
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
     gemma4_add_rmsnorm_scale_bf16,
     gemma4_rmsnorm_f32w_bf16,
@@ -65,7 +62,7 @@ from hipengine.runtime.gguf_linear import (
     prefill_f16_staging_session,
 )
 
-#: Prefill chunk bound for the bring-up scratch and keep-mask sizing. 1024
+#: Prefill chunk bound for the bring-up scratch sizing. 1024
 #: rows amortize the Q4/Q6 WMMA prefill projections better than 512 on
 #: gfx1151 (1K prefill 327->339, 4K 293->305 tok/s with the WMMA attention);
 #: 2048 adds only ~2% at 4K for double the logits scratch.
@@ -174,8 +171,6 @@ class MuseGlimmerResidentSession:
             self.sin_table = scratch.alloc(self.max_context * cfg.head_dim * f32, rt)
             self.identity_cos = scratch.alloc(self.max_context * cfg.head_dim * f32, rt)
             self.identity_sin = scratch.alloc(self.max_context * cfg.head_dim * f32, rt)
-            self.keep_mask_full = scratch.alloc(t_max * self.max_context, rt)
-            self.keep_mask_swa = scratch.alloc(t_max * self.max_context, rt)
             self.attn_partials = scratch.alloc(max(64, 4 * t_max) * cfg.n_heads * 130 * 4, rt)
             # Bounded F16 activation staging workspace for the WMMA prefill
             # pre-cast route (one row-block x the widest projection input).
@@ -183,7 +178,6 @@ class MuseGlimmerResidentSession:
                 t_max * max(hidden, cfg.n_ff, q_dim) * bf16, rt
             )
             self._logits_host = np.empty(cfg.vocab_size, dtype=np.float32)
-            self._mask_host = np.empty((t_max, self.max_context), dtype=np.uint8)
             self._ids_host = np.empty(t_max, dtype=np.int64)
             self._pos_host = np.empty(t_max, dtype=np.int64)
 
@@ -580,7 +574,6 @@ class MuseGlimmerResidentSession:
             position_offset, position_offset + tokens, dtype=np.int64
         )
         copy_host_array_to_device(self.positions, self._pos_host[:tokens], runtime=rt)
-        self._upload_keep_mask(tokens, position_offset, keys)
 
         launch_gguf_embedding(
             self.loaded.weight("token_embd.weight"),
@@ -885,29 +878,6 @@ class MuseGlimmerResidentSession:
         launch_gguf_linear(
             weight, x_ptr, out_ptr, rows, in_features, out_features,
             use_wmma_prefill=True, use_q4_pack8_wmma=True, **kwargs,
-        )
-
-    def _upload_keep_mask(self, tokens: int, position_offset: int, keys: int) -> None:
-        """Build both layer-kind masks once per block and upload them.
-
-        Full layers keep the causal prefix; SWA layers additionally drop keys
-        at or below ``pos - window``. The kernel's ``window`` walk skips the
-        leading zero columns on SWA rows, which this mask guarantees.
-        """
-
-        cfg = self.config
-        q = np.arange(position_offset, position_offset + tokens, dtype=np.int64)[:, None]
-        k = np.arange(keys, dtype=np.int64)[None, :]
-        causal = k <= q
-        mask = self._mask_host[:tokens, :keys]
-        np.copyto(mask, causal.astype(np.uint8))
-        copy_host_array_to_device(
-            self.keep_mask_full, np.ascontiguousarray(mask), runtime=self.runtime
-        )
-        swa = causal & (k > q - int(cfg.sliding_window))
-        np.copyto(mask, swa.astype(np.uint8))
-        copy_host_array_to_device(
-            self.keep_mask_swa, np.ascontiguousarray(mask), runtime=self.runtime
         )
 
     # -- introspection -----------------------------------------------------

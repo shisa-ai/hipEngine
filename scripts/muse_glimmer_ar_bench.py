@@ -76,12 +76,15 @@ def main() -> int:
     session = gen._ensure_session()
     tokenizer = gen.tokenizer
 
-    # Warmup: prebuild every kernel on a short pass outside the timed window.
-    warm = build_prompt_ids(tokenizer, 32)
-    session.reset()
-    session.prefill(warm)
-    for _ in range(4):
-        session.decode_step(13796)
+    # Warmup outside the timed window: prebuild every kernel, and run one
+    # full prefill chunk plus a 512-row tail so per-shape one-time work
+    # (library GEMM algorithm selection, scratch growth) is not timed.
+    warm_tokens = session.prefill_chunk + 512
+    for n in (32, warm_tokens):
+        session.reset()
+        session.prefill(build_prompt_ids(tokenizer, n))
+        for _ in range(4):
+            session.decode_step(13796)
 
     rows = []
     artifact = {
@@ -95,7 +98,7 @@ def main() -> int:
         "backend": "hip_gfx1151",
         "timing_boundary": "decode_model_step = sum of synchronized decode_step walls (llama-bench tg boundary); decode = user-facing wall incl greedy argmax; prefill = synchronized session wall",
         "repeats": args.repeats,
-        "warmup": "32-token prefill + 4 decode steps (kernel prebuild)",
+        "warmup": "32-token and (prefill_chunk + 512)-token prefills, 4 decode steps each",
         "execution_path": session.execution_path(),
         "rows": rows,
     }

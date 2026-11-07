@@ -28,13 +28,23 @@ def _library():
 def muse_glimmer_flash_prefill(
     q_ptr: int, k_ptr: int, v_ptr: int, out_ptr: int, *,
     n_q_heads: int, n_kv_heads: int, key_begin: int, key_end: int,
-    tokens: int, window: int, scale: float, stream: int = 0,
-    library: ctypes.CDLL | None = None, runtime=None,
+    tokens: int, window: int, scale: float, multi_token: bool = True,
+    stream: int = 0, library: ctypes.CDLL | None = None, runtime=None,
 ) -> None:
+    """WMMA GQA flash prefill over the contiguous KV cache.
+
+    ``multi_token`` (default) shares each staged K/V tile across eight
+    adjacent query tokens; ``False`` runs the one-token-per-block kernel.
+    """
+
     library = library or _library()
     runtime = runtime or get_hip_runtime()
+    symbol = (
+        "hipengine_muse_glimmer_flash_prefill_wmma_mt"
+        if multi_token else "hipengine_muse_glimmer_flash_prefill_wmma"
+    )
     fn = signed_kernel_fn(
-        library, "hipengine_muse_glimmer_flash_prefill_wmma",
+        library, symbol,
         (_P, _P, _P, _P, _I64, _I64, _I64, _I64, _I64, _I64, _F, _P),
         ctypes.c_int,
     )
