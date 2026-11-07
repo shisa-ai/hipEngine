@@ -147,7 +147,6 @@ from hipengine.runtime.qwen4_exp_runner import (
     resolve_q4_iu8_planes,
     resolve_q4_iu8_risk_mult,
     resolve_q5k_iu8_risk_mult,
-    resolve_fused_combine,
     resolve_q51_iu8_risk_mult,
     resolve_q4_iu8_exact,
     stage_qwen4_exp_ple_rows,
@@ -448,7 +447,6 @@ def run_qwen4_exp_batch_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
     *,
-    fused_combine_enabled: bool = False,
     expert_grid_policy: ExpertGridPolicy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
@@ -611,7 +609,6 @@ def run_qwen4_exp_batch_gdn_layer(
             q4_iu8_planes=q4_iu8_planes,
             q4_iu8_risk_mult=q4_iu8_risk_mult,
             q5k_iu8_risk_mult=q5k_iu8_risk_mult,
-            fused_combine_enabled=fused_combine_enabled,
             q51_iu8_risk_mult=q51_iu8_risk_mult,
             q51_iu8_exact_enabled=q51_iu8_exact_enabled,
             q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
@@ -707,7 +704,6 @@ def _run_layer_ffn(
     weights: object,
     scratch: object,
     *,
-    fused_combine_enabled: bool = False,
     expert_grid_policy: ExpertGridPolicy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
@@ -837,7 +833,6 @@ def _run_layer_ffn(
         q4_iu8_planes=q4_iu8_planes,
         q4_iu8_risk_mult=q4_iu8_risk_mult,
         q5k_iu8_risk_mult=q5k_iu8_risk_mult,
-        fused_combine_enabled=fused_combine_enabled,
         q51_iu8_risk_mult=q51_iu8_risk_mult,
         q51_iu8_exact_enabled=q51_iu8_exact_enabled,
         q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
@@ -859,7 +854,6 @@ def run_qwen4_exp_batch_qsa_layer(
     residual_ptr: int,
     weights: Qwen4ExpQSALayerDeviceWeights,
     *,
-    fused_combine_enabled: bool = False,
     expert_grid_policy: ExpertGridPolicy | None = None,
     moe_decode_warp: frozenset[str] = frozenset(),
     routed_f16_enabled: bool = False,
@@ -1030,7 +1024,6 @@ def run_qwen4_exp_batch_qsa_layer(
             q4_iu8_planes=q4_iu8_planes,
             q4_iu8_risk_mult=q4_iu8_risk_mult,
             q5k_iu8_risk_mult=q5k_iu8_risk_mult,
-            fused_combine_enabled=fused_combine_enabled,
             q51_iu8_risk_mult=q51_iu8_risk_mult,
             q51_iu8_exact_enabled=q51_iu8_exact_enabled,
             q5k_iu8_exact_enabled=q5k_iu8_exact_enabled,
@@ -1188,7 +1181,6 @@ class Qwen4ExpGGUFBatchRunner:
     q4_iu8_planes: int | None = None
     q4_iu8_risk_mult: float | None = None
     q5k_iu8_risk_mult: float | None = None
-    fused_combine_enabled: bool = False
     q51_iu8_risk_mult: float | None = None
     q4_iu8_exact_enabled: bool | None = None
     q51_iu8_exact_enabled: bool | None = None
@@ -2196,7 +2188,6 @@ class Qwen4ExpGGUFBatchRunner:
             resolve_q5k_iu8_exact(self),
             resolve_q5k_iu8_risk_mult(self),
             resolve_q51_iu8_risk_mult(self),
-            resolve_fused_combine(self),
         )
 
     def step(
@@ -2497,7 +2488,6 @@ class Qwen4ExpGGUFBatchRunner:
                     q4_iu8_planes=self.q4_iu8_planes,
                     q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q5k_iu8_risk_mult=self.q5k_iu8_risk_mult,
-                    fused_combine_enabled=self.fused_combine_enabled,
                     q51_iu8_risk_mult=self.q51_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                     q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
@@ -2566,7 +2556,6 @@ class Qwen4ExpGGUFBatchRunner:
                     q4_iu8_planes=self.q4_iu8_planes,
                     q4_iu8_risk_mult=self.q4_iu8_risk_mult,
                     q5k_iu8_risk_mult=self.q5k_iu8_risk_mult,
-                    fused_combine_enabled=self.fused_combine_enabled,
                     q51_iu8_risk_mult=self.q51_iu8_risk_mult,
                     q51_iu8_exact_enabled=self.q51_iu8_exact_enabled,
                     q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,

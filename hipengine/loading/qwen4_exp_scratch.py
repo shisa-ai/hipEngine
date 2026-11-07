@@ -58,7 +58,7 @@ def qwen4_exp_scratch_breakdown(config, *, context_tokens: int, prefill_chunk_si
         compact = n * top_k
         tiles = (compact + 15 * experts + 15) // 16
         return (
-            n * (4 * experts + 12 * h + 12 * ffn + 4)
+            n * (4 * experts + 10 * h + 12 * ffn + 4)
             + compact * (40 + 2 * h + 10 * ffn)
             + 12 * experts + 16 * (experts + 1) + 8 * tiles + 8
         )

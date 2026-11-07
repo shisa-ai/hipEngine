@@ -21,13 +21,20 @@ def test_allocation_sequence_matches_frozen_census_except_retired_moe_scratch():
     frozen = json.loads(path.read_bytes())["captures"]["resume-scratch-census.json"]
     for row in frozen["records"]:
         actual = census(config(), context=row["context"], chunk=row["chunk"])
-        # Preserve the historical artifact; account only for the four removed
-        # layer buffers, leaving every surviving allocation and byte count exact.
+        # Preserve the historical artifact; account only for the removed layer
+        # buffers (the F32 MoE staging and the fused-combine BF16 shared output),
+        # leaving every surviving allocation and byte count exact.
+        rows = min(row["context"], row["chunk"])
+        hidden = config().hidden_size
         retired = {
-            "gdn_scratch.moe_f32": 4 * config().hidden_size,
-            "qsa_scratch.moe_f32": 4 * config().hidden_size,
-            "gdn_prefill_scratch.moe_f32": 4 * min(row["context"], row["chunk"]) * config().hidden_size,
-            "qsa_prefill_scratch.moe_f32": 4 * min(row["context"], row["chunk"]) * config().hidden_size,
+            "gdn_scratch.moe_f32": 4 * hidden,
+            "qsa_scratch.moe_f32": 4 * hidden,
+            "gdn_prefill_scratch.moe_f32": 4 * rows * hidden,
+            "qsa_prefill_scratch.moe_f32": 4 * rows * hidden,
+            "gdn_scratch.moe.shared_down_bf16": 2 * hidden,
+            "qsa_scratch.moe.shared_down_bf16": 2 * hidden,
+            "gdn_prefill_scratch.moe.shared_down_bf16": 2 * rows * hidden,
+            "qsa_prefill_scratch.moe.shared_down_bf16": 2 * rows * hidden,
         }
         assert {item["owner"]: item["nbytes"] for item in row["allocations"]
                 if item["owner"] in retired} == retired

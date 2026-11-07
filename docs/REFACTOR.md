@@ -1793,30 +1793,6 @@ readiness/capability/response documents, allocation ownership and teardown. Brac
 short probes, then confirm the chosen context with the full-depth workload; the example context is
 not a maximum.
 
-### R0410 — Fused grouped-prefill combine adjudication
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `qwen4_exp_runner.py`, `weighted_lanes_sum_out_bf16_f32w`;
-`fused_combine_enabled(owner, enabled)` and the explicit layer/runner argument;
-`shared_gate_combine_f32_shared_out_bf16`,
-`weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w`.
-
-**Deferred decision:** retain the candidate and its explicit interface, promote it after a current
-comparison, or retire the complete route. The corrected historical artifact records four Python
-processes and four model residencies, not one residency. It does not establish a binding loss; do
-not delete the candidate or describe the old timing as a promotion/rejection gate.
-
-Done when: if evaluating promotion, add an engagement-verified fused-combine package to
-`scripts/qwen4exp_halo_box_campaign_ab.py` or an equivalent same-process harness. The existing
-harness does not expose this comparison. Measure both settings in one model residency across the
-complete category/shape suite and heldouts, charging the separate cast and comparing against today's
-cast-folded default. Verify exact outputs/state/KV, repeatability, graph recapture where applicable
-and public `LLM.generate()` selection/teardown. Run `uv run pytest -o addopts='' -q
-tests/test_gpu_qwen4_exp_pf4_lever2_fused_combine.py` in the ROCm environment before the model
-comparison. If retiring by product decision, remove the runtime branch, wrapper, registry entry,
-selector and candidate-only tests together, preserving strict primitives and history.
-
 ### R0415 — Register-state GDN decode follow-up
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
