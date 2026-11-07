@@ -54,7 +54,11 @@ from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import (
 )
 from hipengine.loading.muse_glimmer_gguf import MuseGlimmerLoadedWeights
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
-from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_exact_rows
+from hipengine.runtime.gguf_linear import (
+    launch_gguf_linear,
+    launch_gguf_linear_exact_rows,
+    prefill_f16_staging_session,
+)
 
 #: Prefill chunk bound for the bring-up scratch and keep-mask sizing. 1024
 #: rows amortize the Q4/Q6 WMMA prefill projections better than 512 on
@@ -168,6 +172,11 @@ class MuseGlimmerResidentSession:
             self.keep_mask_full = scratch.alloc(t_max * self.max_context, rt)
             self.keep_mask_swa = scratch.alloc(t_max * self.max_context, rt)
             self.attn_partials = scratch.alloc(max(64, 4 * t_max) * cfg.n_heads * 130 * 4, rt)
+            # Bounded F16 activation staging workspace for the WMMA prefill
+            # pre-cast route (one row-block x the widest projection input).
+            self._f16_staging = scratch.alloc(
+                t_max * max(hidden, cfg.n_ff, q_dim) * bf16, rt
+            )
             self._logits_host = np.empty(cfg.vocab_size, dtype=np.float32)
             self._mask_host = np.empty((t_max, self.max_context), dtype=np.uint8)
             self._ids_host = np.empty(t_max, dtype=np.int64)
@@ -253,9 +262,14 @@ class MuseGlimmerResidentSession:
             )
         self._length = 0
         logits: np.ndarray | None = None
-        for begin in range(0, ids.size, self.prefill_chunk):
-            block = ids[begin:begin + self.prefill_chunk]
-            logits = self._forward_block(block, position_offset=begin)
+        with prefill_f16_staging_session(
+            True,
+            workspace_ptr=int(self._f16_staging.ptr),
+            workspace_nbytes=int(self._f16_staging.nbytes),
+        ):
+            for begin in range(0, ids.size, self.prefill_chunk):
+                block = ids[begin:begin + self.prefill_chunk]
+                logits = self._forward_block(block, position_offset=begin)
         assert logits is not None
         return logits
 
