@@ -687,18 +687,13 @@ def test_gguf_mtp_server_candidate_budget_uses_one_shared_setting(monkeypatch) -
     monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "2")
     assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 2
 
-    # The old generator-local name remains a working, deprecated alias.
-    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET")
+    # The removed generator-local name fails loudly, alone or with the
+    # canonical name, instead of being silently ignored.
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "2")
-    with pytest.warns(FutureWarning, match="HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"):
-        assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 2
-
-    # Agreement is accepted; disagreement is a configuration error, not a
-    # silent precedence choice.
-    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "2")
-    assert qwen35_gguf._gguf_mtp_server_candidate_budget() == 2
-    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")
-    with pytest.raises(ValueError, match="conflicts"):
+    with pytest.raises(ValueError, match="HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET has been removed"):
+        qwen35_gguf._gguf_mtp_server_candidate_budget()
+    monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET")
+    with pytest.raises(ValueError, match="set HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET=2"):
         qwen35_gguf._gguf_mtp_server_candidate_budget()
 
     # Explicit invalid or out-of-range values fail loudly instead of being

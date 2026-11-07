@@ -67,22 +67,6 @@ Done when: Remove an intent binding only after final rejection without a repair 
 condition followed by a removal decision. Do not silently re-enable withdrawn arithmetic by
 narrowing the sweep.
 
-### R0030 — Decide router-selection semantics before reopening warp arithmetic
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `f32_hidden_warp_reduce_dense_exact`.
-
-Done when: Deferred campaign decision: the recorded reopening proposal quantizes ranking logits with
-deterministic tie-breaking, including the reference. That changes strict selection semantics and
-needs an explicit campaign decision and new reference validation, not a kernel-only retry or
-threshold relaxation. Do not rerun the unchanged rejected route before that decision.
-
-Preserve tile4 strict fallback and the diagnostic warp implementation. F16 production and
-ordered-DPP recovery choices are separate siblings, not rejected by this candidate's result.
-The diagnostic `router_producer_variant(runner, mode)` scope selects these siblings;
-do not delete shared selection infrastructure to remove one candidate.
-
 ### R0028 — GR-wide profile handoff and engagement checks
 
 Owner: `hipengine/runtime/qwen4_exp_runner.py`.
@@ -218,22 +202,6 @@ Inventory prefill, one-row prefill tails, incremental decode and verification se
 staged/plain and shape/backend fallbacks. Test profile isolation, scope precedence, graph capture
 and public selected routes on both backends before unifying them.
 
-### R0080 — Candidate-budget compatibility alias deprecation
-
-Owner: `hipengine/speculative/candidate_budget.py`.
-
-Scope: `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`; `HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`.
-
-Done when: Deferred alias retirement: ship the implemented `FutureWarning` transition before removing
-`HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`. Active in-repo scripts already write the canonical
-`HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`; compatibility tests and historical evidence still name
-the alias. Before removal, recheck active callers and user configuration examples, migrate any
-remaining writers, and update resolver/reporting tests and configuration documentation together.
-See `worklog/entries/20261031T202425.449059Z-cleanup-refactor-r0080-deprecation-ab53a8.md`.
-Until retirement, preserve exact requested depth, agreement checks when both names are present,
-and malformed/conflicting/unsupported-value errors. Keep the generic direct-provider default;
-never reinstate independent fallback reads or silently rewrite requested depth.
-
 ### R0196 — gfx1100 dense SPECDEC2 C8 physical-width rollback
 
 Owner: `hipengine/generation/qwen35_gguf.py`.
@@ -265,19 +233,6 @@ Scope: `hipengine/runtime/gguf_linear.py` — gfx1100 Q4-T16 row64 down-projecti
 Done when: Run a defaults-only, same-protocol public repeat for the Q4-T16 down owner at `(17408,5120)`,
 rows33-192. Confirm selected launches, output/state parity and teardown; preserve the registered
 256-row shared-B parent outside that scope.
-
-### R0067 — Dense prefix retention budget
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS`; `HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES`.
-
-Done when: Decide whether the dense prefix-retention default should allow a wider reuse working set at the cost
-of pinned memory. Coordinate `HIPENGINE_GGUF_PREFIX_RETAINED_SNAPSHOTS` and
-`HIPENGINE_GGUF_PREFIX_RETAINED_STATE_BYTES`; retained KV pages consume memory outside the
-state-byte ceiling. Update defaults, configuration docs and tests together, then validate
-interleaved conversations and memory pressure. Preserve explicit operator controls until equivalent
-owner-bound policy replaces them.
 
 ### R0249/R0250 — Laguna public cache-owner validation
 
@@ -562,28 +517,6 @@ action:** run `hipengine serve`, trace the fused pointer-table gather where dire
 is inapplicable, and compare imported Conv/GDN state with the per-layer parent. Include single-slot
 fallback, rejection, cancellation and resource cleanup. CPU ownership tests do not prove public GPU
 state-transfer engagement.
-
-### R0211/R0212 — Scheduling policy and generic-default decisions
-
-Owner: `hipengine/kernels/hip_gfx1100/__init__.py`.
-
-Scope: `protect_ttft`; `HIPENGINE_PREFILL_DECODE_POLICY`.
-
-**Decision needed:** keep policy selection as a supported production control, or standardize
-production on `token_budget`; separately, choose whether unconfigured generators should inherit
-`fair` instead of `protect_decode`. The old entries proposed both generic `fair` and eventual
-`token_budget`, so neither is an unambiguous cleanup replacement. Different backend burst defaults
-must not be erased as a side effect.
-
-Done when: if policy selection is retained, close R0211 as supported configuration. If
-standardized, migrate every generator default, submit/poll constructor and CLI/env caller to
-explicit round budgets before removing the old policy branches. For R0212, either keep the scoped
-defaults as supported registry configuration or change the generic default and remove only redundant
-package policy declarations. Update configuration docs and run `tests/test_unit_llm_generate.py`,
-`tests/test_unit_concurrency2_token_budget.py` and
-`tests/test_integration_generation_engine_loop_burst.py`; exercise public mixed-prefill/decode,
-staggered admission, cancellation and cleanup on both backends and confirm the selected policy.
-TTFT/ITL comparisons evaluate the chosen behavior; they are not permission to run it.
 
 ### R0213 — Mirrored INT8 fallback migration and validation
 

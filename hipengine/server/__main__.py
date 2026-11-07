@@ -429,9 +429,8 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Candidate depth for the speculative owner. When omitted, use "
             "the environment setting or resolve from the loaded model's "
-            "serving evidence (env HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET; "
-            "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET is accepted as a deprecated "
-            "legacy alias). An explicit value bypasses those settings."
+            "serving evidence (env HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET). "
+            "An explicit value bypasses those settings."
         ),
     )
     parser.add_argument(

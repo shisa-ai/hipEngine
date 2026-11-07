@@ -1,19 +1,17 @@
 """One explicit speculative candidate-depth setting.
 
-``HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`` is the canonical setting shared by
-the server and direct generator callers. ``HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET``
-is a deprecated compatibility alias: a legacy-only setting still resolves its
-exact requested depth and emits a ``FutureWarning``. When both names are present
-they must agree.
+``HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET`` is the setting shared by the server
+and direct generator callers. The former generator-local name
+``HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`` has been removed; setting it raises an
+error naming its replacement, so an old configuration is never silently ignored.
 """
 
 from __future__ import annotations
 
 import os
-import warnings
 
 SPECULATIVE_CANDIDATE_BUDGET_ENV = "HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET"
-LEGACY_GGUF_MTP_CANDIDATE_BUDGET_ENV = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
+REMOVED_GGUF_MTP_CANDIDATE_BUDGET_ENV = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
 
 
 def _read_positive_int(name: str) -> int | None:
@@ -32,29 +30,18 @@ def _read_positive_int(name: str) -> int | None:
 
 
 def resolve_explicit_candidate_budget_env() -> int | None:
-    """Return the operator-pinned depth, or ``None`` when neither name is set.
+    """Return the operator-pinned depth, or ``None`` when it is not set.
 
-    The canonical name is read first, but the legacy alias is not ignored: if
-    both are present and disagree, that is a configuration error rather than a
-    silent precedence choice. A legacy-only setting emits ``FutureWarning`` and
-    still resolves its exact depth. An explicitly configured depth is returned
-    unchanged; capability checks belong to the owner that executes it.
+    An explicitly configured depth is returned unchanged; capability checks
+    belong to the owner that executes it. The removed legacy name is rejected
+    rather than ignored, because ignoring it would run a different depth from
+    the one the operator configured.
     """
 
-    canonical = _read_positive_int(SPECULATIVE_CANDIDATE_BUDGET_ENV)
-    legacy = _read_positive_int(LEGACY_GGUF_MTP_CANDIDATE_BUDGET_ENV)
-    if canonical is not None and legacy is not None and canonical != legacy:
+    removed = os.environ.get(REMOVED_GGUF_MTP_CANDIDATE_BUDGET_ENV)
+    if removed is not None and removed.strip():
         raise ValueError(
-            f"{SPECULATIVE_CANDIDATE_BUDGET_ENV}={canonical} conflicts with "
-            f"{LEGACY_GGUF_MTP_CANDIDATE_BUDGET_ENV}={legacy}"
+            f"{REMOVED_GGUF_MTP_CANDIDATE_BUDGET_ENV} has been removed; set "
+            f"{SPECULATIVE_CANDIDATE_BUDGET_ENV}={removed.strip()} instead"
         )
-    if canonical is None and legacy is not None:
-        warnings.warn(
-            f"{LEGACY_GGUF_MTP_CANDIDATE_BUDGET_ENV} is deprecated; use "
-            f"{SPECULATIVE_CANDIDATE_BUDGET_ENV} instead. The legacy name "
-            "still resolves the requested candidate depth.",
-            FutureWarning,
-            stacklevel=2,
-        )
-        return legacy
-    return canonical
+    return _read_positive_int(SPECULATIVE_CANDIDATE_BUDGET_ENV)

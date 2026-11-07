@@ -408,44 +408,24 @@ def test_server_cli_rejects_an_unusable_candidate_budget(monkeypatch, capsys) ->
     assert "value must be >= 1" in capsys.readouterr().err
 
 
-def test_server_cli_reads_the_legacy_candidate_budget_alias(monkeypatch) -> None:
-    """The generator-local name remains a working, deprecated compatibility alias."""
+def test_server_cli_rejects_the_removed_candidate_budget_alias(
+    monkeypatch, capsys
+) -> None:
+    """The removed generator-local name is an error, alone or with the canonical name."""
 
     monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", raising=False)
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "3")
-
-    with pytest.warns(FutureWarning, match="HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"):
-        args = build_parser().parse_args(["--model", "target"])
-
-    assert args.speculative_candidate_budget == 3
-
-    client = TestClient(
-        create_app(
-            _config(speculative_candidate_budget=args.speculative_candidate_budget),
-            llm=_SpeculativeFakeLLM(),
-        )
-    )
-    capability = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative"]
-    assert capability["candidate_budget_resolution"] == {
-        "requested": 3,
-        "resolved": 3,
-        "source": "explicit",
-    }
-
-
-def test_server_cli_rejects_conflicting_candidate_budget_aliases(
-    monkeypatch, capsys
-) -> None:
-    """Two explicit names that disagree are an error when the flag is omitted."""
-
-    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")
-    monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "3")
-
-    parser = build_parser()  # construction does not resolve env
     with pytest.raises(SystemExit) as excinfo:
-        parser.parse_args(["--model", "target"])
+        build_parser().parse_args(["--model", "target"])
     assert excinfo.value.code == 2
-    assert "conflicts" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET has been removed" in err
+    assert "HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET=3" in err
+
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "3")
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["--model", "target"])
+    assert "has been removed" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -458,7 +438,7 @@ def test_server_cli_rejects_conflicting_candidate_budget_aliases(
             "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET": "3",
         },
     ],
-    ids=("malformed-canonical", "malformed-alias", "conflicting-names"),
+    ids=("malformed-canonical", "removed-alias", "canonical-with-removed-alias"),
 )
 def test_server_cli_explicit_budget_bypasses_unusable_env(monkeypatch, env) -> None:
     """An explicit CLI depth wins over an unusable env, as the constructor does."""

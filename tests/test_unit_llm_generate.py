@@ -209,24 +209,14 @@ def test_llm_treats_the_shared_candidate_budget_setting_as_explicit(
     llm._publish_candidate_budget(owner)
     assert owner.speculative_candidate_budget == 4
 
-    # The legacy generator-local name reaches the same explicit branch and
-    # warns about its deprecation while preserving the requested depth.
+    # The removed generator-local name fails loudly rather than being ignored,
+    # alone or together with the canonical name.
     monkeypatch.delenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET")
     monkeypatch.setenv("HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET", "3")
-    with pytest.warns(FutureWarning, match="HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"):
-        llm = LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
-    assert llm.speculative_candidate_budget == 3
-    assert llm.speculative_candidate_budget_requested == 3
-    assert llm.speculative_candidate_budget_source == "explicit"
-    assert llm.speculative_candidate_budget_resolution == {
-        "requested_candidate_budget": 3,
-        "candidate_budget": 3,
-        "candidate_budget_source": "explicit",
-    }
-
-    # Disagreement is reported, not silently resolved by precedence.
-    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "4")
-    with pytest.raises(ValueError, match="conflicts"):
+    with pytest.raises(ValueError, match="HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET has been removed"):
+        LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
+    monkeypatch.setenv("HIPENGINE_SPECULATIVE_CANDIDATE_BUDGET", "3")
+    with pytest.raises(ValueError, match="has been removed"):
         LLM("/tmp/fake-model", backend="fake_backend", quant="fake_quant")
 
 
