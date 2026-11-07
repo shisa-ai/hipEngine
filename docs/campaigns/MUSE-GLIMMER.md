@@ -466,3 +466,50 @@ re-read by all 416 output-column blocks (`MemUnitBusy` 71%,
 Decode is GEMV-bandwidth-bound (199 vs 221 GB/s, ~90% of roofline). The
 remaining Gate A gap is a fundamentally better GEMM data-feed than these ports
 replicate, not a missing tuning trick.
+
+## 8. Reopened optimization plan (2026-11-07)
+
+Two external reviews reopened the campaign: the §7 "empirically closed"
+conclusion was over-strong. Corrections, scoped to what was actually tested:
+
+- **The wide-N NaNs are a loader coverage bug, not a design limit.**
+  `gguf_k_t16_selected_prefill.hip:996` assigns `decode_pair = threadIdx.x >> 2`
+  with no stride, so 128 threads initialize only 64 weight columns; any
+  `OUT_TILES >= 5` reads uninitialized LDS. The finite/NaN split
+  (`<3,4,4>`/`<4,4,x>` finite, `<6,4,2>`/`<7,4,1>`/`<6,4,4>` NaN) matches exactly.
+  The 6.23 ms `<6,4,2>` timing is invalid (it skipped decode work). Wider tiling
+  is an open question once the loader is fixed.
+- **"L2-bandwidth-bound" was a hypothesis, not a measured roofline.**
+  `MemUnitBusy` is not L2 bytes/sec; no TCC hit/miss or DRAM request counter was
+  collected. The limiting level (load issue, conversion instructions,
+  dependencies, registers, cache) is not yet isolated.
+- **The decode breakdown sums to ~85.5%; ~14.5% is unaccounted** — larger than
+  the 9% gap. The "fusion ceiling ~3%" claim is not supported until every
+  dispatch is reconciled.
+- **RDNA3 has no AGPRs**; the int8 "AGPR spill" wording was wrong (VGPR/private
+  scratch). The int8 measurements stand; the diagnosis label does not.
+- **The inner loop converts activation bf16→f16 per fragment per column block**
+  (`load_compact_row_half16<uint16_t>`), stealing VALU issue slots from WMMA.
+
+Prioritized experiments (session tasks #10–#20), each reporting which hypothesis
+it supports or falsifies; cover real attention/FFN shapes, row tails, and chunk
+boundaries — not only ffn_gate:
+
+1. Fix the shared-B cooperative-loader coverage; correctness-first wide-N sweep.
+2. Pre-cast activations to F16 once per projection (remove inner-loop conversion).
+3. Complete whole-prefill + decode breakdown; find the missing 14.5% decode.
+4. Q6 then Q4 dequantize + library-GEMM controls (the F16 wide route), including
+   dequant/scratch/output-conversion cost; pre-dequantized GEMM as a diagnostic
+   upper bound only.
+5. Fast weight dequant (dword loads, nibble→f16 magic number, vector LDS stores)
+   plus more rows per block.
+6. Replace asserted rooflines with measured shape-specific limits (TCC/DRAM
+   counters, cache-read ceiling, resident-byte census, allocation-type check).
+7. Decode shape-specific bandwidth + projection grouping (narrow K/V fill, Q/K/V/
+   gate and gate/up concatenation).
+8. Fix timing-harness boundary (matched model-step vs user-facing generation).
+9. 2D-tiled GEMM (2D wave grid, K-slab 32–64, ~32 KB 128×128 tile, staged
+   activations) only if 1–5 do not close the gap.
+10. Targeted fusion/grouping + compact-layout candidates.
+11. Rollup: numerical gates, a real `LLM.generate()`/serving run confirming
+    selection, benchmark + campaign updates, re-run Gate A on a matched boundary.
