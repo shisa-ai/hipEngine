@@ -10,6 +10,7 @@ from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.core.rocblas import Rocblas, get_rocblas
 from hipengine.kernels.hip_gfx1100.convert.cast import (
     bf16_to_fp16,
+    f32_to_bf16,
     fp16_to_bf16,
     fp16_to_f32,
 )
@@ -736,9 +737,119 @@ def gguf_q6_k_t16_qmicro_planar_f16_rocblas_bf16_bf16_out(
     )
 
 
+# Full-matrix F16 library-GEMM route for planar Q6T16 prefill. The single-wave
+# Q6 WMMA owner is structurally limited (~11 TF); dequantizing the whole weight
+# to F16 once per launch and running a hipBLASLt GEMM is materially faster on
+# large projections. The activation arrives pre-cast to IEEE half (F16 staging
+# sibling ABI); the weight F16 plane is shared across row counts and the
+# per-shape best algorithm is selected once and cached.
+_Q6_FULLGEMM_WEIGHT_CACHE: dict[tuple[int, int], object] = {}
+_Q6_FULLGEMM_PLAN_CACHE: dict[tuple[int, int, int], tuple] = {}
+
+
+def gguf_q6_k_t16_qmicro_planar_fullgemm_fp16_in_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    **kwargs,
+) -> None:
+    """Dequantize planar Q6T16 to F16 and run a hipBLASLt GEMM (BF16 out)."""
+    del kwargs
+    import time
+    from hipengine.core.hipblaslt import (
+        HipblasLt, HipblasLtProblem, HIP_R_16F, HIP_R_32F,
+    )
+    from hipengine.core.memory import malloc
+
+    runtime = runtime or get_hip_runtime()
+    library = library or build_gguf_q6_k_f16_rocblas_prefill(load=True)
+    rows = int(rows)
+    in_features = _check_in_features(in_features)
+    out_features = _check_out_features(out_features)
+
+    wkey = (in_features, out_features)
+    weight_f16 = _Q6_FULLGEMM_WEIGHT_CACHE.get(wkey)
+    if weight_f16 is None:
+        weight_f16 = malloc(out_features * in_features * 2, runtime=runtime)
+        _Q6_FULLGEMM_WEIGHT_CACHE[wkey] = weight_f16
+
+    def dequant_weight() -> None:
+        _launch_t16_dequantize_f16_tile(
+            _T16_TILE_DEQUANT_DIRECT_SYMBOL,
+            tiles_ptr,
+            int(weight_f16.ptr),
+            in_features,
+            out_features,
+            col_start=0,
+            col_count=out_features,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+    pkey = (rows, in_features, out_features)
+    plan = _Q6_FULLGEMM_PLAN_CACHE.get(pkey)
+    if plan is None:
+        workspace_nbytes = 64 * 1024 * 1024
+        out_f32 = malloc(rows * out_features * 4, runtime=runtime)
+        workspace = malloc(workspace_nbytes, runtime=runtime)
+        lt = HipblasLt()
+        prob = HipblasLtProblem(
+            lt, rows, in_features, out_features, workspace_nbytes,
+            ab_type=HIP_R_16F, cd_type=HIP_R_32F,
+        )
+        dequant_weight()
+        runtime.stream_synchronize(stream)
+        best = None
+        best_t = float("inf")
+        for algo in prob.algorithms(16)[:12]:
+            try:
+                prob.launch(algo, x_ptr, int(weight_f16.ptr), int(out_f32.ptr),
+                            int(workspace.ptr), stream=stream)
+                runtime.stream_synchronize(stream)
+                t0 = time.perf_counter()
+                for _ in range(3):
+                    prob.launch(algo, x_ptr, int(weight_f16.ptr), int(out_f32.ptr),
+                                int(workspace.ptr), stream=stream)
+                runtime.stream_synchronize(stream)
+                dt = (time.perf_counter() - t0) / 3
+                if dt < best_t:
+                    best_t = dt
+                    best = algo
+            except Exception:
+                continue
+        if best is None:
+            best = prob.algorithms(1)[0]
+        plan = (prob, best, out_f32, workspace)
+        _Q6_FULLGEMM_PLAN_CACHE[pkey] = plan
+    prob, algo, out_f32, workspace = plan
+    dequant_weight()
+    prob.launch(algo, x_ptr, int(weight_f16.ptr), int(out_f32.ptr),
+                int(workspace.ptr), stream=stream)
+    f32_to_bf16(int(out_f32.ptr), out_ptr, rows * out_features,
+                stream=stream, runtime=runtime)
+
+
 def register_gguf_q6_k_f16_rocblas_prefill_kernels(
     *, replace: bool = True
 ) -> None:
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_wmma_prefill_fp16_in_bf16_out",
+        ),
+        gguf_q6_k_t16_qmicro_planar_fullgemm_fp16_in_bf16_out,
+        replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "dequant", "gguf_q6_k", _DEQUANT_VARIANT),
         gguf_q6_k_dequantize_f16_source,

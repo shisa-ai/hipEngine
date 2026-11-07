@@ -350,7 +350,7 @@ _prefill_f16_staging_session_enabled: ContextVar[bool | None] = ContextVar(
 _PREFILL_F16_STAGING_MIN_ROWS = 17
 PREFILL_F16_STAGING_MAX_ROWS = 1024
 _PREFILL_F16_STAGING_QUANTS = frozenset(
-    {"gguf_q4_k_t16_v1", "gguf_q5_k_t16_v1"}
+    {"gguf_q4_k_t16_v1", "gguf_q5_k_t16_v1", "gguf_q6_k_t16_qmicro_planar_v1"}
 )
 _PREFILL_F16_STAGING_SOURCE_VARIANT = "t16_wmma_prefill_bf16_bf16_out"
 PREFILL_F16_STAGING_VARIANT = "t16_wmma_prefill_fp16_in_bf16_out"

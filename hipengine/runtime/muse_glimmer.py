@@ -489,12 +489,17 @@ class MuseGlimmerResidentSession:
         self._length = 0
         logits: np.ndarray | None = None
         tap_chunks: list[np.ndarray] = []
-        for begin in range(0, ids.size, self.prefill_chunk):
-            block = ids[begin:begin + self.prefill_chunk]
-            logits, taps = self._forward_block(
-                block, position_offset=begin, tap_layers=tap_layers
-            )
-            tap_chunks.append(taps)
+        with prefill_f16_staging_session(
+            True,
+            workspace_ptr=int(self._f16_staging.ptr),
+            workspace_nbytes=int(self._f16_staging.nbytes),
+        ):
+            for begin in range(0, ids.size, self.prefill_chunk):
+                block = ids[begin:begin + self.prefill_chunk]
+                logits, taps = self._forward_block(
+                    block, position_offset=begin, tap_layers=tap_layers
+                )
+                tap_chunks.append(taps)
         assert logits is not None
         return logits, np.concatenate(tap_chunks, axis=0)
 
