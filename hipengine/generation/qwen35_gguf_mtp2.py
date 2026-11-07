@@ -64,8 +64,6 @@ from hipengine.speculative.accounting import (
 )
 from hipengine.runtime.gguf_linear import (
     mtp_serving_target_use_wmma_prefill,
-    target_verifier_wide_q6_shared4_leaf_session,
-    target_verifier_wide_q6_shared4_policy_enabled,
 )
 from hipengine.runtime.qwen35_gguf_mtp import (
     Qwen35GGUFTransactionalVerifier,
@@ -5324,10 +5322,6 @@ class Qwen35GGUFMTP2Adapter:
                 )
             ),
             physical_target_arithmetic_session(self.physical_target_arithmetic),
-            target_verifier_wide_q6_shared4_leaf_session(
-                target_verifier_wide_q6_shared4_policy_enabled()
-                and plan.declared_logical_c >= 8
-            ),
         ):
             results = list(
                 verify_batch(

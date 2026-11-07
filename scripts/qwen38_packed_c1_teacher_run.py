@@ -49,9 +49,8 @@ def target_contexts(generator, budget):
             stack.enter_context(context(flags[name]))
         for _name, value, context in arithmetic_pairs:
             stack.enter_context(context(value))
-        stack.enter_context(m.target_verifier_wide_q6_shared4_leaf_session(False))
         yield dict(flags, exact_target_rows=list(adapter.production_exact_target_row_counts),
-                   active_slots=1, wide_q6_shared4=False)
+                   active_slots=1)
 
 
 def candidate_provenance(llm, generator, fixture):

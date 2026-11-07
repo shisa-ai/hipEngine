@@ -1,21 +1,18 @@
-"""Request-local ownership of the wide-Q6 diagnostic candidate."""
+"""The W1 wide-Q6 shared4 verifier candidate is retired, not silently selectable."""
 
-import pytest
-
-from hipengine.runtime.gguf_linear import (
-    target_verifier_wide_q6_shared4_policy_enabled,
-    target_verifier_wide_q6_shared4_session,
-)
+from hipengine.kernels.backends import backend_package_capability
+from hipengine.runtime import gguf_linear
 
 
-def test_wide_q6_candidate_scope_ignores_retired_environment(monkeypatch):
+def test_wide_q6_candidate_selection_is_retired(monkeypatch):
     monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4", "1")
-    assert not target_verifier_wide_q6_shared4_policy_enabled()
-    with target_verifier_wide_q6_shared4_session(True):
-        assert target_verifier_wide_q6_shared4_policy_enabled()
-        with pytest.raises(RuntimeError):
-            with target_verifier_wide_q6_shared4_session(False):
-                assert not target_verifier_wide_q6_shared4_policy_enabled()
-                raise RuntimeError("diagnostic failed")
-        assert target_verifier_wide_q6_shared4_policy_enabled()
-    assert not target_verifier_wide_q6_shared4_policy_enabled()
+    for name in (
+        "target_verifier_wide_q6_shared4_session",
+        "target_verifier_wide_q6_shared4_leaf_session",
+        "target_verifier_wide_q6_shared4_policy_enabled",
+        "_target_verifier_wide_q6_shared4_variant",
+    ):
+        assert not hasattr(gguf_linear, name)
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS", None
+    ) is None

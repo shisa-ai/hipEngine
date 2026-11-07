@@ -806,27 +806,6 @@ GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
     }
 }
 
-# W1 candidate: C8/R32 packed verification emits mixed physical R20/R24/R32
-# subshapes, so all three must share the candidate transaction. This table is
-# inert unless the explicit outer logical-width context is active.
-GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS = {
-    ("gguf_q4_k_t16_v1", rows, in_features, out_features): (
-        "t16_wmma_prefill_shared_b2w2_bf16_bf16_out"
-    )
-    for rows in (20, 24, 32)
-    for in_features, out_features in ((5_120, 1_024), (17_408, 5_120))
-} | {
-    ("gguf_q6_k_t16_v1", rows, 5_120, 10_240): (
-        "t16_wmma_prefill_shared4_bf16_bf16_out"
-    )
-    for rows in (20, 24, 32)
-} | {
-    ("gguf_q6_k_t16_qmicro_planar_v1", rows, in_features, out_features): (
-        "t16_wmma_prefill_shared4_bf16_bf16_out"
-    )
-    for rows in (20, 24, 32)
-    for in_features, out_features in ((5_120, 1_024), (17_408, 5_120))
-}
 # Profile-qualified T2 production owner: use per-row-direct-equivalent Q4
 # rowtiles for C2/K3 R8 and bounded C3/K1-K3 R6/R9/R12 physical targets on
 # actual shapes. Narrow K5120/N1024 is excluded because the historical broad
@@ -1420,5 +1399,4 @@ __all__ = [
     "GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT",
     "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT",
     "GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS",
-    "GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS",
 ]

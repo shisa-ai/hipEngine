@@ -2287,24 +2287,6 @@ only while preserving whole/chunk, 60-second transition, recording-reset and pos
 behavior. Verify buffer ownership, failed-call cleanup and public transcription with the selected
 route before retiring host storage.
 
-### R0183 — Decide wide-Q6 shared-weight shape policy
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `target_verifier_wide_q6_shared4_session()`.
-
-**Deferred candidate decision:** complete the C6/C8 strict-teacher, determinism/isolation/task,
-full-suite performance and profiler gates before promoting or retiring the shape policy. Preserve
-the recorded no-promotion results in
-`benchmarks/results/2026-09-01-gfx1151-qwen38-w1-q6-shared4-candidate.json` and
-`benchmarks/results/2026-09-01-gfx1151-qwen38-w1-q4-existing-candidate.json`.
-
-Done when: Preserve the distinct two-wave/two-tile gfx1151 `shared4` and four-wave/three-tile gfx1100
-`shared4_gfx1100` symbols and ABIs. A future promotion must leave one immutable profile/capability
-selection and registered strict fallbacks; a rejection must remove only unconsumed candidate
-selection. Verify nested disabled scopes and exception restoration as well as public selected
-routes.
-
 ### R0188 — SPECDEC2 whole-request compatibility seam
 
 Owner: `hipengine/generation/engine_loop.py`.

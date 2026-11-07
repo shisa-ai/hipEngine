@@ -259,9 +259,7 @@ def main() -> None:
             "a_transfer_target": "best retained exact Q4 rows17-48 owner band "
             "(low-VGPR/single-sweep owners retained in the prefill ladder); "
             "select per rows from the same router the prefill path uses",
-            "wide_candidate_table": "GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_"
-            "VARIANTS maps (q4,20/24/32,(5120,1024),(17408,5120)) to "
-            "shared_b2w2 (default-off leaf session)",
+            "wide_candidate_table": "retired 2026-11-07 (W1 shared4 candidate not promoted)",
         },
         {
             "quant": q5,
@@ -282,9 +280,7 @@ def main() -> None:
             "a_transfer_target": "retained exact low-VGPR band owners at "
             "rows17-32 and shared3r1 <3,1,2> bodies at rows33-48 "
             "(GGUF_Q6_PREFILL_SHARED3R1_MIN/MAX=33/48 on these shapes)",
-            "wide_candidate_table": "GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_"
-            "VARIANTS maps (planar,20/24/32,both shapes) to pre-Y2 shared4 "
-            "(default-off leaf session)",
+            "wide_candidate_table": "retired 2026-11-07 (W1 shared4 candidate not promoted)",
         },
         {
             "quant": std,
@@ -294,9 +290,7 @@ def main() -> None:
             "a_transfer_target": "retained exact standard shared3r1 band "
             "(rows33-48, GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES) and "
             "shared4 rows96+; rows17-32 from the prefill router band",
-            "wide_candidate_table": "GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_"
-            "VARIANTS maps (std,20/24/32,(5120,10240)) to pre-Y2 shared4 "
-            "(default-off leaf session)",
+            "wide_candidate_table": "retired 2026-11-07 (W1 shared4 candidate not promoted)",
         },
     ]
 
@@ -323,8 +317,7 @@ def main() -> None:
             "rows_considered": [20, 24, 32],
             "default_resolution_rule": "rows>1 resolves the per-family "
             "t16_wmma_prefill_bf16_bf16_out variant; the wide-q6 shared4 "
-            "candidate table is default-off (scoped "
-            "target_verifier_wide_q6_shared4_session + logical width >= 8)",
+            "candidate table was retired 2026-11-07",
             "families": transfer_targets,
             "lm_head": {
                 "shape": (5_120, 248_320),

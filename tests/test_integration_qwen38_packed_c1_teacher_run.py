@@ -31,7 +31,7 @@ def test_contexts_use_resolved_adapter_flags_and_unwind(monkeypatch, fail):
              'physical_exact_rowtiles_session', 'q5_t16_physical_rowtile_session',
              'q6_t16_physical_rowtile_session', 'q6_t16_physical_mixed_rowtiles_session',
              'moe_physical_c2_numerics_session', 'moe_physical_c2_pairreuse_session',
-             'moe_physical_c2_exact_linear_session', 'target_verifier_wide_q6_shared4_leaf_session')
+             'moe_physical_c2_exact_linear_session')
     def context(name):
         @contextmanager
         def scoped(value):
@@ -48,7 +48,7 @@ def test_contexts_use_resolved_adapter_flags_and_unwind(monkeypatch, fail):
             assert flags['exact_target_rows'] == [5, 6, 7, 8]
             assert flags['production_physical_extra_rowtiles'] is True
             assert flags['production_physical_q5_rowtile'] is False
-            assert len(entered) == 10
+            assert len(entered) == 9
             assert flags['moe_physical_c2_numerics'] is True
             assert flags['moe_physical_c2_pairreuse'] is False
             assert flags['moe_physical_c2_exact_linear'] is True

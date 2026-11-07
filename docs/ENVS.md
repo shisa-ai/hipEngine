@@ -1169,9 +1169,9 @@ These names appear in the tree but must not be confused with env knobs:
   streaming follows adapter capability and prefix-restoration checks; the
   legacy provider oracle remains available where the streaming ABI is absent.
 
-- `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` is retired and ignored. The wide-Q6
-  diagnostic candidate is controlled only by `target_verifier_wide_q6_shared4_session()`;
-  a nested disabled scope cannot be overridden by process environment.
+- `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` is retired and ignored. The W1 wide-Q6
+  shared4 verifier candidate was not promoted and its selection was removed; the
+  shared4/shared_b2w2 kernels remain registered for their other callers.
 
 - `HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER` is retired and ignored.
   Backend capabilities select fused state transfer and packed initial-state

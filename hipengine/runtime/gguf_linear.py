@@ -338,14 +338,6 @@ _target_verifier_rowtile_chunk_child_enabled: ContextVar[bool] = ContextVar(
     "gguf_target_verifier_rowtile_chunk_child_enabled",
     default=False,
 )
-_target_verifier_wide_q6_shared4_policy_enabled: ContextVar[bool] = ContextVar(
-    "gguf_target_verifier_wide_q6_shared4_policy_enabled",
-    default=False,
-)
-_target_verifier_wide_q6_shared4_leaf_enabled: ContextVar[bool] = ContextVar(
-    "gguf_target_verifier_wide_q6_shared4_leaf_enabled",
-    default=False,
-)
 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV = (
     "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE"
 )
@@ -2635,38 +2627,6 @@ def target_verifier_production_q4_rowtile_session(
         _target_verifier_production_q4_rowtile_session_enabled.reset(token)
 
 
-@contextlib.contextmanager
-def target_verifier_wide_q6_shared4_session(
-    enabled: bool = True,
-) -> Iterator[None]:
-    """Enable the W1 B-stationary Q6 verifier candidate in one context."""
-
-    token = _target_verifier_wide_q6_shared4_policy_enabled.set(bool(enabled))
-    try:
-        yield
-    finally:
-        _target_verifier_wide_q6_shared4_policy_enabled.reset(token)
-
-
-def target_verifier_wide_q6_shared4_policy_enabled() -> bool:
-    """Return whether the outer W1 logical-width policy is enabled."""
-
-    return _target_verifier_wide_q6_shared4_policy_enabled.get()
-
-
-@contextlib.contextmanager
-def target_verifier_wide_q6_shared4_leaf_session(
-    enabled: bool = True,
-) -> Iterator[None]:
-    """Activate W1 Q6 leaves only inside one packed verifier transaction."""
-
-    token = _target_verifier_wide_q6_shared4_leaf_enabled.set(bool(enabled))
-    try:
-        yield
-    finally:
-        _target_verifier_wide_q6_shared4_leaf_enabled.reset(token)
-
-
 def _env_gemv_decode_enabled() -> bool:
     raw = os.environ.get(_GEMV_DECODE_ENV, "")
     if not raw:
@@ -4787,52 +4747,6 @@ def _target_verifier_true_rowtile_variant(
     return GGUFLinearDispatch(key, parent.abi) if is_registered(key) else None
 
 
-def _target_verifier_wide_q6_shared4_variant(
-    weight: GGUFDeviceWeight,
-    *,
-    backend: str,
-    rows: int,
-    in_features: int,
-    out_features: int,
-) -> GGUFLinearDispatch | None:
-    """Resolve the default-off W1 B-stationary Q6 verifier candidate."""
-
-    if not (
-        _target_verifier_rowtile_session_enabled.get()
-        and _target_verifier_production_q4_rowtile_session_enabled.get()
-        and _target_verifier_wide_q6_shared4_leaf_enabled.get()
-    ):
-        return None
-    policies = backend_package_capability(
-        backend,
-        "GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS",
-        {},
-    )
-    if not isinstance(policies, Mapping):
-        raise RuntimeError("wide Q6 shared4 policies must be a mapping")
-    variant = policies.get(
-        (
-            str(weight.spec.quant_key),
-            int(rows),
-            int(in_features),
-            int(out_features),
-        )
-    )
-    if variant is None:
-        return None
-    parent = resolve_gguf_linear_dispatch(weight, backend=backend, rows=rows)
-    if parent.abi != "t16":
-        return None
-    key = KernelKey(
-        backend,
-        parent.key.layer,
-        str(weight.spec.quant_key),
-        str(variant),
-    )
-    _ensure_linear_kernel_registered(key)
-    return GGUFLinearDispatch(key, parent.abi) if is_registered(key) else None
-
-
 def _native_rowtile_chunk_groups(
     weight: GGUFDeviceWeight,
     *,
@@ -5348,21 +5262,6 @@ def _launch_gguf_linear_impl(
             expected = pair.consumers[min(pair.accepted, 1)]
             _match_wide_f16_pair(weight, x_ptr, out_ptr, rows, in_features, out_features,
                 key=expected.key, stream=stream, runtime=runtime)
-    wide_q6_dispatch = (
-        _target_verifier_wide_q6_shared4_variant(
-            weight,
-            backend=resolved_backend,
-            rows=rows,
-            in_features=in_features,
-            out_features=out_features,
-        )
-        if activation_dtype == GGUF_ACTIVATION_BF16
-        and output_dtype == GGUF_OUTPUT_BF16
-        and threads == 0
-        and not use_q4_pack8_wmma
-        and registered_variant is None
-        else None
-    )
     split_row_chunk = (
         _native_split_row_chunk(
             weight,
@@ -5376,7 +5275,6 @@ def _launch_gguf_linear_impl(
         and threads == 0
         and not use_q4_pack8_wmma
         and registered_variant is None
-        and wide_q6_dispatch is None
         else None
     )
     if split_row_chunk is not None:
@@ -5398,33 +5296,6 @@ def _launch_gguf_linear_impl(
                 use_wmma_prefill=use_wmma_prefill,
                 use_gemv_decode=use_gemv_decode,
             )
-        return
-    if wide_q6_dispatch is not None:
-        fn = resolve(
-            backend=wide_q6_dispatch.key.backend,
-            layer=wide_q6_dispatch.key.layer,
-            quant=wide_q6_dispatch.key.quant,
-            variant=wide_q6_dispatch.key.variant,
-        )
-        library = None
-        if libraries is not None:
-            library = libraries.get(
-                f"{wide_q6_dispatch.key.quant}:{wide_q6_dispatch.key.variant}",
-                libraries.get(wide_q6_dispatch.key.quant),
-            )
-        kwargs = {"stream": stream, "runtime": runtime}
-        if library is not None:
-            kwargs["library"] = library
-        _LAUNCH_ABI[wide_q6_dispatch.abi](
-            fn,
-            weight,
-            x_ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            kwargs,
-        )
         return
     true_rowtile_dispatch = (
         _target_verifier_true_rowtile_variant(
@@ -13432,9 +13303,6 @@ __all__ = [
     "q6_integer_mmq_for",
     "target_verifier_rowtile_session",
     "target_verifier_production_q4_rowtile_session",
-    "target_verifier_wide_q6_shared4_session",
-    "target_verifier_wide_q6_shared4_policy_enabled",
-    "target_verifier_wide_q6_shared4_leaf_session",
     "TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV",
     "q4_pack8_dual_wmma_silu_prefill_session",
     "q4_t16_unequal_pair_prefill_session",

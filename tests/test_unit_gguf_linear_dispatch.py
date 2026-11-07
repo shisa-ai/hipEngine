@@ -53,8 +53,6 @@ from hipengine.runtime.gguf_linear import (
     set_wmma_prefill_enabled,
     target_verifier_production_q4_rowtile_session,
     target_verifier_rowtile_session,
-    target_verifier_wide_q6_shared4_leaf_session,
-    target_verifier_wide_q6_shared4_session,
     wmma_prefill_session,
     wmma_prefill_weight_filter_session,
 )
@@ -5516,94 +5514,6 @@ def test_gfx1151_production_verifier_q4_scope_chunks_single_rowtiles(
             {"stream": 7, "runtime": "runtime-sentinel"},
         )
         for chunk_rows, row_base in chunks
-    ]
-
-
-@pytest.mark.parametrize(
-    ("quant_key", "in_features", "out_features", "variant"),
-    (
-        ("gguf_q4_k_t16_v1", 5_120, 1_024, "t16_wmma_prefill_shared_b2w2_bf16_bf16_out"),
-        ("gguf_q4_k_t16_v1", 17_408, 5_120, "t16_wmma_prefill_shared_b2w2_bf16_bf16_out"),
-        ("gguf_q6_k_t16_v1", 5_120, 10_240, "t16_wmma_prefill_shared4_bf16_bf16_out"),
-        ("gguf_q6_k_t16_qmicro_planar_v1", 17_408, 5_120, "t16_wmma_prefill_shared4_bf16_bf16_out"),
-        ("gguf_q6_k_t16_qmicro_planar_v1", 5_120, 1_024, "t16_wmma_prefill_shared4_bf16_bf16_out"),
-    ),
-)
-@pytest.mark.parametrize("rows", (20, 24, 32))
-def test_gfx1151_candidate_wide_q6_uses_one_shared4_launch(
-    quant_key: str,
-    in_features: int,
-    out_features: int,
-    variant: str,
-    rows: int,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
-
-    register_gfx1151_kernels(replace=True)
-    monkeypatch.setattr(
-        gguf_linear_module,
-        "_native_split_row_chunk",
-        lambda *args, **kwargs: 8,
-    )
-    weight = _fake_weight(
-        layout=(
-            LAYOUT_GGUF_Q4_K_T16
-            if quant_key == "gguf_q4_k_t16_v1"
-            else LAYOUT_GGUF_Q5_K_T16
-            if quant_key == "gguf_q5_k_t16_v1"
-            else LAYOUT_GGUF_Q6_K_T16
-            if quant_key == "gguf_q6_k_t16_v1"
-            else LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
-        ),
-        quant_key=quant_key,
-    )
-    candidate_key = KernelKey(
-        "hip_gfx1151",
-        "linear",
-        quant_key,
-        variant,
-    )
-    original = resolve(
-        backend=candidate_key.backend,
-        layer=candidate_key.layer,
-        quant=candidate_key.quant,
-        variant=candidate_key.variant,
-    )
-    calls: list[tuple[tuple, dict]] = []
-    register(
-        candidate_key,
-        lambda *args, **kwargs: calls.append((args, kwargs)),
-        replace=True,
-    )
-    try:
-        with (
-            target_verifier_rowtile_session(True),
-            target_verifier_production_q4_rowtile_session(True),
-            target_verifier_wide_q6_shared4_session(True),
-            target_verifier_wide_q6_shared4_leaf_session(True),
-        ):
-            launch_gguf_linear(
-                weight,
-                x_ptr=100,
-                out_ptr=400,
-                rows=rows,
-                in_features=in_features,
-                out_features=out_features,
-                backend="hip_gfx1151",
-                stream=7,
-                runtime="runtime-sentinel",
-                use_wmma_prefill=False,
-            )
-    finally:
-        register(candidate_key, original, replace=True)
-        gguf_linear_module.clear_gguf_linear_dispatch_cache()
-
-    assert calls == [
-        (
-            (100, 14, 400, rows, in_features, out_features),
-            {"stream": 7, "runtime": "runtime-sentinel"},
-        )
     ]
 
 

@@ -35,8 +35,6 @@ from hipengine.core.memory import (
 )
 from hipengine.runtime.gguf_linear import (
     TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV,
-    target_verifier_wide_q6_shared4_leaf_session,
-    target_verifier_wide_q6_shared4_session,
 )
 from scripts.execution_profile_gguf_batch_route_gate import (
     BatchRouteCapture,
@@ -236,7 +234,6 @@ def _capture_verifier_group(
     decode_steps: int,
     *,
     rows_per_job: int,
-    wide_q6_shared4: bool = False,
 ) -> tuple[tuple[dict[str, object], ...], ...]:
     _prefill(sessions, token_rows)
     trajectories: list[list[dict[str, object]]] = [[] for _ in sessions]
@@ -256,11 +253,7 @@ def _capture_verifier_group(
             for index in range(len(sessions))
         ]
         positions_before = [int(session.position) for session in sessions]
-        with (
-            target_verifier_wide_q6_shared4_session(wide_q6_shared4),
-            target_verifier_wide_q6_shared4_leaf_session(wide_q6_shared4),
-        ):
-            results = sessions[0].verify_target_blocks_batch(jobs)
+        results = sessions[0].verify_target_blocks_batch(jobs)
         physical_rows = len(sessions) * int(rows_per_job)
         logits = _read_packed_logits(sessions[0], physical_rows)
         for request_index in range(len(sessions)):
@@ -377,7 +370,6 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
                 teacher_group,
                 int(args.decode_steps),
                 rows_per_job=rows_per_job,
-                wide_q6_shared4=False,
             )
             for index, row in enumerate(group_rows[:valid_rows]):
                 request_id = str(row["id"])
@@ -418,7 +410,6 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
                     teacher_group,
                     int(args.decode_steps),
                     rows_per_job=rows_per_job,
-                    wide_q6_shared4=True,
                 )
                 for index, row in enumerate(group_rows[:valid_rows]):
                     candidate[str(row["id"])].append(capture[index])
