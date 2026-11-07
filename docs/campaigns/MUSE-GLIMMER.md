@@ -4,7 +4,7 @@ owns: Muse Glimmer 30B gfx1151 bring-up campaign: text/vision/DFlash implementat
 ---
 # Muse Glimmer 30B implementation campaign (gfx1151)
 
-Last updated: 2026-11-06
+Last updated: 2026-11-07
 
 Status: **P0 baseline retained; P1 text, P2 vision, P3 DFlash bring-up landed
 with correctness gates green. Gate B (DFlash) PASSED: hipEngine 21.6 tok/s vs
@@ -404,3 +404,65 @@ benchmark rollup complete. Campaign closes only when Gates A and B pass.
 - `~/llama.cpp/run-glimmer-server.py` (production llama.cpp configuration)
 - [`LAGUNA.md`](LAGUNA.md) (DFlash bring-up precedent), [`../KERNELS.md`](../KERNELS.md),
   [`../BENCHMARK.md`](../BENCHMARK.md), [`../OPTIMIZATION.md`](../OPTIMIZATION.md)
+
+## 7. Campaign scorecard (2026-11-07)
+
+Consolidated status; per-attempt provenance lives in `worklog/entries/`
+(`topic: muse-glimmer`). Bring-up → current on the P0 host, artifact, and shapes:
+
+| Metric | Bring-up | Current | llama.cpp (P0) | Current vs target |
+| --- | ---: | ---: | ---: | ---: |
+| AR decode 512/1K/4K | 2.38 | 11.13 / 11.03 / 10.83 | 12.24 / 12.17 / 12.05 | 91 / 91 / 90% |
+| AR prefill 512/1K/4K | <0.5 (3×512 unfinished in 50 min) | 333 / 333 / 300 | 394 / 386 / 376 | 84 / 86 / 80% |
+| DFlash decode | 2.59 (sequential verify) | 21.64 | 21.30 | 102% (Gate B passed) |
+
+AR decode is 4.68× bring-up; DFlash is 8.36× bring-up and 1.98× true AR
+(acceptance 0.49, 2.93 tokens per target forward). Gate A still needs prefill
++61/+53/+76 tok/s and decode +1.1/+1.1/+1.2 at 512/1K/4K.
+
+### 7.1 Landed improvements
+
+- T16 resident weight layouts + flash-decoding attention (the decode foundation).
+- HIP graph decode replay + graph-safe KV append (removed the per-step host
+  dispatch bubble).
+- WMMA GQA flash-prefill attention kernel, 2.1–2.9× over the scalar attention
+  (cosine 1.0); the WAVES=1 variant added prefill +4.5/+7.8/+19.4%.
+- Prefill chunk 512→1024 (+3–4% at 1K/4K); with the attention wins, prefill
+  320/299/241 → 333/333/300.
+- DFlash batched-invariant block verify (bit-identical KV) + folded correction
+  cycle: 2.59 → 21.6 tok/s; WMMA prefill drafter; `candidate_budget=4` (sweep
+  optimum, shipping default).
+
+### 7.2 Closed optimization directions (measured, reverted — do not re-walk)
+
+Projection (the prefill gap):
+
+- int8 shared-B WMMA prefill — register-bound.
+- int8 WMMA projection (three designs) — correct, 0.08–0.54× (AGPR/VGPR
+  accumulator spill + per-subblock scale traffic).
+- int8 dp4a MMQ port (llama.cpp's single-local-int register discipline) —
+  correct, ~4× slower than bf16 WMMA (5.5 vs 22 TF).
+- bf16 WMMA leaf sweep — exhausted; `shared_b` fastest at ~22 TF.
+- Software-pipelined double-buffer — 0.73× (51 KB LDS halves occupancy 2→1).
+- XOR-swizzled LDS layout — 0.86× (bank conflict rose to 82%).
+- LDS stride sweep — 272 optimal; 264 cut conflict 48.5%→5.56% but ran slower.
+- Activation per-subblock LDS tiling — 0.24× (8× sync overhead).
+- Wide-N configs (activation re-reads ∝ 1/OUT_TILES) — the faster `<6,4,2>` is
+  NaN-incorrect; `shared_b` is correct only at `<3,4,4>`; `<8,4,1>` exceeds the
+  64 KB LDS limit.
+
+Decode:
+
+- Fusion ceiling ~3% (casts 0.2%, norms 3%); GEMV is 80.8% of decode and
+  memory-bound, so fusion cannot close the +10% gap.
+- Hot-path Python — 0.344 ms/step non-GPU overhead (not the bottleneck; the
+  decode graph already absorbs launch overhead).
+
+### 7.3 Root cause (PMC-profiled)
+
+The projection is L2-bandwidth-bound: each row block's activation (~3.4 MB) is
+re-read by all 416 output-column blocks (`MemUnitBusy` 71%,
+`ALUStalledByLDS` 0.019 — the LDS bank conflict is not the bottleneck).
+Decode is GEMV-bandwidth-bound (199 vs 221 GB/s, ~90% of roofline). The
+remaining Gate A gap is a fundamentally better GEMM data-feed than these ports
+replicate, not a missing tuning trick.
