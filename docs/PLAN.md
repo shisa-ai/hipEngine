@@ -4731,6 +4731,7 @@ the applicable numerical gate before any default changes.
 | Device grammar selection | `hipengine/generation/grammar.py` | Optionally replace host grammar mask application/selection with a registered device implementation that preserves request-local matcher state, speculative commit/rollback and streaming. |
 | Per-primitive AR width planner (D2) | `hipengine/generation/qwen35_gguf.py` | Consolidate capability maps, sidecar cases and manual ladders through cold registry resolution without flattening per-primitive row limits; optional D2 cost-artifact promotion needs server goodput/TTFT/ITL evidence. |
 | Batched Qwen4Exp import copy | `hipengine/generation/qwen4_exp_ar_batch.py` | `import_prefilled` executes its explicit block-table copy plans as host-issued device-to-device copies; profile the import boundary before replacing them with one batched device operation. |
+| Dense gfx1151 prefill scratch aliasing | `hipengine/kernels/hip_gfx1100/__init__.py` | Dense gfx1151 has no `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES` entry, so activation and weight tiles are allocated separately; earlier owner-slot and single-arena aliases changed final logits (`worklog/entries/20260816T152449.196381Z-lhl-qwen38-gfx1151-memory-parity-d82d61.md`). Isolate those failures and derive a lifetime plan before aliasing stage-disjoint planes. |
 
 ### Feature and architecture work
 
@@ -4748,6 +4749,7 @@ the applicable numerical gate before any default changes.
 | Device forced-token inputs | `hipengine/generation/qwen35_gguf_mtp2.py` | Carry per-row forced-token overrides and a committed-only queue position into device sampling and accept. |
 | Packed-PARO transaction slabs | `hipengine/generation/qwen35_paro_mtp2.py` | Decide whether target result, acceptance, selected-commit and provider-update metadata plus mutable backups share stable claim-backed slabs under the one existing journal; multi-request PARO MTP needs physical proposal/target ownership, not a broader singleton admission. |
 | Native MTP embedding/sidecar adapters | `hipengine/runtime/gguf_native_spec_cycle.py` | Represent additional embedding-staging or expert-sidecar routes in the shared native call plan (shape, dtype, operands, lifetime, capture), then remove only that route's refusal; the device-resident embedding fallback stays. |
+| VibeVoice prefill orchestration and Q5_K | `hipengine/kernels/hip_gfx1100/vibevoice/q4.py` | Unify `q4_prefill` and `_prefill_batched` through explicit GEMM/staging/scratch dependencies; implement Q5_K batched prefill (currently a named rejection); move `prefill_variant`/`frontend_variant` selection into profile construction; replace encoder host snapshots with device-tail storage. |
 | Qwen4Exp prefill staging workspaces | `hipengine/generation/qwen4_exp_gguf.py` | Decide whether prefill and remaining c1/MTP consumers can use smaller dedicated workspaces or shared state storage beside the implemented AR batch, after inventorying reserve/import/demotion/reclaim consumers. |
 
 ## Open Research Questions

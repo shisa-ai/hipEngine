@@ -451,28 +451,6 @@ this item. Preserve the supported quant-neutral constructor opt-out for numerica
 automatic source-F16 remains enabled. Do not repeat the completed FP16/FP32/publication-order
 diagnostics or gate compatible artifacts on file identity.
 
-### R0220 — Dense gfx1151 source-F16 scratch reuse
-
-Owner: `hipengine/kernels/hip_gfx1100/__init__.py`.
-
-Scope: `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES`; `worklog/entries/20260816T152449.196381Z-lhl-qwen38-gfx1151-memory-parity-d82d61.md`; `tests/test_unit_qwen35_gguf_prefill_scratch_liveness.py`.
-
-Done when: Dependency: dense gfx1151 has no `GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES` entry, so its
-activation and weight tiles are independently allocated. The gfx1151 MoE owner-slot
-policy and gfx1100 dense arena do not establish safe reuse for this geometry. The 2026-08-16
-memory-parity investigation recorded final-logit changes under both dense owner-slot and
-single-arena aliases, plus trajectory divergence in other reuse attempts; dedicated storage
-preserves that observed boundary. See
-`worklog/entries/20260816T152449.196381Z-lhl-qwen38-gfx1151-memory-parity-d82d61.md`. Q5 already
-casts dead recurrent-output input in place; no persistent F16 weight copy is needed. **Clearing
-action:** reproduce and isolate those alias failures while establishing a dense gfx1151 lifetime
-plan covering all active producers, then alias stage-disjoint planes and remove only
-proven-redundant allocation owners. Exercise non-anchor and 512/1K/4K lengths, pairwise live-range
-overlap, full-attention/recurrent/FFN handoffs and teardown. Run
-`tests/test_unit_qwen35_gguf_prefill_scratch_liveness.py` and
-`tests/test_unit_qwen35_gguf_prefill_plan.py`, followed by public selected-route and cleanup
-validation with R0219's packed-prefill integration. Preserve sole T16 residency and exact fallbacks.
-
 ### R0231 — Maple CUDA resident fixed-batch owner
 
 Owner: `hipengine/generation/maple.py`.
@@ -2260,32 +2238,6 @@ proof that shared execution is unimplemented. Clearing command: `scripts/qwen38f
 --widths 1,2,4,8 --arms ar,mixed` against `hipengine serve` with the variable set and unset. Retire
 the rollback and enable the shared default once it meets or beats separate execution at every width,
 with control/ownership gates intact.
-
-### R0083 — VibeVoice prefill orchestration and device-tail ownership
-
-Owner: `hipengine/kernels/hip_gfx1100/vibevoice/q4.py`.
-
-Scope: `q4_prefill`; `hipengine/kernels/hip_gfx1100/vibevoice/q4.py`; `_prefill_batched`.
-
-**Deferred orchestration design:** unify `q4_prefill` in
-`hipengine/kernels/hip_gfx1100/vibevoice/q4.py` and `_prefill_batched` in
-`hipengine/runtime/vibevoice_qwen2.py` through explicit GEMM, activation-staging and scratch
-dependencies. Preserve norm, RoPE, KV-write, attention, SiLU and residual order and dtype
-conversions; do not combine a mechanical extraction with a changed-arithmetic promotion.
-
-**Deferred capability work:** the Q4 batched route wires Q4_K/Q6_K and rejects Q5_K before decoding
-it with the wrong layout. Implement and wire compatible Q5_K prefill before claiming that route
-supports it; preserve explicit errors until then. This is an implementation gap, not a
-model-identity restriction.
-
-**Deferred profile ownership:** retain strict chains while moving `prefill_variant=hipblaslt` and
-`frontend_variant=wmma` selection into profile construction. Promotion requires the model-specific
-numerical/task gate; standalone evaluation must remain runnable before promotion.
-
-Done when: Deferred device-tail storage: replace host snapshots in `hipengine/runtime/vibevoice_encoder.py`
-only while preserving whole/chunk, 60-second transition, recording-reset and post-join-noise
-behavior. Verify buffer ownership, failed-call cleanup and public transcription with the selected
-route before retiring host storage.
 
 ### R0188 — SPECDEC2 whole-request compatibility seam
 
