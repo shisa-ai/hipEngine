@@ -1870,15 +1870,25 @@ tests.
 
 Owner: `hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`.
 
-Scope: `hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py` — Decide retirement of the Gemma 4 gate/up MMQ rollback.
+Scope: `HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ`; `gemma4_project_experts_gate_up_mmq`.
 
-Done when: Deferred rollback decision: record the teacher-forced verdict against the campaign's frozen
-evaluator before retiring the switch. Capture the reference with
-`HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=0`, then confirm distinct selected routes for reference and
-candidate. Include short and long prefills, natural inputs and low-margin cases; a single
-long-prefill comparison does not cover the recorded length sensitivity. Preserve real expert
-geometry and multi-tile coverage. This is switch retirement, not reconsideration of the default-on
-decision.
+**gfx1151 verdict recorded** (`worklog/entries/20261107T224344.938223Z-lhl-r0515-gfx1151-verdict-021ee8.md`): with the frozen
+teacher-forced evaluator, the default route matches the `=0` fp32 grouped reference
+exactly (KL 0, zero flips) on frozen and probe corpora from 16 to 2048 ids. A single
+prefill forward is also bit-identical at 16-512 ids. But on the UD-Q4_K_XL artifact
+the lever only engaged the exact Q5_K `gate_up_iu8` leaf; the Q4_K MMQ32 int8 leaf,
+the one behind the recorded short-prefill divergence, declined in every run. The
+verdict therefore does not cover MMQ32.
+
+Done when: on a host and artifact where `gemma4_project_experts_gate_up_mmq` actually
+serves Q4_K layers through MMQ32 (`gemma4_moe_expert_route_counts()` reports
+`gate_up_mmq32`), run `scripts/gemma4_teacher_forced_gate.py` capture under
+`HIPENGINE_GEMMA4_MOE_GATE_UP_MMQ=0` and gate the default at short (16-128), long
+(>=1024) and probe-corpus lengths with distinct recorded routes. If it passes, remove
+the lever and migrate its A/B callers (`scripts/gemma4_mmq_arm_attribution.py`,
+`scripts/gemma4_mmq_prefill_length_probe.py`, `scripts/gemma4_mmq_default_route_check.py`,
+the row-invariance GPU tests) to the exact `HIPENGINE_GEMMA4_MOE_PREFILL=grouped` pin.
+This is switch retirement, not reconsideration of the default-on decision.
 
 ### R0519 — Decide the compensated Gemma WMMA candidate independently of selectors
 
