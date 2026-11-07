@@ -92,7 +92,6 @@ def test_candidate_owner_provenance_reports_the_bound_decision(
         SimpleNamespace(
             production_moe_prefill_enabled=override,
             q8_mmq_prefill_enabled=None,
-            q8_mmq_attn_gate_enabled=None,
         ),
         resolved,
         False,
@@ -103,8 +102,6 @@ def test_candidate_owner_provenance_reports_the_bound_decision(
         "production_moe_prefill_override": override,
         "q8_mmq_prefill_enabled": False,
         "q8_mmq_prefill_override": None,
-        "q8_mmq_attn_gate_enabled": None,
-        "q8_mmq_attn_gate_override": None,
     }
 
 
@@ -127,7 +124,6 @@ def test_candidate_named_profile_intact_rejects_owner_overrides(
         qsa_wmma_enabled=qsa_wmma,
         production_moe_prefill_enabled=override,
         q8_mmq_prefill_enabled=None,
-        q8_mmq_attn_gate_enabled=None,
         router_producer_variant=None,
         gr_wide=None,
         q8_dense_wide_layers=None,
@@ -362,21 +358,6 @@ def test_ordered_v2_candidates_bind_the_runner_field() -> None:
     # A candidate that does not name them keeps the base profile's decision.
     assert module.CANDIDATES["q8_blockscale"].qsa_ordered_decode_v2 is None
     assert module.CANDIDATES["q8_blockscale"].qsa_ordered_decode is None
-
-
-def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:
-    module = _load_script()
-    candidate = module.CANDIDATES["q8_mmq_attn_gate"]
-
-    assert candidate.environment == {}
-    assert candidate.q8_mmq_attn_gate_enabled is True
-    assert candidate.q8_mmq_prefill_enabled is True
-    assert candidate.classification == "T2"
-    assert candidate.base_profile == "production"
-    assert candidate.candidate_key[-1] == (
-        "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
-    )
-    assert candidate.fallback_key[-1] == "coltile8_rowbatch4_f32_f32_out"
 
 
 def test_gfx1151_registry_contains_layer2_candidate_and_strict_fallback() -> None:

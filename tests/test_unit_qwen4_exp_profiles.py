@@ -55,7 +55,6 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
     environment_names = (
         PRODUCTION_MOE_PREFILL_ENV,
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
-        "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS",
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64",
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS",
@@ -401,8 +400,7 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
     assert production_generator.q8_mmq_prefill_enabled is True
     assert fake_runner.q8_mmq_prefill_enabled is True
-    assert production_generator.q8_mmq_attn_gate_enabled is False
-    assert fake_runner.q8_mmq_attn_gate_enabled is False
+    assert not hasattr(production_generator, "q8_mmq_attn_gate_enabled")
     # The PF-1 fork-b and Q5_1 down M1 leaves are request-local runner state:
     # the binder selects them without writing a process-wide switch.
     assert fake_runner.q51_down_m1 is True
@@ -617,7 +615,7 @@ def test_historical_q4km_binder_structure_not_qualification(
     assert strict_generator.q8_wmma_layer_scope.to_env() == ""
     assert "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL" not in os.environ
     assert strict_generator.q8_mmq_prefill_enabled is False
-    assert strict_generator.q8_mmq_attn_gate_enabled is False
+    assert not hasattr(strict_generator, "q8_mmq_attn_gate_enabled")
     assert strict_generator.q51_down_m1 is False
     assert strict_generator.forkb_grouped_down is False
     assert "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1" not in os.environ

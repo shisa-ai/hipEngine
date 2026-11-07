@@ -214,7 +214,6 @@ class Qwen4ExpGGUFTextGenerator:
         # runner it finds. Resource preparation stays explicit.
         self.q8_mmq_prefill_enabled = None
         self.q8_mmq_prepack_enabled = None
-        self.q8_mmq_attn_gate_enabled = None
         self.q8_mmq_f32_planes = None
         # The f16 WMMA dense-Q8 layer scope is owner state too. ``None`` is the
         # direct/unbound state, where the historical process key remains the
@@ -443,7 +442,6 @@ class Qwen4ExpGGUFTextGenerator:
             q5k_iu8_exact_enabled=self.q5k_iu8_exact_enabled,
             gr_iu8_policy=self.gr_iu8_policy,
             q8_mmq_prepack_enabled=self.q8_mmq_prepack_enabled,
-            q8_mmq_attn_gate_enabled=self.q8_mmq_attn_gate_enabled,
             q8_mmq_f32_planes=self.q8_mmq_f32_planes,
             q8_wmma_layer_scope=self.q8_wmma_layer_scope,
             gguf_wmma_prefill_enabled=self.gguf_wmma_prefill_enabled,
@@ -1078,7 +1076,6 @@ def _inherit_lane_decisions(generator: Any, runner: Any) -> Any:
     runner.production_moe_prefill_enabled = getattr(
         generator, "production_moe_prefill_enabled", None)
     runner.q8_mmq_prepack_enabled = getattr(generator, 'q8_mmq_prepack_enabled', None)
-    runner.q8_mmq_attn_gate_enabled = getattr(generator, 'q8_mmq_attn_gate_enabled', None)
     runner.q8_mmq_f32_planes = getattr(generator, 'q8_mmq_f32_planes', None)
     runner.q8_mmq_prefill_enabled = getattr(
         generator, "q8_mmq_prefill_enabled", None)

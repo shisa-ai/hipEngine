@@ -242,7 +242,6 @@ class CandidateSpec:
     # generator and its current runner before the measured rows and restored on
     # unwind. Resource preparation remains the explicit configure call below.
     q8_mmq_prefill_enabled: bool | None = None
-    q8_mmq_attn_gate_enabled: bool | None = None
     # Explicit Q4_K exact grouped gate/up gate and its `_ALL` joint term for this
     # arm, same protocol. ``None`` keeps the base profile's publication (both on
     # every plan). ``False`` on the gate is the route to the plain-iu8 and F16
@@ -771,24 +770,6 @@ CANDIDATES = {
         candidate_key=("hip_gfx1151", "argmax", "f32", "top1_i64"),
         fallback_key=("hip_gfx1151", "argmax", "f32", "top1_i64"),
         compact_output=True,
-    ),
-    "q8_mmq_attn_gate": CandidateSpec(
-        name="q8_mmq_attn_gate",
-        classification="T2",
-        mechanism="extend guarded Q8 MMQ F32 prefill to GDN attn_gate K2560/N6144",
-        environment={},
-        q8_mmq_attn_gate_enabled=True,
-        q8_mmq_prefill_enabled=True,
-        base_profile="production",
-        scenario_id="qwen4exp-ud-q4-k-xl-q8-mmq-attn-gate",
-        candidate_key=(
-            "hip_gfx1151", "linear", "gguf_q8_0",
-            "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
-        ),
-        fallback_key=(
-            "hip_gfx1151", "linear", "gguf_q8_0",
-            "coltile8_rowbatch4_f32_f32_out",
-        ),
     ),
 }
 
@@ -1619,17 +1600,6 @@ def _bind_candidate_q8_mmq_prefill(
     return resolve_q8_mmq_prefill(candidate_generator)
 
 
-def bind_candidate_q8_mmq_attn_gate(
-    dispatch_stack: ExitStack, candidate_generator: Any, candidate_spec: CandidateSpec,
-) -> bool | None:
-    """Bind the measured arm's shape policy without mutating process input."""
-    from hipengine.runtime.qwen4_exp_runner import q8_mmq_attn_gate_enabled
-    if candidate_spec.q8_mmq_attn_gate_enabled is not None:
-        dispatch_stack.enter_context(q8_mmq_attn_gate_enabled(
-            candidate_generator, candidate_spec.q8_mmq_attn_gate_enabled))
-    return getattr(candidate_generator, 'q8_mmq_attn_gate_enabled', None)
-
-
 def gr_wide_arm_scope(runner: Any, enabled: bool | None):
     """Bind an arm's explicit GR-up wide route, or keep the runner's route.
 
@@ -2020,7 +1990,6 @@ def _candidate_owner_provenance(
     candidate_spec: CandidateSpec,
     resolved_enabled: bool,
     resolved_q8_mmq_enabled: bool | None = None,
-    resolved_q8_mmq_attn_gate: bool | None = None,
 ) -> dict[str, bool | None]:
     """Name the owner decisions actually bound for the measured candidate rows."""
 
@@ -2032,8 +2001,6 @@ def _candidate_owner_provenance(
             None if resolved_q8_mmq_enabled is None
             else bool(resolved_q8_mmq_enabled)),
         "q8_mmq_prefill_override": candidate_spec.q8_mmq_prefill_enabled,
-        "q8_mmq_attn_gate_enabled": resolved_q8_mmq_attn_gate,
-        "q8_mmq_attn_gate_override": candidate_spec.q8_mmq_attn_gate_enabled,
     }
 
 
@@ -2053,7 +2020,6 @@ def _candidate_named_profile_intact(candidate_spec: CandidateSpec) -> bool:
         and candidate_spec.gr_iu8_down is None
         and candidate_spec.production_moe_prefill_enabled is None
         and candidate_spec.q8_mmq_prefill_enabled is None
-        and candidate_spec.q8_mmq_attn_gate_enabled is None
         and candidate_spec.router_producer_variant is None
         and candidate_spec.gr_wide is None
         and candidate_spec.q8_dense_wide_layers is None
@@ -2305,8 +2271,6 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         _bind_candidate_production_moe_prefill(
             dispatch_stack, candidate_generator, candidate_spec))
     candidate_q8_mmq_prefill_enabled = _bind_candidate_q8_mmq_prefill(
-        dispatch_stack, candidate_generator, candidate_spec)
-    candidate_q8_mmq_attn_gate = bind_candidate_q8_mmq_attn_gate(
         dispatch_stack, candidate_generator, candidate_spec)
     if (candidate_spec.q4_dp4a_decode_enabled is not None
             or candidate_spec.q4_dp4a_decode_layers is not None):
@@ -2678,7 +2642,6 @@ def _run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 candidate_spec,
                 candidate_production_moe_prefill_enabled,
                 candidate_q8_mmq_prefill_enabled,
-                candidate_q8_mmq_attn_gate,
             ),
             "qsa_wmma_enabled": candidate_spec.qsa_wmma_enabled,
             "router_producer_variant": candidate_spec.router_producer_variant,

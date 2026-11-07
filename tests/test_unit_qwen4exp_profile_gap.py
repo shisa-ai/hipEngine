@@ -25,11 +25,11 @@ def test_parse_overrides_accepts_hipengine_keys_and_equals_in_value() -> None:
 
     assert module._parse_overrides(
         [
-            "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1",
+            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES=2",
             "HIPENGINE_EXAMPLE=a=b",
         ]
     ) == {
-        "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "1",
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES": "2",
         "HIPENGINE_EXAMPLE": "a=b",
     }
 
@@ -78,7 +78,7 @@ def test_parse_overrides_rejects_the_production_moe_owner_key() -> None:
         ({}, True, False, "diagnostic_post_binder_override"),
         ({}, False, False, "diagnostic_post_binder_override"),
         (
-            {"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "1"},
+            {"HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES": "2"},
             None,
             False,
             "diagnostic_post_binder_override",

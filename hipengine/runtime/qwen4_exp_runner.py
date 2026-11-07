@@ -5852,28 +5852,6 @@ def _qwen4_exp_gr_sigmoid_mean_fused(rows: int) -> bool:
 
 
 @contextlib.contextmanager
-def q8_mmq_attn_gate_enabled(owner: Any, enabled: bool | None):
-    """Override one owner's MMQ attention-gate policy without changing resources."""
-    missing = object()
-    targets = [owner]
-    runner = getattr(owner, 'runner', None)
-    if runner is not None and runner is not owner:
-        targets.append(runner)
-    prior = [(target, getattr(target, 'q8_mmq_attn_gate_enabled', missing))
-             for target in targets]
-    try:
-        for target in targets:
-            target.q8_mmq_attn_gate_enabled = None if enabled is None else bool(enabled)
-        yield
-    finally:
-        for target, previous in prior:
-            if previous is missing:
-                delattr(target, 'q8_mmq_attn_gate_enabled')
-            else:
-                target.q8_mmq_attn_gate_enabled = previous
-
-
-@contextlib.contextmanager
 def q8_mmq_f32_planes(owner: Any, planes: int | None):
     """Bind the F32-output plane count without changing resources or BF16 math."""
     if planes is not None and (type(planes) is not int or planes not in (2, 3)):
@@ -5894,17 +5872,11 @@ def q8_mmq_f32_planes(owner: Any, planes: int | None):
                 target.q8_mmq_f32_planes = previous
 
 
-def _qwen4_exp_q8_mmq_policy(
-    policy, *, attn_gate_enabled: bool | None = None, f32_planes: int | None = None,
-):
-    """Apply explicit attention and F32-plane choices; unbound calls keep base."""
+def _qwen4_exp_q8_mmq_policy(policy, *, f32_planes: int | None = None):
+    """Apply the explicit F32-plane choice; unbound calls keep base."""
 
     if policy is None:
         return None
-    if attn_gate_enabled:
-        minimums = dict(policy.min_rows)
-        minimums[(2560, 6144)] = 64
-        policy = replace(policy, min_rows=minimums)
     if f32_planes is not None:
         if type(f32_planes) is not int or f32_planes not in (2, 3):
             raise ValueError("q8_mmq_f32_planes must be 2 or 3")
@@ -10422,7 +10394,6 @@ class Qwen4ExpGGUFResidentModelRunner:
     q8_mmq_prefill_enabled: bool | None = None
     # The same choice controls sidecar preparation and prefill session entry.
     q8_mmq_prepack_enabled: bool | None = None
-    q8_mmq_attn_gate_enabled: bool | None = None
     q8_mmq_f32_planes: int | None = None
     # The f16 WMMA dense-Q8 layer scope is the owning runner's decision. An
     # empty Q8WMMALayerScope means every layer; ``None`` uses the explicit
@@ -10698,7 +10669,6 @@ class Qwen4ExpGGUFResidentModelRunner:
         q5k_iu8_exact_enabled: bool | None = None,
         gr_iu8_policy: GRIU8Policy | None = None,
         q8_mmq_prepack_enabled: bool | None = None,
-        q8_mmq_attn_gate_enabled: bool | None = None,
         q8_mmq_f32_planes: int | None = None,
         q8_wmma_layer_scope: Q8WMMALayerScope | None = None,
         gguf_wmma_prefill_enabled: bool | None = None,
@@ -10736,7 +10706,6 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.q5k_iu8_exact_enabled = q5k_iu8_exact_enabled
         self.gr_iu8_policy = gr_iu8_policy
         self.q8_mmq_prepack_enabled = q8_mmq_prepack_enabled
-        self.q8_mmq_attn_gate_enabled = q8_mmq_attn_gate_enabled
         self.q8_mmq_f32_planes = q8_mmq_f32_planes
         self.q8_wmma_layer_scope = q8_wmma_layer_scope
         self.gguf_wmma_prefill_enabled = gguf_wmma_prefill_enabled
@@ -11135,7 +11104,6 @@ class Qwen4ExpGGUFResidentModelRunner:
                 policy=(
                     _qwen4_exp_q8_mmq_policy(
                         self._q8_mmq_policy,
-                        attn_gate_enabled=getattr(self, 'q8_mmq_attn_gate_enabled', None),
                         f32_planes=getattr(self, 'q8_mmq_f32_planes', None),
                     )
                     if enabled

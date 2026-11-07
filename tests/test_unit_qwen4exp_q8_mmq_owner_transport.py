@@ -52,7 +52,6 @@ Q4KM = "gguf_q4_k_m"
 def _isolate(monkeypatch: pytest.MonkeyPatch):
     clear_runtime_profile_registry_for_tests()
     monkeypatch.delenv(ENV, raising=False)
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE", raising=False)
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES", raising=False)
     yield
     clear_runtime_profile_registry_for_tests()

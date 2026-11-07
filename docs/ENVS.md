@@ -877,7 +877,7 @@ choices, including any active diagnostic scope.
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK` | retired | Ignored. Owners carry `q8_mmq_prepack_enabled` (strict false, production true); unbound calls keep raw weights. `q8_mmq_prepack_enabled(owner, enabled)` binds and restores that choice without allocating or discarding sidecars. Call `configure_mmq_prefill_resources()` before running a newly enabled prepacked route; missing sidecar ownership fails explicitly. Vector/token64 prerequisites and prepack campaign/state-gate comparisons bind and report owner state. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4` | retired | No longer read. The owning MMQ session carries prepacked vector selection; explicit scoped diagnostics preserve the scalar comparison. |
 | `HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR` | retired | No longer read. The owning MMQ session carries raw vector selection, preserving the rows>=64 parent-variant guard and token64 dependency. |
-| `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE` | retired | Ignored. Profiles publish `q8_mmq_attn_gate_enabled=False`; unbound calls keep the base attention scope. `q8_mmq_attn_gate_enabled(owner, enabled)` restores the generator/runner choice on exit without changing resources. Diagnostic scripts bind and report that explicit choice. The enabled policy admits the attention gate shape `(2560, 6144)` at 64 rows and above. |
+| `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE` | retired | Ignored at runtime | The Q8 MMQ attention-gate candidate (guarded MMQ for the GDN `attn_gate` shape `(2560, 6144)`) was rejected and its owner scope removed; the attention gate always uses the base MMQ policy. `scripts/qwen4exp_candidate_ar.py` and `scripts/qwen4exp_profile_gap.py` reject it as an `--override`. |
 
 ## Build-ablation variables
 

@@ -417,6 +417,11 @@ def _parse_overrides(values: list[str]) -> dict[str, str]:
                 "the production MoE prefill gate is owner state; use "
                 "--production-moe-prefill instead of --override"
             )
+        if key == "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE":
+            raise ValueError(
+                "the Q8 MMQ attention-gate candidate was retired after its "
+                "rejection; remove this --override"
+            )
         if key == "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK":
             raise ValueError(
                 "MMQ prepacking is owner-bound; use "
@@ -527,7 +532,7 @@ def _apply_post_binder_overrides(
 ) -> tuple[dict[str, str | None], dict[str, str | None]]:
     """Apply diagnostic environment overrides after the profile binder.
 
-    Owner-state routes are bound separately. Attention, generic WMMA and flash
+    Owner-state routes are bound separately. Generic WMMA and flash
     keys keep their legacy ``--override`` spelling with explicit owner binders.
     This helper only moves remaining process-owned diagnostic switches.
     """
@@ -537,7 +542,6 @@ def _apply_post_binder_overrides(
                                 "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID",
                                 "HIPENGINE_QWEN4_EXP_RAW_ROWBATCH",
                                 "HIPENGINE_QWEN4_EXP_RAW_VARIANT",
-                                "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
                                 "HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES",
                                 "HIPENGINE_GGUF_WMMA_PREFILL",
                                 "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL",
@@ -793,27 +797,6 @@ def bind_generic_wmma_override(
     return {
         'gguf_wmma_prefill_override': enabled,
         'gguf_wmma_prefill_enabled': getattr(owner, 'gguf_wmma_prefill_enabled', None),
-    }
-
-
-def bind_attention_override(
-    stack: contextlib.ExitStack, owner: Any, overrides: dict[str, str],
-    parent_override: bool | None,
-) -> dict[str, bool | None]:
-    """Translate the legacy attention override into explicit owner decisions."""
-    from hipengine.runtime.qwen4_exp_runner import (
-        q8_mmq_attn_gate_enabled, q8_mmq_prefill_enabled,
-    )
-    raw = overrides.get('HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE')
-    enabled = None if raw is None else raw not in {'', '0', 'false', 'False'}
-    if enabled is not None:
-        if parent_override is False:
-            raise ValueError('attention override conflicts with --q8-mmq-prefill off')
-        stack.enter_context(q8_mmq_prefill_enabled(owner, True))
-        stack.enter_context(q8_mmq_attn_gate_enabled(owner, enabled))
-    return {
-        'q8_mmq_attn_gate_override': enabled,
-        'q8_mmq_attn_gate_enabled': getattr(owner, 'q8_mmq_attn_gate_enabled', None),
     }
 
 
@@ -1274,8 +1257,6 @@ def main() -> None:
         report.update(bind_selected_q8_down_override(q4_scope, generator, overrides))
         report.update(bind_flash_prefill_override(q4_scope, generator, overrides))
         report.update(bind_generic_wmma_override(q4_scope, generator, overrides))
-        report.update(bind_attention_override(
-            q4_scope, generator, overrides, q8_mmq_override))
         from hipengine.runtime.qwen4_exp_runner import resolve_q8_mmq_prefill
         report['q8_mmq_prefill_enabled'] = resolve_q8_mmq_prefill(generator)
         if report["q8_mmq_prefill_enabled"]:

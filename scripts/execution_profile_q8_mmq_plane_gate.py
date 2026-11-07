@@ -438,7 +438,6 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         environment={
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
             "q8_mmq_prefill_enabled": resolve_q8_mmq_prefill(generator),
-            "q8_mmq_attn_gate_enabled": generator.q8_mmq_attn_gate_enabled,
         },
         build_profile="execution_profile_q8_mmq_plane_gate",
         timing_protocol="none_full_logits_only_v1",

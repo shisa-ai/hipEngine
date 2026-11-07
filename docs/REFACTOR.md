@@ -2353,27 +2353,6 @@ cleanup and requests around allocation limits. For device-position sparse suppor
 selection, logits and state against the declared oracle across the dense/sparse boundary and
 unrelated lengths, then exercise public continuation and graph replay.
 
-### R0129 — Decide when to retire Q8 MMQ prepack rollback
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `weight_pack/gguf_q8_0/mmq_kmajor76`.
-
-**Deferred rollback decision:** retain the explicit `q8_mmq_prepack_enabled` owner scope until the enabled
-prepacked route passes assessment after an owner refresh and release window, then remove redundant
-experiment selection. The ambient `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK` fallback is removed;
-production still publishes true, strict false, and diagnostics bind the owner directly.
-Preserve the strict raw-Q8 route and raw weights needed by decode and risk
-repair. Removing the rollback setting is distinct from changing the prefill MMQ arithmetic profile;
-do not infer either from the other. R0128 owns composed optional-resource admission, including the
-full additional sidecar allocation.
-
-Done when: run sidecar lifecycle and execution-profile unit tests, GPU packer byte parity and
-full logits/state/KV comparisons for the selected route. Exercise public prefill with sidecars
-enabled and disabled, verify owner memory and cleanup, and check mixed prefill/decode requests
-before a performance-driven retirement. Preserve explicit resource and arithmetic failures rather
-than silently falling back.
-
 ### R0131 — Coordinate live-derived Surya split planning with launch bounds
 
 Owner: `hipengine/runtime/surya.py`.
@@ -2456,23 +2435,6 @@ route-audit tests, then public loading/generation for compatible unseen tensor m
 incompatible requests. Any changed arithmetic default must pass its profile gate. Preserve
 source-bound certificate consistency without turning source identity into measured-artifact
 admission.
-
-### R0147 — Consolidate the Q8 MMQ attention-gate candidate selector
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE`.
-
-**Deferred selector decision:** preserve the explicit comparison or replace it with an
-operation-complete dense/GR policy owner. Remove the separate setting once that owner represents the
-same shape and lifetime requirements. Preserve exact raw-Q8 fallback and keep this scope independent
-of prepack/resource selection. A performance-driven default change needs stabilized comparisons; a
-changed-arithmetic default also needs its execution-profile gate.
-
-Done when: run attention-gate policy and profile unit tests, then exercise the enabled route
-through public prefill and confirm actual dispatch. Check full logits/state, repeatability and
-cleanup before retiring the comparison. Do not silently claim engagement from setting this flag
-while the MMQ owner is absent.
 
 ### R0151 — Separate prefill staging ownership from implemented AR batching
 

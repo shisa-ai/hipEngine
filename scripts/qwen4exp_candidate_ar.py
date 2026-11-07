@@ -2,10 +2,8 @@
 """Run the canonical p512 AR fixture through hipEngine with a candidate route.
 
 This mirrors ``scripts/qwen4exp_canonical_ar_bench.py``'s ``hipengine`` mode
-but lets the caller force a diagnostic routing override. The attention-gate
-``--override`` binds generator/runner owner state and prepares the required MMQ
-workspace before sampling; it does not change the process key. Generic WMMA
-``--override`` also binds owner state. Flash-prefill enable/layer overrides use
+but lets the caller force a diagnostic routing override. Generic WMMA
+``--override`` binds owner state. Flash-prefill enable/layer overrides use
 the same paired owner policy as profile-gap, as do the independent GR IU8
 up/down overrides. F32 MMQ plane and dense-wide enable/layer overrides also bind
 and report owner state. Raw-prefill row slab and geometry overrides bind a paired
@@ -19,7 +17,7 @@ Usage:
       --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL \
       --fixture /tmp/qwen4exp_p512_fixture.json \
       --output /tmp/cand.json --warmups 1 --repetitions 1 \
-      --override HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1 \
+      --override HIPENGINE_QWEN4_EXP_Q8_MMQ_PLANES=2 \
       --compiler-version-file /tmp/hipengine-hipcc-version.txt
 """
 
@@ -45,19 +43,19 @@ from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
 )
 
 
-def split_owner_overrides(values: list[str]) -> tuple[dict[str, str], bool | None]:
-    """Preserve CLI spelling while separating the attention owner decision."""
+def split_owner_overrides(values: list[str]) -> dict[str, str]:
+    """Parse ``KEY=VALUE`` overrides, rejecting the retired attention gate."""
     environment = {}
-    attention = None
     for raw in values:
         key, sep, value = raw.partition('=')
         if not sep:
             raise ValueError(f"--override must be KEY=VALUE, got {raw!r}")
         if key == 'HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE':
-            attention = value not in {'', '0', 'false', 'False'}
-        else:
-            environment[key] = value
-    return environment, attention
+            raise ValueError(
+                "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE was retired with the rejected "
+                "Q8 MMQ attention-gate candidate")
+        environment[key] = value
+    return environment
 
 
 def split_dpp_override(values: dict[str, str]) -> tuple[dict[str, str], dict[str, str]]:
@@ -252,23 +250,6 @@ def bind_generic_wmma_override(stack: ExitStack, owner, enabled: bool | None):
     return {'gguf_wmma_prefill_enabled': getattr(owner, 'gguf_wmma_prefill_enabled', None)}
 
 
-@contextmanager
-def attention_override_scope(owner, enabled: bool | None):
-    """Prepare the explicit MMQ parent and restore both choices after sampling."""
-    from hipengine.runtime.qwen4_exp_runner import (
-        q8_mmq_attn_gate_enabled, q8_mmq_prefill_enabled, resolve_q8_mmq_prefill,
-    )
-    with ExitStack() as stack:
-        if enabled is not None:
-            stack.enter_context(q8_mmq_prefill_enabled(owner, True))
-            stack.enter_context(q8_mmq_attn_gate_enabled(owner, enabled))
-            owner.runner.configure_mmq_prefill_resources()
-        yield {
-            'q8_mmq_attn_gate_enabled': getattr(owner, 'q8_mmq_attn_gate_enabled', None),
-            'q8_mmq_prefill_enabled': resolve_q8_mmq_prefill(owner),
-        }
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
@@ -282,7 +263,7 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        overrides, attention_override = split_owner_overrides(args.override)
+        overrides = split_owner_overrides(args.override)
         overrides, dpp_overrides = split_dpp_override(overrides)
         overrides, expert_grid_overrides = split_expert_grid_override(overrides)
         overrides, raw_prefill_overrides = split_raw_prefill_overrides(overrides)
@@ -335,8 +316,7 @@ def main() -> int:
         profile=ExecutionProfile.PRODUCTION,
     )
 
-    # Only ambient controls are reapplied after the profile binder. The
-    # attention decision is bound below on the fully constructed owner.
+    # Only ambient controls are reapplied after the profile binder.
 
     def construct(base_factory, **kwargs):
         generator = resolved.construct_generator(base_factory, **kwargs)
@@ -383,8 +363,7 @@ def main() -> int:
     generator = construct(factory)
     owner_stack = ExitStack()
     try:
-        artifact['owner_overrides'] = owner_stack.enter_context(
-            attention_override_scope(generator, attention_override))
+        artifact['owner_overrides'] = {}
         artifact['owner_overrides'].update(bind_dpp_override(
             owner_stack, generator, dpp_overrides))
         artifact['owner_overrides'].update(bind_expert_grid_override(
