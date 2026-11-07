@@ -2480,24 +2480,6 @@ cancellation and provider cleanup and confirm streaming actually ran. Unit adapt
 does not close it. Keep explicit capability failures and strict replay semantics until consumers
 migrate.
 
-### R0191 — Move live MoE pair-reuse selection into profile ownership
-
-Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
-
-Scope: `moe_physical_c2_pairreuse_session(...)`, `x_rows*8`.
-
-Pair-reuse selection is now a field of the immutable profile-owned arithmetic plan,
-carried by `PhysicalTargetPlan` and bound around physical verification. Nested diagnostic
-scopes remain supported. The MoE factory prefers that plan over stale compatibility fields;
-see [factory precedence](../worklog/entries/20261106T104009.319250Z-lhl-r0193-moe-plan-precedence-5fb3a8.md).
-
-Done when: preserve nested disabled-scope restoration and geometry checks through public
-validation before retiring the context. Preserve row-bound/interior,
-selected-row mismatch and incompatible-geometry tests. Verify public exact state, acceptance,
-cancellation/reuse and selected kernel attribution before retiring the context. The original final
-three-repeat performance gate still governs a claimed promotion or rejection. A losing candidate may
-be removed only after checking live consumers and preserving strict fallbacks.
-
 ### R0193 — Replace MoE numerical-scope transport without changing arithmetic
 
 Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
@@ -2516,22 +2498,6 @@ preserving C1/strict fallbacks, nested disabled scopes, exception restoration an
 execution-context isolation. Reuse RF-1's owner boundary and keep this migration separate from
 numerical tuning. Run `tests/test_unit_moe_target_arithmetic_scopes.py` and affected adapter tests;
 verify public C1/C2 selected arithmetic and rollback state before retiring the scope.
-
-### R0194 — Preserve exact-linear ownership during profile transport migration
-
-Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
-
-Scope: `moe_physical_c2_exact_linear_session(...)`.
-
-Exact-linear selection now travels in the immutable profile-owned arithmetic plan and
-unified physical-target plan; construction and diagnostic scope isolation have host coverage.
-
-Done when: validate that transport publicly while preserving selected-state journals, C1
-arithmetic, nested scopes, exception restoration and
-execution-context isolation. Verify public selected arithmetic, exact rollback state and lifecycle
-before retiring the context. Keep this transport change separate from replacement-kernel tuning. Any
-replacement must independently pass the complete numerical/lifecycle gates and the original >=1.10x
-AR target; the current correctness fallback remains until then.
 
 ### R0201 — Public repeat after planar-Q6 selector cleanup
 
