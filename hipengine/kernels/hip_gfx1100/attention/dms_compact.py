@@ -48,9 +48,10 @@ def _dms_compile_flags(target_arch: str | None) -> tuple[str, ...]:
         resolved = os.environ.get(_ENV_HIP_ARCH) or os.environ.get(
             _ENV_HIP_OFFLOAD_ARCH
         )
-    # gfx1151 wave-group6 fails the full-model no-evict G0 control (KL/top-1).
-    # The generic producer passes that same four-category control. See the
-    # gfx1151 compact-attention entry in docs/REFACTOR.md for restoration gates.
+    # Wave-group6 is a gfx1100-only producer. On gfx1151 it failed the
+    # full-model no-evict G0 control (KL/top-1) while the generic producer
+    # passes it; the gfx1151 restoration was retired on 2026-11-07, so other
+    # architectures compile only the generic producer.
     if (
         resolved is not None
         and resolved.strip().lower().split(":", 1)[0] == "gfx1100"

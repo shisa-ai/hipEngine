@@ -1006,10 +1006,10 @@ class Qwen35ParoMTP2Adapter:
     def _target_graph_mode(plan: SpecRequestPlan) -> str:
         """Honor the planned variant without disabling graph capability.
 
-        One-candidate public requests currently select eager verification:
-        graph replay lost 3.23% decode throughput, confirmed at 3.06%, in the
-        2026-10-24 gfx1151 comparison. Graph plans still execute capture/replay.
-        See docs/REFACTOR.md for the comparison that clears this preference.
+        One-candidate public requests select eager verification: graph replay
+        lost 3.23% decode throughput, confirmed at 3.06%, in the 2026-10-24
+        gfx1151 comparison, and that graph candidate was retired on
+        2026-11-07. Plans that ask for the graph route still capture/replay.
         """
 
         return "auto" if plan.execution_route == "graph" else "off"

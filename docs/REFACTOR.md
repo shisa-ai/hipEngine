@@ -44,102 +44,6 @@ Validate with
 
 ## Outstanding work
 
-### R0023 — Preserve recovery precedence and decide held-off family repairs
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `PRODUCTION_MOE_PREFILL`; `Q4_IU8_PREFILL`; `HIPENGINE_QWEN4_EXP_Q4_DP4A64`.
-
-**Deferred family decisions:** retain recorded repair conditions independently:
-
-- `PRODUCTION_MOE_PREFILL`/`Q4_IU8_PREFILL`: fix the divergent task responses;
-  faster tiling or numerical-envelope passes alone do not clear the task gate.
-- `GR_IU8` and `GR_IU8_DOWN`: R0026/R0027 own their independent correction gates.
-- `Q8_MMQ_PREFILL`: localize the operand role responsible for canonical-depth failure.
-- `runner.gdn_peer_prefill_layers`: require a complete-owner mechanism, not noise-level timing.
-- `Q4_DP4A64`: pass both decode gates from the late-layer production-prefill
-  entry before restoring the arithmetic default. All callers carry explicit
-  `q4_dp4a_decode_enabled`/`q4_dp4a_decode_layers`; the process fallback is removed.
-- `QSA_FLASH_PREFILL`: choose a concrete repair or retirement disposition for
-  the failed recovery composition.
-
-Done when: Remove an intent binding only after final rejection without a repair path, or an exhausted reopen
-condition followed by a removal decision. Do not silently re-enable withdrawn arithmetic by
-narrowing the sweep.
-
-### R0028 — GR-wide profile handoff and engagement checks
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `HIPENGINE_QWEN4_EXP_GR_WIDE`.
-
-Owner-bound `gr_wide` selection is implemented across profile construction,
-runtime dispatch and candidate-driven diagnostics. Preserve profile precedence,
-strict fallback, and the `rows > 256` and `low_rank % 64 == 0` capability checks.
-
-Done when: Localize and repair the composition's failed canonical-depth and
-natural-long numerical comparisons, then finish task review with complete code
-outputs. The reports in
-[`audit/refactor-sweep/2026-11-01-r0028-gates.json`](../audit/refactor-sweep/2026-11-01-r0028-gates.json)
-record actual F16-direct engagement, passing state/repeats/teardown and failed
-numerical limits. The four-arm
-[isolation report](../audit/refactor-sweep/2026-11-01-r0028-isolation.json)
-shows wide-on changes logits within strict and production, while production
-wide-off independently misses the envelope against strict wide-off. The
-[sampled primitive report](../audit/refactor-sweep/2026-11-01-r0028-primitive.json)
-tracks the F16-rounded oracle closely; operand rounding dominates its error
-against original F32 inputs on those samples. Screen a precision-preserving
-projection against both primitive oracles, then run full depth/state/task checks.
-Isolate the remaining production changes separately.
-Public generation at 73/257/389 tokens confirms threshold engagement. Keep
-independent counts for both F32 and F16-direct leaves. Use the canonical depth
-gate and layer2 gate with `--prompts
-benchmarks/prompts/qwen4exp-natural-long-tasks-v1.jsonl` after a concrete repair.
-A one-hot prefill-boundary KL is not a substitute for full-depth numerical/task
-validation.
-
-### R0027 — Repair isolated GR-down IU8 drift independently
-
-Owner: `hipengine/generation/qwen4_exp_profiles.py`.
-
-Scope: `hipengine/generation/qwen4_exp_profiles.py` — Repair isolated GR-down IU8 drift independently.
-
-Done when: Repair GR_IU8_DOWN independently of GR-up and exact fusions. Screen one prefill per arm below the
-approximately 5e-9 prefill-boundary KL limit before the complete 780-row gate. Do not restore the
-rejected compensated correction solely because it improved one boundary metric. Keep R0023 recovery
-precedence.
-
-### R0026 — Repair isolated GR-up IU8 projection drift
-
-Owner: `hipengine/generation/qwen4_exp_profiles.py`.
-
-Scope: `scripts/qwen4exp_gr_iu8_logits_probe.py`.
-
-Done when: Repair GR_IU8 projection drift without changing the exact sigmoid/gated-mean epilogue. Screen one
-prefill per arm with `scripts/qwen4exp_gr_iu8_logits_probe.py` below approximately 5e-9
-prefill-boundary KL, then run the complete 780-row depth gate. Keep exact-fusion and GR-down
-decisions independent; do not retry unchanged flag settings.
-
-### R0039 — Separate multi-column GDN capability from composition task review
-
-Owner: `hipengine/runtime/qwen4_exp_runner.py`.
-
-Scope: `qwen4exp_gdn_tiled16_multi_prefill`.
-
-**Deferred composition decision:** preserve the distinct R02 task finding in
-`benchmarks/results/2026-09-15-journey-gdn-multi-restoration/task-review.json`. Its numerical passes
-do not clear the misleading native-INT8 explanation under the recorded per-prompt rule. Do not
-conflate it with R01's Japanese failure or claim proof of worse expected quality/a kernel defect.
-The truncated Japanese pair is not completed evidence. Do not rerun the unchanged composition or
-promote it solely from its numerical envelope; any revised composition needs complete numerical,
-task and depth gates with accurate route attribution.
-
-Done when: Resolve the composition-task decision with complete outputs and
-accurate route attribution. If a revised composition is selected, run its full
-numerical, state, depth and task gates. Preserve the registered multi-column,
-DPP and serial strict comparisons; passing owner-transport checks does not
-resolve the R02 task finding.
-
 ### R0060 — Bind historical dense serving evidence when its artifact is available
 
 Owner: `hipengine/models/qwen35.py`.
@@ -152,18 +56,6 @@ attribution only. Preserve
 `tests/test_unit_speculative_mtp_serving_capability.py::test_qwen36_dense_rows_without_identity_still_run_on_capability`
 and `admission_basis="implementation"` in both modes. Never invent a fingerprint or use a
 byte-digest match to conflate qwen36-dense and qwen38 execution identity.
-
-### R0057 — Repair gfx1151 compact attention wave producer
-
-Owner: `hipengine/kernels/hip_gfx1100/attention/dms_compact.hip`.
-
-Scope: `worklog/entries/20260926T140616.347941Z-main-dms-producer-control-183661.md`.
-
-Done when: Repair the gfx1151 wave-group6 compact attention producer. Before restoring its selection, pass the
-unchanged four-category G0 no-evict command in
-`worklog/entries/20260926T140616.347941Z-main-dms-producer-control-183661.md`, matched-input GPU
-attention tests, public DMS lifecycle tests and the applicable numerical gates. Preserve the working
-generic producer and independent gfx1100 selection.
 
 ### R0051 — Review backend decode and strict attention scope ownership
 
@@ -296,20 +188,6 @@ closed as intentional reference code. See
 
 Done when: Validation dependency: a local Laguna checkpoint. Run the R0273 gfx1151 public command and
 confirm range-direct selection, output parity and teardown.
-
-### R0001 — PARO verifier graph regression
-
-Owner: `tests/test_live_paro_mtp_graph.py`.
-
-Scope: `benchmarks/results/2026-10-24-gfx1151-paro-graphs/NOTES.md`; `reproduce_graph_candidate.py`; `validate_graph.py`.
-
-Done when: Dependency: a graph implementation that removes that observed regression. **Clearing action:**
-use the reproduction block in `benchmarks/results/2026-10-24-gfx1151-paro-graphs/NOTES.md` to run
-`reproduce_graph_candidate.py` with three repetitions and two confirmation repetitions, then
-`validate_graph.py` and `tests/test_live_paro_mtp_graph.py`. Require faster paired execution without
-output/acceptance drift and successful public state/recovery checks before removing the eager
-preference. Preserve the eager comparison implementation; add no environment flag or MTP admission
-gate.
 
 ### R0165 — Public physical GDN wave-reduction validation
 
@@ -1984,8 +1862,8 @@ comparison route and whether the Q4_K_M recovery plan still needs the shared imp
 both quant bindings and user-facing execution before removing any UD-specific route.
 
 The maintained capability decision is to keep the registered multi-column,
-row-split, DPP and strict references; R0039 owns the independent composition
-quality decision. The local Q4_K_M files are `qwen35`/`qwen35moe`, not
+row-split, DPP and strict references. The composition quality decision is
+closed: multi-column is the admitted production owner on layers 27-47. The local Q4_K_M files are `qwen35`/`qwen35moe`, not
 `qwen4_exp`, so they cannot exercise this profile's public fallback. The
 remaining check needs a Qwen4Exp Q4_K_M checkpoint: load it through
 `hipengine.LLM(..., execution_profile="production")`, verify the resolved strict
@@ -2659,22 +2537,6 @@ Done when: run `tests/test_unit_qwen4_exp_multimodal.py` and
 mixed-request lifecycle coverage for the chosen extension. Run vision reference/device parity and
 real public HTTP media requests, including cancellation and malformed inputs. Remove only
 restrictions whose replacement semantics actually run.
-
-### R0163 — Decide the scope of the FP16 recurrent-storage experiment
-
-Owner: `hipengine/generation/qwen35_dense_gfx1151_profiles.py`.
-
-Scope: `hipengine/generation/qwen35_dense_gfx1151_profiles.py`.
-
-**Deferred storage decision:** retire the unbounded FP16 experiment or replace it with a
-geometry/profile/horizon-owned storage plan. A replacement must pass full long-horizon numerical and
-serving gates before changing the arithmetic default. Do not re-enable it by copying the historical
-D24 verifier manifest. Keep registered FP32 execution and distinguish other configurations from the
-recorded failing scope rather than treating all FP16 routes as failed.
-
-Done when: run dense gfx1151 profile unit tests, then compare complete recurrent state,
-logits, continuation and accepted-prefix rollback across short and long histories for any
-replacement. Exercise public AR and packed MTP with storage attribution and lifecycle checks.
 
 ### R0173 — Verify owner-bound R28 dispatch on gfx1100
 

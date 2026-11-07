@@ -122,7 +122,8 @@ _ARITHMETIC_RECOVERY_EVIDENCE = (
 _Q4_DECODE_RECOVERY_EVIDENCE = "benchmarks/results/20261022-qwen38fn-q4-decode-repair.json"
 # Do not restore Q4_DP4A64: the October 20 long-context capture isolates a
 # decode error to that operation. Keep the strict variant already named in
-# the recovery manifest. The clearing gate is recorded in docs/REFACTOR.md.
+# the recovery manifest. The UD-Q4_K_XL recovery families are permanent; their
+# repair campaigns were closed on 2026-11-07.
 PRODUCTION_Q8_QSA_RESTORED_FLAGS = {
     "Q8_0_SELECTED_WMMA_DOWN": "1",
     "Q8_DOWN_VARIANT": "selected_grouped_blockscale_guarded_prefill_bf16_bf16_out",

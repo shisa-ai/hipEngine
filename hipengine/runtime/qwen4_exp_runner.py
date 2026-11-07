@@ -5596,11 +5596,12 @@ def _qwen4_exp_gr_k320_full_rows_key(
 
 
 def _qwen4_exp_gr_iu8_down_enabled(rows: int, policy: GRIU8Policy | None = None) -> bool:
-    """Experimental iu8-WMMA GR down route, disabled by production recovery.
+    """iu8-WMMA GR down route, selected by the owner's ``GRIU8Policy``.
 
-    The three-plane fp32 projection failed its standalone depth gate against
-    strict. A new projection correction and full requalification are required;
-    see docs/REFACTOR.md, "Isolated GR-Down IU8".
+    The UD-Q4_K_XL production recovery binds it off: on that artifact the
+    three-plane fp32 projection failed its standalone depth gate against
+    strict, and that repair campaign was closed on 2026-11-07. Other quants
+    keep the binder's production choice.
     """
 
     return rows > 256 and resolve_gr_iu8_policy(policy).down
@@ -5616,8 +5617,8 @@ def _qwen4_exp_gr_wide_enabled(
     fused exact parent. Its composition gate is distinct from the historical
     standalone rejection; the prefill-boundary KL screen is not an admission
     gate. The row and rank guards stay here, so a published route never widens
-    below them, and no process key selects this leaf. See docs/REFACTOR.md,
-    "GR-Up Wide Tile".
+    below them, and no process key selects this leaf. The UD-Q4_K_XL recovery
+    keeps it off; that composition repair campaign was closed on 2026-11-07.
     """
     return rows > 256 and low_rank % 64 == 0 and published
 
@@ -5860,12 +5861,12 @@ def _qwen4_exp_gr_up_sigmoid_mean_enabled(rows: int) -> bool:
 
 
 def _qwen4_exp_gr_iu8_enabled(rows: int, policy: GRIU8Policy | None = None) -> bool:
-    """Experimental iu8-WMMA GR up route, disabled by production recovery.
+    """iu8-WMMA GR up route, selected by the owner's ``GRIU8Policy``.
 
-    Three-plane fp32 staging preserves the raw Q8_0 weight path but failed the
-    standalone depth gate against strict. Keep the exact fused parent as the
-    fallback pending a new correction and requalification; see docs/REFACTOR.md,
-    "Isolated GR-Up IU8".
+    Three-plane fp32 staging preserves the raw Q8_0 weight path. The UD-Q4_K_XL
+    production recovery binds it off because it failed the standalone depth
+    gate against strict there (repair campaign closed 2026-11-07); the exact
+    fused parent is that artifact's route and every other quant's fallback.
     """
 
     return rows > 256 and resolve_gr_iu8_policy(policy).up
@@ -8465,7 +8466,7 @@ def run_qwen4_exp_moe(
             # one wave per selected expert, no barriers) when the profile
             # selects it and the row count fits; same per-group integer
             # arithmetic as the logical128/t64 owner, a different reduction
-            # order. History of the earlier rejection: docs/REFACTOR.md.
+            # order. History of the earlier rejection is in the worklog.
             dp4a_key = _qwen4_exp_moe_decode_warp_key(
                 dp4a_key, compact, moe_decode_warp, "GATE_UP")
             resolve(

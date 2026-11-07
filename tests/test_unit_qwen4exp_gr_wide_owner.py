@@ -1,7 +1,7 @@
 """GR-up wide tile ownership, shape guards, and strict fallback contracts.
 
 ``HIPENGINE_QWEN4_EXP_GR_WIDE`` was the launch-time handoff for the F16 route
-composition's GR-up wide tile (``docs/REFACTOR.md`` R0028). The resolved plan's
+composition's GR-up wide tile. The resolved plan's
 own manifest selection now publishes the decision on the owning runner
 (``gr_wide``), the dispatch reads that field, and the diagnostic harnesses bind
 it with ``gr_wide(owner, enabled)``.
