@@ -978,34 +978,6 @@ rollback and teardown. Keep the public post-submission failure nodes in
 not claim native-C++ registration on an unregistered peer. Apply numerical gates only if arithmetic
 changes.
 
-### R0281-AR-STREAM — Stream decode control and serial diagnostic migration
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `HIPENGINE_GGUF_AR_STREAM_DECODE`.
-
-**Observed resident constraint:** logical slot views share temporary execution and scalar sample
-buffers; concurrent scalar streams corrupt outputs and fail repeatability. Explicit scalar-stream
-resident construction now names this capability miss rather than silently running serially.
-Evidence and clearing action: `worklog/entries/20261106T170945.764567Z-lhl-r0281-stream-shared-scratch-037b3a.md`.
-Compatibility independent-session streams remain implemented. The owner-control migration is in
-`8cd2421d9`; stream selection now resolves from the owner rather than the ambient environment.
-
-**Remaining work:** provide an explicit resolved serial/stream/packed comparison control or
-designated serial oracle, then migrate writers, route metadata, cleanup tests and the env reader
-together. Preserve singleton and missing-hook fallback, packed-owner flush before per-slot work,
-launch-before- read ordering and stream destruction. Once any chunk is launched, do not retry the
-group as a serial fallback on a launch/result exception.
-
-Done when: run `tests/test_unit_gguf_ar_decode_control.py`,
-`tests/test_unit_gguf_concurrency_baseline.py`, `tests/test_unit_gguf_live_server_bench.py`,
-`tests/test_unit_server_f1_concurrency_bench.py`,
-`tests/test_integration_gguf_production_load_gate.py` and
-`tests/test_unit_gguf_sampled_api_gate.py`, plus stream/packed/scalar and above-eight chunk nodes in
-`tests/test_live_generation_qwen35_gguf_sampling.py`. Reader migration needs real default, explicit
-serial and stream requests at widths below/above eight and an unrelated width, ragged/shrinking
-groups, selected route, repeat output and teardown.
-
 ### R0281-INT8-POLICY — Legacy context and layout diagnostic controls
 
 Owner: `hipengine/generation/qwen35_gguf.py`.
