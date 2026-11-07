@@ -513,3 +513,42 @@ boundaries — not only ffn_gate:
 10. Targeted fusion/grouping + compact-layout candidates.
 11. Rollup: numerical gates, a real `LLM.generate()`/serving run confirming
     selection, benchmark + campaign updates, re-run Gate A on a matched boundary.
+
+## 9. Results of the reopened plan (2026-11-07)
+
+Every plan item was tackled; the headline is that the prefill gap was an
+implementation defect plus a missing activation pre-cast, not a hardware wall.
+
+**Landed (committed, correctness-gated):**
+
+- Fixed the shared-B cooperative-loader coverage bug (the wide-N NaNs). The
+  default `<3,4,4>` is byte-identical; wider tiles are now correct.
+- Wired F16 activation pre-cast staging into the runner prefill (the inner-loop
+  bf16→f16 conversion was stealing WMMA VALU issue slots; VALUInsts fell 59%).
+- Shape-banded the F16-staged sibling to the 8-wave `<5,8,2>` wide tile for
+  `out_features >= 1024` (narrow outputs keep `<3,4,4>`).
+- Corrected the AR bench timing boundary (named model-step vs user-facing).
+
+**Measured prefill (AR bench, was 333/333/300):**
+
+| Shape | hipEngine now | llama.cpp | ratio |
+| --- | ---: | ---: | ---: |
+| 512 | 391 | 394 | 99% |
+| 1024 | 386 | 386 | 100% |
+| 4096 | 343 | 376 | 91% |
+
+Numerical gates pass: runner logits match the CPU reference and llama.cpp
+oracle, greedy generation coherent, and DFlash IDs == true AR on the ten-prompt
+suite plus the public speculative surface.
+
+**Decode:** at 98% of the measured 211 GB/s read ceiling (L2 hit 33.8%,
+DRAM-bound); the +10% gap is structural — T16 +2.78% resident-byte expansion,
+the synchronized step boundary, and the lm_head — not fusible overhead. The
+argmax sampling impact is ~0.04% (timing-label fix, not a real cost).
+
+**Remaining Gate A lever (measured, not yet integrated):** the Q6 ffn_down owner
+runs at 11 TF (25.2% of 4K prefill). Dequantize-to-F16 + hipBLASLt GEMM measured
+1.58x deployable / 2.04x resident (cosine 0.99999); the F16 staging sibling is
+registered for Q4/Q5 but not Q6. Integrating the Q6 library route implies ~1.10x
+on 4K (~389 tok/s), which clears Gate A prefill at every shape. The 2D-tiled
+GEMM redesign was dropped as superseded by these targeted wins.
