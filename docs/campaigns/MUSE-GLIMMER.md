@@ -611,12 +611,16 @@ Needle-in-a-haystack through `LLM.generate()` recalls the passphrase at 32K
 long-range recall through the NoPE full layers works. `<|eom|>` (200007) is not
 a stop token in either engine; chat-templated turns end on `<|eot|>`.
 
-**DFlash (mtpbench, budget 4, r=1):** 21.64 tok/s, exact IDs == true AR on
-all ten prompts, acceptance 49.6%, 2.95 tokens per target forward; the AR
-control is now 12.05 tok/s (1.80x). DFlash did not move because block verify
-runs eagerly through the exact multi-row owners rather than the fused decode
-graph; carrying the fused glue and grouped projections into verify is the
-DFlash lever.
+**DFlash (mtpbench, budget 4, r=1):** 22.93 tok/s (transition-norm 22.86),
+exact IDs == true AR on all ten prompts, acceptance 49.3%, 2.94 tokens per
+target forward; the AR control is 12.18 tok/s (1.88x), beats Gate B (21.30).
+The block verify now runs the fused decode glue — the multi-row
+QK-norm/rope/KV-append and the sigmoid gate inside the attention combine —
+while projections stay on the weight-amortized exact-row owners (the rows-1
+grouped GEMV would re-read weights per row, so it is not the verify lever).
+This recovered +6% over the prior 21.64 / 1.80x row, part of the speedup lost
+when AR decode got faster. Fusing the residual boundaries into verify is the
+remaining optional launch-reduction lever.
 
 **Remaining decode levers:** decode attention is ~2.5x its bandwidth floor at
 32K and dominates the 128K decode drop (a lane-per-key restructure of the
