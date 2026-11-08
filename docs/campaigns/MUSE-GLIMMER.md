@@ -861,3 +861,18 @@ would overfit high-acceptance prompts). The lever the data supports is
 acceptance/profit-based online depth adaptation (follow-up). Tool:
 `scripts/muse_glimmer_dflash_context_budget_sweep.py`. Record:
 `worklog/entries/20261108T162214.355825Z-lhl-muse-glimmer-12f246.md`.
+
+**#3 draft head landed (2026-11-08); draft attention remains.** The DFlash draft
+lm_head (Q5_K, 202,048 vocab) now resolves the existing single-wave Q5 production
+rowtile (registered for gfx1151) instead of the parent-parity four-wave rowtile,
+guarded to rows 2..8 with an exact_rows fallback. The draft only proposes, so it
+owes no bit-exactness; verify stays exact. Head kernel 7.18 -> 4.37 ms/cycle
+(-39%, rocprof, context-independent). Full mtpbench budget-4 A/B: acceptance
+identical (0.4272, zero argmax flips), DFlash IDs == AR, decode 21.79 -> 22.41
+tok/s (+2.8%). Long-context back-to-back A/B: 32K -7.9 ms/cycle, 126K -7.0
+(acceptance identical, exact; absolute times thermally inflated this session).
+The draft attention (~9.2 ms/cycle, strict scalar non-causal windowed block
+kernel) is the remaining #3 half: every available flash route is causal-only
+and/or head_dim-256-only, so it needs a new non-causal WMMA block-flash kernel
+(separate unit). Record:
+`worklog/entries/20261108T173703.302553Z-lhl-muse-glimmer-f4516d.md`.

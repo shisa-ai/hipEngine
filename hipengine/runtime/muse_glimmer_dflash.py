@@ -57,6 +57,7 @@ from hipengine.loading.muse_glimmer_gguf import (
 )
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_exact_rows
+from hipengine.kernels.registry import resolve
 from hipengine.runtime.muse_glimmer import _rope_tables_neox
 
 _RAW_QUANT_KEYS = RAW_QUANT_KEYS
@@ -404,11 +405,27 @@ class MuseGlimmerDFlashDrafter:
             src.ptr, self._ptr("output_norm.weight"), self.normed.ptr,
             tokens, h, cfg.rms_eps, runtime=rt,
         )
-        launch_gguf_linear_exact_rows(
-            self.target_weights.weight("output.weight"), self.normed.ptr,
-            self.logits_bf16.ptr, tokens, h, self.vocab_size,
-            output_dtype="bf16", backend=self.backend, runtime=rt,
+        head_weight = self.target_weights.weight("output.weight")
+        # The draft head only proposes tokens; it owes no bit-exactness to the
+        # target decode. Prefer the faster single-wave production rowtile when
+        # the head quant declares it (~1.8x over the parent-parity rowtile at
+        # block rows); fall back to the exact rows owner otherwise. Verify stays
+        # exact, so DFlash IDs still equal true AR regardless of draft numerics.
+        head_fn = resolve(
+            backend=self.backend, layer="linear", quant=head_weight.spec.quant_key,
+            variant="t16_gemv_rowtile_single_wave_bf16_bf16_out", missing="none",
         )
+        if head_fn is not None and 2 <= tokens <= 8:
+            head_fn(
+                self.normed.ptr, head_weight.allocation("tiles").tensor.ptr,
+                self.logits_bf16.ptr, tokens, h, self.vocab_size, runtime=rt,
+            )
+        else:
+            launch_gguf_linear_exact_rows(
+                head_weight, self.normed.ptr,
+                self.logits_bf16.ptr, tokens, h, self.vocab_size,
+                output_dtype="bf16", backend=self.backend, runtime=rt,
+            )
         from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
 
         bf16_to_f32(self.logits_bf16.ptr, self.logits_f32.ptr,
