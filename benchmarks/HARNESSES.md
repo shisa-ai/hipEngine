@@ -221,9 +221,35 @@ Companion diagnostics that need no long prefill:
 | `scripts/muse_glimmer_dispatch_probe.py` | Which registry variant the default linear dispatcher picks per projection and row count. |
 | `scripts/muse_glimmer_dflash_budget_sweep.py` | DFlash tok/s, acceptance and exactness per `candidate_budget` on the mtpbench suite. |
 | `scripts/sampler_host_cost_probe.py` | Host `select_token` ms/token vs prompt length (CPU only). |
+| `scripts/measure_mixed_length_itl.py` | End-to-end mixed-length serving ITL: one long request alone, then with short co-resident requests (HTTP, window-average timing). |
+| `scripts/probe_splitk_rocprof_breakdown.py` | rocprofv3 driver splitting split-K batch attention into context-kernel vs reducer time. |
 
 Update this catalog in the same logical unit whenever a harness gains or loses
 an axis.
+
+## Mixed-length serving ITL A/B (empty-split class changes)
+
+`scripts/measure_mixed_length_itl.py` measures the end-to-end decode-rate
+effect of batched-attention scheduling changes: one ~64K-token request
+decodes alone, then alongside three ~520-token requests, then alone again.
+Primary metric is the **window-average decode rate** per phase. Protocol
+requirements, each learned from a confounded run:
+
+- Server: `--prefix-cache off` (identical cold prefill every run),
+  `HIPENGINE_SPECULATIVE_MTP_SERVING=off`, retained decode profile
+  (`HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1`).
+- Requests: `ignore_eos=true` **and** a seeded counting continuation tail
+  ("... Begin: one, two, three,"). Without the tail the model finishes its
+  answer and emits invisible special tokens; the server streams only
+  non-empty text deltas, so event counts silently undercount tokens.
+- Never use median inter-chunk interval as ITL: SSE delivery is bursty
+  (most intervals near zero). Window totals over token counts are
+  burstiness-invariant.
+- A/B arms must be separate server processes built from the two commits on
+  the same host; alternate repetitions to cancel thermal drift. Expect the
+  effect to be a few percent of decode at best — the kernel-level probe
+  (`scripts/probe_paged_decode_pool_invariance.py`) is the rigorous isolating
+  evidence; this harness bounds the realized in-vivo share.
 
 ## Parity measurement manifest (R0-R4)
 
