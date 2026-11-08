@@ -1563,7 +1563,11 @@ exactly (KL 0, zero flips) on frozen and probe corpora from 16 to 2048 ids. A si
 prefill forward is also bit-identical at 16-512 ids. But on the UD-Q4_K_XL artifact
 the lever only engaged the exact Q5_K `gate_up_iu8` leaf; the Q4_K MMQ32 int8 leaf,
 the one behind the recorded short-prefill divergence, declined in every run. The
-verdict therefore does not cover MMQ32.
+verdict therefore does not cover MMQ32. **gfx1100 confirms (2026-11-08, W7900):**
+`gemma4_mmq_default_route_check.py` on the same UD-Q4_K_XL artifact reports
+`mmq_ran=False` with routes `selected_gemv`/`grouped_prefill`/`gate_up_iu8` and no
+`gate_up_mmq32`, so the MMQ32 precondition is unmet on this artifact on both
+backends; a Q4_K-expert artifact that actually routes MMQ32 is still required.
 
 Done when: on a host and artifact where `gemma4_project_experts_gate_up_mmq` actually
 serves Q4_K layers through MMQ32 (`gemma4_moe_expert_route_counts()` reports
