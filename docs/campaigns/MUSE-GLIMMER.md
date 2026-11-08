@@ -622,13 +622,18 @@ This recovered +6% over the prior 21.64 / 1.80x row, part of the speedup lost
 when AR decode got faster. Fusing the residual boundaries into verify is the
 remaining optional launch-reduction lever.
 
-**Remaining decode levers:** decode attention is ~3.3x its 2.35 ms DRAM floor
-at 32K (7.7 ms/step) and grows to ~28% of the step at 128K, but it is
-L2/compute/latency-bound, not DRAM-bound: a cooperative LDS K/V tiling that
-removes the 4x redundant per-wave reads measured neutral (the redundant reads
-hit L2, not DRAM), so the remaining attention lever is a lane-per-key
-restructure of the shared decode/verify kernel — a larger rewrite with a
-bounded ceiling (~10% at 32K, ~26% at 128K). Decode is weight-bandwidth-bound
-(GEMVs ~87% of the 32K step), so the larger short-context lever is T16 Q4
-scale/min compaction (+2.78% bytes); also folding silu into the down GEMV input
-and merging the split/combine launches.
+**Remaining decode levers:** decode attention scales linearly with context
+(isolated full-attn per layer: 0.573 ms at 32K -> 8.858 ms at 512K) at a
+constant ~3.6x its DRAM floor, while the weight GEMVs are constant (~77.6
+ms/token). It is compute/latency-bound, not DRAM-bound: a cooperative LDS K/V
+tiling that removes the 4x redundant per-wave reads measured neutral at EVERY
+context 32K-512K (the redundant reads are absorbed even when K/V far exceeds the
+2 MB L2), so bandwidth optimization is a dead end. The lever is a lane-per-key
+restructure of the shared decode/verify kernel (drop the per-key wave reduction).
+Because attention grows with context while weights do not, the win is not
+bounded — it grows: bringing attention to its floor projects +7% decode at 32K,
++20% at 128K (the model max; 8.95 -> 11.21 tok/s), +31% at 256K, +43% at 512K
+(4.97 -> 8.79; 256K/512K are beyond the trained 128K window). For long-context
+agentic use this is the primary decode lever. The larger short-context lever is
+T16 Q4 scale/min compaction (+2.78% bytes); also folding silu into the down GEMV
+input and merging the split/combine launches.
