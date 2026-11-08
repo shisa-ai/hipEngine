@@ -824,3 +824,22 @@ at 126K: AR 9.14 → 10.91 tok/s, DFlash 10.38 → 17.74 tok/s (verify 235.9 →
 122.7 ms/cycle), exact at every context; 512 unchanged. Verify GEMVs (#2) are
 now the largest verify cost. Record:
 `worklog/entries/20261108T121730.722551Z-lhl-muse-glimmer-d5e6d4.md`.
+
+**#2 investigated (2026-11-08): the GEMV ceiling is mostly inherent.** A
+phase-tagged rocprofv3 split of the verify-vs-AR GEMV gap at 32K gives Q4
+rowtile +11.5 ms, Q6 rowtile +3.4 ms, Q5 head +2.7 ms. The dominant Q4 piece is
+the exposed cost of five bit-exact row dot-products (5x the rows-1 AR FMA) over
+an already-amortized weight read: vectorizing its nibble/activation loads to the
+AR grouped owner's wide loads and sweeping the col4 / two-wave geometries are
+both neutral (the rows-5 kernel runs ~83% of the DRAM read ceiling the rows-1
+owner reaches). The §11 "reach AR-grouped rows-1 efficiency" ceiling is therefore
+largely unreachable for an exact multi-row verify. The recoverable piece landed:
+the Q6 rowtile now hoists per-column d and reads scale rows / qmicro records with
+wide loads (the AR hoisted owner's optimizations, ported to the weight-amortized
+rowtile), cutting Q6 verify GEMV 17.13 -> 15.6 ms/cycle (-8.5%),
+context-independent and bit-identical (103 GPU + 30 exact-rows + ten-prompt
+DFlash==AR + public-surface + runner-oracle gates green). The lever that actually
+attacks the inherent multi-row cost is the context-aware candidate budget (next
+in the revised order): fewer verify rows or higher acceptance reduces the 5x FMA
+directly. Record:
+`worklog/entries/20261108T150626.022935Z-lhl-muse-glimmer-3f84bc.md`.

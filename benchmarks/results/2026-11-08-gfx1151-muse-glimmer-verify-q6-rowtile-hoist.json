@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "kind": "muse_glimmer_verify_gemv_subwindow",
+  "status": "retained_subwindow_win",
+  "performance_claim": false,
+  "claim_scope": "verify-block Q6 projection kernel sub-window; not a topline DFlash tok/s row",
+  "date": "2026-11-08",
+  "model": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1151",
+  "host": "zbook / Radeon 8060S (gfx1151), Ryzen AI MAX+ PRO 395",
+  "compiler": "HIP 7.15.26333 / AMD clang 23.0.0git",
+  "baseline_commit": "ddaa5996173f32f624326a14155192ed59e745d8",
+  "kernel": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel",
+  "change": "hoist per-column d once per superblock; read g16 scale row and qmicro record with wide loads (AR hoisted-owner optimizations ported to the weight-amortized rowtile); values/FMA/K-traversal/reduction unchanged",
+  "measurement": {
+    "method": "rocprofv3 --kernel-trace --marker-trace; ROCTX range around verify_with_taps at synthetic live length; kernel-sum per call, 8 iterations",
+    "driver": "scratch marker driver (session scratchpad), prebuilt caches + HIPENGINE_REQUIRE_CACHED_BUILD=1 + compiler-version file",
+    "q6_rowtile_ms_per_cycle": {
+      "baseline_32k": 17.13,
+      "modified_512": 15.70,
+      "modified_32k": 15.68,
+      "modified_126k": 15.55
+    },
+    "delta_ms_per_cycle": -1.45,
+    "delta_pct": -8.5,
+    "context_dependence": "none (weight GEMV; KV length does not enter the projection)",
+    "verify5_wall_32k_ms": {"baseline": 109.67, "modified": 108.29},
+    "thermal_control": "unchanged Q4 rowtile reads 68.66/68.75/69.12/68.35 ms across the same runs (<1% spread); the 8.5% Q6 drop is a kernel effect"
+  },
+  "q4_falsification": {
+    "finding": "the dominant verify-vs-AR GEMV gap (Q4 +11.5 ms at 32K) is the exposed cost of five bit-exact row dot-products over an already-amortized weight read, not a load/geometry defect",
+    "tests_neutral": [
+      "vectorize nibble + activation loads to the AR grouped owner's wide loads: Q4 rowtile 68.74 ms == 68.66 baseline, VGPR unchanged 168 (reverted)",
+      "col4 / two-wave geometry sweep on ffn_up/attn_q rows 4-8: neutral or slower at rows=5"
+    ],
+    "bandwidth": "Q4 rows-5 rowtile ~83% of the DRAM read ceiling the rows-1 grouped owner reaches; the difference is exposed 5-row FMA",
+    "implication": "the §11 'reach AR-grouped rows-1 efficiency' ceiling is largely unreachable for an exact multi-row verify; the context-aware candidate budget (fewer rows / higher acceptance) is the lever that attacks the inherent cost"
+  },
+  "correctness_gates": {
+    "test_gpu_gguf_q6_k_t16_gemv_decode.py": "103 pass (rowtile_col8 bf16/f32 bit-exact-to-legacy)",
+    "test_live_muse_glimmer_exact_rows.py": "30 pass (rows 1-15, >8 chunk boundary, all roles, resident weights)",
+    "test_live_muse_glimmer_dflash_exactness.py": "DFlash IDs == true AR ten-prompt mtpbench (budget 15) + public hipengine.LLM speculative_provider=dflash surface confirms route",
+    "test_live_muse_glimmer_runner.py": "5 pass (CPU reference, llama.cpp oracle, coherent greedy, decode==fresh-prefill, graph engagement)",
+    "verify_gemv_bitidentity_rows5": "all 9 projection roles bit-exact"
+  },
+  "worklog": "worklog/entries/20261108T150626.022935Z-lhl-muse-glimmer-3f84bc.md",
+  "campaign": "docs/campaigns/MUSE-GLIMMER.md §11.1 (#2 investigated note)"
+}
