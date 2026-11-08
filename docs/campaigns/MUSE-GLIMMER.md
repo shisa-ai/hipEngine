@@ -843,3 +843,21 @@ attacks the inherent multi-row cost is the context-aware candidate budget (next
 in the revised order): fewer verify rows or higher acceptance reduces the 5x FMA
 directly. Record:
 `worklog/entries/20261108T150626.022935Z-lhl-muse-glimmer-3f84bc.md`.
+
+**Context-aware budget measured (2026-11-08): the optimum is acceptance-driven,
+not context-driven; default 4 stands.** A candidate_budget 2-7 sweep at
+2K/512/32K/126K on identical KV (corpus prompt snapshotted once, AR + every budget
+decoded from the same resident prompt KV; 24/24 DFlash==AR) shows the corpus
+optimum declines modestly with context (argmax 7@2K -> 5@32K -> 4@126K) but the
+curve is flat near the peak: budget 4 is at/near the peak at every context and the
+clear optimum at 126K (19.27 tok/s); budgets 6-7 regress at length. The
+short-context high-budget preference is a prompt/acceptance effect (the
+high-acceptance merge prompt peaks at 7, the natural mtpbench suite at 4), not a
+context effect. This falsifies the prediction above that the optimum rises with
+context after #1 — it flat-to-falls. The shipping default candidate_budget=4 is
+the robust measured choice, so no context->budget runtime policy or flag is added
+(a map returning the default is dead code; raising the short-context default
+would overfit high-acceptance prompts). The lever the data supports is
+acceptance/profit-based online depth adaptation (follow-up). Tool:
+`scripts/muse_glimmer_dflash_context_budget_sweep.py`. Record:
+`worklog/entries/20261108T162214.355825Z-lhl-muse-glimmer-12f246.md`.
