@@ -220,15 +220,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 checkpoint("fault_complete", {"phase": fault_phase, "passed": row["passed"]})
 
             # Simulate cancellation arriving while the owned cycle is in flight:
-            # the first checkpoint admits the cycle; the second is after target
-            # commit and draft repair and must suppress response publication.
+            # inject at the checkpoint that follows target commit and draft repair
+            # (last seen phase after_draft_repair) so response publication is
+            # suppressed. Counting raw checkpoint calls is not portable: prefill's
+            # per-chunk checkpoint polling adds calls before the first decode cycle.
             checkpoint_calls = 0
             seen: list[str] = []
 
             def cancel_after_cycle() -> None:
                 nonlocal checkpoint_calls
                 checkpoint_calls += 1
-                if checkpoint_calls == 2:
+                if seen and seen[-1] == "after_draft_repair":
                     raise GenerationCancelled()
 
             cancel_error = None
@@ -273,7 +275,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             }
             cancel_row["passed"] = bool(
                 cancel_error == "cancelled"
-                and checkpoint_calls == 2
                 and seen[-1:] == ["after_draft_repair"]
                 and not prepared_open
                 and cancel_health["output_ids_exact"]
@@ -288,7 +289,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             def deadline_after_cycle() -> None:
                 nonlocal deadline_calls
                 deadline_calls += 1
-                if deadline_calls == 2:
+                if deadline_seen and deadline_seen[-1] == "after_draft_repair":
                     raise GenerationDeadlineExceeded(deadline_at=time.perf_counter())
 
             deadline_error = None
@@ -333,7 +334,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             }
             deadline_row["passed"] = bool(
                 deadline_error == "deadline_exceeded"
-                and deadline_calls == 2
                 and deadline_seen[-1:] == ["after_draft_repair"]
                 and not deadline_prepared_open
                 and deadline_health["output_ids_exact"]
@@ -425,9 +425,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "cycles": int(terminal.cycles),
                     "mtp_health": terminal_health,
                 }
+                # The terminal must stop exactly at the terminal prefix with clean
+                # following health. The cycle count is acceptance-dependent (a
+                # slower-accepting host needs more cycles to reach the terminal), so
+                # assert speculation engaged (>=1) rather than a fixed cycle count.
                 terminal_row["passed"] = bool(
                     tuple(terminal.token_ids) == expected_prefix
-                    and terminal.cycles == 1
+                    and terminal.cycles >= 1
                     and terminal_health["output_ids_exact"]
                     and terminal_health["lifecycle_phases_exact"]
                 )

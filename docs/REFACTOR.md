@@ -1988,21 +1988,3 @@ Done when: reproduce the growth with a controlled streaming-cohort loop, attribu
 capture/close buffer accounting (allocator or rocprofv3 memory trace), decide leak versus bounded
 retention, fix or bound it, and verify tracked memory plateaus across repeated identical cohorts
 with clean teardown. Do not disable graph replay or the prefill invalidation contract to hide it.
-
-### R0523 — Lifecycle-gate injection portability
-
-Owner: `scripts/gguf_mtp_lifecycle_gate.py`.
-
-Scope: the cancel/deadline checkpoint-count and terminal `cycles==1` assumptions.
-
-On the W7900 the six phase-fault containment rows pass, but the in-flight cancel/deadline and
-EOS/stop-in-cycle rows fail on stale assumptions rather than product behavior: prefill's per-chunk
-checkpoint polling shifts the gate's raw checkpoint count, and the terminal `cycles==1` expectation
-depends on draft acceptance. The product cancels cleanly at an owned boundary, emits exact terminal
-prefixes, and leaves exact MTP health afterward.
-
-Done when: repair the gate to inject cancellation/deadline by lifecycle phase rather than a raw
-checkpoint count, and assert the terminal prefix plus in-cycle stop without an acceptance-dependent
-cycle count, preserving the RF3 contract (no open transaction, repaired draft, exact following health).
-Run `python3 scripts/gguf_mtp_lifecycle_gate.py --model <dense GGUF> --fail-on-fail` on gfx1100 and
-confirm all rows pass; do not weaken the containment assertions to force a pass.
