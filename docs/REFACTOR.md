@@ -417,8 +417,8 @@ unused aliases.
 
 Done when: resolve the recorded ROCm/ROCm#6529 lifecycle investigation on
 gfx1100 and validate public automatic/explicit transport, rebuild, cancellation,
-shutdown and resource cleanup. No gfx1100 runtime is available on this gfx1151
-host. **Clearing action:** on gfx1100 run the safe public transport lifecycle
+shutdown and resource cleanup. A gfx1100 runtime is now available on the W7900
+host; the device checks have not run yet. **Clearing action:** on gfx1100 run the safe public transport lifecycle
 checks and follow `docs/reference/PM4.md`'s issue-grade runbook for investigation;
 reset-risk queue-recreation stress needs its separate explicit approval.
 The local graph-bench/transport/lifecycle unit bundle passes; it does not prove
@@ -1390,8 +1390,8 @@ explicit workspace scopes do not reread the environment. Preserve the workspace 
 and bounded q8_1 resource checks. See
 `worklog/entries/20261105T215959.241558Z-lhl-r0393-q6-e91c33.md`.
 
-**Concrete dependency:** this host exposes only gfx1151; no gfx1100 device is available
-for the remaining public engagement check.
+**Concrete dependency:** the remaining public engagement check needs a real packed-C8
+request on gfx1100. The W7900 host is now available; the check has not run yet.
 
 Done when: Hardware follow-up: run a real public packed-C8 request on gfx1100 and record selected Q6
 variant, grouped-kernel engagement, repeatability and allocation drain. gfx1151 normal public
@@ -1421,9 +1421,9 @@ Owner: `scripts/gguf_server_allocation_probe.py`.
 
 Scope: `scripts/gguf_server_allocation_probe.py` — RX 7900 XTX server capacity refresh.
 
-**Deferred hardware validation:** refresh the RX 7900 XTX single-request server context bound. This
-session has gfx1151 hardware, not the requested XTX; substituting its result would not establish
-that bound. On the XTX host, start with a short, multi-slab allocation probe, for example:
+**Deferred hardware validation:** refresh the RX 7900 XTX single-request server context bound. The
+XTX is now present in this host as the second gfx1100 device (24 GiB); the refresh has not run yet.
+Select the XTX explicitly and start with a short, multi-slab allocation probe, for example:
 
 ```bash
 python scripts/gguf_server_allocation_probe.py --model "$GGUF_MODEL" --kv-storage int8_per_token_head --kv-scale-dtype fp32 --kv-scale-granularity per_token_head --speculative-mtp-serving off --prefix-cache off --max-active-requests 1 --max-context-tokens 54272 --prompt-rows 2048 --decode-tokens 8 --json /tmp/xtx-server-capacity-54272.json
@@ -1600,7 +1600,8 @@ gfx1100 and Surya OCR on supported backends. The local Gemma model and matching
 `mmproj-F16.gguf` ran through gfx1151 HTTP image chat: usage, generation output and actual
 expanded prefill all report 284 prompt tokens, with clean teardown. See
 `worklog/entries/20261105T222851.099261Z-lhl-r0494-gemma-bbe09d.md`.
-Surya checkpoint is absent locally; gfx1100 hardware is unavailable on this host.
+The Gemma and Surya checkpoints are absent locally; gfx1100 hardware is now available, so the
+remaining dependency is the checkpoints.
 Qwen4Exp gfx1151 HTTP image validation passes; see
 `worklog/entries/20261031T201027.069818Z-lhl-r0494-qwen4exp-real-http-usage-c3cbd6.md`.
 Preserve the implemented contract: `GenerationOutput.prompt_tokens` owns the count, `None`
