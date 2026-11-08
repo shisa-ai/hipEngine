@@ -10,6 +10,7 @@ refused with a named capability instead of being quietly ignored.
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Sequence
@@ -42,6 +43,7 @@ _MUSE_GLIMMER_RESIDENT_PATH = "muse_glimmer_gguf_resident_eager"
 #: The production llama.cpp launcher serves this model at 8192 positions; the
 #: artifact declares 131072 and the cache admits any positive bound up to it.
 _DEFAULT_CONTEXT = 8192
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass
@@ -150,14 +152,20 @@ class MuseGlimmerGGUFGenerator:
         context = int(tokens)
         if context <= 0:
             raise ValueError("context_length must be positive")
-        # The artifact's declared context is the capability bound; memory is
-        # the only tighter limit and the cache allocation surfaces that.
+        # The artifact's declared context is its trained length, not a kernel
+        # bound: RoPE runs only on the window-2048 SWA layers (relative
+        # distance never exceeds the window), the global layers are NoPE, and
+        # the rope tables are sized to the requested context. Memory is the
+        # capability limit and the cache allocation surfaces it. A request
+        # beyond the trained length runs; output quality there is unmeasured.
         declared = int(self.weight_index.metadata.get(
             "muse-glimmer.context_length", 131072
         ))
         if context > declared:
-            raise ValueError(
-                f"context_length {context} exceeds the artifact's {declared} positions"
+            _LOG.warning(
+                "Muse Glimmer context_length %d exceeds the artifact's trained %d "
+                "positions; running without position scaling (NoPE global layers, "
+                "window-bounded RoPE)", context, declared,
             )
         return context
 

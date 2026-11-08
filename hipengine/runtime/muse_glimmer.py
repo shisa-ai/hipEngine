@@ -24,7 +24,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 import numpy as np
 
@@ -478,12 +478,16 @@ class MuseGlimmerResidentSession:
 
     # -- speculative (DFlash) surface --------------------------------------
     def prefill_with_taps(
-        self, token_ids: Sequence[int], tap_layers: Sequence[int]
+        self, token_ids: Sequence[int], tap_layers: Sequence[int],
+        tap_sink: Callable[[np.ndarray, int], None] | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Prompt pass capturing layer-input taps; returns (last logits, taps).
 
         ``taps`` is [n_tokens, len(tap_layers), n_embd] F32 in tap_layers order
-        (the DFlash feature-fusion input).
+        (the DFlash feature-fusion input). With ``tap_sink`` each prefill
+        chunk's taps go to ``tap_sink(taps, position_offset)`` as they are
+        produced and the returned taps are empty: the whole-prompt array is
+        n_taps * n_embd * 4 bytes per token (~35 GB of host memory at 256K).
         """
 
         self._require_open()
@@ -505,8 +509,13 @@ class MuseGlimmerResidentSession:
                 logits, taps = self._forward_block(
                     block, position_offset=begin, tap_layers=tap_layers
                 )
-                tap_chunks.append(taps)
+                if tap_sink is not None:
+                    tap_sink(taps, begin)
+                else:
+                    tap_chunks.append(taps)
         assert logits is not None
+        if tap_sink is not None:
+            return logits, np.empty((0, len(tap_layers), self.config.n_embd), np.float32)
         return logits, np.concatenate(tap_chunks, axis=0)
 
     def decode_with_taps(

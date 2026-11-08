@@ -174,9 +174,10 @@ class MuseGlimmerDFlashTextProvider:
         started = time.perf_counter()
         session.reset()
         drafter.reset()
-        logits, taps = session.prefill_with_taps(prompt_ids, tap_layers)
+        # Stream each prefill chunk's taps into the draft KV instead of
+        # materializing the whole prompt's taps on the host.
+        logits, _ = session.prefill_with_taps(prompt_ids, tap_layers, tap_sink=drafter.inject)
         self.counters.target_forwards += 1
-        drafter.inject(taps, 0)
         length = len(prompt_ids)
         last_committed = prompt_ids[-1]
         prev_argmax = int(np.argmax(logits))

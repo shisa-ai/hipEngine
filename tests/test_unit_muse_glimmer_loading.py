@@ -162,3 +162,20 @@ def test_permuted_quantized_rows_preserve_row_bytes() -> None:
     permuted = raw[perm]
     for dst, src in enumerate(perm):
         assert np.array_equal(permuted[dst], raw[src])
+
+def test_context_beyond_trained_positions_runs_with_a_warning(caplog) -> None:
+    from types import SimpleNamespace
+
+    from hipengine.generation.muse_glimmer_gguf import MuseGlimmerGGUFGenerator
+
+    owner = SimpleNamespace(
+        weight_index=SimpleNamespace(metadata={"muse-glimmer.context_length": 131072})
+    )
+    with caplog.at_level("WARNING"):
+        assert MuseGlimmerGGUFGenerator._validate_context(owner, 131072) == 131072
+    assert not caplog.records
+    with caplog.at_level("WARNING"):
+        assert MuseGlimmerGGUFGenerator._validate_context(owner, 262144) == 262144
+    assert "trained 131072" in caplog.text
+    with pytest.raises(ValueError):
+        MuseGlimmerGGUFGenerator._validate_context(owner, 0)
