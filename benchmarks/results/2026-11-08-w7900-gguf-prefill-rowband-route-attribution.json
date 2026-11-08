@@ -1,0 +1,207 @@
+{
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "backend": "hip_gfx1100",
+  "resolved_profile": "production",
+  "rows": [
+    {
+      "target_rows": 32,
+      "prompt_tokens": null,
+      "text": " the key",
+      "gate_up_retile_variants": [],
+      "gate_up_rows_seen": [
+        32
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 40,
+      "prompt_tokens": null,
+      "text": " rate in",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_row48_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        40
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 48,
+      "prompt_tokens": null,
+      "text": " French:",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_row48_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        48
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 49,
+      "prompt_tokens": null,
+      "text": ": \"",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_row64_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        49
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 56,
+      "prompt_tokens": null,
+      "text": " Python function",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_row64_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        56
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 64,
+      "prompt_tokens": null,
+      "text": " the result",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_row64_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        64
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 65,
+      "prompt_tokens": null,
+      "text": " result.",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_row128_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        65
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 73,
+      "prompt_tokens": null,
+      "text": " list and",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_row128_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        73
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 96,
+      "prompt_tokens": null,
+      "text": ".Translate",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_row128_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        96
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 128,
+      "prompt_tokens": null,
+      "text": "\n\n<think>",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_row128_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        128
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 129,
+      "prompt_tokens": null,
+      "text": " a\n\n",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        129
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 160,
+      "prompt_tokens": null,
+      "text": " choice.",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        160
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 192,
+      "prompt_tokens": null,
+      "text": "marize",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        192
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 193,
+      "prompt_tokens": null,
+      "text": "ize the",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        193
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    },
+    {
+      "target_rows": 200,
+      "prompt_tokens": null,
+      "text": " and the",
+      "gate_up_retile_variants": [
+        "dense_dual_wmma_prefill_bf16_bf16_out"
+      ],
+      "gate_up_rows_seen": [
+        200
+      ],
+      "down_owners": [],
+      "down_rows_seen": []
+    }
+  ],
+  "memory_baseline_current": 17727718532,
+  "memory_after_current": 18083595828,
+  "memory_closed_current": 0,
+  "performance_claim": false,
+  "kind": "gguf_prefill_rowband_route_attribution",
+  "source_commit": "4e654b878",
+  "notes": "R0199 gate/up+SiLU retile selection via public LLM.generate_detailed (C1, defaults-only production, no MTP), token-ID prompts for exact prefill rows. Dispatch hook records the selected variant per row point. R0200 down row64 owner did not engage in this ordinary-prefill path (uses shared-B parent); tracked separately."
+}
