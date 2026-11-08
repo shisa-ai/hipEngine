@@ -39,8 +39,8 @@ from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_separate_out_bf16
-from hipengine.kernels.hip_gfx1100.gemma4.gemma4_attention import (
-    gemma4_attention_prefill_bf16,
+from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_draft_attention import (
+    muse_glimmer_draft_flash_attention,
 )
 from hipengine.kernels.hip_gfx1100.gemma4.gemma4_norm import gemma4_rmsnorm_f32w_bf16
 from hipengine.loading.gguf import GGUFReader
@@ -354,15 +354,9 @@ class MuseGlimmerDFlashDrafter:
         window = int(cfg.sliding_window)
         key_start = max(0, position_offset - window + 1) if window > 0 else 0
         span = keys - key_start
-        q = np.arange(position_offset, keys, dtype=np.int64)[:, None]
-        k = np.arange(key_start, keys, dtype=np.int64)[None, :]
-        keep = k > q - window if window > 0 else np.ones((tokens, span), dtype=bool)
-        mask = self._mask_host[:tokens, :span]
-        np.copyto(mask, keep.astype(np.uint8))
-        copy_host_array_to_device(
-            DeviceBuffer(self.keep_mask.ptr, mask.nbytes),
-            np.ascontiguousarray(mask), runtime=rt,
-        )
+        # The non-causal WMMA block-flash derives the window mask on-device
+        # (key > position - window, no causal upper bound), so no host keep-mask
+        # upload is needed.
 
         launch_gguf_embedding(
             self.target_weights.weight("token_embd.weight"),
@@ -403,14 +397,11 @@ class MuseGlimmerDFlashDrafter:
                       tokens * row_bytes, MemcpyKind.DEVICE_TO_DEVICE)
             rt.memcpy(v_cache.ptr + position_offset * row_bytes, self.v_bf16.ptr,
                       tokens * row_bytes, MemcpyKind.DEVICE_TO_DEVICE)
-            gemma4_attention_prefill_bf16(
+            muse_glimmer_draft_flash_attention(
                 self.q_bf16.ptr, k_cache.ptr + key_start * row_bytes,
-                v_cache.ptr + key_start * row_bytes, self.keep_mask.ptr,
-                self.attn_out.ptr,
-                tokens=tokens, num_heads=cfg.n_heads, num_kv_heads=cfg.n_kv_heads,
-                head_dim=d, scale=float(d) ** -0.5, keys=span,
-                window=cfg.sliding_window, row_offset=position_offset - key_start,
-                runtime=rt,
+                v_cache.ptr + key_start * row_bytes, self.attn_out.ptr,
+                n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads, keys=span,
+                tokens=tokens, window=window, scale=float(d) ** -0.5, runtime=rt,
             )
             self._linear(self.attn_out.ptr, p + "attn_output.weight", self.proj.ptr,
                          tokens, q_dim, h)

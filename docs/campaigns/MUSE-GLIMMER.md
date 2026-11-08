@@ -918,3 +918,19 @@ untouched). The agentic case was already mitigated by prefix reuse + save/load;
 this cuts the fresh-conversation case. The target prefill now dominates long-
 context TTFT (separate lever). Record:
 `worklog/entries/20261108T192501.297591Z-lhl-muse-glimmer-c7a63e.md`.
+
+**#3 draft attention landed (2026-11-08): non-causal WMMA block-flash, 3.2x.**
+The drafter window attention (5 layers, 32Q/8KV, d128, 2048 window) ran on the
+strict scalar Gemma4 block kernel (~9.2 ms/cycle); every shipped flash route was
+incompatible (causal-only / head_dim-256-only). A new non-causal windowed WMMA
+block-flash (`muse_glimmer_draft_attention`) adapts the flash-prefill multi-token
+pattern to 4:1 GQA: shared K/V tiles, WMMA rows pack the GQA Q heads, mask
+`key > position - window` with no causal upper bound. This also corrects a latent
+deviation — the old scalar window>0 path causal-trimmed the block, whereas
+DFlash/llama.cpp intend non-causal. Back-to-back rocprof A/B: scalar 1.44 -> WMMA
+0.44 ms/layer-call (3.2x), ~7.2 -> ~2.2 ms/cycle (window-bound, holds at 32K/126K).
+Draft oracle vs llama.cpp + ten-prompt DFlash==AR + public surface green;
+acceptance 0.430 -> 0.434 (unchanged). Re-ran the context budget sweep: optimum
+still ~4 (acceptance-driven), exact throughout. The draft only proposes; the
+exact verify keeps output correct. Record:
+`worklog/entries/20261108T201319.751636Z-lhl-muse-glimmer-392318.md`.
