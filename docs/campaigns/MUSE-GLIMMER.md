@@ -904,3 +904,17 @@ unchanged. Bit-identical to the scalar penalty (targeted test) + 311-test sampli
 unit suite green. The top-p full-vocab argsort (~5-6 ms) is the remaining host
 sampler cost (separate follow-up). Record:
 `worklog/entries/20261108T185439.935493Z-lhl-muse-glimmer-c0a41a.md`.
+
+**#4 prefill-inject TTFT landed (2026-11-08, lowest priority).** The drafter
+inject built draft K/V from target taps in block_size=16 chunks through the
+8-row exact rowtile, re-reading each fc/K/V weight every 8 tokens (fc ~128 MB;
+~131 GB of fc reads at 32K). Inject owes no bit-exactness (it builds draft KV;
+the exact verify corrects every committed token), so it now runs 1024-row chunks
+through the WMMA prefill projections (weight read amortized over the chunk; fc
+1024-row 146 -> 28 ms). Inject 0.215 -> 0.076 ms/token (~2.8x): 32K 7.05 -> 2.48 s,
+126K -> 9.57 s. DFlash IDs == true AR, draft oracle, prefix cache green;
+acceptance 0.4272 -> 0.430 (unchanged), decode throughput unchanged (draft block
+untouched). The agentic case was already mitigated by prefix reuse + save/load;
+this cuts the fresh-conversation case. The target prefill now dominates long-
+context TTFT (separate lever). Record:
+`worklog/entries/20261108T192501.297591Z-lhl-muse-glimmer-c7a63e.md`.

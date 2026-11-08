@@ -66,6 +66,13 @@ _RAW_QUANT_KEYS = RAW_QUANT_KEYS
 class MuseGlimmerDFlashDrafter:
     """Resident draft weights + draft KV; shares the target's embd/head."""
 
+    # Injection builds the draft KV from target taps over the whole prompt; it
+    # owes no bit-exactness (the draft only proposes, verify corrects). Large
+    # chunks let the WMMA prefill projections amortize each weight read over
+    # many rows (~5x over the 8-row exact rowtile at 1024 rows), cutting the
+    # linear fresh-conversation inject TTFT. Draft block stays block_size.
+    _INJECT_CHUNK = 1024
+
     def __init__(
         self,
         reader: GGUFReader,
@@ -138,6 +145,18 @@ class MuseGlimmerDFlashDrafter:
             self._pos_host = np.empty(b, dtype=np.int64)
             self._mask_host = np.empty((b, self.max_context), dtype=np.uint8)
             self._logits_host = np.empty((b, self.vocab_size), dtype=np.float32)
+            # Dedicated large-chunk injection scratch (see _INJECT_CHUNK).
+            ic = self._INJECT_CHUNK
+            self._inj_feat = self._alloc(ic * len(cfg.target_layers) * h * 2)
+            self._inj_hidden = self._alloc(ic * h * 2)
+            self._inj_normed = self._alloc(ic * h * 2)
+            self._inj_k_bf16 = self._alloc(ic * kv_dim * 2)
+            self._inj_v_bf16 = self._alloc(ic * kv_dim * 2)
+            self._inj_k_f32 = self._alloc(ic * kv_dim * 4)
+            self._inj_k_rot = self._alloc(ic * kv_dim * 4)
+            self._inj_dummy_q = self._alloc(ic * q_dim * 4)
+            self._inj_positions = self._alloc(ic * 8)
+            self._inj_pos_host = np.empty(ic, dtype=np.int64)
             for _ in range(cfg.n_layers):
                 self._kv.append((
                     self._alloc(self.max_context * kv_dim * 2),
@@ -237,10 +256,10 @@ class MuseGlimmerDFlashDrafter:
             raise ValueError("injection must be contiguous with the draft context")
         if self._ctx_len + tokens > self.max_context:
             raise ValueError("draft KV overflow")
-        if tokens > cfg.block_size:
-            # Chunk long prefill injections through the block-sized scratch.
-            for begin in range(0, tokens, cfg.block_size):
-                self.inject(features[begin:begin + cfg.block_size], position_offset + begin)
+        if tokens > self._INJECT_CHUNK:
+            # Chunk long prefill injections through the large inject scratch.
+            for begin in range(0, tokens, self._INJECT_CHUNK):
+                self.inject(features[begin:begin + self._INJECT_CHUNK], position_offset + begin)
             return
         h, kv_dim, d = cfg.n_embd, cfg.n_kv_heads * cfg.head_dim, cfg.head_dim
         # Taps are BF16-origin (target hidden states captured bf16->f32), so
@@ -249,46 +268,58 @@ class MuseGlimmerDFlashDrafter:
         from hipengine.loading.materialize import float_array_to_bf16_bits
 
         bits = float_array_to_bf16_bits(features)
-        copy_host_array_to_device(DeviceBuffer(self.feat_buf.ptr, bits.nbytes),
+        copy_host_array_to_device(DeviceBuffer(self._inj_feat.ptr, bits.nbytes),
                                   bits, runtime=rt)
-        self._linear(self.feat_buf.ptr, "fc.weight", self.hidden_a.ptr, tokens,
-                     len(cfg.target_layers) * h, h)
+        self._inject_linear(self._inj_feat.ptr, "fc.weight", self._inj_hidden.ptr, tokens,
+                            len(cfg.target_layers) * h, h)
         gemma4_rmsnorm_f32w_bf16(
-            self.hidden_a.ptr, self._ptr("enc.output_norm.weight"), self.normed.ptr,
+            self._inj_hidden.ptr, self._ptr("enc.output_norm.weight"), self._inj_normed.ptr,
             tokens, h, cfg.rms_eps, runtime=rt,
         )
-        self._pos_host[:tokens] = np.arange(
+        self._inj_pos_host[:tokens] = np.arange(
             position_offset, position_offset + tokens, dtype=np.int64
         )
-        copy_host_array_to_device(self.positions, self._pos_host[:tokens], runtime=rt)
+        copy_host_array_to_device(self._inj_positions, self._inj_pos_host[:tokens], runtime=rt)
         for il in range(cfg.n_layers):
             p = f"blk.{il}."
-            self._linear(self.normed.ptr, p + "attn_k.weight", self.k_bf16.ptr, tokens,
-                         h, kv_dim)
+            self._inject_linear(self._inj_normed.ptr, p + "attn_k.weight", self._inj_k_bf16.ptr, tokens,
+                                h, kv_dim)
             from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
 
-            bf16_to_f32(self.k_bf16.ptr, self.k_f32.ptr, tokens * kv_dim, runtime=rt)
-            self._linear(self.normed.ptr, p + "attn_v.weight", self.v_bf16.ptr, tokens,
-                         h, kv_dim)
+            bf16_to_f32(self._inj_k_bf16.ptr, self._inj_k_f32.ptr, tokens * kv_dim, runtime=rt)
+            self._inject_linear(self._inj_normed.ptr, p + "attn_v.weight", self._inj_v_bf16.ptr, tokens,
+                                h, kv_dim)
             # K head-norm + NEOX rope via the fused F32 kernel; Q is a dummy
             # pass-through (same input, discarded output) since injection has
             # no query.
             gguf_qwen35_head_rmsnorm_partial_rotary_positions_f32_weight(
-                self.k_f32.ptr, self.k_f32.ptr,
+                self._inj_k_f32.ptr, self._inj_k_f32.ptr,
                 self._ptr(p + "attn_k_norm.weight"), self._ptr(p + "attn_k_norm.weight"),
-                self.cos_table.ptr, self.sin_table.ptr, self.positions.ptr,
-                self.dummy_q.ptr, self.k_rot_f32.ptr,
+                self.cos_table.ptr, self.sin_table.ptr, self._inj_positions.ptr,
+                self._inj_dummy_q.ptr, self._inj_k_rot.ptr,
                 cfg.rms_eps, tokens, cfg.n_kv_heads, cfg.n_kv_heads, d, d,
                 self.max_context, runtime=rt,
             )
-            f32_to_bf16(self.k_rot_f32.ptr, self.k_bf16.ptr, tokens * kv_dim, runtime=rt)
+            f32_to_bf16(self._inj_k_rot.ptr, self._inj_k_bf16.ptr, tokens * kv_dim, runtime=rt)
             k_cache, v_cache = self._kv[il]
             row_bytes = kv_dim * 2
-            rt.memcpy(k_cache.ptr + position_offset * row_bytes, self.k_bf16.ptr,
+            rt.memcpy(k_cache.ptr + position_offset * row_bytes, self._inj_k_bf16.ptr,
                       tokens * row_bytes, MemcpyKind.DEVICE_TO_DEVICE)
-            rt.memcpy(v_cache.ptr + position_offset * row_bytes, self.v_bf16.ptr,
+            rt.memcpy(v_cache.ptr + position_offset * row_bytes, self._inj_v_bf16.ptr,
                       tokens * row_bytes, MemcpyKind.DEVICE_TO_DEVICE)
         self._ctx_len += tokens
+
+    def _inject_linear(self, x: int, name: str, out: int, rows: int, inf: int, outf: int) -> None:
+        # Injection owes no bit-exactness (it builds the draft KV from target
+        # taps; the draft only proposes and verify corrects). At the large
+        # inject chunk the WMMA prefill amortizes each weight read over many
+        # rows (~5x over the 8-row exact rowtile), unlike the draft block's
+        # small-row exact owners.
+        launch_gguf_linear(
+            self._weight(name), x, out, rows, inf, outf,
+            use_wmma_prefill=True, activation_dtype="bf16", output_dtype="bf16",
+            backend=self.backend, runtime=self.runtime,
+        )
 
     # -- token mode --------------------------------------------------------
     def draft_block(self, token_ids: np.ndarray) -> np.ndarray:
