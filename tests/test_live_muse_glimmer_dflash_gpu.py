@@ -84,3 +84,41 @@ def test_draft_block_matches_oracle(setup, oracle) -> None:
         cos = float(np.sum(draft_logits * reference) / (
             np.linalg.norm(draft_logits) * np.linalg.norm(reference)))
         assert cos >= 0.999, f"draft logits cosine {cos}"
+
+
+def test_draft_block_long_context_uses_window_slice(setup) -> None:
+    """Past the strict kernel's resident-logit LDS bound (~16K keys) the draft
+    still runs: its SWA attention only reads the window slice. The result must
+    match a short-context draft over the same windowed keys at the same
+    relative positions (RoPE is relative; only the absolute tables differ)."""
+
+    from hipengine.loading.gguf import GGUFReader
+    from hipengine.runtime.muse_glimmer_dflash import MuseGlimmerDFlashDrafter
+
+    session, short_drafter, dcfg, target_loaded = setup
+    _, taps = session.prefill_with_taps(PROMPT_IDS, dcfg.target_layers)
+    tile = np.tile(taps, (16, 1, 1))  # 96 rows, period 6
+    long_len, short_len = 96 * 209, 96 * 32
+    assert (long_len - short_len) % len(PROMPT_IDS) == 0
+    block = np.asarray([PROMPT_IDS[-1]] + [dcfg.mask_token_id] * 4, dtype=np.int64)
+
+    def draft(max_context: int, length: int) -> np.ndarray:
+        drafter = MuseGlimmerDFlashDrafter(
+            GGUFReader(DRAFT), dcfg, target_weights=target_loaded,
+            backend="hip_gfx1151", max_context=max_context,
+        )
+        try:
+            for pos in range(0, length, tile.shape[0]):
+                drafter.inject(tile, pos)
+            return drafter.draft_block(block)
+        finally:
+            drafter.close()
+
+    long_logits = draft(long_len + 64, long_len)
+    short_logits = draft(short_len + 64, short_len)
+    assert np.isfinite(long_logits).all()
+    for row in range(block.size):
+        a, b = long_logits[row], short_logits[row]
+        cos = float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+        assert cos >= 0.999, f"row {row} cosine {cos}"
+        assert int(np.argmax(a)) == int(np.argmax(b)), f"row {row} argmax differs"
