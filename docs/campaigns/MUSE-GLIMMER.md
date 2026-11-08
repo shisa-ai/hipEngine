@@ -891,3 +891,16 @@ GPU-weight-bound, host dispatch hidden) — the shipped decode graph likewise sh
 is the full-speed host-dispatch bubble (inferred, not confirmable while throttled);
 the 740->1 launch reduction is real and thermal-independent. Record:
 `worklog/entries/20261108T184336.461336Z-lhl-muse-glimmer-3a38a2.md`.
+
+**Host sampler track (2026-11-08): history penalties −86% at 131K.** Sampled AR
+requests (DFlash is greedy-only) pay the host sampler directly. The active
+repetition penalty rebuilt `Counter(prompt+generated)` every token (O(history),
+21.5 ms at 131K) then looped per unique token. Now `history_counts` is incremental
+(build once, `observe()` increments, `clone()` rebuilds) and the penalty is
+vectorized (`np.fromiter` ids/counts, frequency term cast to the logits dtype to
+match the scalar value-based cast). Probe: rep penalty 21.51 → 2.93 ms/token at
+131K (−86%), 6.29 → 1.02 at 32K, near-flat; greedy 0.18 and top-p ~5-6 ms
+unchanged. Bit-identical to the scalar penalty (targeted test) + 311-test sampling
+unit suite green. The top-p full-vocab argsort (~5-6 ms) is the remaining host
+sampler cost (separate follow-up). Record:
+`worklog/entries/20261108T185439.935493Z-lhl-muse-glimmer-c0a41a.md`.

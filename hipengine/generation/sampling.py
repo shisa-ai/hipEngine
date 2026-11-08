@@ -140,6 +140,7 @@ class RowSamplingState:
     _json_object_constraint: JsonObjectConstraintState | None = field(init=False, repr=False)
     _tool_call_constraint: ToolCallConstraintState | None = field(init=False, repr=False)
     _skip_next_selected_token_text: bool = field(default=False, init=False, repr=False)
+    _history_counts_cache: Counter | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.prompt_tokens = tuple(int(token) for token in self.prompt_tokens)
@@ -224,7 +225,16 @@ class RowSamplingState:
         return (*self.prompt_tokens, *tuple(self.generated_tokens))
 
     def history_counts(self) -> Counter[int]:
-        return Counter(int(token) for token in self.history_tokens)
+        # Incremental cache: the prompt is fixed and generated tokens only grow
+        # via observe(), so rebuilding Counter(prompt + generated) every token
+        # (O(history), ~21 ms at 131K) is avoided. Built once on first use, then
+        # maintained by observe(). Callers must treat the result as read-only.
+        counts = self._history_counts_cache
+        if counts is None:
+            counts = Counter(int(token) for token in self.prompt_tokens)
+            counts.update(int(token) for token in self.generated_tokens)
+            self._history_counts_cache = counts
+        return counts
 
     def random_unit(self) -> float:
         value = float(self._rng.random())
@@ -234,6 +244,8 @@ class RowSamplingState:
     def observe(self, token_id: int) -> None:
         token = int(token_id)
         self.generated_tokens.append(token)
+        if self._history_counts_cache is not None:
+            self._history_counts_cache[token] += 1
         self.step_index += 1
         self._skip_next_selected_token_text = False
         if self.thinking_budget is not None:
@@ -1546,18 +1558,30 @@ def _apply_history_penalties(logits: np.ndarray, params: Any, state: RowSampling
     if not counts:
         return
     vocab = int(logits.size)
-    for token_id, count in counts.items():
-        if token_id < 0 or token_id >= vocab:
-            continue
-        if repetition_penalty != 1.0:
-            if logits[token_id] < 0.0:
-                logits[token_id] *= repetition_penalty
-            else:
-                logits[token_id] /= repetition_penalty
-        if presence_penalty != 0.0:
-            logits[token_id] -= presence_penalty
-        if frequency_penalty != 0.0:
-            logits[token_id] -= frequency_penalty * int(count)
+    # Vectorized over the unique in-vocab history tokens (the per-token Python
+    # loop was O(unique) interpreter overhead). The element-wise op order matches
+    # the scalar path exactly: repetition (sign-dependent mul/div), then presence
+    # subtract, then frequency*count subtract, each in the logits dtype.
+    all_ids = np.fromiter(counts.keys(), dtype=np.int64, count=len(counts))
+    in_vocab = (all_ids >= 0) & (all_ids < vocab)
+    ids = all_ids[in_vocab]
+    if ids.size == 0:
+        return
+    vals = logits[ids]
+    if repetition_penalty != 1.0:
+        negative = vals < 0.0
+        vals[negative] *= repetition_penalty
+        vals[~negative] /= repetition_penalty
+    if presence_penalty != 0.0:
+        vals -= presence_penalty
+    if frequency_penalty != 0.0:
+        # counts.values() iterates in the same order as counts.keys(); the same
+        # mask keeps ids and counts aligned. Cast the frequency term to the logits
+        # dtype before subtracting, matching the scalar path's value-based cast of
+        # the Python float (a float32 array -= a float64 array rounds differently).
+        all_counts = np.fromiter(counts.values(), dtype=np.float64, count=len(counts))
+        vals -= (frequency_penalty * all_counts[in_vocab]).astype(vals.dtype)
+    logits[ids] = vals
 
 
 def _apply_suppression_processors(logits: np.ndarray, params: Any, state: RowSamplingState) -> None:
