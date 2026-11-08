@@ -1378,36 +1378,6 @@ complete request-wall and per-request latency alongside aggregate throughput. Ru
 `tests/test_unit_server_f1_concurrency_bench.py`, `tests/test_unit_gguf_ar_decode_control.py` and
 execution-profile contract tests before changing the comparison interface.
 
-### R0388 — Dense budget diagnostic interface ownership
-
-Owner: `hipengine/speculative/mtp_budget.py`.
-
-Scope: `scripts/mtp_budget_diagnostics.py`, `hipengine/speculative/mtp_budget.py`.
-
-**Ownership decision:** retain the typed request-owned policy seam and CLI
-controllers as supported diagnostics. The runtime exports only observations and
-the protocol; sequence/adaptive controllers live in `scripts/mtp_budget_diagnostics.py`.
-The maintained dense suite creates a fresh policy per request and reports choices
-and post-commit observations. Public candidate-depth selection remains a separate
-shared-planner contract. No extraction is needed merely to move this protocol.
-
-**Validation:** host policy/suite/session tests pass, including cancellation before
-budget choice. A local gfx1151 dense suite run exercises all nine B1/B2/B3 ordered
-transitions, matches true-AR tokens for fixed and sequence arms, agrees with CPU
-acceptance and drains allocations. See
-`worklog/entries/20261105T205050.722023Z-lhl-r0388-diagnostic-owner-95d970.md`.
-
-Done when: complete live forced-prefix state-repair and device fault-cleanup
-checks before closure. Forced acceptance-prefix and failure-order observations have
-CPU control-flow coverage in `tests/test_unit_mtp_budget_session_lifecycle.py`,
-including request reset/reuse, tail clipping and cancellation after draft repair.
-The scheduler and resource boundaries are doubled: these tests do not prove
-forced-prefix GPU state repair or actual-device fault cleanup. Complete those
-live checks before closure. See
-`worklog/entries/20261105T205846.018145Z-lhl-r0388-cycle-order-10ca0c.md`.
-A new timing-adaptive default needs its own declared policy and comparison against
-fixed budgets; this ownership decision does not change or promote one.
-
 ### R0393-Q6 — Grouped-Q6 rollback interface and gfx1100 public engagement
 
 Owner: `hipengine/generation/qwen35_dense_gfx1100_profiles.py`.
