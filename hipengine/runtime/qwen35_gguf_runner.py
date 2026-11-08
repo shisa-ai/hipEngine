@@ -1212,10 +1212,12 @@ class DFlash2HiddenCaptureTargets:
         normalized: dict[int, DeviceBuffer] = {}
         for raw_depth, buffer in self.buffers.items():
             depth = int(raw_depth)
-            if depth not in DFLASH2_TAP_DEPTHS:
+            # Tap depths are caller-defined (depth = target layer_id + 1). DFlash2
+            # uses DFLASH2_TAP_DEPTHS; other drafters (e.g. DSpine) supply their
+            # own target_layer_ids, so accept any positive post-layer depth.
+            if depth < 1:
                 raise ValueError(
-                    "DFlash2 hidden captures are limited to the configured tap depths "
-                    f"{DFLASH2_TAP_DEPTHS}; got {depth}"
+                    f"hidden capture depth must be a positive post-layer depth; got {depth}"
                 )
             if not isinstance(buffer, DeviceBuffer):
                 raise TypeError("DFlash2 hidden capture destinations must be DeviceBuffer views")
