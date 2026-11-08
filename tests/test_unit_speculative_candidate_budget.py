@@ -1,4 +1,4 @@
-"""Explicit speculative candidate-depth setting and its compatibility alias."""
+"""Explicit speculative candidate-depth setting and its removed legacy name."""
 
 from __future__ import annotations
 
@@ -7,19 +7,19 @@ import warnings
 import pytest
 
 from hipengine.speculative.candidate_budget import (
-    LEGACY_GGUF_MTP_CANDIDATE_BUDGET_ENV,
+    REMOVED_GGUF_MTP_CANDIDATE_BUDGET_ENV,
     SPECULATIVE_CANDIDATE_BUDGET_ENV,
     resolve_explicit_candidate_budget_env,
 )
 
 CANONICAL = SPECULATIVE_CANDIDATE_BUDGET_ENV
-LEGACY = LEGACY_GGUF_MTP_CANDIDATE_BUDGET_ENV
+REMOVED = REMOVED_GGUF_MTP_CANDIDATE_BUDGET_ENV
 
 
 @pytest.fixture(autouse=True)
 def _unset_both_names(monkeypatch) -> None:
     monkeypatch.delenv(CANONICAL, raising=False)
-    monkeypatch.delenv(LEGACY, raising=False)
+    monkeypatch.delenv(REMOVED, raising=False)
 
 
 def _resolve_with_captured_warnings() -> tuple[int | None, list[warnings.WarningMessage]]:
@@ -45,69 +45,38 @@ def test_canonical_name_resolves_without_warning(monkeypatch) -> None:
     assert caught == []
 
 
-def test_legacy_only_warns_and_preserves_the_requested_depth(monkeypatch) -> None:
-    monkeypatch.setenv(LEGACY, "3")
+@pytest.mark.parametrize("canonical", [None, "3", "4"])
+def test_removed_name_raises_naming_its_replacement(monkeypatch, canonical) -> None:
+    monkeypatch.setenv(REMOVED, "3")
+    if canonical is not None:
+        monkeypatch.setenv(CANONICAL, canonical)
 
-    with pytest.warns(FutureWarning) as recorded:
-        value = resolve_explicit_candidate_budget_env()
+    with pytest.raises(ValueError, match="has been removed") as raised:
+        resolve_explicit_candidate_budget_env()
 
-    assert value == 3
-    assert len(recorded) == 1
-    message = str(recorded[0].message)
-    assert LEGACY in message
-    assert CANONICAL in message
-
-
-def test_agreeing_names_resolve_without_warning(monkeypatch) -> None:
-    monkeypatch.setenv(CANONICAL, "4")
-    monkeypatch.setenv(LEGACY, "4")
-
-    value, caught = _resolve_with_captured_warnings()
-
-    assert value == 4
-    assert caught == []
+    message = str(raised.value)
+    assert REMOVED in message
+    assert f"{CANONICAL}=3" in message
 
 
-def test_conflicting_names_raise_before_warning(monkeypatch) -> None:
-    monkeypatch.setenv(CANONICAL, "4")
-    monkeypatch.setenv(LEGACY, "3")
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        with pytest.raises(ValueError, match="conflicts"):
-            resolve_explicit_candidate_budget_env()
-
-    assert caught == []
-
-
-@pytest.mark.parametrize("name", [CANONICAL, LEGACY])
 @pytest.mark.parametrize("raw", ["not-an-int", "1.5"])
-def test_malformed_values_raise_before_warning(monkeypatch, name, raw) -> None:
-    monkeypatch.setenv(name, raw)
+def test_malformed_values_raise(monkeypatch, raw) -> None:
+    monkeypatch.setenv(CANONICAL, raw)
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        with pytest.raises(ValueError, match="positive integer"):
-            resolve_explicit_candidate_budget_env()
-
-    assert caught == []
+    with pytest.raises(ValueError, match="positive integer"):
+        resolve_explicit_candidate_budget_env()
 
 
-@pytest.mark.parametrize("name", [CANONICAL, LEGACY])
 @pytest.mark.parametrize("raw", ["0", "-2"])
-def test_non_positive_values_raise_before_warning(monkeypatch, name, raw) -> None:
-    monkeypatch.setenv(name, raw)
+def test_non_positive_values_raise(monkeypatch, raw) -> None:
+    monkeypatch.setenv(CANONICAL, raw)
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        with pytest.raises(ValueError, match=">= 1"):
-            resolve_explicit_candidate_budget_env()
-
-    assert caught == []
+    with pytest.raises(ValueError, match=">= 1"):
+        resolve_explicit_candidate_budget_env()
 
 
-def test_blank_legacy_value_is_unset_and_does_not_warn(monkeypatch) -> None:
-    monkeypatch.setenv(LEGACY, "   ")
+def test_blank_removed_value_is_unset(monkeypatch) -> None:
+    monkeypatch.setenv(REMOVED, "   ")
 
     value, caught = _resolve_with_captured_warnings()
 

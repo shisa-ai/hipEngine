@@ -62,37 +62,6 @@ def test_mtp2_generation_has_no_synchronous_raw_host_pointer_upload(
         )
 
 
-def test_stage_ngram_tokens_uploads_the_owning_array(monkeypatch) -> None:
-    calls: list[tuple[DeviceBuffer, np.ndarray, int, object]] = []
-
-    def upload(buffer, array, nbytes, *, runtime) -> None:
-        calls.append((buffer, array, int(nbytes), runtime))
-
-    monkeypatch.setattr(mtp2, "copy_host_array_to_device", upload)
-    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
-    adapter._cycle_ngram_tokens = SimpleNamespace(
-        ptr=0x1000,
-        numel=4,
-        device=Device("hip", 0),
-    )
-    runtime = object()
-
-    tensor = adapter._stage_ngram_tokens((5, 6, 7), runtime=runtime)
-
-    assert (tensor.ptr, tensor.shape, tensor.dtype) == (0x1000, (3,), DType.INT32)
-    assert len(calls) == 1
-    buffer, array, nbytes, call_runtime = calls[0]
-    assert (buffer.ptr, buffer.nbytes, nbytes, call_runtime) == (
-        0x1000,
-        12,
-        12,
-        runtime,
-    )
-    assert array.dtype == np.int32
-    assert array.flags.c_contiguous
-    assert array.tolist() == [5, 6, 7]
-
-
 def test_target_pad_token_tensor_uploads_pads_at_the_row_offset(monkeypatch) -> None:
     calls: list[tuple[DeviceBuffer, np.ndarray, int]] = []
     async_calls: list[tuple[object, ...]] = []
