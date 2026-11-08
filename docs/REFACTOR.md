@@ -2058,32 +2058,6 @@ cancellation and provider cleanup and confirm streaming actually ran. Unit adapt
 does not close it. Keep explicit capability failures and strict replay semantics until consumers
 migrate.
 
-### R0203 — Remove the default-route pre-accept EOS readback
-
-Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
-
-Scope: `_limit_target_batch_eos`; `device_chain_qualification_oracle=True`.
-
-**Oracle extraction and agreement complete:** the comparison body lives in
-`hipengine/benchmark/device_chain_oracle.py`, reached only through the explicit
-adapter option. Public dense MTP across the 18-prompt category/heldout suite at
-widths 2-4 ran the oracle on every physical cycle (139/146/147 cycles) with no
-GPU/CPU accept mismatch. The default route never materializes candidate tokens on
-the host. See `worklog/entries/20261107T230237.386965Z-lhl-r0203-oracle-matrix-fc92a5.md`.
-
-**Remaining pre-accept D2H:** for every request whose EOS is active (the public
-default), `_limit_target_batch_eos` copies that request's candidate IDs and target
-top-1 to the host before `_enqueue_target_batch_accept`, to bound the commit at EOS.
-Only `ignore_eos` requests avoid it.
-
-Done when: move the EOS bound into the device accept (or a device-side
-`greedy_chain_eos_limit`) so the default route issues no candidate/target readback
-before accept. Then re-run the D2H caller trace and the oracle matrix through public
-`LLM.generate(speculative_mtp=True)` with EOS active, including EOS inside the
-accepted prefix, at the root and beyond the remaining-decode bound, plus
-cancellation and teardown. Preserve pure CPU acceptance, the strict eager fallback
-and the opt-in oracle.
-
 ### R0205 — Finish profile-plan coverage before retiring compatibility selection
 
 Owner: `hipengine/execution_profiles.py`.

@@ -31,6 +31,7 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
     dflash_accept_chain_i32_packed,
+    dflash_greedy_chain_eos_limit_i32,
 )
 from hipengine.runtime.gguf_target_graph_alias import native_target_graph_alias
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
@@ -931,6 +932,7 @@ class Qwen35GGUFMTP2Adapter:
         self._batch_accept_owner: TargetVerifyBufferOwner | None = None
         self._batch_accept_remaining: Tensor | None = None
         self._batch_accept_payload: Tensor | None = None
+        self._batch_accept_eos_meta: Tensor | None = None
         self._batch_accept_library: Any | None = None
         self._cycle_workspace: RuntimeWorkspace | None = None
         self._cycle_proposal_hidden: Tensor | None = None
@@ -4470,17 +4472,24 @@ class Qwen35GGUFMTP2Adapter:
                     (max_requests, ACCEPT_PACKED_PAYLOAD_FIELDS),
                     DType.INT32,
                 )
+                eos_meta = workspace.reserve_tensor(
+                    f"target_verify/{bucket}/eos_limit_meta",
+                    (3 * max_requests,),
+                    DType.INT32,
+                )
             except Exception:
                 workspace.free()
                 self._batch_accept_workspace = None
                 self._batch_accept_owner = None
                 self._batch_accept_remaining = None
                 self._batch_accept_payload = None
+                self._batch_accept_eos_meta = None
                 raise
             self._batch_accept_workspace = workspace
             self._batch_accept_owner = owner
             self._batch_accept_remaining = remaining
             self._batch_accept_payload = payload
+            self._batch_accept_eos_meta = eos_meta
         if (
             self._batch_accept_owner is None
             or self._batch_accept_remaining is None
@@ -4606,7 +4615,12 @@ class Qwen35GGUFMTP2Adapter:
 
     @staticmethod
     def _limit_target_batch_eos(proposal, results, rows, remaining, *, runtime, tokenizer=None):
-        """Read only EOS requests' bounded IDs before selecting committed state."""
+        """Host reference for the greedy-chain EOS bound (opt-in oracle only).
+
+        The default route applies the same bound on device inside
+        :meth:`_enqueue_target_batch_accept`; this reads EOS requests' bounded
+        candidate and target IDs and is reached only by the qualification oracle.
+        """
         from hipengine.speculative.streaming import greedy_chain_eos_limit
 
         limits = list(remaining)
@@ -4641,8 +4655,15 @@ class Qwen35GGUFMTP2Adapter:
         transaction_id: int,
         runtime: Any,
         pad_rows: int = 0,
+        eos_token_ids: Sequence[int | None] | None = None,
     ) -> _PhysicalAcceptPending:
-        """Chain physical proposal/target IDs into GPU accept without D2H."""
+        """Chain physical proposal/target IDs into GPU accept without D2H.
+
+        ``eos_token_ids`` holds each request's active EOS id (``None`` when the
+        request has none or ignores it). The greedy-chain EOS bound is then
+        applied to the uploaded budget on device before accept, so EOS adds no
+        candidate or target readback.
+        """
 
         results = tuple(target_results)
         if proposal.request_ids != batch.request_ids or len(results) != len(
@@ -4773,6 +4794,42 @@ class Qwen35GGUFMTP2Adapter:
                 require_cached=bool(
                     getattr(self.generator, "require_cached_build", False)
                 ),
+            )
+        eos_ids = tuple(eos_token_ids) if eos_token_ids is not None else ()
+        if eos_ids and len(eos_ids) != request_count:
+            raise ValueError("EOS ids do not align with physical accept requests")
+        if any(eos is not None for eos in eos_ids):
+            eos_meta = self._batch_accept_eos_meta
+            if eos_meta is None:
+                raise RuntimeError("physical accept workspace has no EOS metadata")
+            # Unpadded proposal counts: padding rows follow the last request and
+            # are never reachable from a chain.
+            counts = np.asarray(
+                tuple(int(count) for count in proposal.candidate_counts),
+                dtype=np.int32,
+            )
+            first_rows = request_count + np.concatenate(
+                (np.zeros((1,), dtype=np.int64), np.cumsum(counts[:-1], dtype=np.int64))
+            ).astype(np.int32)
+            eos_values = np.asarray(
+                tuple(-1 if eos is None else int(eos) for eos in eos_ids),
+                dtype=np.int32,
+            )
+            if np.any(eos_values[np.asarray([eos is not None for eos in eos_ids])] < 0):
+                raise ValueError("EOS token ids must be non-negative")
+            _upload_timed(
+                eos_meta,
+                np.concatenate((first_rows, counts, eos_values)).astype(np.int32),
+                runtime,
+            )
+            dflash_greedy_chain_eos_limit_i32(
+                buffers.token_ids.ptr,
+                buffers.target_top1.ptr,
+                eos_meta.ptr,
+                remaining.ptr,
+                request_count,
+                library=self._batch_accept_library,
+                runtime=runtime,
             )
         output_stride = (
             int(buffers.committed_output_ids.strides[0])
@@ -5401,9 +5458,11 @@ class Qwen35GGUFMTP2Adapter:
                     ),
                     cancelled_request_ids=cancelled,
                 )
-            remaining = self._limit_target_batch_eos(
-                device_candidates, results, rows, remaining, runtime=targets[0].runtime,
-                tokenizer=getattr(self.generator, "tokenizer", None),
+            tokenizer = getattr(self.generator, "tokenizer", None)
+            eos_token_ids = tuple(
+                None if bool(getattr(row.request, "ignore_eos", False))
+                else _row_eos_token_id(row, tokenizer)
+                for row in rows
             )
             accept_started = time.perf_counter()
             accept_enqueue_started = time.perf_counter()
@@ -5415,6 +5474,7 @@ class Qwen35GGUFMTP2Adapter:
                 transaction_id=transaction_id,
                 runtime=targets[0].runtime,
                 pad_rows=pad_rows,
+                eos_token_ids=eos_token_ids,
             )
             accept_enqueue_seconds = time.perf_counter() - accept_enqueue_started
             accept_upload_seconds = float(pending.upload_seconds)
@@ -5445,13 +5505,20 @@ class Qwen35GGUFMTP2Adapter:
                 if device_draft is not None and bool(
                     getattr(self, "device_chain_qualification_oracle", False)
                 ):
+                    # The opt-in oracle reads candidates anyway, so it derives
+                    # the EOS-bounded budget on the host and thereby also checks
+                    # the device EOS bound the accept consumed.
+                    oracle_remaining = self._limit_target_batch_eos(
+                        device_candidates, results, rows, remaining,
+                        runtime=targets[0].runtime, tokenizer=tokenizer,
+                    )
                     candidate_readback_seconds = (
                         self._qualify_target_batch_device_accept(
                             frontier,
                             device_draft,
                             results,
                             gpu_summary,
-                            remaining,
+                            oracle_remaining,
                             provider=states[0].provider,
                             runtime=targets[0].runtime,
                         )
@@ -6394,6 +6461,7 @@ class Qwen35GGUFMTP2Adapter:
             self._batch_accept_owner = None
             self._batch_accept_remaining = None
             self._batch_accept_payload = None
+            self._batch_accept_eos_meta = None
             self._batch_accept_library = None
         if self._target_pad_token_scratch is not None:
             free(self._target_pad_token_scratch)

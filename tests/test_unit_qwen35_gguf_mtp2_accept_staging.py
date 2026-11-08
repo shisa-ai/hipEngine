@@ -135,15 +135,13 @@ def test_unregister_failure_does_not_skip_remaining_adapter_cleanup(
     runtime = _RecordingRuntime(fail_unregister=True)
     assert adapter._accept_staging_backing(runtime) is not None
     cleanup_calls: list[str] = []
-    adapter._ngram = SimpleNamespace(
-        close=lambda: cleanup_calls.append("ngram")
-    )
     adapter._batch_accept_workspace = SimpleNamespace(
         free=lambda: cleanup_calls.append("batch_accept")
     )
     adapter._batch_accept_owner = object()
     adapter._batch_accept_remaining = object()
     adapter._batch_accept_payload = object()
+    adapter._batch_accept_eos_meta = object()
     adapter._batch_accept_library = object()
     adapter._target_pad_token_scratch = object()
     adapter._target_pad_token_capacity = 64
@@ -156,11 +154,12 @@ def test_unregister_failure_does_not_skip_remaining_adapter_cleanup(
         adapter.close()
 
     assert runtime.unregistered == [runtime.registered[0][0]]
-    assert cleanup_calls == ["ngram", "batch_accept", "target_scratch"]
+    assert cleanup_calls == ["batch_accept", "target_scratch"]
     assert adapter._batch_accept_workspace is None
     assert adapter._batch_accept_owner is None
     assert adapter._batch_accept_remaining is None
     assert adapter._batch_accept_payload is None
+    assert adapter._batch_accept_eos_meta is None
     assert adapter._batch_accept_library is None
     assert adapter._target_pad_token_scratch is None
     assert adapter._target_pad_token_capacity == 0

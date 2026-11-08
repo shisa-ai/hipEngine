@@ -146,6 +146,44 @@ __global__ void dflash_accept_chain_i32_kernel(
   }
 }
 
+// Greedy-chain EOS bound, applied to the accept budget in place.
+// `meta` holds three int32 runs of `request_count`: each request's absolute row of
+// its first candidate in `token_ids`/`target_top1`, its candidate count, and its
+// EOS id (negative means no bound). Mirrors `greedy_chain_eos_limit`: walk the
+// predictions reachable before the first rejected edge; an EOS prediction at
+// chain index i bounds the visible output at i + 1, which keeps EOS as the next
+// token and excludes it and later speculative inputs from committed state.
+__global__ void dflash_greedy_chain_eos_limit_i32_kernel(
+    const int32_t* __restrict__ token_ids,
+    const int32_t* __restrict__ target_top1,
+    const int32_t* __restrict__ meta,
+    int32_t* __restrict__ remaining_decode,
+    int64_t request_count) {
+  const int64_t request_index =
+      static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (request_index >= request_count) {
+    return;
+  }
+  const int32_t first = meta[request_index];
+  const int32_t count = meta[request_count + request_index];
+  const int32_t eos = meta[2 * request_count + request_index];
+  const int32_t remaining = remaining_decode[request_index];
+  if (eos < 0 || remaining <= 0 || count < 0) {
+    return;
+  }
+  for (int32_t index = 0; index <= count && index < remaining; ++index) {
+    const int32_t token =
+        index == 0 ? target_top1[request_index] : target_top1[first + index - 1];
+    if (token == eos) {
+      remaining_decode[request_index] = index + 1;
+      return;
+    }
+    if (index == count || token != token_ids[first + index]) {
+      return;
+    }
+  }
+}
+
 bool valid_accept_shape(int64_t rows, int64_t request_count, int64_t output_stride) {
   return rows > 0 && request_count > 0 && request_count <= rows && output_stride > 0;
 }
@@ -394,5 +432,32 @@ extern "C" int hipengine_dflash_accept_chain_i32_native_cycle(
       rows,
       request_count,
       output_stride);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dflash_greedy_chain_eos_limit_i32(
+    const int32_t* token_ids,
+    const int32_t* target_top1,
+    const int32_t* meta,
+    int32_t* remaining_decode,
+    int64_t request_count,
+    hipStream_t stream) {
+  if (request_count <= 0 || token_ids == nullptr || target_top1 == nullptr ||
+      meta == nullptr || remaining_decode == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const int blocks = static_cast<int>((request_count + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      dflash_greedy_chain_eos_limit_i32_kernel,
+      dim3(static_cast<unsigned int>(blocks)),
+      dim3(threads),
+      0,
+      stream,
+      token_ids,
+      target_top1,
+      meta,
+      remaining_decode,
+      request_count);
   return static_cast<int>(hipGetLastError());
 }

@@ -15,6 +15,7 @@ _SYMBOL_CHAIN_I32 = "hipengine_dflash_accept_chain_i32"
 _SYMBOL_CHAIN_I32_PACKED = "hipengine_dflash_accept_chain_i32_packed"
 _SYMBOL_CHAIN_I32_PACKED_UPDATE_STATE = "hipengine_dflash_accept_chain_i32_packed_update_state"
 _SYMBOL_CHAIN_I32_NATIVE_CYCLE = "hipengine_dflash_accept_chain_i32_native_cycle"
+_SYMBOL_GREEDY_CHAIN_EOS_LIMIT_I32 = "hipengine_dflash_greedy_chain_eos_limit_i32"
 ACCEPT_PACKED_PAYLOAD_FIELDS = 7
 
 
@@ -419,6 +420,56 @@ def dflash_accept_chain_i32_native_cycle(
         ctypes.c_int64(rows),
         ctypes.c_int64(request_count),
         ctypes.c_int64(output_stride),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dflash_greedy_chain_eos_limit_i32(
+    token_ids_i32_ptr: int,
+    target_top1_i32_ptr: int,
+    meta_i32_ptr: int,
+    remaining_decode_i32_ptr: int,
+    request_count: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Bound each request's accept budget at its greedy-chain EOS, in place.
+
+    Device twin of :func:`hipengine.speculative.streaming.greedy_chain_eos_limit`
+    over the root-prefixed accept layout: roots occupy ``[0, request_count)`` of
+    ``token_ids``/``target_top1``. ``meta`` is three int32 runs of
+    ``request_count``: absolute first-candidate row, candidate count, and EOS id
+    (negative for none). Run it after ``remaining_decode`` and the target IDs are
+    in place and before the accept kernel, so EOS needs no host readback.
+    """
+
+    if request_count <= 0:
+        raise ValueError("request_count must be positive")
+    if not (token_ids_i32_ptr and target_top1_i32_ptr and meta_i32_ptr
+            and remaining_decode_i32_ptr):
+        raise ValueError("EOS limit pointers must be non-zero")
+    library = library or build_dflash_accept(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GREEDY_CHAIN_EOS_LIMIT_I32)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(token_ids_i32_ptr),
+        ctypes.c_void_p(target_top1_i32_ptr),
+        ctypes.c_void_p(meta_i32_ptr),
+        ctypes.c_void_p(remaining_decode_i32_ptr),
+        ctypes.c_int64(request_count),
         ctypes.c_void_p(stream),
     )
     if int(err) != HIP_SUCCESS:

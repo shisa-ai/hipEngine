@@ -4748,6 +4748,7 @@ def test_mtp2_wide_cycle_and_accept_workspaces_own_c8_k3(
     assert [shape for _name, shape, _dtype in reservations] == [
         (8,),
         (8, mtp2_module.ACCEPT_PACKED_PAYLOAD_FIELDS),
+        (24,),
     ]
 
 
