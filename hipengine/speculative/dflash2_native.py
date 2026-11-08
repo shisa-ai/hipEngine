@@ -75,6 +75,10 @@ def _dflash2_rope_tables(max_positions: int, rope_theta: float, head_dim: int) -
 class DFlash2NativeDrafter:
     """Device-resident DFlash2 drafter forward + selector (single request)."""
 
+    # DFlash2 attends bidirectionally within the block; DSpine overrides to True
+    # for its block-causal attention.
+    _attention_is_causal = False
+
     def __init__(
         self,
         config: DFlashDraftConfig,
@@ -417,7 +421,7 @@ class DFlash2NativeDrafter:
         dflash2_sliding_attention_f32_bf16(
             self.q_rot.ptr, self.k_cat.ptr, self.v_cat.ptr, self.qpos.ptr, self.kpos.ptr, self.attn_out.ptr,
             1, bs, kv_len, self.num_q_heads, self.num_kv_heads, self.head_dim,
-            sliding_window=window, is_causal=False,
+            sliding_window=window, is_causal=self._attention_is_causal,
             library=self._lib2, runtime=self.runtime,
         )
         # o_proj maps attention output (q_features) -> hidden; in-place would
