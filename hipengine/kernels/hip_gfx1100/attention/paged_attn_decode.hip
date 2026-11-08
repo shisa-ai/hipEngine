@@ -1260,20 +1260,8 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_batch_kerne
   const int32_t* __restrict__ block_table = block_tables + row * block_table_len;
 
   if (token_start >= context_len) {
-    if (threadIdx.x == 0) {
-      for (int64_t h = 0; h < q_per_kv; ++h) {
-        const int64_t partial_idx = ((row * num_q_heads + q_base + h) * num_splits) + split_idx;
-        partial_m[partial_idx] = -3.4028234663852886e38f;
-        partial_l[partial_idx] = 0.0f;
-      }
-    }
-    if (static_cast<int64_t>(threadIdx.x) < head_dim) {
-      const int64_t dim = threadIdx.x;
-      for (int64_t h = 0; h < q_per_kv; ++h) {
-        const int64_t partial_idx = ((row * num_q_heads + q_base + h) * num_splits) + split_idx;
-        partial_out[partial_idx * head_dim + dim] = 0.0f;
-      }
-    }
+    // Empty split: the batch gate reducer bounds each row by its live count,
+    // so invalid partials are never read and need no sentinel zeroing.
     return;
   }
 
@@ -3218,11 +3206,22 @@ __global__ void qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel(
     int64_t num_splits,
     int64_t head_dim,
     int64_t gate_stride1,
-    int64_t gate_stride2) {
+    int64_t gate_stride2,
+    const int64_t* __restrict__ context_len_ptr,
+    int64_t chunk_size) {
   const int64_t q_head = blockIdx.x;
   const int64_t row = blockIdx.y;
   if (row >= rows) {
     return;
+  }
+
+  // Valid splits form the prefix [0, ceil(context_len/chunk_size)). Batch
+  // context kernels leave invalid partials unwritten, so never read them.
+  // A null bounds pointer keeps the legacy whole-num_splits behavior.
+  int64_t valid_splits = num_splits;
+  if (context_len_ptr != nullptr && chunk_size > 0) {
+    const int64_t need = (context_len_ptr[row] + chunk_size - 1) / chunk_size;
+    valid_splits = need < num_splits ? need : num_splits;
   }
 
   extern __shared__ float sred[];
@@ -3231,7 +3230,7 @@ __global__ void qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel(
   float* sw = sl + num_splits;
   const int64_t partial_base = (row * gridDim.x + q_head) * num_splits;
 
-  for (int64_t i = threadIdx.x; i < num_splits; i += blockDim.x) {
+  for (int64_t i = threadIdx.x; i < valid_splits; i += blockDim.x) {
     sm[i] = partial_m[partial_base + i];
     sl[i] = partial_l[partial_base + i];
   }
@@ -3244,25 +3243,25 @@ __global__ void qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_kernel(
 
   if (threadIdx.x == 0) {
     float m_global = -3.4028234663852886e38f;
-    for (int64_t s = 0; s < num_splits; ++s) {
+    for (int64_t s = 0; s < valid_splits; ++s) {
       m_global = fmaxf(m_global, sm[s]);
     }
     float l_global = 0.0f;
-    for (int64_t s = 0; s < num_splits; ++s) {
+    for (int64_t s = 0; s < valid_splits; ++s) {
       const float li = sl[s];
       const float weight = (li > 0.0f) ? expf(sm[s] - m_global) : 0.0f;
       sw[s] = weight;
       l_global += li * weight;
     }
     const float inv_l = 1.0f / fmaxf(l_global, 1.0e-20f);
-    for (int64_t s = 0; s < num_splits; ++s) {
+    for (int64_t s = 0; s < valid_splits; ++s) {
       sw[s] *= inv_l;
     }
   }
   __syncthreads();
 
   float acc = 0.0f;
-  for (int64_t s = 0; s < num_splits; ++s) {
+  for (int64_t s = 0; s < valid_splits; ++s) {
     acc += partial_out[(partial_base + s) * head_dim + dim] * sw[s];
   }
 
@@ -3287,11 +3286,21 @@ __global__ void qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_strided_
     int64_t gate_dim_stride,
     int64_t out_row_stride,
     int64_t out_head_stride,
-    int64_t out_dim_stride) {
+    int64_t out_dim_stride,
+    const int64_t* __restrict__ context_len_ptr,
+    int64_t chunk_size) {
   const int64_t q_head = blockIdx.x;
   const int64_t row = blockIdx.y;
   if (row >= rows) {
     return;
+  }
+
+  // Valid splits form the prefix [0, ceil(context_len/chunk_size)); see the
+  // non-strided batch reducer. Null bounds pointer keeps legacy behavior.
+  int64_t valid_splits = num_splits;
+  if (context_len_ptr != nullptr && chunk_size > 0) {
+    const int64_t need = (context_len_ptr[row] + chunk_size - 1) / chunk_size;
+    valid_splits = need < num_splits ? need : num_splits;
   }
 
   extern __shared__ float sred[];
@@ -3300,7 +3309,7 @@ __global__ void qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_strided_
   float* sw = sl + num_splits;
   const int64_t partial_base = (row * gridDim.x + q_head) * num_splits;
 
-  for (int64_t i = threadIdx.x; i < num_splits; i += blockDim.x) {
+  for (int64_t i = threadIdx.x; i < valid_splits; i += blockDim.x) {
     sm[i] = partial_m[partial_base + i];
     sl[i] = partial_l[partial_base + i];
   }
@@ -3313,25 +3322,25 @@ __global__ void qwen35_paged_full_attn_decode_split_k_reduce_gate_batch_strided_
 
   if (threadIdx.x == 0) {
     float m_global = -3.4028234663852886e38f;
-    for (int64_t s = 0; s < num_splits; ++s) {
+    for (int64_t s = 0; s < valid_splits; ++s) {
       m_global = fmaxf(m_global, sm[s]);
     }
     float l_global = 0.0f;
-    for (int64_t s = 0; s < num_splits; ++s) {
+    for (int64_t s = 0; s < valid_splits; ++s) {
       const float li = sl[s];
       const float weight = (li > 0.0f) ? expf(sm[s] - m_global) : 0.0f;
       sw[s] = weight;
       l_global += li * weight;
     }
     const float inv_l = 1.0f / fmaxf(l_global, 1.0e-20f);
-    for (int64_t s = 0; s < num_splits; ++s) {
+    for (int64_t s = 0; s < valid_splits; ++s) {
       sw[s] *= inv_l;
     }
   }
   __syncthreads();
 
   float acc = 0.0f;
-  for (int64_t s = 0; s < num_splits; ++s) {
+  for (int64_t s = 0; s < valid_splits; ++s) {
     acc += partial_out[(partial_base + s) * head_dim + dim] * sw[s];
   }
 
@@ -3656,20 +3665,8 @@ __global__ void qwen35_paged_full_attn_decode_split_k_ctx_tensor_gqa_int8_batch_
   const int32_t* __restrict__ block_table = block_tables + (shared_table ? 0 : row * block_table_len);
 
   if (token_start >= context_len) {
-    if (threadIdx.x == 0) {
-      for (int64_t h = 0; h < q_per_kv; ++h) {
-        const int64_t partial_idx = ((row * num_q_heads + q_base + h) * num_splits) + split_idx;
-        partial_m[partial_idx] = -3.4028234663852886e38f;
-        partial_l[partial_idx] = 0.0f;
-      }
-    }
-    if (static_cast<int64_t>(threadIdx.x) < head_dim) {
-      const int64_t dim = threadIdx.x;
-      for (int64_t h = 0; h < q_per_kv; ++h) {
-        const int64_t partial_idx = ((row * num_q_heads + q_base + h) * num_splits) + split_idx;
-        partial_out[partial_idx * head_dim + dim] = 0.0f;
-      }
-    }
+    // Empty split: the strided batch gate reducer bounds each row by its live
+    // count, so invalid partials are never read and need no sentinel zeroing.
     return;
   }
 
@@ -6113,6 +6110,8 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16_
     int64_t head_dim,
     int64_t gate_stride1,
     int64_t gate_stride2,
+    const int64_t* context_len_ptr,
+    int64_t chunk_size,
     hipStream_t stream) {
   if (rows <= 0 || num_q_heads <= 0 || num_splits <= 0 || head_dim <= 0 || head_dim > 1024 ||
       gate_stride1 <= 0 || gate_stride2 <= 0) {
@@ -6135,7 +6134,9 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16_
       num_splits,
       head_dim,
       gate_stride1,
-      gate_stride2);
+      gate_stride2,
+      context_len_ptr,
+      chunk_size);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -6155,6 +6156,8 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16_
     int64_t out_row_stride,
     int64_t out_head_stride,
     int64_t out_dim_stride,
+    const int64_t* context_len_ptr,
+    int64_t chunk_size,
     hipStream_t stream) {
   if (rows <= 0 || num_q_heads <= 0 || num_splits <= 0 || head_dim <= 0 || head_dim > 1024 ||
       gate_row_stride <= 0 || gate_head_stride <= 0 || gate_dim_stride <= 0 ||
@@ -6182,7 +6185,9 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16_
       gate_dim_stride,
       out_row_stride,
       out_head_stride,
-      out_dim_stride);
+      out_dim_stride,
+      context_len_ptr,
+      chunk_size);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -6198,6 +6203,8 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_fp16_
     int64_t head_dim,
     int64_t gate_stride1,
     int64_t gate_stride2,
+    const int64_t* context_len_ptr,
+    int64_t chunk_size,
     hipStream_t stream) {
   if (rows <= 0 || num_q_heads <= 0 || num_splits <= 0 || head_dim <= 0 || head_dim > 1024 ||
       gate_stride1 <= 0 || gate_stride2 <= 0) {
@@ -6220,7 +6227,9 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_fp16_
       num_splits,
       head_dim,
       gate_stride1,
-      gate_stride2);
+      gate_stride2,
+      context_len_ptr,
+      chunk_size);
   return static_cast<int>(hipGetLastError());
 }
 
