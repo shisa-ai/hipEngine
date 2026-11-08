@@ -637,3 +637,107 @@ bounded — it grows: bringing attention to its floor projects +7% decode at 32K
 agentic use this is the primary decode lever. The larger short-context lever is
 T16 Q4 scale/min compaction (+2.78% bytes); also folding silu into the down GEMV
 input and merging the split/combine launches.
+
+## 11. DFlash long-context analysis and ordered priorities (2026-11-08)
+
+Integrates the reviewer's phase-tagged rocprofv3 profile (b132140d0) with the
+isolated attention microbenchmark from §10. Read-only analysis; lever gains are
+projections, labelled as ceilings. This refines §10's lever framing: the
+long-context DFlash lever is shared-K/V **verify** attention, not the AR-side
+lane-per-key restructure.
+
+**Bottom line.** DFlash is fixed for correctness but not for long-context speed.
+The drafter now attends its 2048-token SWA window instead of the whole context
+(81cc8cc5f; the full-context path overflowed the strict kernel's LDS past ~16K
+and crashed at 32K/126K), and the host sampler skips an O(prompt) history count
+when penalties are neutral (45433fe8b; was 11 ms/token at 126K). DFlash runs
+exactly at 126K, but its speedup over AR collapses from 1.93x at 512 to 1.10x at
+126K. Verify attention runs once per draft row with no K/V sharing and grows
+linearly with context; a shared-K/V verify kernel is the top priority.
+
+**Current DFlash state (measured; 2.94 tokens/cycle mtpbench average):**
+
+| Context | AR tok/s | DFlash tok/s | Speedup | Verify attn ms/cycle |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 11.95 | 23.02 | 1.93x | 3.3 |
+| 32K | 10.85 | 16.57 | 1.53x | 41.4 |
+| 126K | 8.61 | 9.47 | 1.10x | 161.5 |
+
+**Phase-tagged profile (ms; reviewer b132140d0):**
+
+| Phase | 512 | 32K | 126K |
+| --- | ---: | ---: | ---: |
+| AR step wall | 83.7 | 92.2 | 116.2 |
+| AR GEMVs | 75.8 | 76.1 | 77.1 |
+| AR decode attention | 1.3 | 9.6 | 32.4 |
+| Verify wall | 109.6 | 149.2 | 281.2 |
+| Verify GEMVs (rowtile) | 96.9 | 98.2 | 109.1 |
+| Verify attention | 3.3 | 41.4 | 161.5 |
+| Verify launch gaps (740 eager) | 7.1 | 7.1 | 7.9 |
+| Draft wall | 18.1 | 28.2 | 29.4 |
+| Draft attention (strict kernel) | 0.3 | 10.1 | 10.8 |
+| Prefill inject (16-row chunks) | 0 s | 13.9 s | 55.3 s |
+
+Verify attention is 5.15x AR attention at 126K (161.5 vs 32.4 ms) because each
+of the ~5 verify rows reads K/V independently; verify GEMVs run ~21-32 ms slower
+than AR grouped GEMVs at every context.
+
+**Reconciliation with the §10 microbenchmark analysis.** The isolated single-row
+microbenchmark drew system-level claims it could not support: it missed the
+multi-row verify cost (the real long-context problem), the drafter bug, and the
+host sampler cost. "Definitively compute-bound" was overconfident — a neutral
+LDS result does not classify the bottleneck (the tiling added sync/bank-conflict
+overhead), and "not bandwidth-bound" still leaves compute-bound vs latency-bound
+undistinguished; that needs hardware counters. The verify rowtile GEMVs called
+"already optimal" in §10 are ~21-32 ms/cycle slower than AR grouped. Root cause:
+isolated single-row GPU microbenchmark vs phase-tagged full-system profiling.
+
+**Levers: projected ms/cycle saved and context scaling (ceilings):**
+
+| Lever | 512 | 32K | 126K | Optimizes for | Scaling |
+| --- | ---: | ---: | ---: | --- | --- |
+| #1 Shared-K/V verify attention | 2.0 | 31.8 | 129.1 | Long | grows ~linearly with context |
+| #2 Verify GEMV efficiency | 21.1 | 22.1 | 32.0 | Both | ~constant every context |
+| #3 Draft window attention | 0.0 | 7.6 | 8.3 | >=2K | flat once the window fills |
+| #5 Verify graph capture | 7.1 | 7.1 | 7.9 | Both | constant |
+| #4 Prefill inject chunks | — | 13.9 s | 55.3 s | Long TTFT | one-time latency, not tok/s |
+
+- **#1 — long-context only.** Negligible at 512, dominant at 126K. Load each K/V
+  tile once for all verify rows x the 16 Q heads sharing a KV head (the WMMA
+  GQA-packed flash-prefill shape). Hard constraint: absolute-position-aligned
+  key splits shared with AR decode so verify row i stays bit-identical to decode
+  step i. A per-row lane-per-key kernel does not fix this.
+- **#2 — context-independent.** ~21-32 ms/cycle everywhere; the main
+  short-context win. Move verify rowtile GEMVs to AR-grouped efficiency while
+  keeping exactness.
+- **#3 — medium-to-long, flat.** Zero below ~2K, then ~8-10 ms once the 2048
+  window fills. Move the drafter's window attention off the strict Gemma 4 kernel.
+- **#5 — context-independent.** ~7 ms/cycle flat; graph-capture the 740 eager
+  verify launches to remove host dispatch bubbles.
+- **#4 — long-context TTFT.** Grows linearly (55 s at 126K) but is paid once at
+  prefill; a latency lever, not decode throughput. 5843c2376 already streams
+  taps per chunk (tap_sink) instead of a ~35 GB host concatenate at 256K.
+
+**Ordered priority list (long-context agentic case): #1 -> #2 -> #3 -> #5, with
+#4 a separate TTFT track.** Cumulative DFlash recovery at 126K:
+
+| Step | Cycle ms | DFlash tok/s | Speedup vs AR |
+| --- | ---: | ---: | ---: |
+| Now | 310.6 | 9.47 | 1.10x |
+| + #1 | 181.5 | 16.20 | 1.88x |
+| + #2 | 149.5 | 19.67 | 2.29x |
+| + #3 | 141.2 | 20.82 | 2.42x |
+| + #5 | 133.3 | 22.06 | 2.56x |
+
+#1 alone resurrects long-context DFlash (1.10x -> 1.88x); #2 adds a win at every
+context; #3/#5 are smaller flat top-ups. For a short-context target the order
+flips to #2 -> #5 -> #3 (#1 is negligible there).
+
+**Caveats.** Lever gains assume verify kernels reach AR-level efficiency
+(implementation ceilings, not guarantees). Tokens/cycle uses the 2.94 mtpbench
+average; acceptance may shift at long context. The AR attention compute-vs-
+latency question is open; #1 sidesteps it for verify by amortizing K/V across
+rows. Contexts past the trained 131072 now run via an explicit
+max_sequence_length with a warning (5843c2376: NoPE global layers, window-bounded
+RoPE, memory is the capability limit); output quality beyond 128K is unmeasured,
+so the 256K/512K kernel-cost projections are reachable but unvalidated for quality.
