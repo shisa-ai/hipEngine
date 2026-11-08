@@ -569,6 +569,30 @@ least recently used first. `usage.prompt_tokens_details.cached_tokens` and the
 reports cache residency under `prefix_cache`. Set `--prefix-cache off` to
 disable it.
 
+#### Muse Glimmer prefix reuse
+
+Muse Glimmer serves one request at a time from a single resident KV cache, and
+with the default `--prefix-cache radix` that cache is kept between requests. A
+prompt that starts with the cached tokens (for example the next turn of an
+agent conversation, which repeats the earlier turns) prefills only the rest.
+Reuse resumes at the 1,024-token prefill-chunk boundary at or below the end of
+the shared prefix, so at most 1,023 cached tokens are recomputed, and the
+result is bit-identical to a fresh prefill when the reused rows were
+themselves prefilled. Rows written during decode are reused too; they hold the
+same tokens with decode arithmetic. Any other prompt overwrites the cache. AR
+and DFlash requests share the cache; DFlash also needs the drafter to hold the
+same prefix, otherwise it recomputes from the last point where both agree.
+Images end the reusable prefix at their first position.
+`usage.prompt_tokens_details.cached_tokens` reports each request's reuse.
+Set `--prefix-cache off` to prefill every request from scratch.
+
+For debugging at long context, `generator.save_context(directory)` writes the
+cached KV (target, plus the drafter's rows when it holds the same prefix) and
+`generator.load_context(directory)` restores it. A later prompt that starts
+with the snapshot's tokens then skips that prefill. A 256K-token snapshot is
+about 14 GB. `scripts/muse_glimmer_context_profile.py --context-dir DIR` uses
+this to profile long contexts without repeating the prefill.
+
 ## Examples
 
 ### Text completion

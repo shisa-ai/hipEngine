@@ -22,13 +22,16 @@ import numpy as np
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.registry import (
+    DecodeState,
     FinishDetails,
     GenerationOutput,
     GenerationRequest,
+    GenerationTelemetry,
     register_text_generator,
 )
 from hipengine.generation.sampling import RowSamplingState, row_seed_for_index, select_token
 from hipengine.kernels.backends import resolve_backend
+from hipengine.kvcache.radix import resolve_prefix_cache_mode
 from hipengine.loading.gguf import GGUFModelInfo, GGUFReader
 from hipengine.loading.muse_glimmer_gguf import (
     MuseGlimmerLoadedWeights,
@@ -64,6 +67,7 @@ class MuseGlimmerGGUFGenerator:
     _vision_runner: Any = field(default=None, init=False, repr=False)
     _vision_reader: Any = field(default=None, init=False, repr=False)
     _speculative_provider: Any = field(default=None, init=False, repr=False)
+    _prefix_cache_mode: str = field(default_factory=lambda: resolve_prefix_cache_mode(None), init=False, repr=False)
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
     _load_seconds: float | None = field(default=None, init=False, repr=False)
@@ -189,6 +193,91 @@ class MuseGlimmerGGUFGenerator:
             )
 
     # -- text --------------------------------------------------------------
+    # -- prefix reuse and context snapshots --------------------------------
+    @property
+    def prefix_cache_mode(self) -> str:
+        return self._prefix_cache_mode
+
+    def configure_engine_loop(self, config: Any) -> None:
+        """Bind the serving prefix-cache mode (``--prefix-cache``)."""
+
+        self._prefix_cache_mode = resolve_prefix_cache_mode(getattr(config, "prefix_cache", None))
+
+    def prefix_reuse_start(
+        self, session: MuseGlimmerResidentSession, prompt_ids: Sequence[int]
+    ) -> int:
+        """Cached leading tokens a new prompt keeps; 0 when the cache is off.
+
+        The session holds one conversation's KV. A prompt that extends it --
+        the next agent turn, or a prompt that starts with a loaded snapshot --
+        prefills only its new suffix; any other prompt overwrites it.
+        """
+
+        if self._prefix_cache_mode == "off":
+            return 0
+        overrides = session._image_overrides
+        limit = min(overrides) if overrides else None
+        return session.reusable_prefix(prompt_ids, limit=limit)
+
+    def save_context(self, directory: str | Path) -> int:
+        """Write the cached context (target KV, plus drafter KV when it holds
+        the same prefix) to ``directory``; returns the cached token count."""
+
+        from hipengine.runtime.muse_glimmer_context import write_meta
+
+        with self._lock:
+            self._require_open()
+            session = self._ensure_session()
+            out = Path(directory)
+            out.mkdir(parents=True, exist_ok=True)
+            tokens = session.history.copy()
+            session.save_kv(out / "target.kv")
+            drafter_rows = 0
+            saver = getattr(self._speculative_provider, "save_draft_context", None)
+            if callable(saver):
+                drafter_rows = int(saver(out / "drafter.kv", tokens))
+            model = Path(self.model_path)
+            write_meta(out, {
+                "tokens": int(tokens.size),
+                "target": session.kv_geometry,
+                "drafter_tokens": drafter_rows,
+                "model": {"name": model.name, "bytes": model.stat().st_size},
+            }, tokens)
+            return int(tokens.size)
+
+    def load_context(self, directory: str | Path) -> int:
+        """Restore a :meth:`save_context` snapshot; returns its token count.
+
+        A later prompt that starts with the snapshot's tokens reuses them
+        through the prefix cache.
+        """
+
+        from hipengine.runtime.muse_glimmer_context import read_meta
+
+        with self._lock:
+            self._require_open()
+            src = Path(directory)
+            meta, tokens = read_meta(src)
+            session = self._ensure_session()
+            if meta.get("target") != session.kv_geometry:
+                raise ValueError(
+                    f"snapshot KV geometry {meta.get('target')} does not match this model's "
+                    f"{session.kv_geometry}"
+                )
+            model = Path(self.model_path)
+            recorded = meta.get("model") or {}
+            if recorded.get("name") != model.name or recorded.get("bytes") != model.stat().st_size:
+                _LOG.warning(
+                    "context snapshot %s was taken from %s (%s bytes); loading it into %s",
+                    src, recorded.get("name"), recorded.get("bytes"), model.name,
+                )
+            session.load_kv(src / "target.kv", tokens)
+            drafter_rows = int(meta.get("drafter_tokens") or 0)
+            loader = getattr(self._speculative_provider, "load_draft_context", None)
+            if callable(loader):
+                loader(src / "drafter.kv", tokens[:drafter_rows] if drafter_rows else tokens[:0])
+            return int(tokens.size)
+
     def tokenize(self, text: str) -> tuple[int, ...]:
         return tuple(self.tokenizer.encode(str(text), add_special_tokens=True))
 
@@ -289,8 +378,8 @@ class MuseGlimmerGGUFGenerator:
         prompt_ids: Sequence[int],
     ) -> GenerationOutput:
         started = time.perf_counter()
-        session.reset()
-        row_logits = np.asarray(session.prefill(prompt_ids), dtype=np.float32)
+        reused = self.prefix_reuse_start(session, prompt_ids)
+        row_logits = np.asarray(session.prefill(prompt_ids, start=reused), dtype=np.float32)
 
         state = RowSamplingState(
             prompt_tokens=prompt_ids,
@@ -345,6 +434,11 @@ class MuseGlimmerGGUFGenerator:
                 length_limit=request.max_tokens if finish_reason == "length" else None,
                 sampler_mode=sampler_mode,
                 phase="decode",
+            ),
+            telemetry=prefix_cache_telemetry(
+                mode=self._prefix_cache_mode, prompt_tokens=len(prompt_ids),
+                generated_tokens=len(generated), reused_tokens=reused,
+                execution_path=self.execution_path,
             ),
         )
 
@@ -445,6 +539,33 @@ class MuseGlimmerGGUFGenerator:
             raise NotImplementedError(
                 "the Muse Glimmer bring-up path does not implement: " + ", ".join(blockers)
             )
+
+
+def prefix_cache_telemetry(
+    *, mode: str, prompt_tokens: int, generated_tokens: int, reused_tokens: int,
+    execution_path: str,
+) -> GenerationTelemetry:
+    """Per-request prefix-cache block (``usage.prompt_tokens_details.cached_tokens``)."""
+
+    return GenerationTelemetry(
+        decode_state=DecodeState(
+            prompt_tokens=int(prompt_tokens),
+            generated_tokens=int(generated_tokens),
+            step_index=int(generated_tokens),
+            execution_path=execution_path,
+        ),
+        event="generation_complete",
+        diagnostics={
+            "prefix_cache": {
+                "mode": mode,
+                "lookup": mode != "off",
+                "matched_tokens": int(reused_tokens),
+                "reused_tokens": int(reused_tokens),
+                "prefilled_tokens": int(prompt_tokens) - int(reused_tokens),
+                "source_kind": "resident_session",
+            },
+        },
+    )
 
 
 def make_muse_glimmer_gguf_generator_gfx1151(

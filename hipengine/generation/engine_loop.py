@@ -1788,6 +1788,13 @@ class _SubmitPollTextRunner:
         self._outputs: dict[int, GenerationOutput] = {}
         self._next_batch_id = 0
 
+    def configure_engine_loop(self, config: Any) -> None:
+        """Pass serving policy (for example ``prefix_cache``) to a generator that binds it."""
+
+        configure = getattr(self._inner, "configure_engine_loop", None)
+        if callable(configure):
+            configure(config)
+
     @property
     def outputs(self) -> dict[int, GenerationOutput]:
         return dict(self._outputs)

@@ -184,6 +184,28 @@ class MuseGlimmerDFlashDrafter:
             raise ValueError("draft truncate must move backward")
         self._ctx_len = int(length)
 
+    def save_kv(self, path, rows: int) -> None:
+        """Write the first ``rows`` draft-context rows (``muse_glimmer_context``)."""
+
+        from hipengine.runtime.muse_glimmer_context import write_kv
+
+        if not 0 <= rows <= self._ctx_len:
+            raise ValueError("draft snapshot rows exceed the draft context")
+        cfg = self.config
+        write_kv(Path(path), self._kv, rows, cfg.n_kv_heads * cfg.head_dim * 2,
+                 runtime=self.runtime)
+
+    def load_kv(self, path, rows: int) -> None:
+        from hipengine.runtime.muse_glimmer_context import read_kv
+
+        if not 0 <= rows <= self.max_context:
+            raise ValueError("draft snapshot exceeds the draft KV")
+        cfg = self.config
+        self._ctx_len = 0
+        read_kv(Path(path), self._kv, rows, cfg.n_kv_heads * cfg.head_dim * 2,
+                runtime=self.runtime)
+        self._ctx_len = int(rows)
+
     def close(self) -> None:
         if self._closed:
             return

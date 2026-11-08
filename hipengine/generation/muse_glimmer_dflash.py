@@ -24,6 +24,7 @@ from typing import Any, Iterator
 import numpy as np
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.muse_glimmer_gguf import prefix_cache_telemetry
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -62,6 +63,9 @@ class MuseGlimmerDFlashTextProvider:
         self.candidate_budget = int(config.candidate_budget)
         self._drafter: Any = None
         self._dcfg: Any = None
+        # Token ids behind the drafter's KV rows: the drafter keeps a prefix
+        # only while the target session still holds the same tokens.
+        self._drafter_tokens = np.zeros(0, dtype=np.int64)
         self._closed = False
         self.counters = _CycleCounters()
         self.last_load_seconds: float | None = None
@@ -104,6 +108,33 @@ class MuseGlimmerDFlashTextProvider:
         )
         self.last_load_seconds = time.perf_counter() - started
         return self._drafter
+
+    def _reuse_start(self, session: Any, drafter: Any, prompt_ids: tuple[int, ...]) -> int:
+        reused = self.target.prefix_reuse_start(session, prompt_ids)
+        held = self._drafter_tokens[:min(reused, drafter.context_length)]
+        mismatch = np.flatnonzero(held != np.asarray(prompt_ids[:held.size], dtype=np.int64))
+        return session.align_resume(int(mismatch[0]) if mismatch.size else int(held.size))
+
+    def save_draft_context(self, path: Path, tokens: np.ndarray) -> int:
+        """Write the drafter rows that match the target snapshot's ``tokens``."""
+
+        drafter = self._drafter
+        if drafter is None:
+            return 0
+        held = self._drafter_tokens[:min(drafter.context_length, tokens.size)]
+        mismatch = np.flatnonzero(held != tokens[:held.size])
+        rows = int(mismatch[0]) if mismatch.size else int(held.size)
+        if rows:
+            drafter.save_kv(path, rows)
+        return rows
+
+    def load_draft_context(self, path: Path, tokens: np.ndarray) -> None:
+        drafter = self._ensure_drafter()
+        if tokens.size:
+            drafter.load_kv(path, int(tokens.size))
+        else:
+            drafter.reset()
+        self._drafter_tokens = np.asarray(tokens, dtype=np.int64).copy()
 
     def capabilities(self) -> dict[str, Any]:
         return {
@@ -172,11 +203,14 @@ class MuseGlimmerDFlashTextProvider:
         )
 
         started = time.perf_counter()
-        session.reset()
-        drafter.reset()
+        reused = self._reuse_start(session, drafter, prompt_ids)
+        drafter.truncate(reused)
+        self._drafter_tokens = self._drafter_tokens[:0]
         # Stream each prefill chunk's taps into the draft KV instead of
         # materializing the whole prompt's taps on the host.
-        logits, _ = session.prefill_with_taps(prompt_ids, tap_layers, tap_sink=drafter.inject)
+        logits, _ = session.prefill_with_taps(
+            prompt_ids, tap_layers, tap_sink=drafter.inject, start=reused,
+        )
         self.counters.target_forwards += 1
         length = len(prompt_ids)
         last_committed = prompt_ids[-1]
@@ -268,6 +302,9 @@ class MuseGlimmerDFlashTextProvider:
             if finish_reason == "stop":
                 break
 
+        rows = min(drafter.context_length, session.history.size)
+        drafter.truncate(rows)
+        self._drafter_tokens = session.history[:rows].copy()
         text = self.target.tokenizer.decode(generated, skip_special=False)
         self.last_decode_seconds = time.perf_counter() - decode_started
         self.target.last_generation_seconds = time.perf_counter() - started
@@ -281,6 +318,11 @@ class MuseGlimmerDFlashTextProvider:
                 length_limit=request.max_tokens if finish_reason == "length" else None,
                 sampler_mode="greedy",
                 phase="decode",
+            ),
+            telemetry=prefix_cache_telemetry(
+                mode=self.target.prefix_cache_mode, prompt_tokens=len(prompt_ids),
+                generated_tokens=len(generated), reused_tokens=reused,
+                execution_path=MUSE_GLIMMER_DFLASH_EXECUTION_PATH,
             ),
         )
 

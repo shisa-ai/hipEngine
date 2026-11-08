@@ -9,6 +9,14 @@ before the first verify is prefill). ``--ar-steps`` times graph decode steps
 directly after the DFlash run. Contexts above the artifact's trained positions
 run with a warning.
 
+``--context-dir DIR`` keeps a KV snapshot per prompt (target + drafter, via
+``save_context``/``load_context``). The first run of a context saves it after
+the DFlash pass; later runs load it, and the prefix cache then prefills only
+the last partial chunk, so a 256K profile skips its ~30 min prefill. Rows
+report ``*_cached_tokens``; prefill times from a loaded snapshot are not
+prefill measurements. A 256K snapshot is ~14 GB of target KV plus ~1.4 GB of
+drafter KV.
+
 Kernel breakdown: run under rocprofv3 with ``ROCTX_LIB`` pointing at
 librocprofiler-sdk-roctx.so; each phase becomes a ``<ctx>:<phase>`` marker
 range. Prebuild caches first (one unprofiled run), then profile with
@@ -22,7 +30,7 @@ HIPENGINE_REQUIRE_CACHED_BUILD=1 and HIPENGINE_COMPILER_VERSION_FILE
 """
 from __future__ import annotations
 
-import argparse, json, sys, time
+import argparse, hashlib, json, sys, time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -54,6 +62,8 @@ def main() -> int:
                     help="insert a passphrase at depth 0.25 and ask for it before the code")
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--model-dir", type=Path, default=MD)
+    ap.add_argument("--context-dir", type=Path, default=None,
+                    help="save/load a KV snapshot per prompt to skip repeat prefills")
     a = ap.parse_args()
 
     from hipengine.generation.muse_glimmer_dflash import make_muse_glimmer_dflash_text_provider
@@ -148,11 +158,23 @@ def main() -> int:
         ids = ids_for(n)
         CTX[0] = str(n)
         row = {"ctx_target": n, "prompt_tokens": len(ids)}
+        snap = None
+        if a.context_dir is not None:
+            import numpy as np
+            digest = hashlib.sha1(np.asarray(ids, dtype=np.int64).tobytes()).hexdigest()[:12]
+            snap = a.context_dir / f"ctx{len(ids)}-{digest}"
+            if (snap / "context.json").exists():
+                t = time.perf_counter()
+                gen.load_context(snap)
+                row["snapshot_load_s"] = time.perf_counter() - t
+                print(f"[{n}] loaded snapshot {snap} in {row['snapshot_load_s']:.1f}s", flush=True)
+                snap = None  # already on disk
         if not a.no_ar and n not in skip_ar:
             out = gen.generate_detailed(req(ids))[0]
             row.update(ar_prefill_s=gen.last_prefill_seconds, ar_decode_s=gen.last_decode_seconds,
                        ar_tokens=len(out.generated_token_ids),
-                       ar_tok_s=len(out.generated_token_ids) / gen.last_decode_seconds)
+                       ar_tok_s=len(out.generated_token_ids) / gen.last_decode_seconds,
+                       ar_cached_tokens=out.telemetry.diagnostics["prefix_cache"]["reused_tokens"])
             ar_ids = tuple(out.generated_token_ids)
             row["ar_text_head"] = gen.decode(ar_ids[:160]); row["needle_found"] = "cobalt-heron-4417" in gen.decode(ar_ids)
             print(f"[{n}] needle_found={row['needle_found']} AR text head: {row['ar_text_head']!r}", flush=True)
@@ -179,7 +201,13 @@ def main() -> int:
             draft_ms=1e3 * draft_s / max(cyc, 1),
             inject_ms=1e3 * sums.get("inject", 0.0) / max(cyc, 1),
             inject_prefill_s=sums.get("inject_prefill", 0.0),
+            spec_cached_tokens=out.telemetry.diagnostics["prefix_cache"]["reused_tokens"],
         )
+        if snap is not None:
+            t = time.perf_counter()
+            gen.save_context(snap)
+            row["snapshot_save_s"] = time.perf_counter() - t
+            print(f"[{n}] saved snapshot {snap} in {row['snapshot_save_s']:.1f}s", flush=True)
         print(f"[{n}] DFlash {row['spec_tok_s']:.2f} tok/s exact={row['exact']} "
               f"cyc={cyc} tok/cyc={row['tokens_per_cycle']:.2f} ms/cyc={row['ms_per_cycle']:.1f} "
               f"verify={row['verify_ms']:.1f} draft={row['draft_ms']:.1f} "

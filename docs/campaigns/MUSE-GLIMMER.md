@@ -741,3 +741,78 @@ rows. Contexts past the trained 131072 now run via an explicit
 max_sequence_length with a warning (5843c2376: NoPE global layers, window-bounded
 RoPE, memory is the capability limit); output quality beyond 128K is unmeasured,
 so the 256K/512K kernel-cost projections are reachable but unvalidated for quality.
+
+### 11.1 Review, 260K measurement, and revised plan (2026-11-08)
+
+A review of the §11 plan, plus a phase-tagged profile at 260,000 prompt tokens
+(`max_sequence_length=262144`, twice the trained positions). The §11 order
+stands; the items below correct it and fill gaps.
+
+**260K measurement (gfx1151, coding prompt with a needle at 25% depth, 256 greedy
+tokens).** Output stays coherent past the trained length: the needle was
+retrieved and DFlash IDs equal AR. DFlash is slower than AR here: 5.41 vs 6.69
+tok/s (0.81x), 2.75 tokens/cycle. Per call (ms):
+
+| Phase | 512 | 32K | 126K | 260K |
+| --- | ---: | ---: | ---: | ---: |
+| AR step wall | 83.7 | 92.2 | 116.2 | 149.9 |
+| AR attention | 1.3 | 9.6 | 32.4 | 65.5 |
+| Verify wall | 109.6 | 149.2 | 281.2 | 474.2 |
+| Verify attention | 3.3 | 41.4 | 161.5 | 354.6 |
+| Verify GEMVs | 96.9 | 98.2 | 109.1 | 108.9 |
+| Draft wall | 18.1 | 28.2 | 29.4 | 29.4 |
+
+Attention is linear in context and everything else is flat. The isolated probe
+`scripts/muse_glimmer_decode_attn_scale.py` shows why verify attention is the
+lever: on one global layer at 262K, 1 row costs 4.45 ms (3.65x the K/V read
+floor) and 5 rows cost 22.33 ms, so the rows share nothing. A linear fit puts
+the DFlash/AR crossover near 128K with today's kernels (inferred). Record:
+`worklog/entries/20261108T101545.659904Z-lhl-muse-glimmer-a6db78.md`.
+
+**Corrections to §11.**
+
+- The "Current DFlash state (measured)" table is partly derived: it applies the
+  2.94 mtpbench tokens/cycle to profiled cycle times. The profile run measured
+  3.88 / 2.67 / 2.84 / 2.75 tokens/cycle at 512 / 32K / 126K / 260K on the
+  coding prompt. The 1.10x at 126K is consistent with the corrected
+  measurement (the earlier sweep's 1.27x predates the sampler fix 45433fe8b).
+- **#1 is an AR decode change too.** Exactness needs verify row i to equal AR
+  decode step i bit-for-bit, so the shared-row kernel must also become the AR
+  decode attention (same absolute-aligned key splits, same per-slice
+  reduction). It therefore needs the AR quality gates (CPU reference, llama.cpp
+  oracle), not only DFlash exactness. It also helps AR: one K/V read serves all
+  16 Q heads of a KV head instead of 4, and AR is the path every sampled
+  (temperature > 0) request takes, since DFlash is greedy-only. Start from the
+  shared-row pattern in `gemma4_attention_decode_flash_multi_kernel`
+  (`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip`), which loads K/V
+  once for all rows but is not exact against the single-row kernel.
+- **#3 misses the draft lm_head.** The Q5 rowtile head over the 202,048-token
+  vocabulary costs 7.6–8.1 ms/cycle, as much as draft attention. Draft logits
+  only propose, so a truncated hot-vocab head is fair game
+  (`scripts/build_gguf_mtp_hot_vocab.py` exists for MTP). Draft attention has
+  no exactness constraint either, so a production flash route is acceptable.
+- **#5 needs two graphs.** Verify runs 4 or 5 rows depending on a pending root
+  token, and `gemma4_attention_decode_flash_multi_kernel` is documented as
+  never captured, so #1 and #5 have to be designed together.
+
+**Missing levers.**
+
+- **Context-aware candidate budget.** Each verify row costs ~1.36 ms per 1K of
+  context today, so the optimal budget falls with context; after #1 it rises
+  again. `hipengine/speculative/adaptive_budget.py` and
+  `scripts/muse_glimmer_dflash_budget_sweep.py` exist.
+- **Prefix reuse (landed).** Every request used to reset the session, so each
+  agent turn repaid the full prefill (~10 min at 126K, ~29 min at 260K). The
+  resident session now keeps one conversation's KV and resumes at the
+  prefill-chunk boundary below the cached common prefix (bit-identical to a
+  fresh prefill when the reused rows were prefilled), for AR and DFlash, with
+  `--prefix-cache off` as the rollback. `save_context`/`load_context` move the
+  same state through disk for debugging at depth.
+- **Host sampler cost.** Sampled decoding costs 14–16 ms/token at every length
+  and an active repetition/presence penalty 55 ms/token at 128K
+  (`scripts/sampler_host_cost_probe.py`).
+
+**Revised order (long-context agentic case):** prefix reuse (landed) → #1
+shared-row verify+decode attention → #2 verify GEMVs → context-aware budget →
+#3 draft attention + hot-vocab head → #5 verify graphs. Host sampler cost is a
+separate track.

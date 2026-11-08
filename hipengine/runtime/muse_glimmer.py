@@ -127,6 +127,10 @@ class MuseGlimmerResidentSession:
             raise ValueError("max_context and prefill_chunk must be positive")
         self._closed = False
         self._length = 0
+        # Token id at each cached position and how many leading positions hold
+        # text-token KV (image rows and torn writes end the reusable prefix).
+        self._history = np.zeros(self.max_context, dtype=np.int64)
+        self._history_valid = 0
         self._image_overrides: dict[int, np.ndarray] | None = None
         self._scratch: _SessionScratch | None = None
         self._kv: list[tuple[DeviceBuffer, DeviceBuffer]] = []
@@ -219,6 +223,71 @@ class MuseGlimmerResidentSession:
 
         self._require_open()
         self._length = 0
+        self._history_valid = 0
+
+    @property
+    def history(self) -> np.ndarray:
+        """Token ids whose KV is cached and reusable, oldest first."""
+
+        return self._history[:min(self._history_valid, self._length)]
+
+    def reusable_prefix(self, token_ids: Sequence[int], *, limit: int | None = None) -> int:
+        """Leading tokens of ``token_ids`` a prefill may resume after.
+
+        This is the cached common prefix rounded down to a prefill-chunk
+        boundary. The prefill projections depend on the chunk's row count, so
+        only a chunk-aligned resume runs the same arithmetic as a fresh prefill
+        (bit-identical logits when the reused rows were themselves prefilled);
+        the cost is at most one chunk of recompute. At least one prompt token
+        is always left to prefill, since the prompt's last row produces the
+        first logits. ``limit`` caps the reuse, for example at the first image
+        position of a multimodal prompt.
+        """
+
+        ids = np.asarray(token_ids, dtype=np.int64)
+        cached = self.history
+        bound = min(cached.size, ids.size - 1)
+        if limit is not None:
+            bound = min(bound, int(limit))
+        if bound <= 0:
+            return 0
+        mismatch = np.flatnonzero(cached[:bound] != ids[:bound])
+        common = int(mismatch[0]) if mismatch.size else bound
+        return self.align_resume(common)
+
+    def align_resume(self, tokens: int) -> int:
+        return (int(tokens) // self.prefill_chunk) * self.prefill_chunk
+
+    def _record_history(self, ids: np.ndarray, position_offset: int) -> None:
+        keys = position_offset + int(ids.size)
+        continuous = self._history_valid >= position_offset
+        self._history[position_offset:keys] = ids
+        end = keys
+        if self._image_overrides:
+            hits = [p for p in self._image_overrides if position_offset <= p < keys]
+            if hits:
+                end = min(hits)
+        self._history_valid = end if continuous else min(self._history_valid, position_offset)
+
+    def _begin_prefill(self, ids: np.ndarray, start: int) -> None:
+        if not 0 <= start < ids.size:
+            raise ValueError("prefill start must leave at least one prompt token")
+        if start:
+            if start > self.history.size or not np.array_equal(self.history[:start], ids[:start]):
+                raise ValueError("prefill start exceeds the cached prefix of this prompt")
+        self._length = int(start)
+        self._history_valid = min(self._history_valid, int(start))
+
+    def _prefill_chunks(self, size: int, start: int):
+        """Chunk bounds from ``start``, aligned to absolute multiples of the
+        chunk so a resumed prefill runs the same chunk schedule as a fresh one."""
+
+        chunk = self.prefill_chunk
+        begin = start
+        while begin < size:
+            end = min(size, (begin // chunk + 1) * chunk)
+            yield begin, end
+            begin = end
 
     @contextmanager
     def image_input(self, overrides: dict[int, np.ndarray]):
@@ -257,8 +326,12 @@ class MuseGlimmerResidentSession:
             raise RuntimeError("the Muse Glimmer resident session is closed")
 
     # -- forward -----------------------------------------------------------
-    def prefill(self, token_ids: Sequence[int]) -> np.ndarray:
-        """Run the prompt in chunks; return the final row's logits (F32)."""
+    def prefill(self, token_ids: Sequence[int], *, start: int = 0) -> np.ndarray:
+        """Run the prompt in chunks; return the final row's logits (F32).
+
+        ``start`` resumes after a cached prefix (see :meth:`reusable_prefix`):
+        positions below it keep their KV and only the suffix is computed.
+        """
 
         self._require_open()
         ids = np.asarray(token_ids, dtype=np.int64)
@@ -268,16 +341,15 @@ class MuseGlimmerResidentSession:
             raise ValueError(
                 f"prompt of {ids.size} tokens exceeds the {self.max_context}-token cache"
             )
-        self._length = 0
+        self._begin_prefill(ids, int(start))
         logits: np.ndarray | None = None
         with prefill_f16_staging_session(
             True,
             workspace_ptr=int(self._f16_staging.ptr),
             workspace_nbytes=int(self._f16_staging.nbytes),
         ):
-            for begin in range(0, ids.size, self.prefill_chunk):
-                block = ids[begin:begin + self.prefill_chunk]
-                logits = self._forward_block(block, position_offset=begin)
+            for begin, end in self._prefill_chunks(ids.size, int(start)):
+                logits = self._forward_block(ids[begin:end], position_offset=begin)
         assert logits is not None
         return logits
 
@@ -465,6 +537,7 @@ class MuseGlimmerResidentSession:
         rt.graph_launch(graph_exec, self._graph_stream)
         rt.stream_synchronize(self._graph_stream)
         copy_device_to_host(self._logits_host.ctypes.data, self.logits_f32, runtime=rt)
+        self._record_history(np.asarray([token_id], dtype=np.int64), pos)
         self._length = pos + 1
         # Same float32 ufunc sequence as the eager path, evaluated in place.
         logits = self._softcap_host
@@ -480,6 +553,7 @@ class MuseGlimmerResidentSession:
     def prefill_with_taps(
         self, token_ids: Sequence[int], tap_layers: Sequence[int],
         tap_sink: Callable[[np.ndarray, int], None] | None = None,
+        *, start: int = 0,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Prompt pass capturing layer-input taps; returns (last logits, taps).
 
@@ -488,6 +562,8 @@ class MuseGlimmerResidentSession:
         chunk's taps go to ``tap_sink(taps, position_offset)`` as they are
         produced and the returned taps are empty: the whole-prompt array is
         n_taps * n_embd * 4 bytes per token (~35 GB of host memory at 256K).
+        ``start`` resumes after a cached prefix as in :meth:`prefill`; taps
+        then cover positions ``start`` onward only.
         """
 
         self._require_open()
@@ -496,7 +572,7 @@ class MuseGlimmerResidentSession:
             raise ValueError("prefill needs a non-empty 1-D token sequence")
         if ids.size > self.max_context:
             raise ValueError("prompt exceeds the KV cache")
-        self._length = 0
+        self._begin_prefill(ids, int(start))
         logits: np.ndarray | None = None
         tap_chunks: list[np.ndarray] = []
         with prefill_f16_staging_session(
@@ -504,10 +580,9 @@ class MuseGlimmerResidentSession:
             workspace_ptr=int(self._f16_staging.ptr),
             workspace_nbytes=int(self._f16_staging.nbytes),
         ):
-            for begin in range(0, ids.size, self.prefill_chunk):
-                block = ids[begin:begin + self.prefill_chunk]
+            for begin, end in self._prefill_chunks(ids.size, int(start)):
                 logits, taps = self._forward_block(
-                    block, position_offset=begin, tap_layers=tap_layers
+                    ids[begin:end], position_offset=begin, tap_layers=tap_layers
                 )
                 if tap_sink is not None:
                     tap_sink(taps, begin)
@@ -564,6 +639,39 @@ class MuseGlimmerResidentSession:
         if not 0 <= length <= self._length:
             raise ValueError("truncate must move the length backward")
         self._length = int(length)
+        self._history_valid = min(self._history_valid, self._length)
+
+    # -- context snapshots -------------------------------------------------
+    @property
+    def kv_geometry(self) -> dict[str, int]:
+        return {"n_layers": int(self.config.n_layers), "kv_dim": int(self.config.kv_dim)}
+
+    def save_kv(self, path: Path) -> int:
+        """Write the reusable prefix's KV (see ``muse_glimmer_context``); returns its rows."""
+
+        from hipengine.runtime.muse_glimmer_context import write_kv
+
+        self._require_open()
+        rows = int(self.history.size)
+        write_kv(Path(path), self._kv, rows, self.config.kv_dim * 2, runtime=self.runtime)
+        return rows
+
+    def load_kv(self, path: Path, tokens: np.ndarray) -> None:
+        """Restore ``save_kv`` output whose positions hold ``tokens``."""
+
+        from hipengine.runtime.muse_glimmer_context import read_kv
+
+        self._require_open()
+        ids = np.asarray(tokens, dtype=np.int64)
+        if ids.ndim != 1 or ids.size > self.max_context:
+            raise ValueError(
+                f"a {ids.size}-token snapshot does not fit the {self.max_context}-token cache"
+            )
+        self._length = 0
+        self._history_valid = 0
+        read_kv(Path(path), self._kv, ids.size, self.config.kv_dim * 2, runtime=self.runtime)
+        self._history[:ids.size] = ids
+        self._length = self._history_valid = int(ids.size)
 
     def _forward_block(
         self, ids: np.ndarray, *, position_offset: int,
@@ -836,6 +944,7 @@ class MuseGlimmerResidentSession:
                 )
             src, dst = dst, src
 
+        self._record_history(ids, position_offset)
         self._length = keys
         from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
 
