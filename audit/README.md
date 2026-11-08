@@ -319,7 +319,9 @@ scans and archive without generating docs or changing the budget.
 
 **The budget is the anti-laziness gate.** `budget.json` records the untriaged
 count per kind. `check` fails when a count rises, so new debt cannot land without
-being triaged. **Never raise the budget to get past the gate.** Lowering it is
+being triaged. An unrecorded kind has a zero ceiling; `refresh` records new kinds
+at zero rather than accepting their open rows as a baseline.
+**Never raise the budget to get past the gate.** Lowering it is
 the point. A passing ordinary `check` means the inventory is fresh and new rows
 are within budget, not that every decision is current. `check --review` also
 fails on stale or expired live decisions. Use it to verify a completed review
@@ -508,7 +510,8 @@ Requirements for either:
 - **Precision over recall.** A noisy check gets ignored, which is worse than an
   absent one. `doc-path-drift` fires only when it can say where the file actually
   is; everything illustrative is skipped.
-- **Run `audit.py budget` after adding one**, or the gate fails on the new rows.
+- **Triage a new kind's findings before finishing.** Run `audit.py budget --lower-only`
+  to record its zero ceiling; neither a new kind nor `refresh` permits new debt.
 - **Add a contract test** in `audit/tests/`.
 
 ## Layout

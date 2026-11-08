@@ -170,8 +170,9 @@ def cmd_status(args) -> int:
     print(report.state_table(rows, decisions))
     budget = report.load_budget().get("open", {})
     gated, ungated = report.open_counts(rows, decisions)
-    if budget or ungated:
-        over = {k: (gated.get(k, 0), v) for k, v in budget.items() if gated.get(k, 0) > v}
+    if budget or gated or ungated:
+        over = {k: (n, budget.get(k, 0)) for k, n in sorted(gated.items())
+                if n > budget.get(k, 0)}
         line = "budget: " + ("over in " + ", ".join(f"{k} {a}>{b}" for k, (a, b) in over.items())
                               if over else "within budget")
         if ungated:
@@ -361,10 +362,11 @@ def cmd_check(args) -> int:
     state = core.reconcile(rows, decisions)
     budget = report.load_budget().get("open", {})
     gated, ungated = report.open_counts(rows, decisions)
-    for kind, allowed in budget.items():
-        if gated.get(kind, 0) > allowed:
+    for kind, count in sorted(gated.items()):
+        allowed = budget.get(kind, 0)
+        if count > allowed:
             errors.append(
-                f"{kind}: {gated[kind]} gated untriaged rows exceeds the budget of {allowed}. "
+                f"{kind}: {count} gated untriaged rows exceeds the budget of {allowed}. "
                 f"Triage the new rows; do not raise the budget.")
 
     print(report.state_table(rows, decisions))

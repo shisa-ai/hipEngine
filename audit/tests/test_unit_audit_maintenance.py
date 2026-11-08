@@ -38,6 +38,36 @@ class Maintenance(unittest.TestCase):
             self.assertEqual(cli.cmd_check(argparse.Namespace(rescan=False, review=False)), 0)
             self.assertEqual(cli.cmd_check(argparse.Namespace(rescan=False, review=True)), 1)
 
+    def test_check_defaults_an_unrecorded_kind_to_a_zero_ceiling(self):
+        row = core.Row("new-check", "X", "new finding")
+        decision = core.Triage(row.id, "NOT-DEBT", "keep", note="verified")
+        for decisions, select, expected in (
+            ({}, {}, 1),
+            ({row.id: decision}, {}, 0),
+            ({}, {"new-check": {"key": "different"}}, 0),
+        ):
+            with self.subTest(decided=bool(decisions), select=select), \
+                 mock.patch.object(cli, "ensure_current"), \
+                 mock.patch.object(core, "load_all", return_value=[row]), \
+                 mock.patch.object(core, "load_triage", return_value=decisions), \
+                 mock.patch.object(report, "load_budget", return_value={
+                     "open": {"flag": 0}, "select": select,
+                 }), mock.patch("builtins.print"):
+                self.assertEqual(cli.cmd_check(
+                    argparse.Namespace(rescan=False, review=False)), expected)
+
+    def test_status_reports_an_unrecorded_kind_as_over_budget(self):
+        row = core.Row("new-check", "X", "new finding")
+        for budget in ({}, {"open": {"flag": 0}}):
+            with self.subTest(budget=budget), \
+                 mock.patch.object(core, "load_all", return_value=[row]), \
+                 mock.patch.object(core, "load_triage", return_value={}), \
+                 mock.patch.object(cli, "load_meta", return_value={}), \
+                 mock.patch.object(report, "load_budget", return_value=budget), \
+                 mock.patch("builtins.print") as output:
+                self.assertEqual(cli.cmd_status(argparse.Namespace()), 0)
+            self.assertTrue(any("new-check 1>0" in str(call) for call in output.call_args_list))
+
     def test_archive_listing_does_not_scan_or_mutate(self):
         with mock.patch.object(core, "load_archive", return_value=[]), \
              mock.patch.object(cli, "run_inventory") as inventory, \

@@ -151,12 +151,10 @@ def save_budget(rows: list[Row], decisions: dict[str, Triage],
     payload = load_budget()          #  keep `select`: a policy is not a count
     if lower_only:
         previous = payload.get("open", {})
-        for kind, was in previous.items():
-            #  Keep every previously recorded kind, including at zero: dropping a
-            #  fully triaged kind from the payload would leave its next untriaged
-            #  row ungated. `min` is the ratchet - a refresh may lower a ceiling,
-            #  never raise one.
-            counts[kind] = min(counts.get(kind, 0), was)
+        for kind in previous.keys() | {row.kind for row in rows}:
+            #  Preserve zero ceilings even when all rows are triaged or absent.
+            #  A new kind starts at zero: refresh must not baseline its new debt.
+            counts[kind] = min(counts.get(kind, 0), previous.get(kind, 0))
     #  Rewrite only when a ceiling moves. Several agents refresh concurrently;
     #  bumping the date on every run would make this file conflict on every merge.
     if dict(sorted(counts.items())) == payload.get("open") and payload.get("recorded"):

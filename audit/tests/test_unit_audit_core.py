@@ -496,6 +496,23 @@ class Budget(unittest.TestCase):
         self.assertEqual(self.report.load_budget()["open"]["flag"], 1,
                          "a refresh must not absorb new debt into the budget")
 
+    def test_lower_only_gives_a_new_kind_a_zero_ceiling(self):
+        self.report.save_budget([row("existing")], {})
+        new = core.Row("new-check", "A", "new finding")
+        self.report.save_budget([row("existing"), new], {}, lower_only=True)
+        self.assertEqual(self.report.load_budget()["open"]["new-check"], 0,
+                         "refresh must not baseline a new check at its open count")
+
+    def test_lower_only_starts_an_empty_budget_at_zero(self):
+        self.report.save_budget([row("A")], {}, lower_only=True)
+        self.assertEqual(self.report.load_budget()["open"]["flag"], 0)
+
+    def test_lower_only_records_a_fully_triaged_new_kind(self):
+        new = core.Row("new-check", "A", "reviewed finding")
+        self.report.save_budget([new], {new.id: decide(new)}, lower_only=True)
+        self.assertEqual(self.report.load_budget()["open"].get("new-check"), 0,
+                         "a fully triaged new kind still needs a zero ceiling")
+
     def test_lower_only_still_ratchets_down_as_rows_are_triaged(self):
         rows = [row("A"), row("B")]
         self.report.save_budget(rows, {})
