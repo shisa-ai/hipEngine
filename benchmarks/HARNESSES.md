@@ -189,6 +189,39 @@ trap catalog, live in [`docs/KERNELS.md`](../docs/KERNELS.md) and
    interception makes launch-dense host-bound workloads many times slower
    than their uninstrumented wall time.
 
+### Phase-tagged speculative profiles across context lengths
+
+To split a speculative cycle into draft / verify / inject / AR-step kernels at
+several contexts, wrap each phase in a ROCTx range and attribute kernels to the
+ranges. `scripts/muse_glimmer_context_profile.py` is the Muse Glimmer driver
+(public generator/provider, coding-agent prompt, optional `--needle`, DFlash
+IDs == AR check, `--ar-steps` graph decode timing); copy its `wrap()`/`push()`
+pattern for other models. After the prewarm steps above:
+
+```bash
+ROCTX_LIB=<rocm>/lib/librocprofiler-sdk-roctx.so \
+HIPENGINE_COMPILER_VERSION_FILE=<file> HIPENGINE_REQUIRE_CACHED_BUILD=1 \
+rocprofv3 --kernel-trace --marker-trace --output-format csv -d OUT -o run -- \
+  .venv/bin/python scripts/muse_glimmer_context_profile.py \
+  --contexts 512,32768,126000 --max-tokens 64 --no-ar --ar-steps 16 --output OUT/run.json
+python3 scripts/rocprof_marker_breakdown.py OUT/run_kernel_trace.csv OUT/run_marker_api_trace.csv
+```
+
+The driver's unprofiled mode (no `ROCTX_LIB`) gives per-phase wall times with
+device syncs. Each context above ~32K costs a full prefill (126K ≈ 9.5 min,
+256K ≈ 30 min on gfx1151), so profile several contexts in one process.
+
+Companion diagnostics that need no long prefill:
+
+| Script | Answers |
+| --- | --- |
+| `scripts/muse_glimmer_decode_attn_scale.py` | Isolated decode/verify attention ms vs context and rows, against the K/V DRAM floor (`--tokens 1,5`). |
+| `scripts/muse_glimmer_verify_amortization.py` | Verify cost vs block rows relative to one decode step, at a synthetic live length (`--context 131072`). |
+| `scripts/muse_glimmer_verify_gemv_bitidentity.py` | Whether the exact verify projections still equal per-row decode bit-for-bit after a GEMV change. |
+| `scripts/muse_glimmer_dispatch_probe.py` | Which registry variant the default linear dispatcher picks per projection and row count. |
+| `scripts/muse_glimmer_dflash_budget_sweep.py` | DFlash tok/s, acceptance and exactness per `candidate_budget` on the mtpbench suite. |
+| `scripts/sampler_host_cost_probe.py` | Host `select_token` ms/token vs prompt length (CPU only). |
+
 Update this catalog in the same logical unit whenever a harness gains or loses
 an axis.
 

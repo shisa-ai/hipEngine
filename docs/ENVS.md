@@ -969,6 +969,12 @@ in [`benchmarks/HARNESSES.md`](../benchmarks/HARNESSES.md) for the protocols.
 | `HIPENGINE_DFLASH_WHOLE_CYCLE_GATE` | unset | Backward-compat activation of the whole-cycle confidence gate when the CLI flag is absent; a float in `[0, 1]`. |
 | `HIPFIRE_DFLASH_LOOP_BREAK` | unset | Diagnostic early-break for the hipFire DFlash loop driver. |
 
+### Phase-tagged context profile (`muse_glimmer_context_profile.py`)
+
+| Variable | Default | Values / notes |
+| --- | --- | --- |
+| `ROCTX_LIB` | unset | Path to `librocprofiler-sdk-roctx.so`. When set, each draft/verify/inject/AR-step phase is a `<ctx>:<phase>` ROCTx range for `rocprofv3 --marker-trace`; unset keeps phase wall timing only. |
+
 ### IQ/Q3K gate and sweep scripts
 
 | Variable | Default | Values / notes |
@@ -1093,6 +1099,11 @@ harnesses read them but do not own them.
 | `AMDGPU_CARD_NAME`, `AMDGPU_CARD_NAME_W7900`, `HIP_VISIBLE_DEVICES_W7900` | TheRock/lab wrapper scripts | Card-name and device-pin locals used by the W7900 wrapper scripts. |
 
 ## Names that are not environment variables
+
+- `Q4_K_M` is a quantization label, not an environment variable. The scanner
+  reads `groups.setdefault(quant, ...)` in `hipengine/runtime/muse_glimmer.py`
+  as an env access and resolves `quant` through an unrelated `quant="Q4_K_M"`
+  default elsewhere in the tree.
 
 - `HIPENGINE_MAPLE_PREFILL_GROUPED_MOE` is retired and ignored. Native
   prefill always uses grouped expert metadata and grouped gate/up/down kernels;

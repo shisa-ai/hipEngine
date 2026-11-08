@@ -81,6 +81,50 @@ Leave `target_arch` unset in a family builder: the build then follows
 symptom by injecting its libraries into compiler probes; the ROCm-specific procedure is in
 [RDNA3-TUNING-GUIDE.md §4.9](RDNA3-TUNING-GUIDE.md#49-rocprofv3-toolchain-traps).
 
+## Speculative decoding at long context
+
+Agentic and coding workloads run near the context limit, and a speculative
+route that is fast at 512 tokens can crash or lose its speedup at 32K+. Test
+every drafter/verify port at short, mid and maximum context.
+
+- **A sliding-window drafter passes only its window's keys.** Kernels that
+  accept `window=` usually skip the masked keys but still size memory and
+  scratch for the full key count. The strict Gemma 4 class kernel keeps one
+  logit per key in 64 KiB of LDS, so a whole-context call raises past ~16K
+  keys. Offset the K/V pointers and mask to `pos - window + 1` and pass the
+  slice length as `keys`. Patterns: `MuseGlimmerDFlashDrafter.draft_block`
+  (`hipengine/runtime/muse_glimmer_dflash.py`), `dflash2_native.py`
+  (`ctx_start = ctx - window`), and Laguna's 512-slot ring KV
+  (`hipengine/runtime/laguna_kv.py`). Regression shape:
+  `tests/test_live_muse_glimmer_dflash_gpu.py::test_draft_block_long_context_uses_window_slice`.
+- **Verify attention must share K/V loads across the block's rows.** A verify
+  forward that runs the single-token decode kernel once per row multiplies
+  long-context attention by the row count: Muse Glimmer's 5-row verify spent
+  5.15x one AR step's attention at 126K and DFlash fell from 2.5x to 1.27x.
+  The existing shared-row pattern is
+  `gemma4_attention_decode_flash_multi_kernel`
+  (`hipengine/kernels/hip_gfx1100/gemma4/gemma4_attention.hip`): one block
+  per (row group, KV head, key slice) loads each K/V row once for all rows and
+  the GQA query heads. An exact speculative route (IDs == AR) needs AR decode
+  on the same arithmetic: key-slice boundaries aligned to absolute positions
+  and the same per-slice reduction, so a one-row call matches a verify row.
+- **Stream prefill-time draft context; do not materialize it.** Target taps
+  for a feature-fusion drafter are `n_taps * hidden * 4` bytes per token
+  (~35 GB at 256K for Muse Glimmer). Feed each prefill chunk to the drafter as
+  it is produced (`prefill_with_taps(..., tap_sink=...)`), and inject in
+  large chunks: 16-row injects added 55 s to a 126K prefill.
+- **Keep per-token host work O(1) in context.** Greedy sampling built a
+  history `Counter` over the whole prompt every step (11 ms/token at 126K)
+  with neutral penalties. Anything per step that walks the prompt shows up
+  only at long context, so time the public `generate()` path against the raw
+  decode step at the longest context you support.
+- **Profile per phase, per context.** `scripts/muse_glimmer_context_profile.py`
+  wraps draft/verify/inject/AR-step in ROCTx ranges and
+  `scripts/rocprof_marker_breakdown.py` attributes kernels to them; the
+  protocol is in [`benchmarks/HARNESSES.md`](../benchmarks/HARNESSES.md).
+  The Muse Glimmer per-context tables and lever ranking are in
+  [campaigns/MUSE-GLIMMER.md §11](campaigns/MUSE-GLIMMER.md#11-dflash-long-context-analysis-and-ordered-priorities-2026-11-08).
+
 
 ## 2026-05-15 — Native prefill flakiness can hide in full-attention prefill softmax
 
