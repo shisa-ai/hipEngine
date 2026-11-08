@@ -37,10 +37,11 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     dflash_add_bf16,
     dflash_add_rmsnorm_bf16,
     dflash_dense_bf16_to_bf16,
+    dflash_dense_bf16_to_bf16_wmma,
     dflash_dense_bf16_to_f32,
+    dflash_dense_bf16_to_f32_wmma,
     dflash_head_rmsnorm_rotary_f32,
     dflash_key_rmsnorm_rotary_f32,
-    dflash_qkv_proj_bf16_mixed,
     dflash_rmsnorm_bf16,
     dflash_silu_mul_bf16,
 )
@@ -363,10 +364,24 @@ class DFlash2NativeDrafter:
         o_proj = self._w(f"layers.{layer}.self_attn.o_proj.weight")
         q_norm = self._w(f"layers.{layer}.self_attn.q_norm.weight")
         k_norm = self._w(f"layers.{layer}.self_attn.k_norm.weight")
-        dflash_qkv_proj_bf16_mixed(
-            hidden_ptr, q_proj, k_proj, v_proj,
-            self.q_out.ptr, self.k_out.ptr, self.v_out.ptr,
-            bs, self.hidden_size, self.q_features, self.kv_features,
+        # Q/K/V via the WMMA-tiled dense kernels (weight read amortized over the
+        # 16-row tile) instead of the naive one-block-per-output scalar mixed
+        # GEMV, which re-read each weight row per draft row (~18x the bandwidth
+        # floor at 5.4 ms/call). The draft only proposes; the exact target verify
+        # keeps DFlash2 IDs == true AR. Q/K stay F32, V stays BF16 as before.
+        dflash_dense_bf16_to_f32_wmma(
+            hidden_ptr, q_proj, self.q_out.ptr,
+            bs, self.hidden_size, self.q_features,
+            library=self._lib1, runtime=self.runtime,
+        )
+        dflash_dense_bf16_to_f32_wmma(
+            hidden_ptr, k_proj, self.k_out.ptr,
+            bs, self.hidden_size, self.kv_features,
+            library=self._lib1, runtime=self.runtime,
+        )
+        dflash_dense_bf16_to_bf16_wmma(
+            hidden_ptr, v_proj, self.v_out.ptr,
+            bs, self.hidden_size, self.kv_features,
             library=self._lib1, runtime=self.runtime,
         )
         qpos = positions[ctx : ctx + bs].astype(np.int32)
