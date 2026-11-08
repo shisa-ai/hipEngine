@@ -1791,10 +1791,38 @@ def _apply_probability_filters(
         # Preserve the sort's independent output ownership as well as values.
         sorted_ids = token_ids.copy()
         sorted_probs = probs.copy()
-    else:
+    elif np.any(probs[:-1] < probs[1:]) or int(token_ids.max()) > np.iinfo(np.uint32).max:
+        # Non-monotonic input, or IDs too wide for the packed tie keys: keep
+        # the full general sort.
         order = np.lexsort((token_ids, -probs))
         sorted_ids = token_ids[order]
         sorted_probs = probs[order]
+    else:
+        # Softmax is monotonic, so a broken order here is only new
+        # equal-probability groups (float32 shift rounding in _softmax) whose
+        # IDs are not ascending. Repair just those groups to lower-ID order:
+        # bit-identical to the full lexsort without re-sorting the vocabulary.
+        sorted_ids = token_ids.copy()
+        sorted_probs = probs.copy()
+        ties = sorted_probs[:-1] == sorted_probs[1:]
+        if np.any(ties):
+            members = np.empty(sorted_ids.size, dtype=np.bool_)
+            members[0] = False
+            members[1:] = ties
+            members[:-1] |= ties
+            positions = np.flatnonzero(members)
+            groups = np.cumsum(np.r_[True, ~ties], dtype=np.uint64)
+            keys = (groups[positions] << np.uint64(32)) | sorted_ids[positions].astype(np.uint64)
+            sorted_ids[positions] = sorted_ids[positions][np.argsort(keys)]
+        if not np.all(
+            (sorted_probs[:-1] > sorted_probs[1:])
+            | ((sorted_probs[:-1] == sorted_probs[1:]) & (sorted_ids[:-1] <= sorted_ids[1:]))
+        ):
+            # Safety net for inputs the monotonic assumption does not cover
+            # (e.g. NaN probabilities): fall back to the general sort.
+            order = np.lexsort((token_ids, -probs))
+            sorted_ids = token_ids[order]
+            sorted_probs = probs[order]
     if sorted_ids.size == 0:
         return sorted_ids, sorted_probs
 
