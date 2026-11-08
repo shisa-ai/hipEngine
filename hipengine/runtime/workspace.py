@@ -58,6 +58,9 @@ class RuntimeWorkspace:
             ):
                 return current.tensor
             current.free(runtime=self.runtime)
+            # A failed replacement allocation must not leave a freed buffer
+            # eligible for exact-spec reuse or a second free during teardown.
+            del self._allocations[name]
         buffer = malloc(nbytes, runtime=self.runtime)
         tensor = Tensor.from_handle(buffer.ptr, shape_tuple, parsed_dtype, self.device)
         self._allocations[name] = WorkspaceAllocation(name=name, buffer=buffer, tensor=tensor)

@@ -394,6 +394,7 @@ def run_loaded_packet(args: argparse.Namespace) -> dict[str, Any]:
         str(model),
         backend="hip_gfx1100",
         execution_profile=str(args.profile),
+        speculative_candidate_budget=int(args.candidate_budget),
         max_active_requests=1,
         max_sequence_length=args.max_sequence_length,
     )

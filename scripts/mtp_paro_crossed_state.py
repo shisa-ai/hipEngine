@@ -591,6 +591,39 @@ def _capture_problems(capture: Mapping[str, Any], exists: Callable[[str], bool],
     return problems
 
 
+def terminal_serial_tail(report: Mapping[str, Any]) -> bool:
+    """Identify one accounted output-budget tail token, not a verifier fallback.
+
+    The policy needs a root plus a candidate to enter another verifier cycle.
+    With only one output left it uses AR instead. Accept that terminal step
+    only when route telemetry, token accounting and the last observed verifier
+    result agree; unexpected or unexplained serial work still makes the report
+    incomplete. The initial ``no_provider`` token primes MTP before any cycle.
+    """
+
+    outputs = (report.get("inputs") or {}).get("outputs", 0)
+    route = report.get("route") or {}
+    accounting = report.get("mtp_accounting") or {}
+    schedule = report.get("schedule") or []
+    if not isinstance(outputs, int) or outputs < 3 or not schedule:
+        return False
+    last = schedule[-1]
+    root, accepted = last.get("root_index"), last.get("accepted")
+    return (
+        route.get("serial_decode_fallback") is True
+        and route.get("serial_decode_steps") == 1
+        and accounting.get("first_fallback_position") == outputs - 1
+        and accounting.get("ar_step_reason_counts") == {
+            "no_provider": 1, "target_graph_output_room_miss": 1,
+        }
+        and accounting.get("ar_output_tokens_in_cycles") == 2
+        and accounting.get("mtp_output_tokens") == outputs - 2
+        and isinstance(root, int) and isinstance(accepted, int)
+        and accepted >= 0
+        and root + accepted + 2 == outputs - 1
+    )
+
+
 def report_problems(report: Mapping[str, Any], *,
                     exists: Callable[[str], bool] | None = None) -> list[str]:
     """Every reason this report does not describe a complete capture."""
@@ -624,7 +657,7 @@ def report_problems(report: Mapping[str, Any], *,
     for capture in captures:
         problems.extend(_capture_problems(capture, path_exists, widths, profiles))
     route = report.get("route") or {}
-    if route.get("serial_decode_fallback"):
+    if route.get("serial_decode_fallback") and not terminal_serial_tail(report):
         problems.append("the public route fell back to serial decode, so the verifier cycles it "
                         "describes are not the ones the crossed replay assumes")
     if "specdec2_mtp2_used" in route and not route["specdec2_mtp2_used"]:
@@ -647,6 +680,7 @@ def report_problems(report: Mapping[str, Any], *,
 
 def finish_report(report: dict[str, Any], *, failed: bool = False) -> dict[str, Any]:
     problems = report_problems(report)
+    report["terminal_serial_tail"] = terminal_serial_tail(report)
     report["problems"] = problems
     report["status"] = "failed" if failed else "incomplete" if problems else "complete"
     report["complete"] = report["status"] == "complete"

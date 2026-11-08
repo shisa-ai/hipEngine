@@ -59,6 +59,32 @@ def test_runtime_workspace_replaces_changed_tensor_spec_and_frees() -> None:
     assert workspace.allocation("scratch").buffer.nbytes == 8 * 4
 
 
+def test_runtime_workspace_failed_replacement_does_not_reuse_or_free_dead_buffer() -> None:
+    class FailingRuntime(FakeRuntime):
+        fail_next = False
+
+        def malloc(self, nbytes: int) -> int:
+            if self.fail_next:
+                self.fail_next = False
+                raise MemoryError("injected allocation failure")
+            return super().malloc(nbytes)
+
+    runtime = FailingRuntime()
+    workspace = RuntimeWorkspace(runtime=runtime)
+    first = workspace.reserve_tensor("scratch", (4,), "fp32")
+    runtime.fail_next = True
+    with pytest.raises(MemoryError, match="injected allocation failure"):
+        workspace.reserve_tensor("scratch", (8,), "fp32")
+    assert first.ptr not in runtime.allocations
+    assert "scratch" not in workspace.names
+    replacement = workspace.reserve_tensor("scratch", (4,), "fp32")
+    assert replacement.ptr in runtime.allocations
+    assert replacement.ptr != first.ptr
+    workspace.free()
+    assert runtime.freed.count(first.ptr) == 1
+    assert not runtime.allocations
+
+
 def test_runtime_workspace_free_releases_in_reverse_order() -> None:
     runtime = FakeRuntime()
     workspace = RuntimeWorkspace(runtime=runtime)
