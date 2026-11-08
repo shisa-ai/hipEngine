@@ -1064,3 +1064,25 @@ def test_llm_forwards_the_vision_time_budget() -> None:
     # `math.inf` is how a caller disables the budget through the public API
     forwarded = _factory_capacity_kwargs(new, **base, vision_max_seconds=float("inf"))
     assert forwarded["vision_max_seconds"] == float("inf")
+
+
+def test_surya_gpu_registered_for_both_rdna3_backends() -> None:
+    """The gfx1100-class runtime serves both RDNA3 backends, not just gfx1151.
+
+    The gfx1151-only registration was a stable-host artifact; gfx1100 public
+    image generation and the prompt-count contract are validated on the W7900.
+    """
+    from hipengine.generation import surya_gpu  # noqa: F401  (registers on import)
+    from hipengine.generation.registry import (
+        registered_text_generators,
+        resolve_text_generator,
+    )
+
+    keys = {(k.model, k.backend, k.quant) for k in registered_text_generators()}
+    assert ("surya_ocr2", "hip_gfx1100", "fp32") in keys
+    assert ("surya_ocr2", "hip_gfx1151", "fp32") in keys
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        factory = resolve_text_generator(
+            model="surya_ocr2", backend=backend, quant="fp32"
+        )
+        assert factory is surya_gpu.make_surya_generator_gpu

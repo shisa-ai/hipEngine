@@ -1,4 +1,4 @@
-"""Surya OCR 2 text generator (hip_gfx1151 backend, torch-free).
+"""Surya OCR 2 text generator (hip_gfx1100 / hip_gfx1151 backends, torch-free).
 
 End-to-end HIP execution of the Surya OCR pipeline on gfx1100-class
 devices: the vision tower, feature injection, prefill, and decode all run
@@ -21,8 +21,8 @@ per-request output budget (``max_tokens``), and the two attention score tiles
 capacity is validated before any device work runs, including before the
 vision tower.
 
-Registered under ``(surya_ocr2, hip_gfx1151, fp32)`` through
-``register_builtin_generators()``. Correctness contract: greedy IDs must
+Registered under ``(surya_ocr2, hip_gfx1100, fp32)`` and
+``(surya_ocr2, hip_gfx1151, fp32)`` through ``register_builtin_generators()``. Correctness contract: greedy IDs must
 match the CPU reference path, which is itself gated against the torch
 fp32 oracle fixtures.
 """
@@ -301,7 +301,7 @@ def make_surya_generator_gpu(
     prefill_max_scratch_bytes: int | None = None,
     vision_max_seconds: float | None = None,
 ) -> SuryaOCRGeneratorGPU:
-    """Registered ``(surya_ocr2, hip_gfx1151, fp32)`` factory.
+    """Registered ``(surya_ocr2, hip_gfx1100/gfx1151, fp32)`` factory.
 
     The capacity parameters are declared by name because
     ``LLM._factory_capacity_kwargs`` forwards a limit only to a factory that
@@ -321,9 +321,14 @@ def make_surya_generator_gpu(
     )
 
 
-register_text_generator(
-    model="surya_ocr2",
-    backend="hip_gfx1151",
-    quant=_QUANT,
-    factory=make_surya_generator_gpu,
-)
+# The runtime targets gfx1100-class RDNA3 devices and builds its kernels from
+# the hip_gfx1100 tree, so the same generator serves both RDNA3 backends. The
+# gfx1151-only registration was a stable-host artifact; gfx1100 public image
+# generation and the prompt-count contract are validated on the W7900.
+for _surya_backend in ("hip_gfx1100", "hip_gfx1151"):
+    register_text_generator(
+        model="surya_ocr2",
+        backend=_surya_backend,
+        quant=_QUANT,
+        factory=make_surya_generator_gpu,
+    )
