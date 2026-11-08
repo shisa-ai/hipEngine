@@ -36,6 +36,15 @@ The first is mandatory in every profile. The second is mandatory for retained
 strict and production routes. The third is an explicit reproducibility
 contract rather than a universal serving requirement.
 
+The prefill split schedule is part of the execution schedule. Prefilling a
+prompt in one call, in chunks, or as a reused prefix plus a suffix may select
+different kernels (for example a one-row suffix takes decode-shaped kernels, and
+long full-attention prefill reduces differently per chunk), so `strict` and
+`production` promise bit-equality only for the same split. Cross-split equality
+is diagnostic. This is a lead decision dated 2026-11-08;
+`tests/test_live_qwen35_gguf_chunked_prefill.py::test_split_prefill_divergence_boundaries_are_unchanged`
+pins the known split-dependent shapes so a change to them is visible.
+
 Failure belongs to the first property: recovery must preserve ownership and
 valid state outside the affected scope. Section 4.3 states the containment
 contract and section 4.4 separates per-request capability from group scheduling.

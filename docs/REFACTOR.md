@@ -16,6 +16,11 @@ IDs, closed statuses and local links; it also runs in the documentation gate.
 Preserve supported fallback paths and apply the verification rules in
 [AGENTS.md](../AGENTS.md) and [EXECUTION-PROFILES.md](EXECUTION-PROFILES.md).
 
+Scripts under `scripts/` are retained by default (lead decision, 2026-11-08). Retire one
+only through a specific proposal that names the path, its current callers and doc
+references, and its replacement command or why none is needed. Do not delete scripts in
+unnamed batches.
+
 ## Dense Llama attention only tiles head_dim 128
 
 Recorded 2026-10-27, rewritten 2026-10-28 when the flash route landed.
@@ -56,18 +61,6 @@ attribution only. Preserve
 `tests/test_unit_speculative_mtp_serving_capability.py::test_qwen36_dense_rows_without_identity_still_run_on_capability`
 and `admission_basis="implementation"` in both modes. Never invent a fingerprint or use a
 byte-digest match to conflate qwen36-dense and qwen38 execution identity.
-
-### R0051 — Review backend decode and strict attention scope ownership
-
-Owner: `hipengine/generation/gemma4_profiles.py`.
-
-Scope: `gemma4_plain`.
-
-Done when: Decide whether backend decode routing and strict attention binding should share one scope contract.
-Inventory prefill, one-row prefill tails, incremental decode and verification selectors; explicit
-`gemma4_plain` verification does not establish strict behavior for every phase. Preserve
-staged/plain and shape/backend fallbacks. Test profile isolation, scope precedence, graph capture
-and public selected routes on both backends before unifying them.
 
 ### R0196 — gfx1100 dense SPECDEC2 C8 physical-width rollback
 
@@ -633,26 +626,6 @@ unit tests pass for the interfaces; primitive tests are separate from actual-wei
 validation. Preserve independent exact fallbacks and do not collapse them into
 online arithmetic during interface cleanup.
 
-### R0281-PARO-WIDTH — PARO batch policy and diagnostic controls
-
-Owner: `hipengine/generation/qwen35_paro.py`.
-
-Scope: `scripts/qwen35_batch_retained_bench.py`, `hipengine/runtime/qwen35_paro_decode_groups.py`.
-
-**Remaining work:** the two environment controls are not synonyms.
-`HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS` also selects per-layer linear-output, attention and
-projection defaults; `HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE` controls native decode.
-Both still have benchmark/test callers. Choose supported separate policy controls or migrate those
-callers to explicit diagnostic scopes before retiring their production environment readers; a rename
-alone does not merge their behavior. The sampled-batch diagnostic is independent and must not be
-substituted for the public per-request sampler.
-
-Done when: separate these policies, migrate actual callers, then run
-`tests/test_unit_qwen35_paro_decode_groups.py`, `tests/test_unit_qwen35_batch_partition_bench.py`,
-`tests/test_unit_generation_qwen35_paro.py`, `tests/test_unit_qwen35_resident_batch_layout.py` and
-batch-width loader tests. Exercise public native and serial c1/c2/c4/c8, sparse slots, staggered
-admission, cancellation and cleanup, with the chosen path reported.
-
 ### R0281-D12 — Q5 constructor retirement public validation
 
 Owner: `hipengine/runtime/laguna_gguf_runner.py`.
@@ -836,30 +809,6 @@ rather than trusting that field. Run the graph-policy nodes in
 then exercise public `LLM.generate()` with the repaired route confirmed and allocations drained.
 Evaluate capture-inclusive wall separately before an automatic performance choice.
 
-### R0281-PARO-RAGGED — Ragged packed prefill and diagnostic ownership
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `per_segment_ragged_exact`, `packed_segments`, `packed_varlen`;
-`HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_LINEAR`,;
-`HIPENGINE_QWEN35_PACKED_PREFILL_FORCE_PER_SEGMENT_FULL_ATTN`.
-
-Done when: Remaining work: repair the original packed ragged difference under an explicit diagnostic owner,
-or keep per-segment execution as the supported ragged algorithm. Decide separately whether the live
-comparison controls stay supported or move to an owner-scoped interface. Do not delete their
-callers, exact fallback, equal-length paths or primitive implementations as stale release-window
-cleanup. **Clearing action:** first run `scripts/qwen35_batch_shrinking_correctness.py --model
-"$PARO_MODEL" --fixture fixtures/qwen35_paro/parent_512_32_seed1234.json --batch-size 3
---prompt-lengths 8,9,11 --steps-per-width 1 --max-layers 40 --max-sequence-length 1024
---survivor-slot 1 --decode-execution serial --json /tmp/paro-ragged-current.json` on the intended
-backend and verify resolved device and prefill metadata. This checks the working fallback, not the
-packed candidate. Add a test-only packed ragged bypass before comparing identical input trajectories
-and locating the first unequal hidden, Conv/GDN or live-KV state. Cover c8, sparse slots,
-continuation, EOS/cancellation and cleanup on each applicable backend. Run
-`tests/test_unit_qwen35_resident_batch_layout.py`, `tests/test_unit_qwen35_paro_serial_bridge.py`
-and `tests/test_unit_qwen35_batch_partition_bench.py`, then public ragged `LLM.generate()` requests
-with the selected path confirmed.
-
 ### R0281-GGUF-REPACK — Decode layout control and comparison callers
 
 Owner: `hipengine/loading/qwen35_gguf_policy.py`.
@@ -928,59 +877,6 @@ action:** run `tests/test_unit_qwen35_gguf_compact_moe_gemv_routing.py` and
 with any reader removal. A runtime migration also needs the primitive pair-reuse parity tests and
 public C8 MoE generation on both intended backends, with selected callables, neighboring/non-C8
 widths and cleanup recorded. A release-window deadline alone cannot replace these contracts.
-
-### R0281-PARO-NATIVE — Provider graph and selected-commit control migration
-
-Owner: `hipengine/runtime/qwen35_paro_runner.py`.
-
-Scope: `hip_gfx1100/w4_paro/native_v1_target_graph`, `COMMIT|UPDATE_CURSORS`;
-`HIPENGINE_PARO_NATIVE_SPEC_TARGET_GRAPH`, `HIPENGINE_PARO_NATIVE_SPEC_TARGET_COMMIT`.
-
-**Remaining decision/work:** replace the two process-wide selectors with profile-owned
-submission/commit variants and an explicit diagnostic comparison, or retain supported controls with
-concrete ownership. Preserve provider-specific repair, result metadata and capture bindings. The old
-release-window trigger and cross-provider speed prerequisite do not specify this migration. A
-missing backend registration is an implementation gap, not evidence that its hardware cannot execute
-the wrapper; evaluate/register supported peers independently, without identity allowlists or
-missing-benchmark admission gates. Complete proposal ownership is separate work and does not block
-existing target graphs.
-
-Done when: exercise both submission/commit variants in
-`tests/test_unit_qwen35_resident_batch_layout.py`,
-`tests/test_unit_qwen35_paro_verify_graph_cache.py` and provider-launcher nodes in
-`tests/test_gpu_native_spec_cycle_graph.py`. A migration needs real PARO and DFlash requests
-confirming selected stages, active/inactive and unsupported shapes,
-hidden-capture/accepted-row/cursor ownership, independent graph buckets, repeat output, fault
-rollback and teardown. Keep the public post-submission failure nodes in
-`tests/test_live_paro_mtp_graph.py`; they launch real HIP graphs with injected result failure and do
-not claim native-C++ registration on an unregistered peer. Apply numerical gates only if arithmetic
-changes.
-
-### R0281-INT8-POLICY — Legacy context and layout diagnostic controls
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `tail4_hadamard_group32`; `HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG`.
-
-**First ownership unit:** `Qwen35GGUFBringupGenerator.int8_kv_failure_override` explicitly
-controls recorded-failure override without selecting resident storage. `False` overrides legacy
-environment opt-ins; `None` preserves existing callers until migration. Unsupported capabilities
-remain errors. Resident layout/default readers and allocation/soak callers remain to migrate.
-
-**Decision needed:** retain explicit diagnostic controls, or migrate them to a scoped policy that
-distinguishes a recorded-failure override from storage layout selection. Keep actual rejection
-records and capability/resource errors. Do not replace the current kernel declaration with
-model-name, file-hash or measured- artifact admission lists.
-
-Done when: enumerate both generator and resident-runner readers, migrate
-`scripts/gguf_server_allocation_probe.py`, `scripts/qwen38_int8_server_context_soak.py` and the
-mixed-KV/correctness callers, then remove the obsolete readers and update ENVS. Run the
-KV-capability, INT8-policy, packed-verifier-layout, INT8-MTP and per-layer-oracle unit files,
-including unseen artifacts and contexts below, above and unrelated to the mirror threshold. Exercise
-public direct/mirrored requests, explicit diagnostic overrides and genuine capability refusals on
-both HIP backends, tracing storage/scales, graph/MTP engagement, cancellation, refill and cleanup.
-Kernel-arithmetic changes require their independent quality and state gates; control migration alone
-must not change arithmetic or defaults.
 
 ### R0313 / R0314 / R0315 / R0316 / R0318 / R0320 — Laguna legacy MMQ selector migration
 
@@ -1433,84 +1329,6 @@ role-policy and dense-metadata contracts; then GPU global/SWA parity across part
 and verifier cases plus public `LLM.generate()` at short, boundary-neighbor and unrelated lengths.
 Confirm selected variants, append ordering, state/output equality and cleanup.
 
-### R0281-PARO-PROVIDER — Manual provider and private-scorer migration
-
-Owner: `hipengine/speculative/paro_mtp_profiles.py`.
-
-Scope: `mtp_chain_e2e_smoke.py`; `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT`,
-`HIPENGINE_VERIFY_CHAIN_LINEAR_TLOOP`,; `HIPENGINE_VERIFY_GPU_ACCEPT`.
-
-**Decision needed:** preserve these named historical diagnostics or migrate manual provider choice
-to an explicit harness-owned policy while separating private scoring from the public provider. Do
-not widen the registered B1 profile scope or treat its scope check as the public Generation-2 depth
-limit.
-
-Done when: migrate profile binding, explicit-chain harness selection, proposal/scoring
-metadata, drift/lifecycle callers and private-head allocation ownership together. Retain
-selected-row reseeding, full-vocabulary borrowed scoring, strict verifier fallback and stale-owner
-rejection. Run profile/manual selector and public adapter tests, borrowed/private scoring and
-lifecycle tests, plus actual strict/production public generation with selector unset/0/1 and
-reset/close coverage. Any removal of private branching needs an explicit replacement or retirement
-decision, not just a release-window expiry.
-
-Choose whether to preserve these explicit harness comparisons or retire them with their
-private-scorer consumers. An old negative speed result does not by itself justify deleting working
-tree primitives or changing public admission. A migration must cover reload/persistent mode
-selection, confidence and active budget boundaries, sibling acceptance/selected hidden and KV
-repair, graph bindings and tail padding. Keep the shared compiler/mask/acceptance oracles and
-confirm public chain routing stays unchanged. The corresponding GGUF root/sibling acceptance policy
-is separately owned by `scripts/gguf_mtp_bench.py`; its supported-comparison disposition is recorded
-in `worklog/entries/20261105T232832.251011Z-lhl-r0281-topk-74268b.md`.
-
-### R0380 — Recurrent-state storage controls and speculative writers
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_FP16_RECURRENT_STATE`.
-
-**Decision needed:** retain the storage override as a supported comparison or migrate it into a
-caller-owned execution plan. Keep frozen allocation dtype; retiring an environment name is not a
-reason to retire that invariant. Separate this interface cleanup from implementing typed speculative
-selected commit, repairing the observed native-graph divergence and reviewing profile/admission
-ownership against capability-only product rules. Missing benchmark rows are not runtime capability
-failures and must not become new restrictions.
-
-Done when: migrate storage resolution, allocation pricing, all writer selection, profile
-binding, snapshots and comparison provenance together. Run
-`tests/test_unit_qwen35_gguf_gdn_prefill_routing.py`, session-mode, scratch-plan-boundary,
-FP16-state batch-gate and MTP2-seam tests, including nested failure restoration and explicit dtype
-after environment changes. On HIP run `tests/test_gpu_qwen35_gguf_gdn_fp16_state.py` and public
-generation/serving for FP32/FP16, short/segmented/long prompts, sparse and changing widths,
-reset/reuse, failure rollback and teardown. Any graph repair must compare accepted-row state against
-eager, including the recorded failing layer region. Any arithmetic promotion needs its
-execution-profile gate; route availability and explicit requests follow capability contracts
-independently.
-
-Preserve dtype frozen before allocation across decode, prefill, snapshots and selected-state commit;
-do not reinterpret storage after changing policy.
-
-### R0382 — Long-context staged verifier and scalar-reference ownership
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `_gguf_staged_linear_rows_long_enabled()`; `HIPENGINE_GGUF_STAGED_LINEAR_ROWS_LONG`.
-
-**Decision needed:** retain the explicit comparison or migrate the selector and row-wise
-orchestration into one caller-owned strict/staged plan. Keep the registered strict primitives and
-Conv/GDN/KV transaction ownership. Retiring the branch must not make strict requests silently use
-staged arithmetic. Review the existing artifact-derived default policy separately against
-capability-only product rules; do not perpetuate the old instruction that every runnable artifact
-needs its own benchmark packet. Arithmetic-default promotion and runtime capability remain separate
-contracts.
-
-Done when: migrate policy binding, strict registry chain, row-scratch views, initial
-snapshots, selected-state commit and gate route attribution together. Run
-`tests/test_live_gguf_native_spec_cycle.py` staged/strict routing nodes and
-`scripts/gguf_mtp_long_context_gate.py --help`. Before changing execution, exercise the gate with
-target graphs disabled and public generation at split-boundary straddles and unrelated contexts;
-assert staged/scalar call counts, full outputs/state, every acceptance prefix, reset/reuse, failure
-rollback and teardown. Native graph/submission economics remain separate work.
-
 ### R0385 — Observed target/proposal sentinel crossing repair
 
 Owner: `hipengine/runtime/qwen35_gguf_mtp.py`.
@@ -1931,29 +1749,6 @@ generic-only generation through `LLM.generate()` or the server and confirm the i
 driver ownership. Existing tests of rejection and MTP compatibility are containment coverage, not
 proof that the missing generic lifecycle is implemented.
 
-### R0071 — Resolve split-prefill arithmetic before retiring its divergence pin
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `docs/REFACTOR.md`; `tests/test_live_qwen35_gguf_chunked_prefill.py`; `test_split_prefill_divergence_boundaries_are_unchanged`.
-
-**Deferred numerical-contract decision and repair:** establish the intended cross-schedule contract
-using the execution-profile oracle, then repair the one-row routing and long-context full-attention
-differences against that contract. The old serial-reference comparison and layer-localization
-evidence are preserved in `docs/REFACTOR.md` at commit `304c3324d`, under “Split prefill diverges
-from a single call”. They are historical observations, not a fresh quality verdict for current
-kernels. Do not cap query windows just to force equality: the recorded experiment rejected that
-tradeoff.
-
-Done when: reproduce both families and the equal-output control, test values on both sides of
-the boundary plus unrelated lengths and split points, and compare independent sessions against the
-declared oracle. Run `tests/test_live_qwen35_gguf_chunked_prefill.py` and the applicable numerical
-profile gates; exercise public prefix reuse and fresh generation with continuation. Replace
-`test_split_prefill_divergence_boundaries_are_unchanged` with positive contract coverage only after
-the repair, and extend `test_batched_suffix_extend_is_bit_exact_against_recompute` where that
-exactness contract applies. Do not treat passing a test that requires inequality as proof of
-numerical correctness or remove it merely to clear the ledger.
-
 ### R0131 — Coordinate live-derived Surya split planning with launch bounds
 
 Owner: `hipengine/runtime/surya.py`.
@@ -2056,23 +1851,6 @@ profile unit tests cover the current abstraction, not completion of this migrati
 Registry misses may use only a declared fallback supporting the requested semantics; missing
 capabilities must fail explicitly. Preserve four-axis ownership and identical eager/capture
 decisions.
-
-### RF-3 / R0187 — Decide source-script retention and replacement ownership
-
-Owner: `scripts/`.
-
-Scope: `scripts/` — Decide source-script retention and replacement ownership.
-
-**Deferred decision:** choose the supported source-command families and their replacement entry
-points before consolidating or retiring historical drivers. For each proposed deletion, record the
-path, current callers and published protocol references, replacement command (or why none is
-needed), and the immutable result hash and decision it reproduces. Preserve active oracles and
-commands required to reproduce evidence. Parameter-only drivers may consolidate only after their
-argument, output-schema and failure contracts are compared.
-
-Done when: a path-by-path disposition inventory, replacement command help and focused driver
-tests, published-command drift checks, and verification that each retained evidence reference is
-still reproducible or explicitly archived. Do not delete an unnamed batch based on the old count.
 
 ### RF-5 / R0187 — Choose compact decision schema and durable capture storage
 

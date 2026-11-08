@@ -568,8 +568,11 @@ def test_split_prefill_divergence_boundaries_are_unchanged() -> None:
       * ``total > 2048``: splitting anywhere diverges from one call; measured
         against a serial reference the single call is the closer of the two.
 
-    If a fix lands for either, this test should fail and be replaced by
-    coverage in ``test_batched_suffix_extend_is_bit_exact_against_recompute``.
+    ``docs/EXECUTION-PROFILES.md`` makes the prefill split part of the
+    execution schedule: strict and production promise bit-equality only for
+    the same split, so these differences are documented behavior, not defects.
+    If either boundary changes, update this pin deliberately; shapes that are
+    bit-exact belong in ``test_batched_suffix_extend_is_bit_exact_against_recompute``.
     """
     if not _hip_available():
         pytest.skip("HIP runtime is not available")
