@@ -30380,6 +30380,24 @@ def _gguf_prefill_normalized_qk_heads(
     return value_heads
 
 
+def _gguf_c8_target_q8_1_workspace_declared(backend: str) -> bool:
+    """Whether backend C8 target owners consume the plan-owned Q8_1 plane.
+
+    Capability declaration, not artifact identity: any dense artifact whose
+    physical C8 target reaches these owners needs the workspace provisioned.
+    """
+    try:
+        q5_raw = bool(
+            backend_package_capability(backend, "GGUF_C8_Q5_RAW_MMQ_SSM_OUT", False)
+        )
+        q6_counts = backend_package_capability(
+            backend, "GGUF_Q6_DP4A_GROUPED_TARGET_REQUEST_COUNTS", ()
+        )
+    except ValueError:
+        return False
+    return q5_raw or bool(q6_counts)
+
+
 def _gguf_prefill_scratch_liveness_disabled_fields(
     runner: object,
     *,
@@ -30454,6 +30472,11 @@ def _gguf_prefill_scratch_liveness_disabled_fields(
         disabled_fields = frozenset(
             (*disabled_fields, *_GGUF_PREFILL_SCRATCH_DENSE_DISABLED_FIELDS)
         )
+        if _gguf_c8_target_q8_1_workspace_declared(backend):
+            # The default C8 physical target Q5/Q6 owners quantize into the
+            # plan-owned Q8_1 plane even without MoE experts; disabling it
+            # fails every public C8 cycle closed on its workspace probe.
+            disabled_fields = frozenset(disabled_fields - {"moe_q8_1"})
     # F32/capture diagnostics intentionally retain independently-owned buffers
     # so post-layer inspection can observe every intermediate concurrently.
     if any(

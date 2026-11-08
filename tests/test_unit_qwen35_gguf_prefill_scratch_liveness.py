@@ -685,9 +685,11 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     # Q4/Q5/Q6 source-F16 prefill shares three liveness-aliased transient
     # planes while preserving each sole resident T16 weight allocation. Q5
     # recurrent output and dense FFN down cast their dead BF16 inputs in place,
-    # so K6,144 admission does not grow the K5,120 activation workspace.
-    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 104 * _MIB
-    assert max(buffer.nbytes for buffer in scratch.buffers) <= 103 * _MIB
+    # so K6,144 admission does not grow the K5,120 activation workspace. The
+    # plan-owned Q8_1 plane stays live for the default C8 target Q5/Q6 owners
+    # (768 rows x 544 blocks x 36 bytes = 14.34 MiB).
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 119 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) <= 112 * _MIB
     assert scratch.q6_f16_x.ptr != 0
     assert scratch.q6_f16_x.nbytes == 768 * 5_120 * 2
     assert scratch.q6_f16_weight.ptr != 0
@@ -705,7 +707,8 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
     assert scratch.ffn_intermediate.ptr == scratch.ffn_gate_up.ptr
     assert scratch.ffn_intermediate.nbytes * 2 == scratch.ffn_gate_up.nbytes
     assert scratch.ffn_down.ptr != 0
-    assert scratch.moe_q8_1 == DeviceBuffer(ptr=0, nbytes=0)
+    assert scratch.moe_q8_1.ptr != 0
+    assert scratch.moe_q8_1.nbytes == 768 * (17_408 // 32) * 36
     assert scratch.moe_shared_gate == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.moe_shared_intermediate == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.moe_down_out == DeviceBuffer(ptr=0, nbytes=0)
@@ -756,6 +759,97 @@ def test_gfx1100_dense_qwen36_prefill_scratch_uses_model_scoped_liveness_arena(
                 f"live dense scratch buffers overlap: {name_a}={offsets[name_a]}, "
                 f"{name_b}={offsets[name_b]}"
             )
+
+
+def test_gfx1100_dense_scratch_retains_c8_target_q8_1_workspace(monkeypatch) -> None:
+    """Default C8 Q5/Q6 target owners consume the plan-owned Q8_1 slot.
+
+    The dense liveness optimization must not disable ``moe_q8_1`` on a backend
+    that declares those owners: every public C8 physical cycle opens its target
+    sessions against this plane, and an empty plane fails the whole cycle
+    closed (``Q5 raw MMQ target session requires a device workspace``),
+    silently downgrading explicit C8 MTP requests to AR.
+    """
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+
+    rows = 768
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        _fake_dense_qwen36_runner(),
+        rows=rows,
+        capacity=rows,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+    # The Q6 grouped owner needs rows*(in_features/32)*36 at the widest
+    # declared target shape (17408 input columns); the Q5 D4S4 owner needs
+    # fewer bytes per element. The plane must cover any target row count up
+    # to the scratch row capacity.
+    required_q6 = rows * (17_408 // 32) * 36
+    assert scratch.moe_q8_1.ptr != 0
+    assert scratch.moe_q8_1.nbytes >= required_q6
+
+    # Opening the C8 target contexts against the allocated scratch must
+    # succeed and bind exactly that plan-owned plane.
+    monkeypatch.setattr(gguf_runner, "build_gguf_k_mmq_prefill", lambda **kwargs: object())
+    monkeypatch.setattr(gguf_runner, "build_gguf_q5_k_source_mmq_prefill", lambda **kwargs: object())
+    monkeypatch.setattr(gguf_runner, "build_gguf_q5_k_qmicro_planar_gemv", lambda **kwargs: object())
+    fake_session = SimpleNamespace(
+        runner=SimpleNamespace(backend="hip_gfx1100"),
+        _q5_raw_mmq_target_library=None,
+        _q5_source_mmq_target_library=None,
+        _q5_planar_dp4a_library=None,
+        compiler_version=None,
+        require_cached_build=False,
+        use_q6_dp4a_grouped=True,
+    )
+    from hipengine.runtime.gguf_linear import _q5_raw_mmq_target_session
+
+    with gguf_runner.Qwen35GGUFResidentSession._q5_raw_mmq_target_context(
+        fake_session, scratch, request_count=8
+    ):
+        q5_session = _q5_raw_mmq_target_session.get()
+        assert q5_session is not None
+        assert q5_session.workspace_ptr == scratch.moe_q8_1.ptr
+        assert q5_session.workspace_nbytes == scratch.moe_q8_1.nbytes
+    with gguf_runner.Qwen35GGUFResidentSession._q6_dp4a_grouped_target_context(
+        fake_session, scratch, request_count=8
+    ):
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
+            _Q6_DP4A_GROUPED_SESSION,
+        )
+
+        q6_session = _Q6_DP4A_GROUPED_SESSION.get()
+        assert q6_session is not None
+        assert q6_session.workspace_ptr == scratch.moe_q8_1.ptr
+        assert q6_session.workspace_nbytes == scratch.moe_q8_1.nbytes
+
+
+def test_dense_scratch_q8_1_workspace_is_capability_scoped(monkeypatch) -> None:
+    """Backends without C8 target consumers keep the dense memory optimization."""
+    _install_fake_device(monkeypatch)
+    _clear_diagnostic_environment(monkeypatch)
+
+    runner = _fake_dense_qwen36_runner()
+    real_capability = gguf_runner.backend_package_capability
+
+    def no_c8_consumers(backend, name, default=None):
+        if name in {
+            "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
+            "GGUF_Q6_DP4A_GROUPED_TARGET_REQUEST_COUNTS",
+        }:
+            return default
+        return real_capability(backend, name, default)
+
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", no_c8_consumers)
+    scratch = _GGUFFullAttentionPrefillScratch.allocate(
+        runner,
+        rows=768,
+        capacity=768,
+        allocate_kv_cache=False,
+        runtime=SimpleNamespace(),
+    )
+    assert scratch.moe_q8_1 == DeviceBuffer(ptr=0, nbytes=0)
 
 
 def test_gfx1100_dense_qwen36_hidden_reuse_is_long_row_only(monkeypatch) -> None:
@@ -867,9 +961,10 @@ def test_gfx1100_dense_qwen36_split_gdn_keeps_conv_output_disjoint(monkeypatch) 
     # (~66.5 MiB larger than the invalid page-sharing variant). Standalone RoPE
     # cos/sin ownership adds less than 2 MiB to the retained arena ceiling.
     # The fused segmented writer also publishes BF16 during recurrence, so
-    # that output cannot reuse convolution input pages.
-    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 520 * _MIB
-    assert max(buffer.nbytes for buffer in scratch.buffers) == 541_523_968
+    # that output cannot reuse convolution input pages. The C8 target Q8_1
+    # plane adds 76.5 MiB (4096 rows x 544 blocks x 36 bytes).
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 597 * _MIB
+    assert max(buffer.nbytes for buffer in scratch.buffers) == 621_805_568
     assert scratch.allocation_offsets["attn_out"] == (
         48 * _MIB + 64 * 1_024,
         40 * _MIB,
