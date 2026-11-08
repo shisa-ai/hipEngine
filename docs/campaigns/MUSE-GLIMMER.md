@@ -876,3 +876,18 @@ kernel) is the remaining #3 half: every available flash route is causal-only
 and/or head_dim-256-only, so it needs a new non-causal WMMA block-flash kernel
 (separate unit). Record:
 `worklog/entries/20261108T173703.302553Z-lhl-muse-glimmer-f4516d.md`.
+
+**#5 verify graphs landed (2026-11-08).** The exact block verify (~740 eager
+launches/cycle) is HIP-graph-captured, mirroring the AR decode graph: a
+kernel-only body, staging buffers for tokens/positions/key_end_dev, fixed
+tap/logits buffers. Two graphs keyed by (rows, tap_layers) cover the budget-4
+cycle's 4/5-row verify (pending root); verify_with_taps replays the matching
+graph with an eager fallback. Replay is bit-identical to eager (logits and taps,
+0.0 diff), so verify KV still equals true AR; an engagement test asserts both
+graphs capture and the public dflash surface confirms both engage. Wall saving
+measures only ~0.5 ms/cycle under the current thermal throttling (verify is
+GPU-weight-bound, host dispatch hidden) — the shipped decode graph likewise shows
+~0 now vs its historical ~9 ms at full GPU speed, so the §11 ~7 ms verify estimate
+is the full-speed host-dispatch bubble (inferred, not confirmable while throttled);
+the 740->1 launch reduction is real and thermal-independent. Record:
+`worklog/entries/20261108T184336.461336Z-lhl-muse-glimmer-3a38a2.md`.

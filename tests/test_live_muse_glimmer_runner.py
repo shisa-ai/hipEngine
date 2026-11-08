@@ -148,6 +148,32 @@ def test_decode_replays_the_captured_graph(session, oracle) -> None:
     assert getattr(session, "_graph_exec", 0)
 
 
+def test_verify_replays_the_captured_graph(session, oracle) -> None:
+    """Block verify must run the captured HIP graph; a capture failure falls
+    back to eager verify silently (~7 ms/cycle of host dispatch bubble). The
+    shipping DFlash budget verifies 4 or 5 rows (pending root), so both graphs
+    must capture, and each replay must stay bit-identical to the eager exact
+    verify (logits and taps)."""
+
+    ids = list(oracle["token_ids"])
+    tap_layers = (2, 14, 26, 38, 50)
+    session.reset()
+    token = int(np.argmax(session.prefill(ids)))
+    base = session._length
+    for rows in (4, 5):
+        block = np.asarray([token] * rows, dtype=np.int64)
+        session.truncate(base)
+        session._verify_graph_failed = True
+        eager_logits, eager_taps = session.verify_with_taps(block, tap_layers)
+        session.truncate(base)
+        session._verify_graph_failed = False
+        graph_logits, graph_taps = session.verify_with_taps(block, tap_layers)
+        assert not getattr(session, "_verify_graph_failed", False)
+        assert (rows, tap_layers) in getattr(session, "_verify_graph_exec", {})
+        assert np.array_equal(eager_logits, graph_logits)
+        assert np.array_equal(eager_taps, graph_taps)
+
+
 def test_greedy_generation_is_coherent(session, oracle) -> None:
     from hipengine.tokenization.gguf import MuseGlimmerGGUFTokenizer
     from hipengine.loading.gguf import GGUFReader

@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "kind": "muse_glimmer_verify_graph_capture",
+  "status": "retained",
+  "performance_claim": true,
+  "claim_scope": "exact block-verify host-dispatch reduction; bit-identical replay; wall benefit thermal-dependent",
+  "date": "2026-11-08",
+  "model": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1151",
+  "host": "zbook / Radeon 8060S (gfx1151), Ryzen AI MAX+ PRO 395",
+  "baseline_commit": "47ba148ca68d7bf20fc825e80ab7ea4ad31389f2",
+  "change": "HIP-graph-capture the exact DFlash block verify (kernel-only body mirroring _forward_block exact_multirow; staging buffers for tokens/positions/key_end_dev; fixed tap/logits buffers). Two graphs keyed by (rows, tap_layers) cover the budget-4 cycle's 4/5-row verify (pending root). verify_with_taps replays the matching graph, eager fallback on capture failure/unsupported shape. Mirrors the shipped AR decode graph.",
+  "launches_per_cycle": {"eager": 740, "graph": 1},
+  "correctness": {
+    "replay_vs_eager": "logits AND taps bit-identical (max abs diff 0.0)",
+    "test_verify_replays_the_captured_graph": "pass (4- and 5-row graphs capture, no silent fallback, bit-identical)",
+    "test_live_muse_glimmer_runner.py": "6 pass",
+    "test_live_muse_glimmer_dflash_exactness.py": "2 pass (ten-prompt DFlash IDs == true AR with graphs active + public surface)",
+    "public_surface_graphs_engaged": [[4, [2,14,26,38,50]], [5, [2,14,26,38,50]]]
+  },
+  "timing": {
+    "method": "back-to-back graph/eager verify_with_taps, synthetic live length, 30 iters; also decode graph for thermal control",
+    "verify_wall_delta_ms_per_cycle_throttled": {"512": 0.13, "32768": 0.69, "126000": 0.41},
+    "decode_graph_wall_delta_ms_throttled": -0.08,
+    "thermal_caveat": "host is power-capped/thermally throttled after sustained load; verify is GPU-weight-bound (~134 ms/cycle) so host dispatch hides under compute and the graph wall benefit is ~0.5 ms. The shipped decode graph likewise shows ~0 now vs its historical ~9 ms/step at full GPU speed. The §11 ~7 ms verify estimate is the full-speed host-dispatch bubble (inferred from the decode-graph analog, not confirmable under current throttling). The 740->1 launch reduction is real and thermal-independent."
+  },
+  "worklog": "worklog/entries/20261108T184336.461336Z-lhl-muse-glimmer-3a38a2.md",
+  "campaign": "docs/campaigns/MUSE-GLIMMER.md §11.1"
+}

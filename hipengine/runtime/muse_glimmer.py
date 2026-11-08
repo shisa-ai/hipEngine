@@ -550,6 +550,225 @@ class MuseGlimmerResidentSession:
             np.multiply(np.float32(cap), logits, out=logits)
         return logits.copy()
 
+    # -- HIP graph verify --------------------------------------------------
+    def _ensure_verify_graph(self, tokens: int, tap_layers: tuple[int, ...]):
+        """Capture the exact block-verify forward for a row count; replay
+        removes the per-cycle host dispatch bubble (~740 eager launches, ~7 ms).
+        Returns the exec handle or None (eager verify remains the fallback).
+        Graphs are keyed by (tokens, tap_layers); the shipping DFlash budget
+        verifies 4 or 5 rows depending on a pending root, so two graphs cover
+        the default cycle. Mirrors the decode graph's dynamic-extent staging:
+        the shared attention reads the live key end from a device buffer.
+        """
+
+        key = (int(tokens), tuple(int(l) for l in tap_layers))
+        cache = getattr(self, "_verify_graph_exec", None)
+        if cache is None:
+            cache = self._verify_graph_exec = {}
+        if key in cache:
+            return cache[key]
+        if getattr(self, "_verify_graph_failed", False):
+            return None
+        if not 2 <= tokens <= self._MAX_VERIFY_ROWS:
+            return None
+        # The fixed tap buffer is laid out for one tap_layers configuration;
+        # a different one takes the eager path rather than re-laying it out.
+        if getattr(self, "_vg_tap_layers", None) is not None and key[1] != self._vg_tap_layers:
+            return None
+        rt = self.runtime
+        prev_exact = getattr(self, "_exact_multirow", False)
+        try:
+            from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (  # noqa: F401
+                muse_glimmer_decode_attention_shared, muse_glimmer_qk_norm_rope_kv_append,
+            )
+
+            cfg = self.config
+            hidden = cfg.n_embd
+            n_taps = len(key[1])
+            stream = rt.stream_create()
+            if getattr(self, "_vg_key_end", None) is None:
+                self._vg_key_end = malloc(8, runtime=rt)
+                self._vg_tap_buf = malloc(
+                    self._MAX_VERIFY_ROWS * max(n_taps, 1) * hidden * 4, runtime=rt)
+                self._vg_logits_buf = malloc(
+                    self._MAX_VERIFY_ROWS * cfg.vocab_size * 4, runtime=rt)
+                self._vg_tap_layers = key[1]
+            self._vg_stream = stream
+            self._exact_multirow = True
+            # Warm every kernel on the capture stream outside capture.
+            self._vg_stage_inputs(np.zeros(tokens, dtype=np.int64), self._length, tokens)
+            self._verify_graph_body(stream, tokens, key[1])
+            rt.stream_synchronize(stream)
+            rt.stream_begin_capture(stream, mode=0)
+            try:
+                self._verify_graph_body(stream, tokens, key[1])
+                graph = rt.stream_end_capture(stream)
+            except BaseException:
+                if rt.stream_is_capturing(stream):
+                    rt.stream_end_capture(stream)
+                raise
+            if not graph:
+                raise RuntimeError("verify graph capture produced no graph")
+            exec_handle = rt.graph_instantiate(graph)
+            rt.graph_destroy(graph)
+            cache[key] = exec_handle
+            return exec_handle
+        except Exception:
+            self._verify_graph_failed = True
+            return None
+        finally:
+            self._exact_multirow = prev_exact
+
+    def _vg_stage_inputs(self, ids: np.ndarray, pos: int, tokens: int) -> None:
+        rt = self.runtime
+        self._ids_host[:tokens] = ids
+        copy_host_array_to_device(self.token_ids, self._ids_host[:tokens], runtime=rt)
+        self._pos_host[:tokens] = np.arange(pos, pos + tokens, dtype=np.int64)
+        copy_host_array_to_device(self.positions, self._pos_host[:tokens], runtime=rt)
+        copy_host_array_to_device(
+            self._vg_key_end, np.asarray([pos + tokens], dtype=np.int64), runtime=rt)
+
+    def _verify_graph_body(self, stream: int, tokens: int, tap_layers: tuple[int, ...]) -> None:
+        """Kernel-only exact verify with graph-stable arguments.
+
+        Mirrors the ``exact_multirow`` branch of ``_forward_block`` launch for
+        launch (bit-identical row-independent projections + shared-row attention
+        + fused residual boundaries). Token ids/positions live in the scratch
+        staging buffers and the live key end in ``_vg_key_end``, all uploaded
+        before replay; tap and logits land in fixed buffers. No host work.
+        """
+
+        from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
+            muse_glimmer_add_rmsnorm_rmsnorm,
+            muse_glimmer_decode_attention_shared,
+            muse_glimmer_qk_norm_rope_kv_append,
+        )
+        from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
+
+        cfg, rt = self.config, self.runtime
+        hidden = cfg.n_embd
+        q_dim, kv_dim, d = cfg.qkv_dim, cfg.kv_dim, cfg.head_dim
+        kw = {"stream": stream, "runtime": rt}
+        tap_index = {int(l): i for i, l in enumerate(tap_layers)}
+
+        launch_gguf_embedding(
+            self.loaded.weight("token_embd.weight"), self.token_ids.ptr,
+            self.hidden_a.ptr, rows=tokens, hidden_size=hidden,
+            vocab_size=cfg.vocab_size, backend=self.backend, **kw,
+        )
+        gemma4_rmsnorm_weightless_bf16(
+            self.hidden_a.ptr, self.hidden_b.ptr, tokens, hidden, cfg.rms_eps, **kw)
+        src, dst = self.hidden_b, self.hidden_a
+        gemma4_rmsnorm_f32w_bf16(
+            src.ptr, self.loaded.ptr("blk.0.attn_norm.weight"), self.normed.ptr,
+            tokens, hidden, cfg.rms_eps, **kw)
+        for layer in range(cfg.n_layers):
+            p = f"blk.{layer}."
+            is_swa = cfg.swa_pattern[layer]
+            if layer in tap_index:
+                slot = tap_index[layer]
+                bf16_to_f32(
+                    src.ptr, self._vg_tap_buf.ptr + slot * tokens * hidden * 4,
+                    tokens * hidden, **kw)
+            self._linear(self.loaded.weight(p + "attn_q.weight"), self.normed.ptr,
+                         self.q_bf16.ptr, tokens, hidden, q_dim,
+                         output_dtype="bf16", backend=self.backend, **kw)
+            self._linear(self.loaded.weight(p + "attn_k.weight"), self.normed.ptr,
+                         self.k_bf16.ptr, tokens, hidden, kv_dim,
+                         output_dtype="bf16", backend=self.backend, **kw)
+            self._linear(self.loaded.weight(p + "attn_v.weight"), self.normed.ptr,
+                         self.v_bf16.ptr, tokens, hidden, kv_dim,
+                         backend=self.backend, **kw)
+            self._linear(self.loaded.weight(p + "attn_gate.weight"), self.normed.ptr,
+                         self.gate_bf16.ptr, tokens, hidden, q_dim,
+                         backend=self.backend, **kw)
+            k_cache, v_cache = self._kv[layer]
+            muse_glimmer_qk_norm_rope_kv_append(
+                self.q_bf16.ptr, self.k_bf16.ptr, self.v_bf16.ptr,
+                self.loaded.ptr(p + "attn_q_norm.weight"),
+                self.loaded.ptr(p + "attn_k_norm.weight"),
+                (self.cos_table if is_swa else self.identity_cos).ptr,
+                (self.sin_table if is_swa else self.identity_sin).ptr,
+                self.positions.ptr, self.q_rot_f32.ptr, k_cache.ptr, v_cache.ptr,
+                eps=cfg.rms_eps, n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
+                head_dim=d, max_positions=self.max_context, tokens=tokens, **kw)
+            muse_glimmer_decode_attention_shared(
+                self.q_rot_f32.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
+                self.attn_partials.ptr,
+                n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
+                key_begin=0, key_end=self.max_context,
+                split_keys=self._DECODE_ATTN_SPLIT_KEYS, n_blocks=self._DECODE_ATTN_BLOCKS,
+                tokens=tokens, window=cfg.sliding_window if is_swa else 0,
+                key_end_dev=self._vg_key_end.ptr, gate_ptr=self.gate_bf16.ptr,
+                scale=float(d) ** -0.5, **kw)
+            self._linear(self.loaded.weight(p + "attn_output.weight"), self.attn_out.ptr,
+                         self.attn_proj.ptr, tokens, q_dim, hidden,
+                         output_dtype="bf16", backend=self.backend, **kw)
+            muse_glimmer_add_rmsnorm_rmsnorm(
+                self.attn_proj.ptr, src.ptr,
+                self.loaded.ptr(p + "post_attention_norm.weight"),
+                self.loaded.ptr(p + "ffn_norm.weight"), dst.ptr, self.normed.ptr,
+                rows=tokens, hidden_size=hidden, post_eps=cfg.post_norm_eps,
+                pre_eps=cfg.rms_eps, **kw)
+            src, dst = dst, src
+            self._linear(self.loaded.weight(p + "ffn_gate.weight"), self.normed.ptr,
+                         self.ff_gate.ptr, tokens, hidden, cfg.n_ff,
+                         output_dtype="bf16", backend=self.backend, **kw)
+            self._linear(self.loaded.weight(p + "ffn_up.weight"), self.normed.ptr,
+                         self.ff_up.ptr, tokens, hidden, cfg.n_ff,
+                         output_dtype="bf16", backend=self.backend, **kw)
+            silu_mul_separate_out_bf16(
+                self.ff_gate.ptr, self.ff_up.ptr, self.ff_act.ptr, tokens, cfg.n_ff, **kw)
+            self._linear(self.loaded.weight(p + "ffn_down.weight"), self.ff_act.ptr,
+                         self.ff_out.ptr, tokens, cfg.n_ff, hidden,
+                         output_dtype="bf16", backend=self.backend, **kw)
+            next_norm = (
+                f"blk.{layer + 1}.attn_norm.weight"
+                if layer + 1 < cfg.n_layers else "output_norm.weight"
+            )
+            muse_glimmer_add_rmsnorm_rmsnorm(
+                self.ff_out.ptr, src.ptr,
+                self.loaded.ptr(p + "post_ffw_norm.weight"),
+                self.loaded.ptr(next_norm), dst.ptr, self.normed.ptr,
+                rows=tokens, hidden_size=hidden, post_eps=cfg.post_norm_eps,
+                pre_eps=cfg.rms_eps, **kw)
+            src, dst = dst, src
+        # output_norm already landed in ``normed`` at the last residual boundary.
+        self._linear(self.loaded.weight("output.weight"), self.normed.ptr,
+                     self.logits_bf16.ptr, tokens, hidden, cfg.vocab_size,
+                     output_dtype="bf16", backend=self.backend, **kw)
+        bf16_to_f32(self.logits_bf16.ptr, self._vg_logits_buf.ptr,
+                    tokens * cfg.vocab_size, **kw)
+
+    def _verify_with_taps_graph(self, graph_exec: int, ids: np.ndarray,
+                                tap_layers: Sequence[int]) -> tuple[np.ndarray, np.ndarray]:
+        rt = self.runtime
+        cfg = self.config
+        tokens = int(ids.size)
+        pos = self._length
+        self._vg_stage_inputs(ids, pos, tokens)
+        rt.graph_launch(graph_exec, self._vg_stream)
+        rt.stream_synchronize(self._vg_stream)
+        hidden = cfg.n_embd
+        n_taps = len(tap_layers)
+        logits_host = np.empty((tokens, cfg.vocab_size), dtype=np.float32)
+        copy_device_to_host(
+            logits_host.ctypes.data,
+            DeviceBuffer(self._vg_logits_buf.ptr, tokens * cfg.vocab_size * 4), runtime=rt)
+        logits = logits_host * np.float32(cfg.logit_scale)
+        cap = cfg.final_logit_softcapping
+        if cap:
+            logits = np.float32(cap) * np.tanh(logits / np.float32(cap))
+        logits = np.ascontiguousarray(logits, dtype=np.float32)
+        staging = np.empty((n_taps, tokens, hidden), dtype=np.float32)
+        copy_device_to_host(
+            staging.ctypes.data,
+            DeviceBuffer(self._vg_tap_buf.ptr, n_taps * tokens * hidden * 4), runtime=rt)
+        tap_host = np.ascontiguousarray(staging.transpose(1, 0, 2))
+        self._record_history(ids, pos)
+        self._length = pos + tokens
+        return logits, tap_host
+
     # -- speculative (DFlash) surface --------------------------------------
     def prefill_with_taps(
         self, token_ids: Sequence[int], tap_layers: Sequence[int],
@@ -626,6 +845,10 @@ class MuseGlimmerResidentSession:
             raise ValueError("verify needs a non-empty block")
         if self._length + ids.size > self.max_context:
             raise ValueError("verify block overruns the KV cache")
+        if self._image_overrides is None:
+            graph = self._ensure_verify_graph(int(ids.size), tuple(int(l) for l in tap_layers))
+            if graph is not None:
+                return self._verify_with_taps_graph(graph, ids, tap_layers)
         logits, taps = self._forward_block(
             ids, position_offset=self._length, tap_layers=tap_layers,
             all_logits=True, exact_multirow=True,
