@@ -1535,12 +1535,16 @@ def _apply_logit_bias(logits: np.ndarray, pairs: tuple[tuple[int, float], ...]) 
 
 
 def _apply_history_penalties(logits: np.ndarray, params: Any, state: RowSamplingState) -> None:
-    counts = state.history_counts()
-    if not counts:
-        return
     repetition_penalty = float(getattr(params, "repetition_penalty", 1.0))
     presence_penalty = float(getattr(params, "presence_penalty", 0.0))
     frequency_penalty = float(getattr(params, "frequency_penalty", 0.0))
+    # Neutral penalties touch no logit; skip the O(prompt + generated) history
+    # count, which costs ~11 ms per token at a 126K prompt.
+    if repetition_penalty == 1.0 and presence_penalty == 0.0 and frequency_penalty == 0.0:
+        return
+    counts = state.history_counts()
+    if not counts:
+        return
     vocab = int(logits.size)
     for token_id, count in counts.items():
         if token_id < 0 or token_id >= vocab:

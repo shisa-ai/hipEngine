@@ -177,6 +177,18 @@ def test_history_penalties_flow_into_the_distribution() -> None:
     assert sum(penalized.values()) == pytest.approx(1.0)
 
 
+def test_neutral_penalties_skip_the_history_count(monkeypatch) -> None:
+    # A long prompt must not cost O(history) per token when no penalty applies.
+    state = RowSamplingState(seed=5, prompt_tokens=tuple(range(4096)))
+
+    def fail(self):
+        raise AssertionError("history counted with neutral penalties")
+
+    monkeypatch.setattr(RowSamplingState, "history_counts", fail)
+    token = select_token(_ROWS["peaked"], _params(), state, token_text_for_id=lambda t: "")
+    assert int(token.token_id) == 0
+
+
 def test_suppression_can_empty_the_support() -> None:
     params = _params(temperature=1.0, suppress_token_ids=(0, 1, 2, 3, 4, 5, 6))
     with pytest.raises(ValueError, match="removed all finite logits"):
