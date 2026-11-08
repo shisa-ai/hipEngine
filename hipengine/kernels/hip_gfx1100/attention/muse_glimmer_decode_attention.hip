@@ -218,6 +218,268 @@ __global__ void muse_glimmer_decode_attn_combine_gated_kernel(
   out[idx] = f32_to_bf16(a * g);
 }
 
+// Shared-row WMMA decode/verify attention (absolute key splits).
+//
+// One kernel serves AR decode (tokens == 1) and the exact speculative block
+// verify (tokens > 1), and a verify row is bit-identical to the decode step at
+// its position. Layout: grid = (n_blocks, n_kv_heads, ceil(tokens / 8)),
+// block = one wave per query token (<= 8). The wave packs the KV head's 16 Q
+// heads into the WMMA row dimension, so one staged K/V tile serves all 16 heads
+// of every token in the block (the scalar split kernel above re-reads it per 4
+// heads and per token).
+//
+// Exactness: keys are cut into absolute splits of `split_keys` keys
+// ([s*split_keys, (s+1)*split_keys)), and block b owns splits b, b+n_blocks,
+// ... in ascending order, walking each in absolute 16-key tiles. A token's
+// partial therefore depends only on its own position and window, never on the
+// other tokens in the block or on the live extent: a wave skips tiles it
+// cannot see, and zeroes the entries it cannot see in tiles it sees partly, so
+// every tile contributes exactly what it contributes when that token runs
+// alone. split_keys and n_blocks must be the
+// same for decode and verify. The combine kernels above merge the n_blocks
+// partials in ascending block order.
+//
+// Arithmetic: QK^T and PV on the 16x16x16 f16 WMMA (BF16 -> F16 is exact for
+// in-range values) with F32 online softmax per 16-key tile, as in
+// muse_glimmer_flash_prefill_wmma_mt_kernel, except for the per-wave tile
+// classes in the tile loop.
+namespace glimmer_shared {
+
+constexpr int HEAD_DIM = 128;
+constexpr int GQA = 16;
+constexpr int K_TILE = 16;
+constexpr int MAX_TOKENS = 8;
+
+typedef _Float16 half_t;
+typedef half_t __attribute__((ext_vector_type(16))) half16_t;
+typedef float __attribute__((ext_vector_type(8))) float8_t;
+
+__device__ inline float8_t zero8() {
+  return float8_t{0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+}
+
+}  // namespace glimmer_shared
+
+__global__ __launch_bounds__(32 * glimmer_shared::MAX_TOKENS)
+void muse_glimmer_decode_attn_shared_kernel(
+    const uint16_t* __restrict__ q,        // [tokens, n_q_heads, 128] bf16
+    const uint16_t* __restrict__ k_cache,  // [max_ctx, n_kv_heads, 128] bf16
+    const uint16_t* __restrict__ v_cache,
+    float* __restrict__ partials,          // [n_blocks, tokens, n_q_heads, 130]
+    int64_t n_q_heads, int64_t n_kv_heads, int64_t key_begin, int64_t key_end,
+    int64_t split_keys, int64_t tokens, int64_t window, float scale,
+    const int64_t* __restrict__ key_end_dev) {
+  using namespace glimmer_shared;
+  const int64_t n_blocks = gridDim.x;
+  const int64_t block = blockIdx.x;
+  const int kv_head = blockIdx.y;
+  const int wave = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const int lane16 = lane & 15;
+  const int half_id = lane >> 4;
+  const int nthreads = blockDim.x;
+  if (key_end_dev != nullptr) key_end = *key_end_dev;
+
+  const int64_t first_token = static_cast<int64_t>(blockIdx.z) * MAX_TOKENS;
+  const int64_t last_token = min<int64_t>(tokens, first_token + nthreads / 32) - 1;
+  const int64_t token = first_token + wave;
+  const bool active = token <= last_token;
+  const int64_t own = active ? token : last_token;
+  const int64_t position = key_end - tokens + own;
+  int64_t row_begin = key_begin;
+  if (window > 0) row_begin = max(row_begin, position - window + 1);
+  const int64_t row_end = position + 1;
+
+  // Union of the block's visible ranges (rows are consecutive positions).
+  const int64_t first_pos = key_end - tokens + first_token;
+  const int64_t last_pos = key_end - tokens + last_token;
+  int64_t union_begin = key_begin;
+  if (window > 0) union_begin = max(union_begin, first_pos - window + 1);
+  const int64_t union_end = last_pos + 1;
+
+  const int q_head_base = kv_head * GQA;
+  half16_t q_frag[HEAD_DIM / 16];
+#pragma unroll
+  for (int dt = 0; dt < HEAD_DIM / 16; ++dt) {
+    const uint16_t* qrow = q + (own * n_q_heads + q_head_base + lane16) * HEAD_DIM + dt * 16;
+#pragma unroll
+    for (int k = 0; k < 16; ++k) q_frag[dt][k] = static_cast<half_t>(bf16_to_f32(qrow[k]));
+  }
+
+  float running_max = -INFINITY;
+  float running_sum = 0.f;
+  float8_t out_acc[HEAD_DIM / 16];
+#pragma unroll
+  for (int dt = 0; dt < HEAD_DIM / 16; ++dt) out_acc[dt] = zero8();
+
+  __shared__ __align__(1024) half_t k_tile[K_TILE * HEAD_DIM];
+  __shared__ __align__(1024) half_t v_tile[K_TILE * HEAD_DIM];
+
+  const int64_t kv_stride = n_kv_heads * HEAD_DIM;
+  const int64_t first_split = union_begin / split_keys;
+  const int64_t last_split = (union_end - 1) / split_keys;
+  // First split this block owns at or after first_split.
+  int64_t split = first_split + ((block - first_split % n_blocks) + n_blocks) % n_blocks;
+  for (; split <= last_split; split += n_blocks) {
+    const int64_t split_begin = split * split_keys;
+    const int64_t split_end = min(split_begin + split_keys, union_end);
+    // Absolute 16-key tiles; skip those wholly before the union.
+    int64_t k_base = max(split_begin, (union_begin / K_TILE) * K_TILE);
+    for (; k_base < split_end; k_base += K_TILE) {
+      const int keys_this = static_cast<int>(min<int64_t>(K_TILE, split_end - k_base));
+      for (int slot = threadIdx.x; slot < K_TILE * HEAD_DIM / 8; slot += nthreads) {
+        const int key_local = slot / (HEAD_DIM / 8);
+        const int dim = (slot % (HEAD_DIM / 8)) * 8;
+        uint4 kraw = make_uint4(0, 0, 0, 0);
+        uint4 vraw = make_uint4(0, 0, 0, 0);
+        if (key_local < keys_this) {
+          const int64_t off = (k_base + key_local) * kv_stride + kv_head * HEAD_DIM + dim;
+          kraw = *reinterpret_cast<const uint4*>(k_cache + off);
+          vraw = *reinterpret_cast<const uint4*>(v_cache + off);
+        }
+        const uint16_t* kb = reinterpret_cast<const uint16_t*>(&kraw);
+        const uint16_t* vb = reinterpret_cast<const uint16_t*>(&vraw);
+#pragma unroll
+        for (int e = 0; e < 8; ++e) {
+          k_tile[key_local * HEAD_DIM + dim + e] = static_cast<half_t>(bf16_to_f32(kb[e]));
+          v_tile[key_local * HEAD_DIM + dim + e] = static_cast<half_t>(bf16_to_f32(vb[e]));
+        }
+      }
+      __syncthreads();
+
+      // Per-wave tile class. A tile with no key this row can see is skipped
+      // outright, leaving the row's state untouched, so tiles that exist only
+      // because other rows share the block cannot affect it. A partially
+      // visible tile zeroes the K/V entries this row cannot see before the
+      // WMMAs: the f16 WMMA is not exactly invariant to entries multiplied by
+      // a zero probability (measured on gfx1151: a masked key's V row moved a
+      // visible output by one BF16 ulp), and a one-row call stages zeros past
+      // its position. Fully visible tiles need neither. The branch is uniform
+      // within the wave.
+      const int64_t vis_lo = max(k_base, row_begin);
+      const int64_t vis_hi = min(k_base + K_TILE, row_end);
+      if (active && vis_lo < vis_hi) {
+        const bool partial = vis_lo != k_base || vis_hi != k_base + K_TILE;
+        const int64_t lane_key = k_base + lane16;
+        const bool lane_key_visible = lane_key >= row_begin && lane_key < row_end;
+        float8_t scores = zero8();
+#pragma unroll
+        for (int dt = 0; dt < HEAD_DIM / 16; ++dt) {
+          half16_t k_frag;
+#pragma unroll
+          for (int k = 0; k < 16; ++k) k_frag[k] = k_tile[lane16 * HEAD_DIM + dt * 16 + k];
+          if (partial && !lane_key_visible) k_frag = half16_t{};
+          scores = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(k_frag, q_frag[dt], scores);
+        }
+
+        float local_max = -INFINITY;
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const int64_t key = k_base + 2 * j + half_id;
+          const bool visible = key >= row_begin && key < row_end;
+          const float sc = visible ? scores[j] * scale : -INFINITY;
+          scores[j] = sc;
+          local_max = fmaxf(local_max, sc);
+        }
+        const float batch_max = fmaxf(local_max, __shfl_xor(local_max, 16));
+        const float next_max = fmaxf(running_max, batch_max);
+        const float prev_scale = isfinite(running_max) ? expf(running_max - next_max) : 0.f;
+#pragma unroll
+        for (int dt = 0; dt < HEAD_DIM / 16; ++dt) {
+#pragma unroll
+          for (int j = 0; j < 8; ++j) out_acc[dt][j] *= prev_scale;
+        }
+        float local_sum = 0.f;
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const float pr = isfinite(scores[j]) ? expf(scores[j] - next_max) : 0.f;
+          scores[j] = pr;
+          local_sum += pr;
+        }
+        const float batch_sum = local_sum + __shfl_xor(local_sum, 16);
+        running_sum = prev_scale * running_sum + batch_sum;
+        running_max = next_max;
+
+        half16_t p_frag;
+#pragma unroll
+        for (int j = 0; j < 8; ++j) {
+          const float mine = scores[j];
+          const float partner = __shfl_xor(mine, 16);
+          p_frag[2 * j + half_id] = static_cast<half_t>(mine);
+          p_frag[2 * j + (half_id ^ 1)] = static_cast<half_t>(partner);
+        }
+        unsigned visible_keys = 0xFFFFu;
+        if (partial) {
+          visible_keys = 0;
+#pragma unroll
+          for (int k = 0; k < 16; ++k) {
+            const int64_t key = k_base + k;
+            if (key >= row_begin && key < row_end) visible_keys |= 1u << k;
+          }
+        }
+#pragma unroll
+        for (int dt = 0; dt < HEAD_DIM / 16; ++dt) {
+          half16_t v_frag;
+#pragma unroll
+          for (int k = 0; k < 16; ++k) v_frag[k] = v_tile[k * HEAD_DIM + dt * 16 + lane16];
+          if (partial) {
+#pragma unroll
+            for (int k = 0; k < 16; ++k)
+              if (!((visible_keys >> k) & 1u)) v_frag[k] = static_cast<half_t>(0.f);
+          }
+          out_acc[dt] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(v_frag, p_frag, out_acc[dt]);
+        }
+      }
+      __syncthreads();
+    }
+  }
+
+  if (!active) return;
+  // Unnormalized partial (acc, m, l) for the combine kernels.
+  float* outp = partials +
+      ((block * tokens + token) * n_q_heads + q_head_base + lane16) * (HEAD_DIM + 2);
+#pragma unroll
+  for (int dt = 0; dt < HEAD_DIM / 16; ++dt) {
+#pragma unroll
+    for (int j = 0; j < 8; ++j) outp[dt * 16 + 2 * j + half_id] = out_acc[dt][j];
+  }
+  if (half_id == 0) {
+    outp[HEAD_DIM] = running_max;
+    outp[HEAD_DIM + 1] = running_sum;
+  }
+}
+
+extern "C" int hipengine_muse_glimmer_decode_attn_shared(
+    const uint16_t* q, const uint16_t* k, const uint16_t* v, const uint16_t* gate,
+    uint16_t* out, float* partials, int64_t n_q_heads, int64_t n_kv_heads,
+    int64_t key_begin, int64_t key_end, int64_t split_keys, int64_t n_blocks,
+    int64_t tokens, int64_t window, float scale, const int64_t* key_end_dev,
+    hipStream_t stream) {
+  using namespace glimmer_shared;
+  if (!q || !k || !v || !out || !partials || n_kv_heads <= 0 ||
+      n_q_heads != n_kv_heads * GQA || key_end <= key_begin || tokens <= 0 ||
+      split_keys <= 0 || split_keys % K_TILE || n_blocks <= 0)
+    return hipErrorInvalidValue;
+  const int64_t groups = (tokens + MAX_TOKENS - 1) / MAX_TOKENS;
+  const int64_t waves = tokens < MAX_TOKENS ? tokens : MAX_TOKENS;
+  dim3 grid(static_cast<unsigned>(n_blocks), static_cast<unsigned>(n_kv_heads),
+            static_cast<unsigned>(groups));
+  muse_glimmer_decode_attn_shared_kernel<<<grid, static_cast<unsigned>(32 * waves), 0, stream>>>(
+      q, k, v, partials, n_q_heads, n_kv_heads, key_begin, key_end, split_keys, tokens,
+      window, scale, key_end_dev);
+  hipError_t err = hipGetLastError();
+  if (err != hipSuccess) return static_cast<int>(err);
+  dim3 cgrid(static_cast<unsigned>(n_q_heads), static_cast<unsigned>(tokens));
+  if (gate != nullptr) {
+    muse_glimmer_decode_attn_combine_gated_kernel<<<cgrid, 128, 0, stream>>>(
+        partials, gate, out, n_q_heads, n_blocks, tokens);
+  } else {
+    muse_glimmer_decode_attn_combine_kernel<<<cgrid, 128, 0, stream>>>(
+        partials, out, n_q_heads, n_blocks, tokens);
+  }
+  return static_cast<int>(hipGetLastError());
+}
+
 // Graph-safe KV append: destination row read from a device position buffer.
 __global__ void muse_glimmer_kv_append_kernel(
     uint16_t* __restrict__ dst, const uint16_t* __restrict__ src,

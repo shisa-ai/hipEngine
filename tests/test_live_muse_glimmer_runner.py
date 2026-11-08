@@ -136,6 +136,18 @@ def test_decode_step_matches_fresh_prefill(session, oracle) -> None:
     assert int(np.argmax(decode_logits)) == int(np.argmax(prefill_logits))
 
 
+def test_decode_replays_the_captured_graph(session, oracle) -> None:
+    """Decode must run the captured HIP graph; a capture failure falls back to
+    eager decode silently (~9 ms/step slower at 512 tokens on gfx1151)."""
+
+    ids = list(oracle["token_ids"])
+    session.reset()
+    token = int(np.argmax(session.prefill(ids)))
+    session.decode_step(token)
+    assert not getattr(session, "_graph_failed", False)
+    assert getattr(session, "_graph_exec", 0)
+
+
 def test_greedy_generation_is_coherent(session, oracle) -> None:
     from hipengine.tokenization.gguf import MuseGlimmerGGUFTokenizer
     from hipengine.loading.gguf import GGUFReader

@@ -108,6 +108,22 @@ every drafter/verify port at short, mid and maximum context.
   the GQA query heads. An exact speculative route (IDs == AR) needs AR decode
   on the same arithmetic: key-slice boundaries aligned to absolute positions
   and the same per-slice reduction, so a one-row call matches a verify row.
+  Muse Glimmer's implementation is `muse_glimmer_decode_attention_shared`
+  (`hipengine/kernels/hip_gfx1100/attention/muse_glimmer_decode_attention.hip`):
+  one wave per row, the KV head's 16 Q heads packed into the WMMA rows,
+  absolute 64-key splits owned round-robin by a fixed block count.
+- **Zero the operands a row cannot see before a shared WMMA.** On gfx1151 the
+  16x16x16 f16 WMMA is not exactly invariant to entries multiplied by a zero
+  probability: in a shared verify tile, a masked key's V row moved a visible
+  output by one BF16 ulp compared with the one-row call, which staged zeros
+  there. Over 52 layers the ulp grew into different logits and DFlash
+  diverged from AR after 20 tokens, while synthetic random-data tests passed.
+  Each wave now skips tiles it cannot see at all and zeroes the K/V fragment
+  entries outside its own causal/window range in tiles it sees partly; fully
+  visible tiles need neither, so the fix costs nothing measurable. Regression:
+  `tests/test_gpu_muse_glimmer_shared_decode_attention.py::test_masked_keys_cannot_move_a_verify_row`.
+  Test batch invariance with real activations through the full model, not only
+  random kernel inputs.
 - **Stream prefill-time draft context; do not materialize it.** Target taps
   for a feature-fusion drafter are `n_taps * hidden * 4` bytes per token
   (~35 GB at 256K for Muse Glimmer). Feed each prefill chunk to the drafter as

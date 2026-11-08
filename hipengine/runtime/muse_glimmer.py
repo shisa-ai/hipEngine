@@ -176,7 +176,7 @@ class MuseGlimmerResidentSession:
             self.identity_cos = scratch.alloc(self.max_context * cfg.head_dim * f32, rt)
             self.identity_sin = scratch.alloc(self.max_context * cfg.head_dim * f32, rt)
             self._attn_partial_rows = max(
-                self._DECODE_ATTN_SPLITS * self._MAX_VERIFY_ROWS, 4 * t_max
+                self._DECODE_ATTN_BLOCKS * self._MAX_VERIFY_ROWS, 4 * t_max
             )
             self.attn_partials = scratch.alloc(
                 self._attn_partial_rows * cfg.n_heads * 130 * 4, rt
@@ -381,7 +381,7 @@ class MuseGlimmerResidentSession:
         rt = self.runtime
         try:
             from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
-                muse_glimmer_decode_attention, muse_glimmer_kv_append,
+                muse_glimmer_decode_attention_shared, muse_glimmer_kv_append,
             )
 
             stream = rt.stream_create()
@@ -432,7 +432,7 @@ class MuseGlimmerResidentSession:
 
         from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
             muse_glimmer_add_rmsnorm_rmsnorm,
-            muse_glimmer_decode_attention,
+            muse_glimmer_decode_attention_shared,
             muse_glimmer_qk_norm_rope_kv_append,
         )
         from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32
@@ -487,11 +487,12 @@ class MuseGlimmerResidentSession:
                 eps=cfg.rms_eps, n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
                 head_dim=d, max_positions=self.max_context, **kw,
             )
-            muse_glimmer_decode_attention(
+            muse_glimmer_decode_attention_shared(
                 q_rope.ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
                 self.attn_partials.ptr,
                 n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
-                key_begin=0, key_end=self.max_context, n_splits=self._DECODE_ATTN_SPLITS,
+                key_begin=0, key_end=self.max_context,
+                split_keys=self._DECODE_ATTN_SPLIT_KEYS, n_blocks=self._DECODE_ATTN_BLOCKS,
                 tokens=1, window=cfg.sliding_window if is_swa else 0,
                 key_end_dev=self._g_key_end.ptr, gate_ptr=self.gate_bf16.ptr,
                 scale=float(d) ** -0.5, **kw,
@@ -828,12 +829,9 @@ class MuseGlimmerResidentSession:
                 )
                 q_attn_ptr = self.q_bf16.ptr
             from hipengine.kernels.hip_gfx1100.attention.muse_glimmer_decode_attention import (
-                muse_glimmer_decode_attention,
+                muse_glimmer_decode_attention_shared,
             )
 
-            key_begin = (
-                max(0, position_offset - cfg.sliding_window + 1) if is_swa else 0
-            )
             if tokens > 1 and not self._exact_multirow:
                 # Bulk prefill: WMMA GQA-packed flash attention (16 Q heads
                 # share each KV read; QK^T/PV on the 16x16x16 f16 WMMA).
@@ -849,22 +847,21 @@ class MuseGlimmerResidentSession:
                     scale=float(d) ** -0.5, runtime=rt,
                 )
             else:
-                n_splits = self._DECODE_ATTN_SPLITS
-                if tokens > 1:
-                    # Decode-equivalent block verify: each row is computed
-                    # independently with the decode split count and the
-                    # kernel's per-row causal+SWA clamp, so row i matches a
-                    # single decode step at position_offset+i bit-for-bit.
-                    key_begin = 0
-                    if tokens * n_splits > self._attn_partial_rows:
-                        raise ValueError(
-                            f"exact verify supports at most {self._MAX_VERIFY_ROWS} rows"
-                        )
-                muse_glimmer_decode_attention(
+                # Decode and the decode-equivalent block verify share one
+                # kernel: the 16 Q heads of a KV head and every verify row read
+                # each K/V tile once, and absolute key splits make row i
+                # bit-identical to a single decode step at position_offset+i.
+                if tokens * self._DECODE_ATTN_BLOCKS > self._attn_partial_rows:
+                    raise ValueError(
+                        f"exact verify supports at most {self._MAX_VERIFY_ROWS} rows"
+                    )
+                muse_glimmer_decode_attention_shared(
                     q_attn_ptr, k_cache.ptr, v_cache.ptr, self.attn_out.ptr,
                     self.attn_partials.ptr,
                     n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
-                    key_begin=key_begin, key_end=keys, n_splits=n_splits,
+                    key_begin=0, key_end=keys,
+                    split_keys=self._DECODE_ATTN_SPLIT_KEYS,
+                    n_blocks=self._DECODE_ATTN_BLOCKS,
                     tokens=tokens, window=cfg.sliding_window if is_swa else 0,
                     gate_ptr=self.gate_bf16.ptr if self._exact_multirow else 0,
                     scale=float(d) ** -0.5, runtime=rt,
@@ -1013,10 +1010,15 @@ class MuseGlimmerResidentSession:
     # optimum measured on gfx1151 at the Glimmer shapes: grouped Q/K/V/gate
     # 1.19x at 2 waves, gate/up 1.04x at 1, attn_output 1.06x at 4, Q4 down
     # 1.02x at 1; the hoisted planar Q6 is 1.09x on down and 1.7x on narrow V.
-    # Decode attention split count (shared by AR decode and the
-    # decode-equivalent verify) and the largest verify block the partial
-    # scratch holds.
-    _DECODE_ATTN_SPLITS = 64
+    # Shared-row decode attention geometry, identical for AR decode and the
+    # decode-equivalent verify (exactness depends on it): absolute key splits
+    # of 64 keys owned round-robin by 64 blocks per KV head. On gfx1151 this
+    # was the best verify setting at 8K-262K and on 2048-key SWA layers, and
+    # within ~15% of the best single-row setting on full layers
+    # (scripts/muse_glimmer_decode_attn_scale.py --kernel shared). Also the
+    # largest verify block the partial scratch holds.
+    _DECODE_ATTN_SPLIT_KEYS = 64
+    _DECODE_ATTN_BLOCKS = 64
     _MAX_VERIFY_ROWS = 32
     _ATTN_GROUP_WAVES = 2
     _ATTN_OUTPUT_WAVES = 4

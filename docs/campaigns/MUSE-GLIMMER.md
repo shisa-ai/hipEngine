@@ -816,3 +816,11 @@ the DFlash/AR crossover near 128K with today's kernels (inferred). Record:
 shared-row verify+decode attention → #2 verify GEMVs → context-aware budget →
 #3 draft attention + hot-vocab head → #5 verify graphs. Host sampler cost is a
 separate track.
+
+**#1 landed (2026-11-08).** AR decode and the exact verify share
+`muse_glimmer_decode_attention_shared` (absolute 64-key splits, 16 Q heads per
+WMMA tile, K/V tiles shared across verify rows). Same-build A/B on identical KV
+at 126K: AR 9.14 → 10.91 tok/s, DFlash 10.38 → 17.74 tok/s (verify 235.9 →
+122.7 ms/cycle), exact at every context; 512 unchanged. Verify GEMVs (#2) are
+now the largest verify cost. Record:
+`worklog/entries/20261108T121730.722551Z-lhl-muse-glimmer-d5e6d4.md`.

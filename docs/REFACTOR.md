@@ -1698,6 +1698,56 @@ defaults. Preserve exact comparison modes, independently useful kernels and curr
 dispatch. If retiring candidate modes, inventory their harness callers and remove only
 candidate-specific wiring/tests after preserving the required comparisons.
 
+### R0522 — Retire the scalar Muse Glimmer split decode-attention kernel
+
+Owner: `hipengine/kernels/hip_gfx1100/attention/muse_glimmer_decode_attention.hip`.
+
+Scope: `muse_glimmer_decode_attn_split_kernel`, `hipengine_muse_glimmer_decode_attn`,
+`hipengine_muse_glimmer_decode_attn_gated`, the `muse_glimmer` attention_decode registry key,
+`tests/test_unit_muse_glimmer_decode_attention.py`, the gated case in
+`tests/test_gpu_muse_glimmer_decode_glue.py`, and the `--kernel split` mode of
+`scripts/muse_glimmer_decode_attn_scale.py`.
+
+Done when: AR decode and the DFlash verify both run `muse_glimmer_decode_attention_shared`, so the
+scalar split kernel is reachable only from its tests and the comparison probe. Remove it, its
+launchers, registry key and tests together once no caller needs the before/after comparison; the
+combine kernels stay because the shared kernel uses them.
+
+### R0521 — Revisit backend-specific decode graph engagement separately from telemetry
+
+Owner: `hipengine/runtime/gemma4_decode_graph.py`.
+
+Scope: `gemma4_decode_graph.py`, `_CAPTURE_MAX_KEYS`, `GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS`,
+`launched_fallbacks`.
+
+Done when: Deferred optimization decision: reduce capture/replay overhead or remeasure the crossover on
+each affected physical host before changing its policy. Compare public decode with graph selection
+confirmed, including capture amortization, short and long requests, and contexts on both sides of
+the threshold. Preserve replay parity and request/resource lifetime checks.
+
+Retire graph rollback and fallback telemetry separately only when no supported fallback or
+diagnostic caller remains. Preserve backend independence; broader engagement on one host does not
+establish another host’s crossover.
+
+### R0003 — Choose a DMS layout that preserves interior-expiry semantics
+
+Owner: `hipengine/kvcache/dms.py`.
+
+Scope: `build_dms_live_mask`.
+
+**Deferred design decision:** choose between a prefix-only head-advance fast path with interior
+compaction, or a layout that separately represents retained history and the expiring window. The
+latter requires coordinated attention-reader, allocator, snapshot, prefix-cache and speculative
+rollback changes; neither may silently discard non-evictable history. Account for reserved extent
+bounds and wrap/rebase behavior before changing `base_offsets`.
+
+Done when: cover interior expiry, prefix expiry, no expiry, mixed heads, capacity boundaries
+and repeated wrap/rebase against the host oracle. Run `tests/test_gpu_dms_append_decode_hip.py`,
+INT8 device-payload, compact-attention, prefix and transaction tests, then public DMS generation
+including continuation and rejected speculative suffixes. Profile the selected route before claiming
+an append-cost improvement. Keep the existing race-safe staging until its data movement is replaced
+safely.
+
 ### R0011 — Define bounded generic-provider child ownership
 
 Owner: `hipengine/generation/engine_service.py`.

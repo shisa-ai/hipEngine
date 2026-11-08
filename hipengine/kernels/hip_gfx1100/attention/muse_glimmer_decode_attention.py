@@ -90,6 +90,46 @@ def muse_glimmer_decode_attention(
     runtime.check(int(err))
 
 
+def muse_glimmer_decode_attention_shared(
+    q_ptr: int, k_ptr: int, v_ptr: int, out_ptr: int, partials_ptr: int,
+    *, n_q_heads: int, n_kv_heads: int, key_begin: int, key_end: int,
+    split_keys: int, n_blocks: int, scale: float, tokens: int = 1, window: int = 0,
+    key_end_dev: int = 0, gate_ptr: int = 0, stream: int = 0,
+    library: ctypes.CDLL | None = None, runtime=None,
+) -> None:
+    """Shared-row WMMA attention for decode (``tokens == 1``) and block verify.
+
+    Rows occupy the last ``tokens`` positions ending at ``key_end`` and attend
+    causally (``window > 0`` adds the sliding window). Keys are cut into
+    absolute splits of ``split_keys`` (a multiple of 16), owned round-robin by
+    ``n_blocks`` blocks per KV head, so a verify row is bit-identical to the
+    decode step at its position when both use the same ``split_keys`` and
+    ``n_blocks``. ``partials`` holds n_blocks * tokens * n_q_heads * 130
+    float32 values. A nonzero ``gate_ptr`` fuses the Glimmer sigmoid gate into
+    the combine, bit-identical to a following ``gguf_gate_mul_bf16``.
+    Requires 16 Q heads per KV head and head_dim 128.
+    """
+
+    if n_q_heads != 16 * n_kv_heads:
+        raise ValueError("shared-row Glimmer attention requires 16 Q heads per KV head")
+    if key_end <= key_begin or tokens <= 0:
+        raise ValueError("key range and tokens must be non-empty")
+    if split_keys <= 0 or split_keys % 16 or n_blocks <= 0:
+        raise ValueError("split_keys must be a positive multiple of 16 and n_blocks positive")
+    library = library or _library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_muse_glimmer_decode_attn_shared",
+        (_P, _P, _P, _P, _P, _P, _I64, _I64, _I64, _I64, _I64, _I64, _I64, _I64, _F, _P, _P),
+        ctypes.c_int,
+    )
+    runtime.check(int(fn(
+        q_ptr, k_ptr, v_ptr, gate_ptr, out_ptr, partials_ptr, n_q_heads, n_kv_heads,
+        key_begin, key_end, split_keys, n_blocks, tokens, window, float(scale),
+        key_end_dev, stream,
+    )))
+
+
 def muse_glimmer_kv_append(dst_ptr: int, src_ptr: int, pos_ptr: int, *,
                            row_elems: int, n: int, stream: int = 0,
                            library: ctypes.CDLL | None = None, runtime=None) -> None:
@@ -166,6 +206,8 @@ def register_muse_glimmer_decode_attention_kernels():
     for backend in ('hip_gfx1100', 'hip_gfx1151'):
         register(KernelKey(backend, 'attention_decode', 'bf16', 'muse_glimmer'),
                  muse_glimmer_decode_attention, replace=True)
+        register(KernelKey(backend, 'attention_decode', 'bf16', 'muse_glimmer_shared'),
+                 muse_glimmer_decode_attention_shared, replace=True)
 
 
 register_muse_glimmer_decode_attention_kernels()
