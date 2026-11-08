@@ -76,12 +76,12 @@ Mirror the DFlash2/Muse-Glimmer drafter structure; reuse the DFlash2 foundation
 
 | Piece | Path (new) | Reuses |
 | --- | --- | --- |
-| Config + weight loading | `hipengine/loading/dspine.py` | `loading/dflash.py` patterns; safetensors index |
+| Config + weight loading | `hipengine/loading/dspine.py` | `hipengine/loading/dflash.py` patterns; safetensors index |
 | CPU oracle (RED) | `hipengine/kernels/cpu_reference/dspine.py` | numpy reference of §1 math |
-| Drafter runtime | `hipengine/runtime/dspine.py` | `runtime/muse_glimmer_dflash.py` session/tap pattern |
+| Drafter runtime | `hipengine/runtime/dspine.py` | `hipengine/runtime/muse_glimmer_dflash.py` session/tap pattern |
 | Injection + refine kernels | `hipengine/kernels/hip_gfx1100/speculative/dspine.{hip,py}` | DFlash2 dense WMMA, norms |
 | Block-causal attention | reuse `muse_glimmer_draft_attention` (task #7) | non-causal→block-causal mask variant |
-| Speculative provider | `hipengine/generation/dspine.py` | `generation/muse_glimmer_dflash.py` |
+| Speculative provider | `hipengine/generation/dspine.py` | `hipengine/generation/muse_glimmer_dflash.py` |
 | Target verify + state | existing `qwen35_gguf` verify_target_block | MTP/DFlash2 verify path |
 
 Registry keys (four-axis, never identity-gated): `(backend, "dspine_injection",
