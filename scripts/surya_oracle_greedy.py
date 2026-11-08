@@ -83,7 +83,7 @@ BENCH_PAGES = ("ja", "mixed", "dense", "table", "blank", "scan", "long")
 # training-time prompt instead of the ad-hoc "Transcribe this page." text. The
 # measured budgets are the smallest that let every page reach a natural EOS,
 # measured on the fp32 HIP lane; a budget that truncates would gate only a
-# prefix. ``a4`` has no capture yet, so its budget is derived instead.
+# prefix. ``a4`` is now captured (2108 ids, natural EOS) within its budget.
 PROTOCOL_MAX_TOKENS = {
     "ja": 600,
     "mixed": 600,
@@ -94,13 +94,12 @@ PROTOCOL_MAX_TOKENS = {
     "long": 2600,
     # The page-scale case: 2480x3508 at 300 DPI (a 220x156 patch grid, 8580
     # image tokens) drawing 1586 characters in 12 text units plus one ruled
-    # 7x4 table. There is no torch capture for it yet, so this budget is
-    # arithmetic on the committed rows rather than a measured EOS: the worst
-    # ids-per-drawn-character rate among the text pages (1.435, ja) times 1586
-    # is 2276, and the same ruled grid costs 448 ids on the ``table`` page, so
-    # the floor is ~2724. 4000 clears it by 1.47x, and is the budget
-    # ``tests/test_live_surya_transcription.py`` already declares for this case,
-    # so the capture and the gate run the same number.
+    # 7x4 table. The budget was originally derived from the committed rows (the
+    # worst ids-per-drawn-character rate among the text pages, 1.435 on ja,
+    # times 1586 = 2276, plus ~448 ids for the ruled grid as on ``table``, a
+    # floor of ~2724; 4000 clears it by 1.47x). The torch fp32 capture now
+    # confirms a natural EOS at 2108 ids, and the HIP lane reproduces those ids
+    # exactly, so a4 joins the implementation-parity gates at this budget.
     "a4": 4000,
 }
 # The blank page stops almost immediately; the long page needs room to finish.

@@ -51,19 +51,20 @@ pytestmark = [
 FIXTURES = Path("tests/fixtures/surya")
 MODEL_ID = "datalab-to/surya-ocr-2"
 ORACLE_PATH = FIXTURES / "oracle_fullpage_protocol.json"
-CASES = ("ja", "mixed", "dense", "table", "blank", "scan", "long")
+CASES = ("ja", "mixed", "dense", "table", "blank", "scan", "long", "a4")
 
 # The 300-DPI A4 page is page-scale (2480x3508, 220x156 patch grid, 8580 image
-# tokens) and has no captured torch reference, so it joins the ground-truth and
-# reading-order gates without joining the implementation-parity gates. Its
-# ground truth is paragraph-level because its body is wrapped prose; see
+# tokens). Its torch fp32 reference is now captured (2108 ids, natural EOS), and
+# the HIP lane reproduces it exactly, so it joins the implementation-parity gates
+# as well as the ground-truth and reading-order gates. Its ground truth is
+# paragraph-level because its body is wrapped prose; see
 # scripts/surya_bench_pages.py:_a4_paragraphs.
-QUALITY_ONLY_CASES = ("a4",)
+QUALITY_ONLY_CASES: tuple[str, ...] = ()
 QUALITY_CASES = CASES + QUALITY_ONLY_CASES
-QUALITY_ONLY_MAX_TOKENS = {"a4": 4000}
+QUALITY_ONLY_MAX_TOKENS: dict[str, int] = {}
 
 # Pages whose full greedy id chain matches the torch fp32 reference exactly.
-EXACT_ID_CASES = ("ja", "mixed", "dense", "table", "blank", "long")
+EXACT_ID_CASES = ("ja", "mixed", "dense", "table", "blank", "long", "a4")
 
 # The degraded scan is the one page where hipEngine fp32 and torch fp32 pick
 # different bbox digits. Measured: 21 of 616 ids differ (3.4%), the parsed
