@@ -1506,27 +1506,6 @@ Move A4 into the implementation-parity test cases only after examining the captu
 Preserve quality coverage throughout; use coordinate-tolerant comparison only if observed bbox-digit
 variation justifies it, not merely to make a failure pass.
 
-### R0494 — Report prompt usage from the generation output, not a second count
-
-Owner: `hipengine/generation/registry.py`.
-
-Scope: `GenerationOutput.prompt_tokens`; `_usage` in `hipengine/server/api.py`.
-
-Done when: complete remaining real-checkpoint prompt-count validation for Gemma 4 image on
-gfx1100 and Surya OCR on supported backends. The local Gemma model and matching
-`mmproj-F16.gguf` ran through gfx1151 HTTP image chat: usage, generation output and actual
-expanded prefill all report 284 prompt tokens, with clean teardown. See
-`worklog/entries/20261105T222851.099261Z-lhl-r0494-gemma-bbe09d.md`.
-The Gemma and Surya checkpoints are absent locally; gfx1100 hardware is now available, so the
-remaining dependency is the checkpoints.
-Qwen4Exp gfx1151 HTTP image validation passes; see
-`worklog/entries/20261031T201027.069818Z-lhl-r0494-qwen4exp-real-http-usage-c3cbd6.md`.
-Preserve the implemented contract: `GenerationOutput.prompt_tokens` owns the count, `None`
-falls back to counting the prepared prompt (legacy plugins), a stated `0` stays `0`, and
-`DecodeState.prompt_tokens` / `telemetry.usage["prompt_tokens"]` are diagnostic mirrors that never
-authorize a number. Keep `tests/test_unit_server_prompt_token_contract.py` and
-`tests/test_integration_server_prompt_token_contract.py`.
-
 ### R0495 — Decide CPU-reference vision admission
 
 Owner: `hipengine/generation/surya.py`.

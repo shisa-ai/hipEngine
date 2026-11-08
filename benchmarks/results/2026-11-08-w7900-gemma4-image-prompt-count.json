@@ -1,0 +1,24 @@
+{
+  "model": "/models/gguf/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+  "mmproj": "/models/gguf/gemma-4-26B-A4B-it-mmproj-F16.gguf",
+  "backend": "hip_gfx1100",
+  "status_code": 200,
+  "response_text": "<|channel>thought",
+  "http_usage_prompt_tokens": 300,
+  "http_usage_completion_tokens": 2,
+  "generation_output_prompt_tokens": [
+    300
+  ],
+  "runner_forward_argmax_max_len": 300,
+  "argmax_lens": [
+    300,
+    1
+  ],
+  "contract_holds": true,
+  "memory_baseline_current": 0,
+  "memory_closed_current": 0,
+  "performance_claim": false,
+  "kind": "gemma4_image_prompt_count_contract",
+  "source_commit": "efcc3258d",
+  "protocol": "96x144 solid-red PNG data URL via TestClient HTTP POST /v1/chat/completions; context 1024, MTP off, greedy, max_tokens 2. Mirrors the gfx1151 R0494 protocol."
+}

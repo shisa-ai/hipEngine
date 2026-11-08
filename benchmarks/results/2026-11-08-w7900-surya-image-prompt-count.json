@@ -1,0 +1,25 @@
+{
+  "model": "datalab-to/surya-ocr-2",
+  "backend": "hip_gfx1100",
+  "page": "/home/lhl/hipEngine/tests/fixtures/surya/page_rect.png",
+  "status_code": 200,
+  "error_body": null,
+  "response_text": "<div data-bbox=\"35 35 955 85",
+  "http_usage_prompt_tokens": 198,
+  "http_usage_completion_tokens": 8,
+  "generation_output_prompt_tokens": [
+    198
+  ],
+  "runner_prefill_max_len": 198,
+  "prefill_lens": [
+    37,
+    198
+  ],
+  "contract_holds": true,
+  "memory_baseline_current": 0,
+  "memory_closed_current": 0,
+  "performance_claim": false,
+  "kind": "surya_image_prompt_count_contract",
+  "source_commit": "efcc3258d",
+  "protocol": "page_rect.png (320x192) via TestClient HTTP POST /v1/chat/completions; context 4096, MTP off, greedy, max_tokens 8, default full-page transcription prompt. Surya GPU generator registered for hip_gfx1100 by the production registration change."
+}
