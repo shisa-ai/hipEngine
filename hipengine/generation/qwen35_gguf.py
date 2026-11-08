@@ -1430,6 +1430,30 @@ def declared_int8_scale_dtype(
     return declared[0]
 
 
+class _IndependentSpeculativeChild:
+    """Bounded generic child for an attached independent provider (e.g. DSpine).
+
+    Admission stores the request only; ``advance`` runs the provider's
+    whole-request cycle on the service driver thread and returns terminal output
+    on the first call. Bring-up scope: one cycle per request.
+    """
+
+    def __init__(self, provider: Any, request: GenerationRequest) -> None:
+        self._provider = provider
+        self._request = request
+        self._output: GenerationOutput | None = None
+        self._done = False
+
+    def advance(self) -> GenerationOutput | None:
+        if not self._done:
+            self._output = self._provider.generate_detailed(self._request)[0]
+            self._done = True
+        return self._output
+
+    def close(self, *, reason: str) -> None:
+        self._output = None
+
+
 @dataclass
 class Qwen35GGUFBringupGenerator:
     """Public API GGUF greedy generator over a persistent resident session."""
@@ -3953,9 +3977,47 @@ class Qwen35GGUFBringupGenerator:
     def count_tokens(self, text: str) -> int:
         return len(self.tokenize(text))
 
+    # -- independent speculative provider attachment (e.g. DSpine) ----------
+    @property
+    def supports_speculative(self) -> bool:
+        return getattr(self, "_speculative_provider", None) is not None
+
+    def attach_speculative_provider(self, provider: Any) -> None:
+        """Attach one registry-resolved independent provider (bring-up scope)."""
+        if provider is None:
+            raise TypeError("speculative provider must not be None")
+        for name in ("generate_detailed", "stream_detailed", "capabilities", "close"):
+            if not callable(getattr(provider, name, None)):
+                raise TypeError(f"speculative provider must implement {name}()")
+        if getattr(self, "_speculative_provider", None) is not None:
+            raise RuntimeError("a speculative provider is already attached")
+        self._speculative_provider = provider
+
+    def speculative_capabilities(self) -> dict:
+        provider = getattr(self, "_speculative_provider", None)
+        return {} if provider is None else dict(provider.capabilities())
+
+    def generate_speculative_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
+        provider = getattr(self, "_speculative_provider", None)
+        if provider is None:
+            raise NotImplementedError("no independent speculative provider is configured")
+        return list(provider.generate_detailed(request))
+
+    def stream_speculative_detailed(self, request: GenerationRequest):
+        provider = getattr(self, "_speculative_provider", None)
+        if provider is None:
+            raise NotImplementedError("no independent speculative provider is configured")
+        yield from provider.stream_detailed(request)
+
+    def create_generic_speculative_child(self, request: GenerationRequest):
+        """Admit one independent-provider child (admission runs no model work)."""
+        provider = getattr(self, "_speculative_provider", None)
+        if provider is None:
+            raise NotImplementedError("no independent speculative provider is configured")
+        return _IndependentSpeculativeChild(provider, request)
+
     def speculative_provider_capabilities(self):
         """Declare the model-attached NextN provider without engine branching."""
-
         from hipengine.benchmark.provenance import collect_model_identity
         from hipengine.speculative.registry import SpeculativeProviderCapabilities
 
@@ -3976,6 +4038,11 @@ class Qwen35GGUFBringupGenerator:
     def supports_speculative_mtp(self) -> bool:
         """Whether this GGUF inventory has the NextN tensors required for MTP."""
 
+        # An attached independent provider (e.g. DSpine) owns speculative
+        # decoding; route through the bounded generic child path, not the MTP
+        # staged adapter.
+        if getattr(self, "_speculative_provider", None) is not None:
+            return False
         if getattr(self, "dms_config", None) is not None:
             return False
         return _gguf_info_has_mtp_tensors(self.weight_index)
