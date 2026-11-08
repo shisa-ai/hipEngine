@@ -1714,6 +1714,13 @@ Owner: `hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`.
 
 Scope: `wmma_plain`; `HIPENGINE_GEMMA4_MOE_PREFILL`.
 
+**gfx1151 measurement (2026-11-08):** the lead chose promotion, but its 2.7x premise is stale.
+Same-process public `LLM.generate` prefill on the UD-Q4_K_XL artifact: the production default
+(fused T16 WMMA `gate_up_fused_t16`/`down_t16`) runs 1640/2106/1989 tok/s at 256/1024/2048
+tokens; `HIPENGINE_GEMMA4_MOE_PREFILL=wmma` runs 480/504/486 tok/s and never reaches a
+compensated WMMA owner on the T16-converted layout (route counts show `selected_gemv`).
+Promotion was not applied; the lead re-decides between retiring and repairing the candidate.
+
 Done when: Deferred candidate decision: evaluate the compensated route under the current applicable
 execution-profile contract, then promote, repair or retire its Gemma wiring. The old absolute-tail
 discussion is historical evidence, not permission to weaken the current gate or to change unrelated
