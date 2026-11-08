@@ -183,7 +183,47 @@ the same protocol, and full multi-prompt mtpbench coverage (anti-gaming,
 [`BENCHMARK.md`](../BENCHMARK.md)). External vendor speedups are context, not
 evidence for a hipEngine claim.
 
-## 5. Open questions
+## 5. Measured progress (ZBook relative baselines, gfx1151, Q4_K_M)
+
+Internal relative rows (thermally throttled ZBook; NOT the official publishing
+lane — final validation on the stable-clock Desktop). Full mtpbench, greedy,
+3 reps, AR-exact:
+
+| Method | decode tok/s | vs AR | acceptance | task |
+| --- | ---: | ---: | ---: | --- |
+| true AR | 10.85 | 1.00x | — | #13 |
+| native MTP B3 | 18.05 | 1.665x | 0.603 | #13 |
+| DFlash2 B3 (baseline) | 9.50 | 0.85x | 2.32 tok/cyc | #13 |
+| DFlash2 B3 + QKV-WMMA | 9.72 | 0.86x | 2.32 tok/cyc | #15 |
+
+- **MTP pass (#14, measured explanation):** the MTP B3 cycle is target-verify
+  dominated (132 ms/cycle, ~85%; NextN proposal ~23 ms; host <1 ms). The verify
+  is GPU-weight-bound and AR-exactness-constrained (exact rowtile; reassociating
+  WMMA would break exact IDs) and already graph-captured. The transferable Muse
+  Glimmer wins (Q6 rowtile hoist, host-sampler penalty fix) are already in the
+  base, alongside graphs + hot-vocab fused head + production Q4 rowtile. No large
+  missed MTP win respecting exactness.
+- **DFlash2 revival (#15):** rocprof root-caused the cost gaps. The block QKV
+  projection used a naive scalar GEMV (`dflash_qkv_proj_bf16_mixed`, ~5.4 ms/call,
+  ~18x the bandwidth floor); routed it to the existing WMMA dense kernels
+  (commit 99e2008bc). Full-suite acceptance IDENTICAL (2.32), AR-exact,
+  ratio_vs_ar 0.848 -> 0.864. The remaining drafter dense projections (fc/MLP/o_proj/
+  context) ALREADY dispatch to WMMA by default (`HIPENGINE_DFLASH_DRAFTER_DENSE=
+  wmma`); the drafter attention is tiny (~12 ms); the target verify is
+  exactness-constrained. **The residual DFlash2 deficit vs MTP is structural**:
+  a 5-layer drafter forward (~96 ms/cycle, conv + selector) that MTP's 1-layer
+  proposal (~2.4 ms) does not pay. The toolkit closes the margins, not this
+  architectural gap. The `_PACK8_ROWTILE_MAX_ROWS=4` cliff bounds DFlash2 to
+  shallow chains (B3 is already the optimum); the reverted rowtile-8 experiment
+  was AR-divergent on `code_lru_cache` and remains un-root-caused.
+- **Implication for DSpine/EAGLE-4:** DFlash2's drafter cost is architectural, so
+  the win case for DSpine rests on its higher acceptance (adjacent causal
+  injection) amortizing that cost over more committed tokens, and for EAGLE-4 on
+  its single-layer feature drafter being far cheaper than DFlash2's 5-layer
+  forward. Acceptance and drafter cost per committed token are the metrics to
+  beat, not raw kernel tuning.
+
+## 6. Open questions
 
 - Does Qwen3.8-27B's verify quant mix actually use the Q6 T16 rowtile (so the
   hoist transfers), or only Q5 col8?
@@ -195,7 +235,7 @@ evidence for a hipEngine claim.
 - Is EAGLE-4's license compatible with any hipEngine use beyond clean-room idea
   reproduction?
 
-## 6. Sources
+## 7. Sources
 
 External, accessed 2026-11-09 (vendor claims; hardware differs from hipEngine):
 
