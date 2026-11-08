@@ -1382,6 +1382,8 @@ def qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans(
         head_dim,
         gate_stride1,
         gate_stride2,
+        context_len_ptr=spans.live_counts.ptr,
+        chunk_size=chunk_size,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -1533,6 +1535,8 @@ def qwen35_paged_full_attn_decode_split_k_gqa_gate_fp16_batch_spans(
         head_dim,
         gate_stride1,
         gate_stride2,
+        context_len_ptr=spans.live_counts.ptr,
+        chunk_size=chunk_size,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -1670,6 +1674,8 @@ def _launch_split_gate_batch(
         head_dim,
         gate_stride1,
         gate_stride2,
+        context_len_ptr=spans.live_counts.ptr,
+        chunk_size=chunk_size,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -3513,6 +3519,8 @@ def qwen35_paged_attn_decode_int8_gqa_splitk_gate_bf16_batch_strided_spans(
         out_row_stride,
         out_head_stride,
         out_dim_stride,
+        context_len_ptr=spans.live_counts.ptr,
+        chunk_size=chunk_size,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -5440,6 +5448,8 @@ def _launch_gate_reduce_batch(
     gate_stride1: int,
     gate_stride2: int,
     *,
+    context_len_ptr: int | None = None,
+    chunk_size: int = 0,
     stream: int,
     library: ctypes.CDLL,
     runtime: HipRuntime,
@@ -5458,6 +5468,8 @@ def _launch_gate_reduce_batch(
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_void_p,
     ]
     reduce_gate.restype = ctypes.c_int
     err = reduce_gate(
@@ -5472,6 +5484,8 @@ def _launch_gate_reduce_batch(
         ctypes.c_int64(head_dim),
         ctypes.c_int64(gate_stride1),
         ctypes.c_int64(gate_stride2),
+        ctypes.c_void_p(context_len_ptr),
+        ctypes.c_int64(chunk_size),
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
@@ -5495,6 +5509,8 @@ def _launch_gate_reduce_batch_strided(
     out_head_stride: int,
     out_dim_stride: int,
     *,
+    context_len_ptr: int | None = None,
+    chunk_size: int = 0,
     stream: int,
     library: ctypes.CDLL,
     runtime: HipRuntime,
@@ -5516,6 +5532,9 @@ def _launch_gate_reduce_batch_strided(
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+        ctypes.c_int64,
         ctypes.c_void_p,
     ]
     reduce_gate.restype = ctypes.c_int
@@ -5535,6 +5554,8 @@ def _launch_gate_reduce_batch_strided(
         ctypes.c_int64(out_row_stride),
         ctypes.c_int64(out_head_stride),
         ctypes.c_int64(out_dim_stride),
+        ctypes.c_void_p(context_len_ptr),
+        ctypes.c_int64(chunk_size),
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
