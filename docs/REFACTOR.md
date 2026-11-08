@@ -62,17 +62,6 @@ attribution only. Preserve
 and `admission_basis="implementation"` in both modes. Never invent a fingerprint or use a
 byte-digest match to conflate qwen36-dense and qwen38 execution identity.
 
-### R0196 — gfx1100 dense SPECDEC2 C8 physical-width rollback
-
-Owner: `hipengine/generation/qwen35_gguf.py`.
-
-Scope: `hipengine/generation/qwen35_gguf.py` — gfx1100 dense SPECDEC2 C8 physical-width rollback.
-
-Done when: Remaining validation: exercise `hipengine serve` at C5/C8 using production D1/D24 workloads,
-confirming physical grouping, deterministic/isolation behavior, allocation-failure cleanup and
-cancellation. Preserve the original complete category and control/ownership gates before closing
-this entry.
-
 ### R0199 — gfx1100 fused Q4-T16 prefill row-retile bisection
 
 Owner: `hipengine/runtime/gguf_linear.py`.
@@ -182,32 +171,6 @@ closed as intentional reference code. See
 Done when: Validation dependency: a local Laguna checkpoint. Run the R0273 gfx1151 public command and
 confirm range-direct selection, output parity and teardown.
 
-### R0165 — Public physical GDN wave-reduction validation
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `hipengine/runtime/qwen35_gguf_runner.py` — Public physical GDN wave-reduction validation.
-
-Done when: Dependency: a public request on the gfx1100 physical exact-row route. **Clearing action:** run
-`hipengine serve` with the dense GGUF MTP profile and an eligible physical target width, trace the
-wave-reduced state-row launch, and compare output/acceptance plus teardown against the registered
-strict parent. The existing numerical gate is
-`tests/test_gpu_qwen35_gguf_gdn_prefill_correctness.py::test_gdn_prefill_segments_state_rows_wave_reduce_is_parent_bit_exact`.
-Do not substitute successful c1 or unrelated-backend generation for engagement.
-
-### R0166 — Public physical Q4 rowtile validation
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `hipengine/runtime/gguf_linear.py` — Public physical Q4 rowtile validation.
-
-Done when: Dependency: gfx1100 public physical target execution reaching R6 and R36. **Clearing action:**
-run `hipengine serve` with the physical dense-GGUF MTP profile, record the R6 two-wave rowtile and
-R36 row48 fused gate/up+SiLU launches, and compare outputs, acceptance and teardown against their
-registered parents. Use
-`tests/test_gpu_gguf_q4_k_t16_dense.py::test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain_at_production_shape`
-for the independent numerical gate; it does not replace public engagement.
-
 ### R0168 — Public grouped Q4 active-slot validation
 
 Owner: `hipengine/runtime/gguf_linear.py`.
@@ -220,17 +183,6 @@ grouped-R6 on the corresponding C7/C8 scope misses, and compare outputs/acceptan
 strict parent. Preserve
 `tests/test_gpu_gguf_t16_selected_gemv_decode.py::test_q4_t16_dense_rowtile16_w2_grouped_rows8_matches_grouped_rows6_bits`
 as the separate numerical gate.
-
-### R0169 — Public exact C7 target-row validation
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `hipengine/runtime/qwen35_gguf_runner.py` — Public exact C7 target-row validation.
-
-Done when: Dependency: gfx1100 public C7/K3 physical MTP execution. **Clearing action:** run `hipengine
-serve` with seven live requests and the physical MTP profile, confirm R28 target work rather than
-padded R30, and compare full state/output/acceptance and teardown against the padded composition.
-Mocked prefix/tail routing tests do not replace this public gate.
 
 ### R0170 — Public source-Q5 MMQ validation
 
@@ -268,17 +220,6 @@ teardown with the registered padded-prefix/strict-tail parent composition. The d
 is
 `tests/test_gpu_gguf_t16_selected_gemv_decode.py::test_q5_t16_grouped_rows8_matches_repeated_rows8_bits`;
 it does not establish public engagement.
-
-### R0174 — Public exact C8 target-row validation
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `hipengine/runtime/qwen35_gguf_runner.py` — Public exact C8 target-row validation.
-
-Done when: Dependency: public gfx1100 C8/K3 physical target execution. **Clearing action:** run `hipengine
-serve` with eight live MTP requests, confirm R32 target packets and the selected fused row32 owner,
-and compare output, acceptance and cleanup with global exact-target rows disabled. Include a non-C8
-request count to confirm unchanged padding outside this policy.
 
 ### R0176 / R0394 — Public direct resident verifier validation
 
@@ -1378,25 +1319,6 @@ complete request-wall and per-request latency alongside aggregate throughput. Ru
 `tests/test_unit_server_f1_concurrency_bench.py`, `tests/test_unit_gguf_ar_decode_control.py` and
 execution-profile contract tests before changing the comparison interface.
 
-### R0393-Q6 — Grouped-Q6 rollback interface and gfx1100 public engagement
-
-Owner: `hipengine/generation/qwen35_dense_gfx1100_profiles.py`.
-
-Scope: `GGUF_Q6_DP4A_GROUPED_TARGET_REQUEST_COUNTS`.
-
-**Interface decision:** retain `HIPENGINE_C8_Q6_DP4A_GROUPED` as a supported production
-rollback and standalone diagnostic. Profiles snapshot the selection on the generator;
-explicit workspace scopes do not reread the environment. Preserve the workspace scope
-and bounded q8_1 resource checks. See
-`worklog/entries/20261105T215959.241558Z-lhl-r0393-q6-e91c33.md`.
-
-**Concrete dependency:** the remaining public engagement check needs a real packed-C8
-request on gfx1100. The W7900 host is now available; the check has not run yet.
-
-Done when: Hardware follow-up: run a real public packed-C8 request on gfx1100 and record selected Q6
-variant, grouped-kernel engagement, repeatability and allocation drain. gfx1151 normal public
-requests keep their existing BF16 selection. This is a validation follow-up, not a runnability gate.
-
 ### R0404 — Direct INT8 prefill evaluation after dtype repair
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
@@ -1794,21 +1716,6 @@ incompatible requests. Any changed arithmetic default must pass its profile gate
 source-bound certificate consistency without turning source identity into measured-artifact
 admission.
 
-### R0173 — Verify owner-bound R28 dispatch on gfx1100
-
-Owner: `hipengine/generation/qwen35_dense_gfx1100_profiles.py`.
-
-Scope: `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28`.
-
-**Remaining hardware check:** exercise strict, production and explicit rollback through public
-generation on gfx1100 in both owner construction orders. Confirm the selected R28 implementation,
-periodic exact-layer schedule, full outputs/state and graph/session teardown. Common transport
-execution on gfx1151 does not exercise the gfx1100 R28 kernel.
-
-Done when: the gfx1100 public comparisons preserve the declared arithmetic selection, strict
-fallback and lifecycle behavior. Do not remove the shared `_rowtile_variant_policy_env_cache`:
-unbound/direct diagnostics and unrelated rowtile policies still use it.
-
 ### RF-1 / R0187 — Finish owner-bound policy resolution using existing profile infrastructure
 
 Owner: `hipengine/execution_profiles.py`.
@@ -2061,3 +1968,41 @@ BF16 long-context and no-mirror INT8 global-adapter gates on both gfx1100 and gf
 graph-pointer, lifecycle, cancellation, pressure, SLO and production load. Only after remaining
 registered packages migrate may compatibility fixtures retire. Registered strict/unfused/serial
 numerical fallbacks remain independent of allocator cleanup.
+
+### R0522 — Streaming-cohort graph-capture memory growth
+
+Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
+
+Scope: `_invalidate_live_packed_decode_graphs`; packed decode graph capture/close buffer accounting.
+
+Observed on the W7900 dense C8 streaming path: repeated identical streaming cohorts (8 requests,
+64 tokens) grow tracked memory ~450 MB per cohort, and a no-cancel control reproduces the same
+trajectory, so this is not a cancellation leak. The packed workspace and KV pool stay constant while
+graph-bucket captures equal invalidations, retained entries stay at zero, and graph hits freeze after
+the first cohort. Prefill intentionally invalidates slot-binding decode graphs, so each cohort
+re-captures; the open question is whether the per-recapture bytes are unreleased capture buffers or
+bounded retention. Evidence and the control are recorded in
+`worklog/entries/20261108T194835.580722Z-lhl-gfx1100-physical-mtp-closures-f5c86c.md`.
+
+Done when: reproduce the growth with a controlled streaming-cohort loop, attribute it to graph
+capture/close buffer accounting (allocator or rocprofv3 memory trace), decide leak versus bounded
+retention, fix or bound it, and verify tracked memory plateaus across repeated identical cohorts
+with clean teardown. Do not disable graph replay or the prefill invalidation contract to hide it.
+
+### R0523 — Lifecycle-gate injection portability
+
+Owner: `scripts/gguf_mtp_lifecycle_gate.py`.
+
+Scope: the cancel/deadline checkpoint-count and terminal `cycles==1` assumptions.
+
+On the W7900 the six phase-fault containment rows pass, but the in-flight cancel/deadline and
+EOS/stop-in-cycle rows fail on stale assumptions rather than product behavior: prefill's per-chunk
+checkpoint polling shifts the gate's raw checkpoint count, and the terminal `cycles==1` expectation
+depends on draft acceptance. The product cancels cleanly at an owned boundary, emits exact terminal
+prefixes, and leaves exact MTP health afterward.
+
+Done when: repair the gate to inject cancellation/deadline by lifecycle phase rather than a raw
+checkpoint count, and assert the terminal prefix plus in-cycle stop without an acceptance-dependent
+cycle count, preserving the RF3 contract (no open transaction, repaired draft, exact following health).
+Run `python3 scripts/gguf_mtp_lifecycle_gate.py --model <dense GGUF> --fail-on-fail` on gfx1100 and
+confirm all rows pass; do not weaken the containment assertions to force a pass.
