@@ -21,7 +21,8 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
 )
 from hipengine.kernels.hip_gfx1100.speculative.dflash2 import build_dflash2, dflash2_top16_rows
 from hipengine.kernels.hip_gfx1100.speculative.dspine import (
-    build_dspine, dspine_codes, dspine_gate_message, dspine_residual, dspine_rms_normalize,
+    build_dspine, dspine_codes, dspine_concat_taps, dspine_gate_message,
+    dspine_residual, dspine_rms_normalize,
 )
 from hipengine.speculative.dflash2_native import (
     DFlash2NativeDrafter, _dflash2_rope_tables, _to_bf16_bits,
@@ -123,6 +124,9 @@ class DSpineNativeDrafter(DFlash2NativeDrafter):
         self.br_out = _buf(hb)
         self.anchor_buf = _buf(4)
         self.projected_ctx = _buf(self.max_context_len * self.hidden_size * 2)
+        self._n_taps = len(df["target_layer_ids"])
+        self._tap_concat = _buf(bs * self._n_taps * self.hidden_size * 2)
+        self._fc_proj = _buf(hb)
         self.ctx_k = [_buf(self.max_context_len * self.kv_features * 4) for _ in range(self.num_layers)]
         self.ctx_v = [_buf(self.max_context_len * self.kv_features * 2) for _ in range(self.num_layers)]
         self.ctx_kpos = _buf(self.max_context_len * 4)
@@ -130,6 +134,39 @@ class DSpineNativeDrafter(DFlash2NativeDrafter):
         self._numpy = DSpineNumpyDrafter(config, weights)
         self._last_stash: dict = {}
         self._last_final_hidden: np.ndarray | None = None
+
+    def _project_taps_device(self, aux_dev, rows, out_ptr):
+        """Project ``rows`` target tap rows (FP32 device aux) into ``out_ptr``
+        (BF16 [rows, H]) on device: cast+concat taps -> fc GEMM -> hidden_norm
+        RMS-norm. Mirrors numpy ``project_target_hidden`` (fc then norm); the aux
+        never leaves the device, replacing the host projection + D2H/H2D."""
+        H = self.hidden_size
+        n = len(aux_dev)
+        if rows > self.block_size:
+            raise ValueError(f"device projection rows {rows} exceed block_size {self.block_size}")
+        dspine_concat_taps(aux_dev, self._tap_concat.ptr, rows, H, runtime=self.runtime)
+        dflash_dense_bf16_to_bf16(
+            self._tap_concat.ptr, self._w("fc.weight"), self._fc_proj.ptr,
+            rows, n * H, H, library=self._lib1, runtime=self.runtime)
+        dflash_rmsnorm_bf16(
+            self._fc_proj.ptr, self._w("hidden_norm.weight"), out_ptr,
+            rows, H, eps=self.eps, library=self._lib1, runtime=self.runtime)
+
+    def append_projected_rows_device(self, aux_dev, rows, positions):
+        """Device-resident variant of :meth:`append_projected_rows`: project the
+        FP32 device aux taps on device into ``projected_ctx`` at ``ctx_len``, then
+        append the per-layer rotated K/V (already device-side). ``aux_dev`` is the
+        list of tap-layer device FP32 buffers in tap order; only the first
+        ``rows`` rows of each are read."""
+        rows = int(rows)
+        if rows == 0:
+            return
+        if self.ctx_len + rows > self.max_context_len:
+            raise ValueError("projected-context append exceeds native drafter capacity")
+        proj_dst_ptr = self.projected_ctx.ptr + self.ctx_len * self.hidden_size * 2
+        self._project_taps_device(aux_dev, rows, proj_dst_ptr)
+        self._append_ctx_kv(proj_dst_ptr, np.asarray(positions, dtype=np.int32), rows)
+        self.ctx_len += rows
 
     def _read_f32(self, buf, count):
         out = np.empty(count, dtype=np.float32)

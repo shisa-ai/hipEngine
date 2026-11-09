@@ -20,6 +20,7 @@ from hipengine.kernels.cpu_reference.dspine import DSpineNumpyDrafter
 from hipengine.loading.safetensors import load_weight_index, read_tensor_storage_bytes
 from hipengine.runtime.dspine import DSpineNativeDrafter
 from hipengine.runtime.qwen35_gguf_runner import DFlash2HiddenCaptureTargets
+from hipengine.runtime.gguf_native_spec_cycle import verify_qwen35_gguf_native_b2_target
 from hipengine.speculative.dflash2_native import _to_bf16_bits
 
 
@@ -95,9 +96,10 @@ def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
     draft_count = 0
     finish_reason = "length"
     stopped_eos = None
+    graph_verify_cycles = 0
     t0 = time.perf_counter()
     while produced_total < max_new_tokens:
-        ctx_len = ctx_taps.shape[0]
+        ctx_len = native.ctx_len
         block_input = np.asarray([bonus] + [mask] * n_drafts, dtype=np.int64)
         noise = token_embd[block_input].astype(np.float32)
         positions = np.arange(0, ctx_len + block_size, dtype=np.int64)
@@ -106,10 +108,13 @@ def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
         drafts = [int(t) for t in refine_fn(head, bonus)[:n_drafts]]
         verify_drafts = drafts[:n_verify]
         start_pos = int(session.position)
-        bres = session.verify_target_block(
-            [bonus] + verify_drafts, bulk_attention_mode="native",
+        bres = verify_qwen35_gguf_native_b2_target(
+            session, [bonus] + verify_drafts, bulk_attention_mode="native",
             capture_layer_output_hidden=tap_layers,
-            capture_linear_state_rows=True, defer_linear_state_commit=True)
+            capture_linear_state_rows=True, defer_linear_state_commit=True,
+            fallback=True)
+        if session.last_native_spec_target_submitted:
+            graph_verify_cycles += 1
         target_rows = [int(t) for t in bres.token_ids]
         max_accept = max_new_tokens - produced_total
         k = 0
@@ -123,13 +128,19 @@ def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
         bonus = int(target_rows[k])
         produced = k + 1
         accept = [int(block_input[0])] + verify_drafts[:k]
-        layh = bres.layer_output_hidden
-        new_taps = np.stack([np.asarray(layh[l], dtype=np.float32)[:produced] for l in tap_layers], axis=0)
-        new_concat = new_taps.transpose(1, 0, 2).reshape(produced, len(tap_layers) * hidden_size)
-        native.append_projected_rows(
-            _to_bf16_bits(nd.project_target_hidden(new_concat)),
-            np.arange(ctx_len, ctx_len + produced, dtype=np.int64))
-        ctx_taps = np.concatenate([ctx_taps, new_concat], axis=0)
+        append_positions = np.arange(ctx_len, ctx_len + produced, dtype=np.int64)
+        # When the verify left the tap rows on device (graph path), project them
+        # on device in append_projected_rows_device -- no tap D2H, host concat, or
+        # host fc projection. Otherwise fall back to the host taps + projection.
+        if bres.layer_output_hidden_device is not None:
+            aux_dev = [int(bres.layer_output_hidden_device[l]) for l in tap_layers]
+            native.append_projected_rows_device(aux_dev, produced, append_positions)
+        else:
+            layh = bres.layer_output_hidden
+            new_taps = np.stack([np.asarray(layh[l], dtype=np.float32)[:produced] for l in tap_layers], axis=0)
+            new_concat = new_taps.transpose(1, 0, 2).reshape(produced, len(tap_layers) * hidden_size)
+            native.append_projected_rows(
+                _to_bf16_bits(nd.project_target_hidden(new_concat)), append_positions)
         for tok in accept:
             if produced_total >= max_new_tokens:
                 break
@@ -151,6 +162,7 @@ def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
         "mean_acceptance": accepted_sum / (draft_count * n_verify) if draft_count else 0.0,
         "accepted_per_draft": accepted_sum / draft_count if draft_count else 0.0,
         "draft_forwards": draft_count,
+        "graph_verify_cycles": graph_verify_cycles,
         "finish_reason": finish_reason,
         "eos_token_id": stopped_eos,
     }

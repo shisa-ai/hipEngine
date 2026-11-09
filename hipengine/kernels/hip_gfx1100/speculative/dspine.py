@@ -59,3 +59,15 @@ def dspine_residual(raw_ptr, rms_ptr, delta_ptr, out_ptr, T, H, *, stream=0, run
     rt = runtime or get_hip_runtime()
     f = _fn("hipengine_dspine_residual", [_P, _P, _P, _P, _I64, _I64, _P])
     rt.check(int(f(raw_ptr, rms_ptr, delta_ptr, out_ptr, T, H, stream)))
+
+
+def dspine_concat_taps(src_ptrs, out_ptr, rows, H, *, stream=0, runtime=None):
+    """Cast+concat ``len(src_ptrs)`` (<=5) FP32 [rows, H] aux chunks into a BF16
+    [rows, n*H] fc-input buffer. Fuses the f32->bf16 cast and feature concat."""
+    rt = runtime or get_hip_runtime()
+    n = len(src_ptrs)
+    if not 1 <= n <= 5:
+        raise ValueError(f"dspine_concat_taps supports 1..5 taps, got {n}")
+    ptrs = list(src_ptrs) + [src_ptrs[0]] * (5 - n)
+    f = _fn("hipengine_dspine_concat_taps", [_P, _P, _P, _P, _P, _P, _I64, _I64, _I64, _P])
+    rt.check(int(f(ptrs[0], ptrs[1], ptrs[2], ptrs[3], ptrs[4], out_ptr, rows, H, n, stream)))

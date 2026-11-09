@@ -139,6 +139,27 @@ __global__ void dspine_residual_kernel(
     o[d] = f32_to_bf16(bf16_to_f32(r[d]) + rmsv * dl[d]);
 }
 
+// Cast+concat n_taps (<=5) FP32 [rows,H] aux chunks -> BF16 [rows, n_taps*H].
+// Fuses the f32->bf16 cast and feature-dim concat that form the DSpine fc input
+// (the target tap hidden states arrive as separate FP32 device buffers). One
+// workgroup per row; lanes stride over H within each tap.
+__global__ void dspine_concat_taps_kernel(
+    const float* __restrict__ p0, const float* __restrict__ p1,
+    const float* __restrict__ p2, const float* __restrict__ p3,
+    const float* __restrict__ p4, uint16_t* __restrict__ out,
+    int64_t rows, int64_t H, int64_t n_taps) {
+  const int64_t row = blockIdx.x;
+  if (row >= rows) return;
+  const float* ptrs[5] = {p0, p1, p2, p3, p4};
+  uint16_t* o = out + row * (n_taps * H);
+  for (int64_t i = 0; i < n_taps; ++i) {
+    const float* src = ptrs[i] + row * H;
+    uint16_t* dst = o + i * H;
+    for (int64_t d = threadIdx.x; d < H; d += blockDim.x)
+      dst[d] = f32_to_bf16(src[d]);
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_dspine_rms_normalize(
@@ -175,5 +196,16 @@ extern "C" int hipengine_dspine_residual(
   hipLaunchKernelGGL(dspine_residual_kernel, dim3((unsigned)T), dim3(256), 0,
                      stream, (const uint16_t*)raw, (const float*)rms,
                      (const float*)delta, (uint16_t*)out, T, H);
+  return hipGetLastError();
+}
+extern "C" int hipengine_dspine_concat_taps(
+    const void* p0, const void* p1, const void* p2, const void* p3,
+    const void* p4, void* out, int64_t rows, int64_t H, int64_t n_taps,
+    hipStream_t stream) {
+  if (rows <= 0 || H <= 0 || n_taps <= 0 || n_taps > 5) return hipErrorInvalidValue;
+  hipLaunchKernelGGL(dspine_concat_taps_kernel, dim3((unsigned)rows), dim3(256),
+                     0, stream, (const float*)p0, (const float*)p1,
+                     (const float*)p2, (const float*)p3, (const float*)p4,
+                     (uint16_t*)out, rows, H, n_taps);
   return hipGetLastError();
 }
