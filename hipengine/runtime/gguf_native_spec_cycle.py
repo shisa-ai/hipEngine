@@ -900,6 +900,7 @@ def _native_target_configuration_key(
     defer_linear_state_commit: bool,
     device_accept_commit: bool,
     sampled_accept: bool = False,
+    capture_layer_output_hidden: tuple[int, ...] = (),
     execution_profile_manifest_sha256: str = "legacy",
     recurrent_state_dtype: str = "fp32",
     router_f32w_coop: bool | None = None,
@@ -929,6 +930,7 @@ def _native_target_configuration_key(
         bool(defer_linear_state_commit),
         bool(device_accept_commit),
         bool(sampled_accept),
+        tuple(sorted(int(layer_id) for layer_id in capture_layer_output_hidden)),
         manifest_hash,
         state_dtype,
         None if router_f32w_coop is None else bool(router_f32w_coop),
@@ -1240,6 +1242,8 @@ class Qwen35GGUFNativeB2TargetGraph:
     configuration_key: tuple[object, ...]
     binding_signature: tuple[int, ...]
     capture_wall_ms: float
+    capture_layer_output_hidden: tuple[int, ...]
+    layer_output_hidden_rows: dict[int, Tensor] | None
     capture_reported: bool = False
     closed: bool = False
     native_result: NativeSpecCycleResult | None = None
@@ -1257,6 +1261,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
         sampled_accept: bool = False,
+        capture_layer_output_hidden: tuple[int, ...] = (),
         verify_f32_residual: bool | None = None,
         verify_f32_post_norm: bool | None = None,
     ) -> bool:
@@ -1272,6 +1277,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
             sampled_accept=sampled_accept,
+            capture_layer_output_hidden=capture_layer_output_hidden,
             execution_profile_manifest_sha256=manifest_hash,
             recurrent_state_dtype=state_dtype,
             **_native_target_route_identity(
@@ -1301,6 +1307,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
         sampled_accept: bool = False,
+        capture_layer_output_hidden: tuple[int, ...] = (),
         verify_f32_residual: bool | None = None,
         verify_f32_post_norm: bool | None = None,
     ) -> str | None:
@@ -1322,6 +1329,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
             sampled_accept=sampled_accept,
+            capture_layer_output_hidden=capture_layer_output_hidden,
             execution_profile_manifest_sha256=manifest_hash,
             recurrent_state_dtype=state_dtype,
             **_native_target_route_identity(
@@ -1357,6 +1365,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         defer_linear_state_commit: bool,
         device_accept_commit: bool,
         sampled_accept: bool = False,
+        capture_layer_output_hidden: tuple[int, ...] = (),
         verify_f32_residual: bool | None = None,
         verify_f32_post_norm: bool | None = None,
     ) -> bool:
@@ -1375,6 +1384,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
             sampled_accept=sampled_accept,
+            capture_layer_output_hidden=capture_layer_output_hidden,
             verify_f32_residual=verify_f32_residual,
             verify_f32_post_norm=verify_f32_post_norm,
         ) is None
@@ -1738,6 +1748,11 @@ class Qwen35GGUFNativeB2TargetGraph:
                     else np.ascontiguousarray(pre_output_hidden_host, dtype=np.float32)
                 ),
                 layer_output_hidden=None,
+                layer_output_hidden_device=(
+                    {int(l): int(t.ptr) for l, t in self.layer_output_hidden_rows.items()}
+                    if self.layer_output_hidden_rows
+                    else None
+                ),
                 layer_boundary_hidden=None,
                 lm_head_logits_f32=(
                     None
@@ -1830,6 +1845,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
     sampled_accept: bool = False,
     verify_f32_residual: bool | None = None,
     verify_f32_post_norm: bool | None = None,
+    capture_layer_output_hidden: Sequence[int] | None = None,
 ) -> Qwen35GGUFNativeB2TargetGraph:
     """Capture one fixed B1-B3 target forward without executing it.
 
@@ -1843,6 +1859,11 @@ def capture_qwen35_gguf_native_b2_target_graph(
     capture_prefill_gdn = _resolve_capture_prefill_gdn(session, capture_prefill_gdn)
     tokens = tuple(int(token) for token in input_token_ids)
     rows = len(tokens)
+    aux_layer_ids = (
+        tuple(int(l) for l in session._normalize_layer_output_capture(list(capture_layer_output_hidden)))
+        if capture_layer_output_hidden
+        else ()
+    )
     selected_context_limit = (
         _native_target_graph_context_limit(session, rows=rows)
         if context_limit is None
@@ -1999,6 +2020,18 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 DType.FP32,
             )
             if capture_pre_output_rows
+            else None
+        )
+        layer_output_hidden_rows = (
+            {
+                layer_id: workspace.reserve_tensor(
+                    f"native_spec_layer_output_hidden_{layer_id}",
+                    (rows, hidden_size),
+                    DType.FP32,
+                )
+                for layer_id in aux_layer_ids
+            }
+            if aux_layer_ids
             else None
         )
         pre_output_norm_hidden_bf16_rows = None
@@ -2275,6 +2308,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 capture_linear_state_rows=bool(capture_linear_state_rows),
                 capture_prefill_gdn=bool(capture_prefill_gdn),
                 capture_pre_output_norm_hidden=capture_pre_output_rows,
+                capture_layer_output_hidden=(list(aux_layer_ids) if aux_layer_ids else None),
                 defer_linear_state_commit=bool(defer_linear_state_commit),
                 _pre_staged_token_ids_ptr=buffers.token_ids.ptr,
                 _target_top1_i64_ptr=(
@@ -2292,6 +2326,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 _graph_hidden_f32_a=hidden_f32_a,
                 _graph_hidden_f32_b=hidden_f32_b,
                 _graph_pre_output_norm_hidden_buf=pre_output_norm_hidden_rows,
+                _graph_layer_output_hidden_bufs=layer_output_hidden_rows,
                 _native_decode_row_scratches=native_decode_row_scratches,
                 _native_attention_context_limit=(
                     context_limit if native_decode_row_scratches is not None else None
@@ -2476,6 +2511,8 @@ def capture_qwen35_gguf_native_b2_target_graph(
             rows=rows,
             capture_linear_state_rows=bool(capture_linear_state_rows),
             capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
+            capture_layer_output_hidden=aux_layer_ids,
+            layer_output_hidden_rows=layer_output_hidden_rows,
             defer_linear_state_commit=bool(defer_linear_state_commit),
             configuration_key=_native_target_configuration_key(
                 bulk_attention_mode=bulk_attention_mode,
@@ -2486,6 +2523,7 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 defer_linear_state_commit=bool(defer_linear_state_commit),
                 device_accept_commit=bool(device_accept_commit),
                 sampled_accept=bool(sampled_accept),
+                capture_layer_output_hidden=aux_layer_ids,
                 execution_profile_manifest_sha256=(
                     _native_target_execution_identity(session)[0]
                 ),
@@ -2800,6 +2838,7 @@ def verify_qwen35_gguf_native_b2_target(
     sampled_accept_state: Any | None = None,
     verify_f32_residual: bool | None = None,
     verify_f32_post_norm: bool | None = None,
+    capture_layer_output_hidden: Sequence[int] | None = None,
 ):
     """Run reusable N1/N2 when admitted, otherwise preserve the eager verifier.
 
@@ -2833,6 +2872,8 @@ def verify_qwen35_gguf_native_b2_target(
         eager_kwargs["verify_f32_post_norm"] = bool(verify_f32_post_norm)
     if capture_pre_output_norm_hidden:
         eager_kwargs["capture_pre_output_norm_hidden"] = True
+    if capture_layer_output_hidden:
+        eager_kwargs["capture_layer_output_hidden"] = list(capture_layer_output_hidden)
     if capture_lm_head_logits:
         eager_kwargs["capture_lm_head_logits"] = True
     if record_stage_timings:
@@ -2860,11 +2901,13 @@ def verify_qwen35_gguf_native_b2_target(
         if not fallback:
             raise NativeSpecTargetGraphUnsupportedError(reason)
         return session.verify_target_block(input_token_ids, **eager_kwargs)
+    aux_layer_ids = tuple(sorted({int(l) for l in (capture_layer_output_hidden or ())}))
     cache_key = (
         rows - 1,
         bool(device_accept_commit),
         int(context_limit),
         bool(sampled_accept),
+        aux_layer_ids,
     )
     short_alias_limit = _NATIVE_TARGET_SHORT_CONTEXT_LIMIT
     backend = getattr(session, "backend", None)
@@ -2875,7 +2918,7 @@ def verify_qwen35_gguf_native_b2_target(
         )
     cache = _native_target_graph_cache(session)
     graph = cache.get(cache_key)
-    if graph is None and int(context_limit) == short_alias_limit:
+    if graph is None and int(context_limit) == short_alias_limit and not aux_layer_ids:
         graph = native_target_graph_alias(
             session, rows - 1, device_accept=device_accept_commit, sampled=sampled_accept,
         )
@@ -2890,6 +2933,7 @@ def verify_qwen35_gguf_native_b2_target(
         defer_linear_state_commit=bool(defer_linear_state_commit),
         device_accept_commit=bool(device_accept_commit),
         sampled_accept=bool(sampled_accept),
+        capture_layer_output_hidden=aux_layer_ids,
         verify_f32_residual=verify_f32_residual,
         verify_f32_post_norm=verify_f32_post_norm,
     ):
@@ -2919,11 +2963,12 @@ def verify_qwen35_gguf_native_b2_target(
                 defer_linear_state_commit=defer_linear_state_commit,
                 device_accept_commit=device_accept_commit,
                 sampled_accept=bool(sampled_accept),
+                capture_layer_output_hidden=(list(aux_layer_ids) if aux_layer_ids else None),
                 verify_f32_residual=verify_f32_residual,
                 verify_f32_post_norm=verify_f32_post_norm,
             )
             _cache_native_target_graph(session, cache_key, graph)
-            if int(context_limit) == short_alias_limit:
+            if int(context_limit) == short_alias_limit and not aux_layer_ids:
                 set_native_target_graph_alias(
                     session, rows - 1, graph, device_accept=device_accept_commit, sampled=sampled_accept,
                 )

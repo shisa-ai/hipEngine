@@ -1519,6 +1519,7 @@ class Qwen35GGUFBlockVerifyResult:
     start_position: int
     pre_output_norm_hidden: np.ndarray | None = None
     layer_output_hidden: dict[int, np.ndarray] | None = None
+    layer_output_hidden_device: dict[int, int] | None = None
     layer_boundary_hidden: dict[int, dict[str, np.ndarray]] | None = None
     lm_head_logits_f32: np.ndarray | None = None
     linear_state_rows_captured: bool = False
@@ -20744,7 +20745,12 @@ class Qwen35GGUFResidentSession:
                 expected_aux_nbytes = rows * self.runner.hidden_size * DType.FP32.itemsize
                 for aux_layer_id in aux_capture_ids:
                     aux_dest = _graph_layer_output_hidden_bufs.get(int(aux_layer_id))
-                    if aux_dest is None or int(getattr(aux_dest, "nbytes", -1)) != expected_aux_nbytes:
+                    aux_dest_nbytes = int(getattr(aux_dest, "nbytes", 0)) if aux_dest is not None else 0
+                    if aux_dest is not None and aux_dest_nbytes == 0:
+                        aux_dest_nbytes = int(getattr(aux_dest, "numel", 0)) * int(
+                            getattr(getattr(aux_dest, "dtype", None), "itemsize", 0)
+                        )
+                    if aux_dest is None or aux_dest_nbytes != expected_aux_nbytes:
                         raise ValueError(
                             "enqueue-only layer output capture requires a graph-owned "
                             f"(rows, hidden_size) FP32 destination for layer {aux_layer_id}"

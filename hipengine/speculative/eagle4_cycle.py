@@ -19,6 +19,7 @@ from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_
 from hipengine.kernels.cpu_reference.eagle4 import EAGLE4NumpyDrafter
 from hipengine.loading.safetensors import load_weight_index, read_tensor_storage_bytes
 from hipengine.runtime.eagle4 import EAGLE4NativeDrafter
+from hipengine.runtime.gguf_native_spec_cycle import verify_qwen35_gguf_native_b2_target
 from hipengine.runtime.qwen35_gguf_runner import DFlash2HiddenCaptureTargets
 
 
@@ -65,6 +66,7 @@ def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime
     produced_total = 0
     accepted_sum = 0
     draft_count = 0
+    graph_verify_cycles = 0
     finish_reason = "length"
     stopped_eos = None
     t0 = time.perf_counter()
@@ -73,10 +75,13 @@ def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime
         drafts, _ = native.draft_greedy_chain_cached(n_draft)
         drafts = [int(t) for t in drafts]
         start_pos = int(session.position)
-        bres = session.verify_target_block(
-            [bonus] + drafts, bulk_attention_mode="native",
+        bres = verify_qwen35_gguf_native_b2_target(
+            session, [bonus] + drafts, bulk_attention_mode="native",
             capture_layer_output_hidden=aux_layers,
-            capture_linear_state_rows=True, defer_linear_state_commit=True)
+            capture_linear_state_rows=True, defer_linear_state_commit=True,
+            fallback=True)
+        if session.last_native_spec_target_submitted:
+            graph_verify_cycles += 1
         target_rows = [int(t) for t in bres.token_ids]
         max_accept = max_new_tokens - produced_total
         k = 0
@@ -91,6 +96,16 @@ def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime
         produced = k + 1
         accept = [root_bonus] + drafts[:k]
         layh = bres.layer_output_hidden
+        if bres.layer_output_hidden_device is not None:
+            verify_rows = n_draft + 1
+            layh = {}
+            for l in aux_layers:
+                raw = np.empty(verify_rows * hidden_size, dtype=np.float32)
+                copy_device_to_host(
+                    host_array_ptr(raw),
+                    DeviceBuffer(int(bres.layer_output_hidden_device[l]), raw.nbytes),
+                    raw.nbytes, runtime=runtime)
+                layh[l] = raw.reshape(verify_rows, hidden_size)
         new_aux = np.concatenate([np.asarray(layh[l], dtype=np.float32)[:produced] for l in aux_layers], axis=-1)
         for tok in accept:
             if produced_total >= max_new_tokens:
@@ -114,6 +129,7 @@ def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime
         "mean_acceptance": accepted_sum / (draft_count * n_draft) if draft_count else 0.0,
         "accepted_per_draft": accepted_sum / draft_count if draft_count else 0.0,
         "draft_forwards": draft_count,
+        "graph_verify_cycles": graph_verify_cycles,
         "finish_reason": finish_reason,
         "eos_token_id": stopped_eos,
     }
