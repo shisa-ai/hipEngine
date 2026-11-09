@@ -74,7 +74,32 @@ __global__ void eagle4_topk_kernel(
   }
 }
 
+// Concatenate two [rows, H] bf16 tensors along the feature dim -> [rows, 2H].
+__global__ void eagle4_concat_kernel(
+    const uint16_t* __restrict__ a, const uint16_t* __restrict__ b,
+    uint16_t* __restrict__ out, int64_t rows, int64_t H) {
+  const int64_t row = blockIdx.x;
+  if (row >= rows) return;
+  const uint16_t* ar = a + row * H;
+  const uint16_t* br = b + row * H;
+  uint16_t* o = out + row * (2 * H);
+  for (int64_t d = threadIdx.x; d < H; d += blockDim.x) {
+    o[d] = ar[d];
+    o[d + H] = br[d];
+  }
+}
+
 }  // namespace
+
+extern "C" int hipengine_eagle4_concat(
+    const void* a, const void* b, void* out, int64_t rows, int64_t H,
+    hipStream_t stream) {
+  if (rows <= 0 || H <= 0) return hipErrorInvalidValue;
+  hipLaunchKernelGGL(eagle4_concat_kernel, dim3((unsigned)rows), dim3(256), 0,
+                     stream, (const uint16_t*)a, (const uint16_t*)b,
+                     (uint16_t*)out, rows, H);
+  return hipGetLastError();
+}
 
 extern "C" int hipengine_eagle4_rope(
     void* x, const void* positions, int64_t rows, int n_heads, int head_dim,

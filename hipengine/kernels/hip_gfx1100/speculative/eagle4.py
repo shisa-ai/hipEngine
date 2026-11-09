@@ -41,3 +41,9 @@ def eagle4_topk(scores_ptr, out_ids_ptr, rows, vocab, K, *, stream=0, runtime=No
     rt = runtime or get_hip_runtime()
     f = _fn("hipengine_eagle4_topk", [_P, _P, _I64, _I64, _I, _P])
     rt.check(int(f(scores_ptr, out_ids_ptr, rows, vocab, K, stream)))
+
+
+def eagle4_concat(a_ptr, b_ptr, out_ptr, rows, H, *, stream=0, runtime=None):
+    rt = runtime or get_hip_runtime()
+    f = _fn("hipengine_eagle4_concat", [_P, _P, _P, _I64, _I64, _P])
+    rt.check(int(f(a_ptr, b_ptr, out_ptr, rows, H, stream)))
