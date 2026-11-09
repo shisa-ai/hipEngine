@@ -129,6 +129,10 @@ class SpeculativeProviderConfig:
     provider: str
     draft_model: str | Path
     candidate_budget: int = DEFAULT_PROVIDER_CANDIDATE_BUDGET
+    # Acceptance-triggered online depth adaptation around candidate_budget
+    # (block DFlash providers). Output-invariant: verify is target-corrected,
+    # so depth changes tokens-per-cycle, never token identity.
+    adaptive_depth: bool = True
 
     def __post_init__(self) -> None:
         provider = str(self.provider).strip()
