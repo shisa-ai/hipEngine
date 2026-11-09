@@ -129,9 +129,12 @@ class Qwen35EAGLE4TextProvider:
             self.target.model_path, backend=self.target.backend, compiler_version=None,
             require_cached_build=False, max_sequence_length=max_seq, max_batch_size=1,
         ) as session:
-            if self._native is None:
+            if self._native is None or self._native.max_context_len < max_seq:
+                if self._native is not None:
+                    self._native.close()
                 self._native = EAGLE4NativeDrafter(self._config, self._weights,
-                                                   runtime=session.runtime, max_seq=n_draft + 2)
+                                                   runtime=session.runtime, max_seq=n_draft + 2,
+                                                   max_context_len=max_seq)
             ds = run_eagle4_cycle(
                 session, self._native, self._nd, prompt_ids=prompt_ids,
                 max_new_tokens=request.max_tokens, runtime=session.runtime,
@@ -193,11 +196,13 @@ register_speculative_provider(
         quant="gguf_q4_k_m",
     ),
     make_qwen35_eagle4_text_provider,
-    # Measured chain optimum on the full mtpbench suite (gfx1151): n_draft 1/2/3/4/6/8
-    # -> 8.92/7.53/6.66/5.61/4.34/2.31 tok/s. Acceptance falls with depth (the first
-    # draft is accepted ~0.445, marginal deeper drafts not enough to amortize their
-    # per-step cost), so the chain peaks at n_draft=1 (worklog 20261109T012249 sweep).
-    candidate_budget=1,
+    # Measured KV-cache chain optimum on the full mtpbench suite (gfx1151,
+    # Qwen3.8-27B-Q4_K_M, 25 new tokens): n_draft 1/2/3/4/6/8 ->
+    # 9.65/10.42/10.34/10.26/8.04/4.59 tok/s (0.86/0.93/0.92/0.92/0.72/0.41x AR).
+    # The persistent context KV lifts acceptance to ~1.3-2.5/draft, but the per-step
+    # efficient-head cost still grows faster than acceptance, so the chain peaks at
+    # n_draft=2 (worklog 20261109T131849 sweep). All depths AR-exact.
+    candidate_budget=2,
 )
 
 

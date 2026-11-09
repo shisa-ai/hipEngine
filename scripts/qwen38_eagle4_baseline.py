@@ -95,7 +95,7 @@ def main() -> int:
         args.model, backend=args.backend, compiler_version=None,
         require_cached_build=False, max_sequence_length=max_seq, max_batch_size=1,
     ) as session:
-        native = EAGLE4NativeDrafter(config, weights, runtime=runtime, max_seq=args.n_draft + 2)
+        native = EAGLE4NativeDrafter(config, weights, runtime=runtime, max_seq=args.n_draft + 2, max_context_len=max_seq)
         run_prompt(chosen[0])  # discarded warmup
         per_prompt = {r["id"]: [] for r in chosen}
         meta = {}

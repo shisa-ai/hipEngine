@@ -60,6 +60,7 @@ def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime
     hidden_size = int(session.runner.hidden_size)
     session.reset()
     ctx_aux, bonus = _capture_prompt_aux(session, prompt_ids, aux_layers, hidden_size, runtime)
+    native.prefill_context(ctx_aux, prompt_ids, bonus)
     output_ids: list[int] = []
     produced_total = 0
     accepted_sum = 0
@@ -69,8 +70,7 @@ def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime
     t0 = time.perf_counter()
     while produced_total < max_new_tokens:
         root_bonus = bonus
-        root_pos = ctx_aux.shape[0] - 1
-        drafts, _ = native.draft_greedy_chain(ctx_aux[-1], bonus, root_pos, n_draft)
+        drafts, _ = native.draft_greedy_chain_cached(n_draft)
         drafts = [int(t) for t in drafts]
         start_pos = int(session.position)
         bres = session.verify_target_block(
@@ -92,7 +92,6 @@ def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime
         accept = [root_bonus] + drafts[:k]
         layh = bres.layer_output_hidden
         new_aux = np.concatenate([np.asarray(layh[l], dtype=np.float32)[:produced] for l in aux_layers], axis=-1)
-        ctx_aux = np.concatenate([ctx_aux, new_aux], axis=0)
         for tok in accept:
             if produced_total >= max_new_tokens:
                 break
@@ -104,8 +103,9 @@ def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime
                 break
         accepted_sum += k
         draft_count += 1
-        if finish_reason == "stop":
+        if finish_reason == "stop" or produced_total >= max_new_tokens:
             break
+        native.append_committed(new_aux, accept[1:] + [bonus])
     elapsed = time.perf_counter() - t0
     return {
         "output_ids": output_ids,
