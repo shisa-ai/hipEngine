@@ -244,7 +244,126 @@ the two protocols.
   the chain draft does not yet amortize. **MTP B3 remains the shipping winner**
   (1.665x AR); the external drafters do not displace it on this hardware.
 
-## 6. Open questions
+## 6. Optimization analysis: what MTP has that DSpine/EAGLE-4 lack
+
+Code review of the measured routes, 2026-11-09. Per-cycle numbers below are
+derived from the §5 rows and the worklog stage profiles. Rows marked *inferred*
+are estimates, not measurements.
+
+### 6.1 Cost model: drafting quality is not the problem for DSpine
+
+| Method | tok/cycle | ms/cycle | verify rows | where the time goes |
+| --- | ---: | ---: | ---: | --- |
+| MTP B3 | ~2.8 | ~155 | 4 | verify 132 (graph, exact rowtile, ≤4-row bucket) + NextN 23 |
+| DSpine full block | **~4.2** | ~1,010 | 16 | verify 879 + refine 51 + forward 46 + project/append 37 |
+| EAGLE-4 chain n1 | ~1.45 | ~162 | 2 | eager verify + unprofiled drafter/host (*inferred* ~50–60 ms drafter+host) |
+
+The true AR step costs ~88 ms on this host. **DSpine already predicts better per
+cycle than MTP** (≈4.2 vs ≈2.8 committed tokens). Its 0.214 "acceptance" is
+measured against 15 drafts. It loses because it verifies 16 rows on a path that
+costs ~10 AR steps. **EAGLE-4 currently predicts worse than MTP**, and §6.3 shows
+that this is largely a bring-up defect, not the method.
+
+On this verify-bound lane, any method's ceiling is roughly
+`tok/cycle ÷ (verify(rows) + draft)`. The verify cost for a given row count is
+shared by all methods. A drafter beats MTP only by committing more tokens within
+the cheap ≤4-row verify, or by making 5–8-row verifies cheap.
+
+### 6.2 What the MTP route has that the generic drafter routes do not
+
+| # | MTP B3 route | DSpine / EAGLE-4 generic route (`*_cycle.py`) |
+| --- | --- | --- |
+| 1 | Target verify is **HIP-graph captured** (enqueue-only, fixed-row buckets 2–8, device cursor advance); host residual <1 ms | Eager `verify_target_block` every cycle (Python dispatch of the full layer stack; Muse Glimmer measured 740→1 launches for the equivalent capture) |
+| 2 | **Device-side accept** (`device_graph_i32x2` handoff); no logits or token readback | Target token IDs read back to host; Python accept loop; sync per cycle |
+| 3 | Target hidden seed stays in **graph-owned device buffers** | `capture_layer_output_hidden` copies 3 (EAGLE) or 5 (DSpine) layers × rows × 5120 to host numpy every cycle. Enqueue-only verify explicitly refuses layer host captures, so this blocks #1. |
+| 4 | Drafter weights **GGUF-quantized** with production rowtile GEMVs | BF16 drafter weights (EAGLE ≈0.93 GB read per draft step; DSpine 5 layers), DFlash WMMA dense with 16-row tiles at rows=1. Unprofiled per step. |
+| 5 | NextN head is **hot-vocab + fused linear+argmax**, top-1 on device | EAGLE: full-V low-rank estimate (248320×128), top-128, then **D2H of candidates, host gather of 128 `lm_head` rows from fp32 numpy, H2D**, shortlist GEMV, D2H, host softmax/argsort, **per draft step**. DSpine: full-V 15×5120×248320 head + device top-16 + host chain walk. |
+| 6 | Proposal is **graph captured** with a device proposal handoff (draft IDs never leave the device) | EAGLE: per draft step H2D of features, embeddings (host numpy gather) and positions; D2H of the output feature; 2+ `device_synchronize` |
+| 7 | NextN keeps **private full-attention KV over the context** | **EAGLE drafter has no context** (see §6.3) |
+| 8 | Fusion/projection of target features happens on device | EAGLE `fc` (15360→5120) and DSpine `project_target_hidden` (25600→5120) run as **fp32 numpy matmuls on the CPU every cycle** (DSpine project+append = 37 ms measured) |
+| 9 | Verify width (4 rows) **sits inside the `_PACK8_ROWTILE_MAX_ROWS=4` cliff** and the rows 2–8 rowtile LM-head path | DSpine verifies 16 rows: past the rowtile cliff *and* past the `2 <= rows <= 8` row LM-head path |
+| 10 | Budget B3 tuned on a correct drafter | EAGLE n1 tuned on the context-less drafter; the DSpine budget sweep is invalid (§6.3) |
+
+### 6.3 Defects that invalidate current conclusions
+
+These change the method verdicts, so they come before any kernel tuning.
+
+1. **EAGLE-4 drafter ignores the context (acceptance bug).**
+   `run_eagle4_cycle` passes only `ctx_aux[-1]`, and `draft_greedy_chain`
+   attends only over the 1..n draft rows. It never builds a drafter KV over the
+   committed context, although the artifact declares `sliding_window=4096` and
+   `use_cache=true`. EAGLE-class drafters are trained to attend over their own
+   KV for every prior position. The full `ctx_aux` grows every cycle (an O(n²)
+   host concat) and is otherwise unused. The measured 0.445 depth-1 acceptance
+   and the collapse at depth (0.099 at n8) are what a context-less drafter would
+   produce. The n1 "cost-aware optimum" is therefore an artifact of the bug.
+   **Fix:** prefill a drafter KV from the prompt's fused features (one rows=T
+   forward). Append the K/V of the accepted rows after each verify. Decode each
+   draft step as rows=1 against that KV. This is also the speed fix (it removes
+   the per-step full-sequence recompute).
+2. **The EAGLE-4 oracle was never pinned to a reference trace.** The design doc
+   (§1 "RED-oracle questions") required checking the `fc` chunk order, the
+   2H-input composition, whether `hidden_norm` applies before fusion, and the
+   `norm_output` semantics against a reference forward. The landed oracle test
+   checks only against its own serial numpy. Open items: whether the
+   next-step feature should be pre- or post-`norm` (`EAGLE4NumpyDrafter.forward`
+   has a no-op `norm_output` branch), and whether aux capture depth `l+1` in
+   prefill matches `capture_layer_output_hidden=l` in verify. One trace
+   comparison would close these. It is the cheapest acceptance check available.
+3. **The DSpine candidate-budget sweep measured a broken configuration.**
+   `candidate_budget` truncates the *drafter's input block*
+   (`[bonus] + [mask]*n_drafts`) instead of the verify. The drafter was trained
+   on 16-row blocks, and `positions` is still sized `ctx_len + block_size`.
+   Budgets 3 and 4 show **acceptance 0.0** in their artifacts
+   (`…dspine-budget{3,4}.json`). The conclusion "budget is not the lever" does
+   not follow. **Fix:** always draft the full 16-row block, then verify only the
+   first `n` drafts (or a confidence-truncated prefix).
+4. **Drafter host memory on a unified-memory APU.** Both drafters keep fp32
+   numpy copies of every weight in addition to the device BF16 copies. For
+   EAGLE-4 this includes `lm_head` and `embed_tokens`, each ≈5 GB in fp32. On
+   gfx1151 that host RAM is the same pool the GPU reads, so it competes for
+   capacity and possibly bandwidth (*inferred*; not measured).
+
+### 6.4 Ranked optimization list
+
+Ordered by expected impact per unit of work. "Shared" items also help MTP or
+future drafters.
+
+| Pri | Item | Methods | Expected effect | Notes |
+| --- | --- | --- | --- | --- |
+| **P0** | EAGLE-4 drafter KV over context (prefill + append + rows=1 decode) | EAGLE-4 | Acceptance: the main unknown. Speed: removes per-step sequence recompute | §6.3-1. Re-run the n_draft sweep after it; the n1 optimum is void |
+| **P0** | Pin the EAGLE-4 oracle to one reference forward trace (feature norm, fc order, aux depth) | EAGLE-4 | Correctness of drafting; may lift acceptance further | §6.3-2. CPU-only |
+| **P0** | DSpine: draft full block, verify a prefix (fixed n ≤3, then confidence-truncated) | DSpine | Cuts verify from 16 rows (879 ms) to a ≤4-row bucket (MTP pays 132 ms for 4). *Inferred* cycle ~270 ms → ~11–12 tok/s before drafter work | §6.3-3. The vendor recipe's "DSpark dynamic verification" is this lever |
+| **P1** | Graph-captured verify for the generic route: extend enqueue-only verify to write aux-layer hidden rows into graph-owned device buffers (DFlash2 already has device capture targets for prefill) | DSpine, EAGLE-4, DFlash2 | Brings verify to MTP's 132 ms/4 rows; removes eager dispatch and per-cycle D2H of layer rows | §6.2-1/3. Unlocks device accept |
+| **P1** | Device-side accept + commit for the generic route (reuse MTP's `device_graph_i32x2` path) | all generic | Removes host round-trip and sync per cycle | §6.2-2 |
+| **P1** | Move the `fc` / `project_target_hidden` fusion to the GPU (WMMA dense from the device aux buffers) | EAGLE-4, DSpine | DSpine −37 ms/cycle (measured cost); EAGLE removes CPU fp32 15360×5120 per cycle | §6.2-8 |
+| **P1** | EAGLE efficient head fully on device: gather the 128 `lm_head` rows by device index from the resident BF16 head; device softmax/argmax (top-1 for chain) | EAGLE-4 | Removes 2 syncs + 2 transfers + a host gather per draft step | §6.2-5 |
+| **P1** | Device-resident draft step: device embedding gather, on-device feature carry, no per-step H2D/D2H; then graph-capture the draft step | EAGLE-4 | Draft step approaches its bandwidth floor (≈0.93 GB BF16 ≈ 4–5 ms *inferred* at this host's bandwidth) | §6.2-6. Mirrors MTP's graph proposal |
+| **P2** | Quantize the drafter weights (Q8_0 / Q4 GGUF, reusing the target's rowtile GEMVs). Drafts owe no exactness | EAGLE-4, DSpine | ~2–4× fewer bytes per draft step | §6.2-4. Acceptance must stay within band |
+| **P2** | Hot-vocab draft head (MTP's lever) as an alternative or complement to the low-rank head | EAGLE-4, DSpine | Cuts the full-V low-rank pass (63 MB/step) | Measure against the low-rank head |
+| **P2** | Drop the host fp32 weight copies after upload (keep only what the CPU oracle needs, lazily) | EAGLE-4, DSpine | Frees ~10+ GB of unified memory | §6.3-4 |
+| **P2** | Lift the `_PACK8_ROWTILE_MAX_ROWS=4` cliff to 8 exactly (root-cause the `code_lru_cache` divergence first) | **shared** (MTP B4+, DSpine, EAGLE, trees) | Makes 5–8-row verifies cheap. This is the only lever that raises every method's ceiling | Open since the DFlash2 campaign |
+| **P2** | Early-exit chunked verify: verify ≤4 rows; if all accepted, verify the next ≤4 from the committed state | DSpine (long blocks), EAGLE deep chains | Pays the 16-row cost only when acceptance would use it | Exact: each chunk is a normal exact verify |
+| **P3** | EAGLE-4 dynamic tree + tree-mask verify | EAGLE-4 | Vendor's main lever | **Hard on this hybrid target.** GDN/linear-attention state is per-path, so a tree needs per-branch recurrent state (ReplaySSM-like) as well as a full-attention tree mask. Do this only after P0/P1 show a strong chain |
+| **P3** | Cost tables per method (draft ms/step, verify ms/rows) feeding the budget choice (the EAGLE-Harness idea) | all | Picks depth/width per context and load | After P1, so the tables measure the final paths |
+| **P3** | Protocol: run final rows on 750 outputs (suite-economics protocol) rather than 25 tokens per prompt | measurement | Removes short-run warm-up bias from the §5 relative rows | Desktop stable-clock lane |
+
+### 6.5 Expected outcome (inferred, to be measured)
+
+- **DSpine** with prefix verify (P0) plus graph verify and GPU projection (P1)
+  costs about 132 ms verify + ~100 ms drafter per cycle and commits ≤4 tokens.
+  That is roughly AR to MTP parity. Beating MTP additionally needs drafter
+  forward cuts (WMMA backbone, quantized weights) or a cheaper 5–8-row verify
+  (the shared cliff).
+- **EAGLE-4** is the larger unknown and the larger upside. With context KV, its
+  acceptance should move toward EAGLE-class chain acceptance. With a
+  device-resident, graph-captured draft step (~5 ms/step *inferred*), a depth-3
+  chain costs about 132 + 15 ms. That beats MTP if its depth-3 chain commits
+  more than ~2.8 tokens/cycle.
+- **MTP** gains only from shared levers: the rowtile cliff for B4+, or the
+  production-profile verify. It is not exactness-free (see the §5 MTP pass).
+
+## 7. Open questions
 
 - Does Qwen3.8-27B's verify quant mix actually use the Q6 T16 rowtile (so the
   hoist transfers), or only Q5 col8?
@@ -256,7 +375,7 @@ the two protocols.
 - Is EAGLE-4's license compatible with any hipEngine use beyond clean-room idea
   reproduction?
 
-## 7. Sources
+## 8. Sources
 
 External, accessed 2026-11-09 (vendor claims; hardware differs from hipEngine):
 
