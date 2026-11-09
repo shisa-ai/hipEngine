@@ -1698,21 +1698,6 @@ defaults. Preserve exact comparison modes, independently useful kernels and curr
 dispatch. If retiring candidate modes, inventory their harness callers and remove only
 candidate-specific wiring/tests after preserving the required comparisons.
 
-### R0522 — Retire the scalar Muse Glimmer split decode-attention kernel
-
-Owner: `hipengine/kernels/hip_gfx1100/attention/muse_glimmer_decode_attention.hip`.
-
-Scope: `muse_glimmer_decode_attn_split_kernel`, `hipengine_muse_glimmer_decode_attn`,
-`hipengine_muse_glimmer_decode_attn_gated`, the `muse_glimmer` attention_decode registry key,
-`tests/test_unit_muse_glimmer_decode_attention.py`, the gated case in
-`tests/test_gpu_muse_glimmer_decode_glue.py`, and the `--kernel split` mode of
-`scripts/muse_glimmer_decode_attn_scale.py`.
-
-Done when: AR decode and the DFlash verify both run `muse_glimmer_decode_attention_shared`, so the
-scalar split kernel is reachable only from its tests and the comparison probe. Remove it, its
-launchers, registry key and tests together once no caller needs the before/after comparison; the
-combine kernels stay because the shared kernel uses them.
-
 ### R0521 — Revisit backend-specific decode graph engagement separately from telemetry
 
 Owner: `hipengine/runtime/gemma4_decode_graph.py`.

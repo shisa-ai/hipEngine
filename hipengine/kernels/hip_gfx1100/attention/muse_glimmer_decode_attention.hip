@@ -21,9 +21,6 @@
 #include <stdint.h>
 
 #define GLIMMER_HEAD_DIM 128
-#define GLIMMER_DIMS_PER_LANE 4
-#define GLIMMER_Q_PER_BLOCK 4
-#define GLIMMER_KEY_UNROLL 8
 
 __device__ __forceinline__ float bf16_to_f32(uint16_t v) {
   uint32_t u = static_cast<uint32_t>(v) << 16;
@@ -35,112 +32,6 @@ __device__ __forceinline__ uint16_t f32_to_bf16(float f) {
   uint32_t lsb = (u >> 16) & 1;
   u += 0x7FFF + lsb;
   return static_cast<uint16_t>(u >> 16);
-}
-
-__device__ __forceinline__ float wave_sum(float v) {
-  for (int off = 16; off; off >>= 1) v += __shfl_down(v, off);
-  return __shfl(v, 0);
-}
-
-// Partials layout: [n_splits, n_q_heads, 128 + 2] f32 (acc, m, l).
-// Multi-row (prefill) mode: grid.z = tokens, each block owns one query row;
-// key range is causal+SWA clamped per row. With n_splits == 1 the split
-// kernel writes the normalized BF16 output directly (no combine pass).
-__global__ __launch_bounds__(32 * GLIMMER_Q_PER_BLOCK) void muse_glimmer_decode_attn_split_kernel(
-    const uint16_t* __restrict__ q,        // [tokens, n_q_heads, 128] bf16
-    const uint16_t* __restrict__ k_cache,  // [max_ctx, n_kv_heads, 128] bf16
-    const uint16_t* __restrict__ v_cache,
-    float* __restrict__ partials,          // [n_splits, tokens, n_q_heads, 130]
-    uint16_t* __restrict__ out,            // [tokens, n_q_heads, 128] bf16
-    int64_t n_q_heads, int64_t n_kv_heads, int64_t key_begin, int64_t key_end,
-    int64_t n_splits, int64_t tokens, int64_t window, float scale,
-    const int64_t* __restrict__ key_end_dev) {
-  const int split = blockIdx.x;
-  const int q_group = blockIdx.y;  // 4 Q heads per block
-  const int token = blockIdx.z;
-  const int wave = threadIdx.x / 32;
-  const int lane = threadIdx.x % 32;
-  const int qh = q_group * GLIMMER_Q_PER_BLOCK + wave;
-  if (qh >= n_q_heads || token >= tokens) return;
-  const int kvh = qh / (n_q_heads / n_kv_heads);
-  if (key_end_dev != nullptr) key_end = *key_end_dev;
-
-  // Per-row causal + SWA clamp (key_end is the live extent; row position is
-  // key_end - tokens + token for a contiguous append).
-  const int64_t pos = key_end - tokens + token;
-  int64_t row_end = min(key_end, pos + 1);
-  int64_t row_begin = key_begin;
-  if (window > 0) row_begin = max(row_begin, pos - window + 1);
-  const int64_t span = row_end - row_begin;
-  const int64_t slice = (span + n_splits - 1) / n_splits;
-  const int64_t beg = row_begin + split * slice;
-  const int64_t end = min(beg + slice, row_end);
-
-  // Load this wave's Q row into registers (4 dims per lane).
-  float qreg[GLIMMER_DIMS_PER_LANE];
-#pragma unroll
-  for (int i = 0; i < GLIMMER_DIMS_PER_LANE; i++)
-    qreg[i] = bf16_to_f32(q[(token * n_q_heads + qh) * GLIMMER_HEAD_DIM + lane * GLIMMER_DIMS_PER_LANE + i]);
-
-  float m = -INFINITY;
-  float l = 0.0f;
-  float acc[GLIMMER_DIMS_PER_LANE] = {0.0f, 0.0f, 0.0f, 0.0f};
-
-  const int64_t kv_stride = n_kv_heads * GLIMMER_HEAD_DIM;
-  // Keys run in groups of GLIMMER_KEY_UNROLL: the K/V loads, dots and wave
-  // reductions of a group are independent and overlap, then the online
-  // softmax updates apply in ascending key order. Every per-key operation and
-  // the update order equal the one-key-at-a-time loop, so results are
-  // bit-identical to it; the unroll only removes the serial load latency.
-  const uint16_t* kbase = k_cache + kvh * GLIMMER_HEAD_DIM + lane * GLIMMER_DIMS_PER_LANE;
-  const uint16_t* vbase = v_cache + kvh * GLIMMER_HEAD_DIM + lane * GLIMMER_DIMS_PER_LANE;
-  for (int64_t key0 = beg; key0 < end; key0 += GLIMMER_KEY_UNROLL) {
-    float dot[GLIMMER_KEY_UNROLL];
-    uint2 vraw[GLIMMER_KEY_UNROLL];
-#pragma unroll
-    for (int u = 0; u < GLIMMER_KEY_UNROLL; u++) {
-      const int64_t key = key0 + u < end ? key0 + u : end - 1;
-      const uint2 kraw = *reinterpret_cast<const uint2*>(kbase + key * kv_stride);
-      vraw[u] = *reinterpret_cast<const uint2*>(vbase + key * kv_stride);
-      const uint16_t* kb = reinterpret_cast<const uint16_t*>(&kraw);
-      float d = 0.0f;
-#pragma unroll
-      for (int i = 0; i < GLIMMER_DIMS_PER_LANE; i++) d += qreg[i] * bf16_to_f32(kb[i]);
-      dot[u] = d;
-    }
-#pragma unroll
-    for (int u = 0; u < GLIMMER_KEY_UNROLL; u++) dot[u] = wave_sum(dot[u]) * scale;
-#pragma unroll
-    for (int u = 0; u < GLIMMER_KEY_UNROLL; u++) {
-      if (key0 + u >= end) break;
-      const float m_new = fmaxf(m, dot[u]);
-      const float alpha = __expf(m - m_new);
-      const float p = __expf(dot[u] - m_new);
-      l = l * alpha + p;
-      const uint16_t* vb = reinterpret_cast<const uint16_t*>(&vraw[u]);
-#pragma unroll
-      for (int i = 0; i < GLIMMER_DIMS_PER_LANE; i++)
-        acc[i] = acc[i] * alpha + p * bf16_to_f32(vb[i]);
-      m = m_new;
-    }
-  }
-
-  if (n_splits == 1) {
-    uint16_t* orow = out + (token * n_q_heads + qh) * GLIMMER_HEAD_DIM;
-    const float inv_l = (l > 0.0f) ? 1.0f / l : 0.0f;
-#pragma unroll
-    for (int i = 0; i < GLIMMER_DIMS_PER_LANE; i++)
-      orow[lane * GLIMMER_DIMS_PER_LANE + i] = f32_to_bf16(acc[i] * inv_l);
-    return;
-  }
-  float* outp = partials + ((int64_t)split * tokens * n_q_heads + token * n_q_heads + qh) * (GLIMMER_HEAD_DIM + 2);
-#pragma unroll
-  for (int i = 0; i < GLIMMER_DIMS_PER_LANE; i++)
-    outp[lane * GLIMMER_DIMS_PER_LANE + i] = acc[i];
-  if (lane == 0) {
-    outp[GLIMMER_HEAD_DIM] = m;
-    outp[GLIMMER_HEAD_DIM + 1] = l;
-  }
 }
 
 __global__ void muse_glimmer_decode_attn_combine_kernel(
@@ -498,31 +389,6 @@ extern "C" int hipengine_muse_glimmer_kv_append(
   return static_cast<int>(hipGetLastError());
 }
 
-extern "C" int hipengine_muse_glimmer_decode_attn(
-    const uint16_t* q, const uint16_t* k, const uint16_t* v, uint16_t* out,
-    float* partials, int64_t n_q_heads, int64_t n_kv_heads, int64_t key_begin,
-    int64_t key_end, int64_t n_splits, int64_t tokens, int64_t window,
-    float scale, const int64_t* key_end_dev, hipStream_t stream) {
-  if (!q || !k || !v || !out || !partials || n_q_heads <= 0 || n_kv_heads <= 0 ||
-      n_q_heads % n_kv_heads || n_q_heads % GLIMMER_Q_PER_BLOCK ||
-      key_end <= key_begin || n_splits <= 0 || tokens <= 0)
-    return hipErrorInvalidValue;
-  dim3 grid(static_cast<unsigned>(n_splits),
-            static_cast<unsigned>(n_q_heads / GLIMMER_Q_PER_BLOCK),
-            static_cast<unsigned>(tokens));
-  muse_glimmer_decode_attn_split_kernel<<<grid, 32 * GLIMMER_Q_PER_BLOCK, 0, stream>>>(
-      q, k, v, partials, out, n_q_heads, n_kv_heads, key_begin, key_end,
-      n_splits, tokens, window, scale, key_end_dev);
-  hipError_t err = hipGetLastError();
-  if (err != hipSuccess) return static_cast<int>(err);
-  if (n_splits > 1) {
-    dim3 cgrid(static_cast<unsigned>(n_q_heads), static_cast<unsigned>(tokens));
-    muse_glimmer_decode_attn_combine_kernel<<<cgrid, 128, 0, stream>>>(
-        partials, out, n_q_heads, n_splits, tokens);
-    err = hipGetLastError();
-  }
-  return static_cast<int>(err);
-}
 // Fused rows-1 decode glue: per-head Q/K RMSNorm + rotary on BF16 inputs,
 // BF16 Q out, BF16 K written straight into the cache row at *pos, plus the V
 // row append. One block per head (Q heads, then KV heads) and one trailing
@@ -750,28 +616,5 @@ extern "C" int hipengine_muse_glimmer_add_rmsnorm_rmsnorm(
   muse_glimmer_add_rmsnorm_rmsnorm_kernel<<<grid, GLIMMER_NORM_THREADS, 0, stream>>>(
       branch, residual, post_weight, pre_weight, residual_out, normed_out, post_eps, pre_eps,
       hidden_size);
-  return static_cast<int>(hipGetLastError());
-}
-
-extern "C" int hipengine_muse_glimmer_decode_attn_gated(
-    const uint16_t* q, const uint16_t* k, const uint16_t* v, const uint16_t* gate,
-    uint16_t* out, float* partials, int64_t n_q_heads, int64_t n_kv_heads,
-    int64_t key_begin, int64_t key_end, int64_t n_splits, int64_t tokens, int64_t window,
-    float scale, const int64_t* key_end_dev, hipStream_t stream) {
-  if (!q || !k || !v || !gate || !out || !partials || n_q_heads <= 0 || n_kv_heads <= 0 ||
-      n_q_heads % n_kv_heads || n_q_heads % GLIMMER_Q_PER_BLOCK ||
-      key_end <= key_begin || n_splits <= 1 || tokens <= 0)
-    return hipErrorInvalidValue;
-  dim3 grid(static_cast<unsigned>(n_splits),
-            static_cast<unsigned>(n_q_heads / GLIMMER_Q_PER_BLOCK),
-            static_cast<unsigned>(tokens));
-  muse_glimmer_decode_attn_split_kernel<<<grid, 32 * GLIMMER_Q_PER_BLOCK, 0, stream>>>(
-      q, k, v, partials, out, n_q_heads, n_kv_heads, key_begin, key_end,
-      n_splits, tokens, window, scale, key_end_dev);
-  hipError_t err = hipGetLastError();
-  if (err != hipSuccess) return static_cast<int>(err);
-  dim3 cgrid(static_cast<unsigned>(n_q_heads), static_cast<unsigned>(tokens));
-  muse_glimmer_decode_attn_combine_gated_kernel<<<cgrid, 128, 0, stream>>>(
-      partials, gate, out, n_q_heads, n_splits, tokens);
   return static_cast<int>(hipGetLastError());
 }

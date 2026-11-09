@@ -39,57 +39,6 @@ def _library():
     return build_muse_glimmer_decode_attention()
 
 
-def muse_glimmer_decode_attention(
-    q_ptr: int, k_ptr: int, v_ptr: int, out_ptr: int, partials_ptr: int,
-    *, n_q_heads: int, n_kv_heads: int, key_begin: int, key_end: int,
-    n_splits: int, scale: float, tokens: int = 1, window: int = 0,
-    key_end_dev: int = 0, gate_ptr: int = 0, stream: int = 0,
-    library: ctypes.CDLL | None = None, runtime=None,
-) -> None:
-    """Attention over [key_begin, key_end) of the contiguous KV cache.
-
-    A nonzero ``gate_ptr`` (BF16, same shape as ``out``, requires
-    ``n_splits > 1``) applies the Glimmer sigmoid attention gate inside the
-    combine pass, bit-identical to a following ``gguf_gate_mul_bf16``.
-
-    ``tokens==1`` is decode; ``tokens>1`` is a causal prefill block whose rows
-    occupy the last ``tokens`` positions ending at ``key_end``. ``window>0``
-    clamps each row to its sliding window. ``partials`` must hold
-    n_splits * tokens * n_q_heads * 130 float32 values (unused when
-    n_splits == 1, which writes output directly).
-    """
-
-    if n_q_heads % n_kv_heads or n_q_heads % 4:
-        raise ValueError("Glimmer decode attention requires n_q_heads % n_kv_heads == 0 and % 4 == 0")
-    if key_end <= key_begin:
-        raise ValueError("key range must be non-empty")
-    if n_splits <= 0 or tokens <= 0:
-        raise ValueError("n_splits and tokens must be positive")
-    library = library or _library()
-    runtime = runtime or get_hip_runtime()
-    if gate_ptr:
-        if n_splits <= 1:
-            raise ValueError("the gated combine requires n_splits > 1")
-        fn = signed_kernel_fn(
-            library, "hipengine_muse_glimmer_decode_attn_gated",
-            (_P, _P, _P, _P, _P, _P, _I64, _I64, _I64, _I64, _I64, _I64, _I64, _F, _P, _P),
-            ctypes.c_int,
-        )
-        runtime.check(int(fn(q_ptr, k_ptr, v_ptr, gate_ptr, out_ptr, partials_ptr,
-                             n_q_heads, n_kv_heads, key_begin, key_end, n_splits, tokens,
-                             window, float(scale), key_end_dev, stream)))
-        return
-    fn = signed_kernel_fn(
-        library, "hipengine_muse_glimmer_decode_attn",
-        (_P, _P, _P, _P, _P, _I64, _I64, _I64, _I64, _I64, _I64, _I64, _F, _P, _P),
-        ctypes.c_int,
-    )
-    err = fn(q_ptr, k_ptr, v_ptr, out_ptr, partials_ptr,
-             n_q_heads, n_kv_heads, key_begin, key_end, n_splits, tokens, window,
-             float(scale), key_end_dev, stream)
-    runtime.check(int(err))
-
-
 def muse_glimmer_decode_attention_shared(
     q_ptr: int, k_ptr: int, v_ptr: int, out_ptr: int, partials_ptr: int,
     *, n_q_heads: int, n_kv_heads: int, key_begin: int, key_end: int,
@@ -204,8 +153,6 @@ def muse_glimmer_add_rmsnorm_rmsnorm(
 
 def register_muse_glimmer_decode_attention_kernels():
     for backend in ('hip_gfx1100', 'hip_gfx1151'):
-        register(KernelKey(backend, 'attention_decode', 'bf16', 'muse_glimmer'),
-                 muse_glimmer_decode_attention, replace=True)
         register(KernelKey(backend, 'attention_decode', 'bf16', 'muse_glimmer_shared'),
                  muse_glimmer_decode_attention_shared, replace=True)
 
