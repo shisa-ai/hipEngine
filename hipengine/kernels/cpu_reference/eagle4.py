@@ -98,8 +98,10 @@ class EAGLE4NumpyDrafter:
             chunks = [rmsnorm(c, self.w[f"fc_norm.{i}.weight"], eps=self.eps) for i, c in enumerate(chunks)]
         return linear(np.concatenate(chunks, axis=-1), self.w["fc.weight"])
 
-    def layer(self, embeds: np.ndarray, hidden: np.ndarray, positions: np.ndarray) -> np.ndarray:
-        """One EAGLE-4 layer; returns the output feature [T, H]."""
+    def layer(self, embeds: np.ndarray, hidden: np.ndarray, positions: np.ndarray):
+        """One EAGLE-4 layer; returns (normed output feature, un-normed residual+mlp
+        sum), each [T, H]. The reference feeds normed to the LM head and carries
+        normed (norm_output) or the sum (else) to the next draft step."""
         residual = hidden
         x = np.concatenate([
             rmsnorm(embeds, self.w["layers.0.input_layernorm.weight"], eps=self.eps),
@@ -119,14 +121,16 @@ class EAGLE4NumpyDrafter:
         up = linear(hn, self.w["layers.0.mlp.up_proj.weight"])
         mlp = linear(_silu(gate) * up, self.w["layers.0.mlp.down_proj.weight"])
         summed = residual + mlp
-        return rmsnorm(summed, self.w["norm.weight"], eps=self.eps)
+        normed = rmsnorm(summed, self.w["norm.weight"], eps=self.eps)
+        return normed, summed
 
     def forward(self, input_ids: np.ndarray, target_feature: np.ndarray, positions: np.ndarray) -> np.ndarray:
-        """target_feature [T, 3H] (aux concat) or [T, H] (draft output); returns output feature [T, H]."""
+        """target_feature [T, 3H] (aux concat) or [T, H] (draft output); returns the
+        next-step feature [T, H] (normed when norm_output else the un-normed sum)."""
         embeds = self.w["embed_tokens.weight"][input_ids]
         hidden = self.project_target_features(target_feature)
-        out = self.layer(embeds, hidden, positions)
-        return out if self.norm_output else out
+        normed, summed = self.layer(embeds, hidden, positions)
+        return normed if self.norm_output else summed
 
     def efficient_head(self, hidden: np.ndarray, k: int | None = None):
         """Low-rank retrieve num_candidates, then full-rank shortlist scoring.
@@ -169,8 +173,8 @@ class EAGLE4NumpyDrafter:
             tok_seq = np.array([root_token] + draft_ids, dtype=np.int64)
             pos_seq = np.arange(pos - len(features) + 1, pos + 1, dtype=np.int64)
             embed_seq = self.w["embed_tokens.weight"][tok_seq]
-            out_seq = self.layer(embed_seq, feat_seq, pos_seq)
-            feature = out_seq[-1]
+            out_normed, out_summed = self.layer(embed_seq, feat_seq, pos_seq)
+            feature = (out_normed if self.norm_output else out_summed)[-1]
             logits, cand = self.efficient_head(feature[None, :])
             token = int(cand[0, np.argmax(logits[0])])
             draft_ids.append(token)

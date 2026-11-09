@@ -94,3 +94,85 @@ def test_greedy_chain_deterministic():
     assert d1.shape == (4,)
     assert np.array_equal(d1, d2)
     assert np.allclose(f1, f2)
+
+
+def _reference_eagle4_forward(w, input_ids, target_feature, positions, *, hidden,
+                              num_heads, head_dim, rope_theta, sliding_window, eps):
+    """Independent clean-room translation of the EAGLE-4 reference forward op order
+    (llama_eagle4.py): fc over three RMS-normed aux chunks; concat(input_layernorm(embed),
+    hidden_norm(feature)) -> MHA -> fused add+norm -> SwiGLU -> norm(residual+mlp).
+    Uses complex-multiply RoPE and an explicit per-head attention loop to cross-check
+    the oracle's split-half RoPE / einsum attention."""
+    def rms(x, weight):
+        return x / np.sqrt(np.mean(x * x, axis=-1, keepdims=True) + eps) * weight
+
+    def lin(x, weight):
+        return x @ weight.T
+
+    def rope(t):
+        half = head_dim // 2
+        inv = 1.0 / (rope_theta ** (np.arange(half, dtype=np.float64) / half))
+        ang = positions.astype(np.float64)[:, None] * inv[None, :]
+        cis = np.cos(ang) + 1j * np.sin(ang)  # [T, half]
+        out = np.empty_like(t)
+        for h in range(t.shape[1]):
+            z = t[:, h, :half].astype(np.float64) + 1j * t[:, h, half:].astype(np.float64)
+            zr = z * cis
+            out[:, h, :half] = zr.real
+            out[:, h, half:] = zr.imag
+        return out
+
+    embeds = w["embed_tokens.weight"][input_ids]
+    chunks = np.split(target_feature, 3, axis=-1)
+    normed_chunks = [rms(c, w[f"fc_norm.{i}.weight"]) for i, c in enumerate(chunks)]
+    feat = lin(np.concatenate(normed_chunks, axis=-1), w["fc.weight"])
+    residual = feat
+    x = np.concatenate([rms(embeds, w["layers.0.input_layernorm.weight"]),
+                        rms(feat, w["layers.0.hidden_norm.weight"])], axis=-1)
+    T = x.shape[0]
+    q = lin(x, w["layers.0.self_attn.q_proj.weight"]).reshape(T, num_heads, head_dim)
+    k = lin(x, w["layers.0.self_attn.k_proj.weight"]).reshape(T, num_heads, head_dim)
+    v = lin(x, w["layers.0.self_attn.v_proj.weight"]).reshape(T, num_heads, head_dim)
+    q = rope(q); k = rope(k)
+    attn = np.zeros((T, num_heads, head_dim), dtype=np.float64)
+    for t in range(T):
+        lo = max(0, t - sliding_window + 1) if sliding_window else 0
+        for h in range(num_heads):
+            scores = (k[lo:t + 1, h, :] @ q[t, h]) / np.sqrt(head_dim)
+            p = np.exp(scores - scores.max()); p = p / p.sum()
+            attn[t, h] = p @ v[lo:t + 1, h, :]
+    attn_out = lin(attn.reshape(T, num_heads * head_dim).astype(np.float32), w["layers.0.self_attn.o_proj.weight"])
+    residual = residual + attn_out
+    hn = rms(residual, w["layers.0.post_attention_layernorm.weight"])
+    gate = lin(hn, w["layers.0.mlp.gate_proj.weight"])
+    up = lin(hn, w["layers.0.mlp.up_proj.weight"])
+    mlp = lin((gate / (1.0 + np.exp(-gate))) * up, w["layers.0.mlp.down_proj.weight"])
+    summed = residual + mlp
+    return rms(summed, w["norm.weight"])
+
+
+def test_forward_matches_independent_reference():
+    cfg = _config(); w = _weights()
+    nd = EAGLE4NumpyDrafter(cfg, w)
+    ids = np.array([1, 2, 3, 4], dtype=np.int64)
+    aux = np.random.default_rng(7).standard_normal((4, 3 * cfg["hidden_size"])).astype(np.float32)
+    pos = np.arange(4, dtype=np.int64)
+    got = nd.forward(ids, aux, pos)
+    expected = _reference_eagle4_forward(
+        w, ids, aux, pos, hidden=cfg["hidden_size"], num_heads=cfg["num_attention_heads"],
+        head_dim=cfg["head_dim"], rope_theta=1e7, sliding_window=cfg["sliding_window"], eps=1e-6)
+    assert np.allclose(got, expected, atol=2e-4), f"max diff {np.max(np.abs(got - expected))}"
+
+
+def test_norm_output_selects_normed_vs_summed():
+    cfg = _config(); w = _weights()
+    ids = np.array([1, 2], dtype=np.int64)
+    aux = np.random.default_rng(8).standard_normal((2, 3 * cfg["hidden_size"])).astype(np.float32)
+    pos = np.arange(2, dtype=np.int64)
+    cfg_true = dict(cfg, norm_output=True)
+    cfg_false = dict(cfg, norm_output=False)
+    out_true = EAGLE4NumpyDrafter(cfg_true, w).forward(ids, aux, pos)
+    out_false = EAGLE4NumpyDrafter(cfg_false, w).forward(ids, aux, pos)
+    # norm_output=True returns the normed feature; False returns the un-normed sum.
+    assert not np.allclose(out_true, out_false)
+    assert np.allclose(np.sqrt(np.mean(out_true * out_true, axis=-1)), 1.0, atol=1e-3)
