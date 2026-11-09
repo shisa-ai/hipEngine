@@ -198,6 +198,18 @@ lane — final validation on the stable-clock Desktop). Full mtpbench, greedy,
 | DSpine (native, GPU refine) | 4.30 | 0.38x | 0.214 | #17–18 |
 | EAGLE-4-style chain n1 (native) | 8.92 | 0.78x | 0.445 | #19–21 |
 
+**2026-11-09 refresh (matched relative-baseline, current code):** a fresh
+apples-to-apples run supersedes the stale DSpine/EAGLE-4 rows above. MTP B3
+**1.63x** AR (14.71 tok/s) > EAGLE-4 chain n_draft=2 **1.31x** (13.90) > AR >
+DSpine verify-prefix-5 + GPU refine **0.99x** (11.13) > DFlash2 B3 **0.88x**
+(9.86); all AR-exact. EAGLE-4 now beats AR after the P1 graph-verify + device
+fc-projection + device head/draft work; DSpine reached ~AR parity after the
+prefix-verify fix. Ratios are vs each method's own back-to-back AR (throttled
+ZBook, absolute tok/s drifts). Bottlenecks: MTP/EAGLE-4 verify-GEMV-bound; DSpine
+eager-verify + tap-D2H bound (65% of cycle, lacks the P1 device route); DFlash2
+5-layer drafter-forward bound. See
+[head-to-head artifact](../../benchmarks/results/2026-11-09-gfx1151-qwen38-27b-specdec-head-to-head.json).
+
 Rows #17–21 use the relative-baseline protocol (25 outputs, ten prompts, median
 of prompts, each vs its own back-to-back AR reference ~11.2–11.4 tok/s); #13/#15
 use the suite-economics protocol (750 outputs, 3 reps, weighted, AR 10.85). All
