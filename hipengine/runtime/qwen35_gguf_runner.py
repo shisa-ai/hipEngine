@@ -20639,6 +20639,7 @@ class Qwen35GGUFResidentSession:
         _graph_hidden_f32_a: object | None = None,
         _graph_hidden_f32_b: object | None = None,
         _graph_pre_output_norm_hidden_buf: object | None = None,
+        _graph_layer_output_hidden_bufs: Mapping[int, object] | None = None,
         _native_decode_row_scratches: tuple[object, ...] | None = None,
         _native_attention_context_limit: int | None = None,
     ) -> Qwen35GGUFBlockVerifyResult | None:
@@ -20732,8 +20733,22 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(
                     "enqueue-only pre-output-norm capture requires a graph-owned destination"
                 )
-            if capture_layer_output_hidden or capture_layer_boundary_hidden:
-                raise ValueError("enqueue-only target verification does not support layer host captures")
+            if capture_layer_boundary_hidden:
+                raise ValueError("enqueue-only target verification does not support layer boundary host captures")
+            if capture_layer_output_hidden:
+                if _graph_layer_output_hidden_bufs is None:
+                    raise ValueError(
+                        "enqueue-only layer output capture requires graph-owned device destinations"
+                    )
+                aux_capture_ids = self._normalize_layer_output_capture(capture_layer_output_hidden)
+                expected_aux_nbytes = rows * self.runner.hidden_size * DType.FP32.itemsize
+                for aux_layer_id in aux_capture_ids:
+                    aux_dest = _graph_layer_output_hidden_bufs.get(int(aux_layer_id))
+                    if aux_dest is None or int(getattr(aux_dest, "nbytes", -1)) != expected_aux_nbytes:
+                        raise ValueError(
+                            "enqueue-only layer output capture requires a graph-owned "
+                            f"(rows, hidden_size) FP32 destination for layer {aux_layer_id}"
+                        )
             if record_stage_timings or sync_stage_timings:
                 raise ValueError("enqueue-only target verification does not support host stage timings")
             graph_hidden = (
@@ -20776,6 +20791,7 @@ class Qwen35GGUFResidentSession:
             or _graph_hidden_f32_a is not None
             or _graph_hidden_f32_b is not None
             or _graph_pre_output_norm_hidden_buf is not None
+            or _graph_layer_output_hidden_bufs is not None
         ):
             raise ValueError("private target graph controls require enqueue-only mode")
         if _native_decode_row_scratches is not None and (
@@ -20974,6 +20990,55 @@ class Qwen35GGUFResidentSession:
                 and full_attention_prefused_ready
                 and self.runner._rounded_add_rmsnorm_fn(rows=rows) is not None
             )
+
+            def _capture_verify_layer_output(layer_id, *, hidden, hidden_f32, use_f32_residual):
+                # Enqueue-only: write the aux rows straight into a graph-owned
+                # device FP32 buffer (D2D), so the generic drafter can consume
+                # them without a per-cycle D2H. The rows sit at scratch_row_start
+                # (0 for a reusable/prebuilt graph scratch), matching the
+                # pre-output-norm graph capture. Host capture keeps the legacy
+                # eager offset.
+                if _enqueue_only:
+                    dest = (
+                        None
+                        if _graph_layer_output_hidden_bufs is None
+                        else _graph_layer_output_hidden_bufs.get(int(layer_id))
+                    )
+                    if dest is None:
+                        raise RuntimeError(
+                            f"graph-owned aux destination missing for layer {layer_id}"
+                        )
+                    if use_f32_residual:
+                        runtime.memcpy_async(
+                            int(dest.ptr),
+                            int(hidden_f32.ptr),
+                            rows * self.runner.hidden_size * DType.FP32.itemsize,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                    else:
+                        bf16_to_f32(
+                            hidden.ptr + scratch_row_start * row_nbytes,
+                            int(dest.ptr),
+                            rows * self.runner.hidden_size,
+                            stream=stream,
+                            library=self.runner._cast_library(),
+                            runtime=runtime,
+                        )
+                    return None
+                if use_f32_residual:
+                    return _copy_f32_ptr_to_host(
+                        int(hidden_f32.ptr),
+                        rows * self.runner.hidden_size,
+                        runtime=runtime,
+                    ).reshape(rows, self.runner.hidden_size)
+                return _copy_bf16_rows_to_host_f32(
+                    hidden.ptr + start * row_nbytes,
+                    rows,
+                    self.runner.hidden_size,
+                    runtime=runtime,
+                )
+
             with (
                 launch_decision_session(getattr(self, "launch_decision_owner", None)),
                 wmma_prefill_session(block_wmma_prefill),
@@ -21074,20 +21139,7 @@ class Qwen35GGUFResidentSession:
                                 verify_f32_post_norm=verify_f32_post_norm,
                             )
                         ),
-                        output=lambda layer_id, *, hidden, hidden_f32, use_f32_residual: (
-                            _copy_f32_ptr_to_host(
-                                int(hidden_f32.ptr),
-                                rows * self.runner.hidden_size,
-                                runtime=runtime,
-                            ).reshape(rows, self.runner.hidden_size)
-                            if use_f32_residual
-                            else _copy_bf16_rows_to_host_f32(
-                                hidden.ptr + start * row_nbytes,
-                                rows,
-                                self.runner.hidden_size,
-                                runtime=runtime,
-                            )
-                        ),
+                        output=_capture_verify_layer_output,
                     ),
                     self.runner._run_native_attention_bulk_ffn_layer_rows,
                     self.runner._run_linear_attention_prefill_layer_rows,
