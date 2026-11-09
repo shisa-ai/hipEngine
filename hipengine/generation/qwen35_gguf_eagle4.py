@@ -193,7 +193,11 @@ register_speculative_provider(
         quant="gguf_q4_k_m",
     ),
     make_qwen35_eagle4_text_provider,
-    candidate_budget=6,
+    # Measured chain optimum on the full mtpbench suite (gfx1151): n_draft 1/2/3/4/6/8
+    # -> 8.92/7.53/6.66/5.61/4.34/2.31 tok/s. Acceptance falls with depth (the first
+    # draft is accepted ~0.445, marginal deeper drafts not enough to amortize their
+    # per-step cost), so the chain peaks at n_draft=1 (worklog 20261109T012249 sweep).
+    candidate_budget=1,
 )
 
 

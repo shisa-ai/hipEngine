@@ -195,6 +195,14 @@ lane — final validation on the stable-clock Desktop). Full mtpbench, greedy,
 | native MTP B3 | 18.05 | 1.665x | 0.603 | #13 |
 | DFlash2 B3 (baseline) | 9.50 | 0.85x | 2.32 tok/cyc | #13 |
 | DFlash2 B3 + QKV-WMMA | 9.72 | 0.86x | 2.32 tok/cyc | #15 |
+| DSpine (native, GPU refine) | 4.30 | 0.38x | 0.214 | #17–18 |
+| EAGLE-4-style chain n1 (native) | 8.92 | 0.78x | 0.445 | #19–21 |
+
+Rows #17–21 use the relative-baseline protocol (25 outputs, ten prompts, median
+of prompts, each vs its own back-to-back AR reference ~11.2–11.4 tok/s); #13/#15
+use the suite-economics protocol (750 outputs, 3 reps, weighted, AR 10.85). All
+rows AR-exact on the full ten-prompt mtpbench suite. The ordering is robust across
+the two protocols.
 
 - **MTP pass (#14, measured explanation):** the MTP B3 cycle is target-verify
   dominated (132 ms/cycle, ~85%; NextN proposal ~23 ms; host <1 ms). The verify
@@ -222,6 +230,19 @@ lane — final validation on the stable-clock Desktop). Full mtpbench, greedy,
   its single-layer feature drafter being far cheaper than DFlash2's 5-layer
   forward. Acceptance and drafter cost per committed token are the metrics to
   beat, not raw kernel tuning.
+- **DSpine/EAGLE-4 measured (#17–21, clean-room):** both implemented independently
+  (no vendoring) and AR-exact on the full suite, but neither beats AR on this
+  throttled lane. DSpine's 5-layer backbone + 16-row block verify cost outweighs
+  its 0.214 acceptance (0.38x AR); a GPU transition-cache refine gave +20%
+  (3.57→4.30 tok/s) and a candidate-budget sweep confirmed smaller budgets are
+  slower (fixed per-block overhead). The EAGLE-4-style single-layer feature
+  drafter is cheaper than DFlash2's 5 layers and reaches 0.78x AR at its chain
+  optimum (n_draft=1, 8.92 tok/s, acceptance 0.445); a cost-aware budget sweep
+  (n1–8) peaks at n1 because marginal deeper drafts are not accepted enough to
+  amortize their per-step cost. The dynamic tree + efficient-head sharding that
+  give the vendor EAGLE-4 its 3.59x on B300 are the remaining levers; on gfx1151
+  the chain draft does not yet amortize. **MTP B3 remains the shipping winner**
+  (1.665x AR); the external drafters do not displace it on this hardware.
 
 ## 6. Open questions
 
