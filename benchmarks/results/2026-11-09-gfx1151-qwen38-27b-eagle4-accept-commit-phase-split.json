@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_eagle4_accept_commit_phase_split",
+  "status": "relative_measurement_internal",
+  "performance_claim": false,
+  "publishable": false,
+  "note": "Task #25b disposition: standalone device-side accept removes only the 0.048ms H2D-of-k. Accept loop is 0.005ms host; the fused commit already reads k from a device i32 buffer. The ~0.26ms commit host-launch is removable only by graph-capturing accept+commit (device-resident-cycle follow-up, blocked by data-dependent max_accept clamp). No standalone kernel landed (redundant for 0.03% of cycle).",
+  "provenance": {
+    "hipengine_commit": "58f6000fc56ea43876b39834349de70eaa72aae9",
+    "git_branch": "qwen38-dspine-eagle4",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "backend": "hip_gfx1151",
+    "hardware": "gfx1151 (Strix Halo)",
+    "command": ".venv/bin/python /tmp/eagle4_accept_profile.py; .venv/bin/python /tmp/eagle4_commit_split.py",
+    "date": "2026-11-10T00:40:16"
+  },
+  "protocol": {
+    "n_draft": 2,
+    "steady_cycles": 10,
+    "commit_split_reps": 50,
+    "stream_idle_for_split": true
+  },
+  "summary": {
+    "accept_loop_ms": 0.005,
+    "commit_call_in_cycle_ms": 0.39,
+    "h2d_of_k_ms": 0.0478,
+    "commit_call_idle_ms": 0.3121,
+    "commit_launch_plus_ensure_ms": 0.264,
+    "context_ms": {
+      "draft_chain": 39.26,
+      "verify_wall": 110.72
+    },
+    "standalone_device_accept_win_ms": 0.048,
+    "standalone_win_pct_of_cycle": 0.03
+  }
+}
