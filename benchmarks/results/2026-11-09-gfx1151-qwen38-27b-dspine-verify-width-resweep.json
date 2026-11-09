@@ -1,0 +1,40 @@
+{
+  "artifact": "qwen38-27b-dspine-device-route-verify-width-resweep",
+  "date": "2026-11-09",
+  "hardware": "gfx1151 / Radeon 8060S (ZBook, thermally throttled; diagnostic)",
+  "model": "Qwen3.8-27B-Q4_K_M",
+  "drafter": "Qwen3.8-27B-DSpine-b16",
+  "protocol": "scripts/qwen38_dspine_baseline.py --candidate-budget N --gpu-refine --reps 3 --max-new-tokens 25; 10 mtpbench prompts, 25 greedy outputs, each arm vs own back-to-back AR; DSpine P1 device route (graph verify + device tap projection)",
+  "results": [
+    {
+      "candidate_budget": 3,
+      "verify_rows": 4,
+      "dspine_tok_s": 11.765662817910464,
+      "ar_tok_s": 11.279278347127033,
+      "ratio_vs_ar": 1.043121949455864,
+      "mean_acceptance": 0.6452020202020202,
+      "exact_all": true
+    },
+    {
+      "candidate_budget": 5,
+      "verify_rows": 6,
+      "dspine_tok_s": 12.388161037469494,
+      "ar_tok_s": 11.328520131809658,
+      "ratio_vs_ar": 1.0935374517881151,
+      "mean_acceptance": 0.5132936507936507,
+      "exact_all": true
+    },
+    {
+      "candidate_budget": 7,
+      "verify_rows": 8,
+      "dspine_tok_s": 12.37770347440019,
+      "ar_tok_s": 11.294520911105906,
+      "ratio_vs_ar": 1.0959033651643595,
+      "mean_acceptance": 0.39852607709750565,
+      "exact_all": true
+    }
+  ],
+  "conclusion": "candidate_budget=5 (6 verify rows) remains optimal: 12.39 tok/s, tied with budget=7 (8 rows, 12.38); budget=3 (4 rows) is worse (11.77) despite higher acceptance. 8 rows is NO worse than 6 rows -> no verify-width dispatch cliff; the tradeoff is smooth (wider verify amortizes the fixed forward+refine cost over more tokens, compensating lower acceptance). Serving provider already defaults to candidate_budget=5 (graph-captures at 6 rows), so the P1 device port benefits production serving.",
+  "rowtile_cliff_resolution": "Task #33 closed: (1) the historical code_lru_cache rowtile-8 AR divergence was already root-caused+closed 2026-08-30 (739887) \u2014 over-broad dispatch admission without layout-qualified verifier ownership, not rowtile arithmetic; (2) EAGLE graph-vs-eager rocprof shows the verify is GEMV-bandwidth-bound (~120ms) on ALREADY-optimized rowtile kernels (q4_k_t16_dense_dual_rowtile_silu, q6_k_t16_qmicro_planar_rowtile_col8, etc.) with NO slow fallback; (3) this verify-width sweep shows no cliff penalty at 6-8 rows. There is no dispatch cliff to lift; the remaining verify cost is the GEMV bandwidth floor (exactness-bound tuning, diminishing returns).",
+  "caveats": "Throttled ZBook diagnostic; AR reference drifted across runs, so within-sweep ordering (each arm vs own AR) is the robust signal."
+}
