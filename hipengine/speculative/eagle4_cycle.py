@@ -95,18 +95,16 @@ def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime
         bonus = int(target_rows[k])
         produced = k + 1
         accept = [root_bonus] + drafts[:k]
-        layh = bres.layer_output_hidden
+        # When the verify left the aux rows on device (graph path), project them
+        # on device in append_committed_device -- no aux D2H, host concat, or host
+        # fc projection. Otherwise fall back to the host aux + host projection.
+        aux_dev = None
+        new_aux = None
         if bres.layer_output_hidden_device is not None:
-            verify_rows = n_draft + 1
-            layh = {}
-            for l in aux_layers:
-                raw = np.empty(verify_rows * hidden_size, dtype=np.float32)
-                copy_device_to_host(
-                    host_array_ptr(raw),
-                    DeviceBuffer(int(bres.layer_output_hidden_device[l]), raw.nbytes),
-                    raw.nbytes, runtime=runtime)
-                layh[l] = raw.reshape(verify_rows, hidden_size)
-        new_aux = np.concatenate([np.asarray(layh[l], dtype=np.float32)[:produced] for l in aux_layers], axis=-1)
+            aux_dev = [int(bres.layer_output_hidden_device[l]) for l in aux_layers]
+        else:
+            layh = bres.layer_output_hidden
+            new_aux = np.concatenate([np.asarray(layh[l], dtype=np.float32)[:produced] for l in aux_layers], axis=-1)
         for tok in accept:
             if produced_total >= max_new_tokens:
                 break
@@ -120,7 +118,10 @@ def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime
         draft_count += 1
         if finish_reason == "stop" or produced_total >= max_new_tokens:
             break
-        native.append_committed(new_aux, accept[1:] + [bonus])
+        if aux_dev is not None:
+            native.append_committed_device(aux_dev, produced, accept[1:] + [bonus])
+        else:
+            native.append_committed(new_aux, accept[1:] + [bonus])
     elapsed = time.perf_counter() - t0
     return {
         "output_ids": output_ids,

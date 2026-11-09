@@ -29,7 +29,8 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
 from hipengine.kernels.hip_gfx1100.speculative.dflash2 import (
     build_dflash2, dflash2_sliding_attention_f32_bf16,
 )
-from hipengine.kernels.hip_gfx1100.speculative.eagle4 import build_eagle4, eagle4_rope, eagle4_topk, eagle4_concat
+from hipengine.kernels.hip_gfx1100.speculative.eagle4 import build_eagle4, eagle4_rope, eagle4_topk, eagle4_concat, eagle4_concat3
+from hipengine.kernels.hip_gfx1100.convert.cast import build_cast, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.convert.gather import (
     build_gather, gather_bf16_rows_by_i32id, gather_i32_by_i32id,
 )
@@ -52,6 +53,7 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         self.kv_features = self.num_kv_heads * self.head_dim
         self.intermediate_size = int(config["intermediate_size"])
         self.eps = float(config["rms_norm_eps"])
+        self.fc_norm = bool(config.get("fc_norm", False))
         self.rope_theta = float(config.get("rope_parameters", {}).get("rope_theta", config.get("rope_theta", 1e7)))
         self.sliding_window = int(config.get("sliding_window") or 0)
         self.vocab_size = int(config["vocab_size"])
@@ -66,6 +68,7 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         self._lib3 = build_eagle4(load=True)
         self._lib_gather = build_gather(load=True)
         self._lib_lm_head = build_lm_head(load=True)
+        self._lib_cast = build_cast(load=True)
         self._numpy = EAGLE4NumpyDrafter(config, weights)
         max_wbytes = max((int(np.ascontiguousarray(a).nbytes) for a in weights.values()), default=0)
         # Cap the staging buffer; _staged_h2d chunks larger uploads. EAGLE-4's
@@ -140,6 +143,12 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         self.argmax_block_indices = _buf(nblk * 4)
         self.fc_normed = _buf(T * 3 * H * 2)
         self.fc_out = _buf(T * H * 2)
+        # Device-resident fc projection scratch (append_committed_device): the
+        # three aux chunks are cast f32->bf16, RMS-normed, concat'd to [T,3H],
+        # then projected by fc.weight into feature_seq. Sized to the decode batch
+        # (T=max_seq); prefill_context projects on the host (once per request).
+        self.fc_chunk = [_buf(T * H * 2) for _ in range(3)]
+        self.fc_normed_chunk = [_buf(T * H * 2) for _ in range(3)]
 
     def _w(self, name: str) -> int:
         return self.wdev[name]
@@ -306,6 +315,52 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         self._staged_h2d(self.embed_seq.ptr, _to_bf16_bits(self._numpy.w["embed_tokens.weight"][tokens]))
         positions = np.arange(base, base + m, dtype=np.int32)
         self._staged_h2d(self.positions_buf.ptr, positions)
+        self._qkv(m)
+        self._store_kv(base, m)
+        self._ctx_len = base + m
+        self._finish_last_feature(m - 1, base + m - 1, self._ctx_len, self.feature_seq.ptr + (m - 1) * self.hidden_size * 2)
+        self._feature_ready = True
+
+    def _project_aux_device(self, aux_dev, m: int) -> None:
+        """Project ``m`` committed target-aux rows into ``feature_seq`` on device.
+
+        ``aux_dev`` is the list of NUM_AUX device FP32 buffers (in aux-layer
+        order), each ``[rows, H]`` row-major; only the first ``m`` rows are read.
+        Mirrors numpy ``project_target_features``: cast each chunk f32->bf16,
+        RMS-norm per chunk when ``fc_norm``, concat to ``[m, 3H]``, fc GEMM -> H.
+        Replaces the host projection + aux D2H + feature H2D on the hot path.
+        """
+        H = self.hidden_size
+        if m > self.max_seq:
+            raise ValueError(f"device projection rows {m} exceed max_seq {self.max_seq}")
+        src = []
+        for i in range(3):
+            f32_to_bf16(int(aux_dev[i]), self.fc_chunk[i].ptr, m * H, library=self._lib_cast, runtime=self.runtime)
+            if self.fc_norm:
+                dflash_rmsnorm_bf16(self.fc_chunk[i].ptr, self._w(f"fc_norm.{i}.weight"), self.fc_normed_chunk[i].ptr, m, H, eps=self.eps, library=self._lib1, runtime=self.runtime)
+                src.append(self.fc_normed_chunk[i].ptr)
+            else:
+                src.append(self.fc_chunk[i].ptr)
+        eagle4_concat3(src[0], src[1], src[2], self.fc_normed.ptr, m, H, runtime=self.runtime)
+        dflash_dense_bf16_to_bf16(self.fc_normed.ptr, self._w("fc.weight"), self.feature_seq.ptr, m, 3 * H, H, library=self._lib1, runtime=self.runtime)
+
+    def append_committed_device(self, aux_dev, produced: int, next_tokens) -> None:
+        """Device-resident variant of :meth:`append_committed`.
+
+        ``aux_dev`` is the list of NUM_AUX device FP32 aux buffers from the target
+        verify (``layer_output_hidden_device`` in aux-layer order); ``produced``
+        is the number of committed rows (the first ``produced`` rows of each).
+        The aux never leaves the device: the fc projection runs on device and
+        writes ``feature_seq`` directly, skipping the host projection + D2H/H2D.
+        """
+        m = int(produced)
+        base = self._ctx_len
+        if base + m > self.max_context_len:
+            raise ValueError(f"context length {base + m} exceeds drafter max_context_len {self.max_context_len}")
+        self._project_aux_device(aux_dev, m)
+        tokens = np.asarray(next_tokens, dtype=np.int64)
+        self._staged_h2d(self.embed_seq.ptr, _to_bf16_bits(self._numpy.w["embed_tokens.weight"][tokens]))
+        self._staged_h2d(self.positions_buf.ptr, np.arange(base, base + m, dtype=np.int32))
         self._qkv(m)
         self._store_kv(base, m)
         self._ctx_len = base + m

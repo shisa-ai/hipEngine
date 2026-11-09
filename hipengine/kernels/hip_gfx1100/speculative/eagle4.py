@@ -47,3 +47,10 @@ def eagle4_concat(a_ptr, b_ptr, out_ptr, rows, H, *, stream=0, runtime=None):
     rt = runtime or get_hip_runtime()
     f = _fn("hipengine_eagle4_concat", [_P, _P, _P, _I64, _I64, _P])
     rt.check(int(f(a_ptr, b_ptr, out_ptr, rows, H, stream)))
+
+
+def eagle4_concat3(a_ptr, b_ptr, c_ptr, out_ptr, rows, H, *, stream=0, runtime=None):
+    """Row-concat three [rows, H] BF16 buffers into [rows, 3H] (EAGLE fc input)."""
+    rt = runtime or get_hip_runtime()
+    f = _fn("hipengine_eagle4_concat3", [_P, _P, _P, _P, _I64, _I64, _P])
+    rt.check(int(f(a_ptr, b_ptr, c_ptr, out_ptr, rows, H, stream)))

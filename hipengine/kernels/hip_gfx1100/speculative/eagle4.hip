@@ -89,6 +89,23 @@ __global__ void eagle4_concat_kernel(
   }
 }
 
+__global__ void eagle4_concat3_kernel(
+    const uint16_t* __restrict__ a, const uint16_t* __restrict__ b,
+    const uint16_t* __restrict__ c, uint16_t* __restrict__ out,
+    int64_t rows, int64_t H) {
+  const int64_t row = blockIdx.x;
+  if (row >= rows) return;
+  const uint16_t* ar = a + row * H;
+  const uint16_t* br = b + row * H;
+  const uint16_t* cr = c + row * H;
+  uint16_t* o = out + row * (3 * H);
+  for (int64_t d = threadIdx.x; d < H; d += blockDim.x) {
+    o[d] = ar[d];
+    o[d + H] = br[d];
+    o[d + 2 * H] = cr[d];
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_eagle4_concat(
@@ -98,6 +115,16 @@ extern "C" int hipengine_eagle4_concat(
   hipLaunchKernelGGL(eagle4_concat_kernel, dim3((unsigned)rows), dim3(256), 0,
                      stream, (const uint16_t*)a, (const uint16_t*)b,
                      (uint16_t*)out, rows, H);
+  return hipGetLastError();
+}
+
+extern "C" int hipengine_eagle4_concat3(
+    const void* a, const void* b, const void* c, void* out,
+    int64_t rows, int64_t H, hipStream_t stream) {
+  if (rows <= 0 || H <= 0) return hipErrorInvalidValue;
+  hipLaunchKernelGGL(eagle4_concat3_kernel, dim3((unsigned)rows), dim3(256), 0,
+                     stream, (const uint16_t*)a, (const uint16_t*)b,
+                     (const uint16_t*)c, (uint16_t*)out, rows, H);
   return hipGetLastError();
 }
 
