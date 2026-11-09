@@ -200,69 +200,6 @@ def test_resident_bytes_is_the_artifact_bytes(reader: GGUFReader) -> None:
     assert resident_bytes(tuple(raw_only)) <= artifact
 
 
-def test_expert_tiles_are_priced_from_the_stored_bytes(reader: GGUFReader, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A Q4_K expert stack is charged for both tile halves, and the price is computable.
-
-    ``resident_bytes`` is the loader's pre-allocation total, so it has to answer
-    for the artifact the loader actually materializes. A Q4_K expert tensor is
-    stored as raw blocks whose row is ``in_features / 256`` Q4_K blocks, not
-    ``in_features`` elements, and the fused width splits at ``out_features // 2``.
-    Pricing the tiles from the logical row length instead raises on every real
-    artifact, so the figure is derived from the tensor's own byte count here and
-    cross-checked against the layout arithmetic rather than against the planner.
-    """
-
-    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_PREFILL", "wmma")
-    specs = plan_gemma4_gguf_resident_specs(reader)
-    stacked = [spec for spec in specs if "t16_gate" in spec.allocation_names]
-    assert stacked, "fixture has no rank-3 Q4_K expert stack to check"
-
-    artifact = sum(
-        tensor.nbytes for tensor in reader.info.tensors if tensor.name != "rope_freqs.weight"
-    )
-    tiled = 0
-    for spec in stacked:
-        experts, out_features, _ = spec.source.shape
-        assert int(out_features) % 2 == 0, spec.slot_path
-        assert int(out_features) // 2 % GGUF_Q4_K_TILE16_COLS == 0, spec.slot_path
-        blocks_per_row = int(spec.source.nbytes) // (
-            int(experts) * int(out_features) * GGUF_Q4_K_BLOCK_BYTES
-        )
-        assert blocks_per_row > 0, spec.slot_path
-        expected = (
-            int(experts)
-            * (int(out_features) // 2 // GGUF_Q4_K_TILE16_COLS)
-            * blocks_per_row
-            * GGUF_Q4_K_TILE16_BLOCK_BYTES
-        )
-        # A tile block is 2368 bytes where the 16 Q4_K blocks it is built from
-        # are 2304, and the raw blocks are kept rather than replaced, so the two
-        # tile halves are 1.02778 times the tensor's raw bytes and the tensor
-        # holds 2.02778 times raw. That ratio is what the loader's planner
-        # comment and the repack's size docstring state, so it is pinned here
-        # against the block constants instead of restated there.
-        raw_block = GGUF_Q4_K_TILE16_COLS * GGUF_Q4_K_BLOCK_BYTES
-        assert (int(spec.source.nbytes) + 2 * expected) * raw_block == int(
-            spec.source.nbytes
-        ) * (raw_block + GGUF_Q4_K_TILE16_BLOCK_BYTES), spec.slot_path
-        assert round(2 * expected / int(spec.source.nbytes), 5) == 1.02778, spec.slot_path
-        assert expected > int(spec.source.nbytes) // 2, spec.slot_path
-        assert derived_allocation_bytes(spec, "t16_gate") == expected, spec.slot_path
-        assert derived_allocation_bytes(spec, "t16_up") == expected, spec.slot_path
-        tiled += 2 * expected
-
-    # Residency is the artifact's stored bytes plus every declared tile copy:
-    # the Q4T16 halves above, and the byte-neutral Q8T16 side copy each dense
-    # Q8_0 projection ships.
-    q8_tiles = sum(
-        derived_allocation_bytes(spec, "tiles")
-        for spec in specs
-        if spec.tiles_quant_key is None and "tiles" in spec.allocation_names
-    )
-    assert q8_tiles > 0, "fixture has no dense Q8_0 tiles side copy to price"
-    assert resident_bytes(specs) == artifact + tiled + q8_tiles
-
-
 def test_an_unsupported_quant_type_names_the_type(reader: GGUFReader) -> None:
     """A type the loader cannot carry fails loudly and names itself.
 
@@ -729,58 +666,19 @@ def _gate_up_stack_specs(reader: GGUFReader) -> list:
 
 
 def test_default_expert_residency_does_not_duplicate_raw_weights(reader: GGUFReader, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Merging the split WMMA layout must not grow default expert residency."""
-    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_PREFILL", "auto")
-    default = plan_gemma4_gguf_resident_specs(reader)
-    gate_up = [s for s in default if s.slot_path.endswith(".ffn_gate_up_exps")]
-    assert gate_up
-    for spec in gate_up:
-        assert spec.layout == LAYOUT_GGUF_Q4_K_T16
-        assert spec.allocation_names == ("tiles",)
+    """The default fused gate_up stack is tiles-only, with no raw duplication.
 
-    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_PREFILL", "wmma")
-    split = plan_gemma4_gguf_resident_specs(reader)
-    assert resident_bytes(split) - resident_bytes(default) == sum(
-        int(spec.source.nbytes) for spec in gate_up
-    )
-
-
-def test_gate_up_q4_k_plans_raw_plus_the_t16_tile_halves(reader: GGUFReader, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The fused Q4_K gate_up stack keeps raw and adds both T16 tile halves.
-
-    The prefill owners read the raw blocks -- the int8 MMQ leaf addresses the up
-    half one half into each expert's block through an explicit expert stride --
-    while the T16 halves serve the tile decode owners, so the planner keeps
-    both. The allocation count is fixed at three and does not scale with the
-    expert count.
+    The retired WMMA candidate's split raw-plus-tile-halves layout is gone, so
+    every mode now keeps the capacity-preserving tiles-only fused stack.
     """
-
-    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_PREFILL", "wmma")
-    specs = plan_gemma4_gguf_resident_specs(reader)
-    gate_up = _gate_up_stack_specs(reader)
-    assert gate_up, "fixture has no fused gate_up expert slot"
-
-    for spec in gate_up:
-        assert spec.layout == LAYOUT_RAW_GGUF, spec.slot_path
-        assert spec.quant_key == "gguf_q4_k", spec.slot_path
-        assert spec.allocation_names == ("raw", "t16_gate", "t16_up"), spec.slot_path
-
-    # Every other tensor keeps the raw / dense residency it had, plus the
-    # byte-neutral tiles side allocation the dense Q8_0 projections ship.
-    gate_up_slots = {spec.slot_path for spec in gate_up}
-    for spec in specs:
-        if spec.slot_path in gate_up_slots:
-            continue
-        assert spec.layout in (LAYOUT_RAW_GGUF, LAYOUT_DENSE_F32), spec.slot_path
-        if _expects_tiles_side_allocation(spec):
-            assert spec.allocation_names == ("raw", "tiles"), spec.slot_path
-        else:
-            assert spec.allocation_names == ("raw",), spec.slot_path
-        assert spec.quant_key == (
-            "f32"
-            if spec.layout == LAYOUT_DENSE_F32
-            else f"gguf_{spec.source.ggml_type_name.lower()}"
-        ), spec.slot_path
+    for mode in ("auto", "wmma", "grouped", "selected"):
+        monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_PREFILL", mode)
+        specs = plan_gemma4_gguf_resident_specs(reader)
+        gate_up = [s for s in specs if s.slot_path.endswith(".ffn_gate_up_exps")]
+        assert gate_up
+        for spec in gate_up:
+            assert spec.layout == LAYOUT_GGUF_Q4_K_T16
+            assert spec.allocation_names == ("tiles",)
 
 
 def test_resident_bytes_counts_the_planned_layouts(reader: GGUFReader) -> None:
@@ -814,59 +712,6 @@ def test_resident_bytes_counts_the_planned_layouts(reader: GGUFReader) -> None:
         tensor.nbytes for tensor in reader.info.tensors if tensor.name != "rope_freqs.weight"
     )
     assert expected > artifact_bytes, "tiles residency must be planned, not assumed free"
-
-
-def test_expert_stride_bytes_follows_the_resident_layout(reader: GGUFReader, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Expert strides come from the primary resident allocation, not the file.
-
-    A rank-3 expert tensor is one contiguous allocation and the caller selects
-    an expert by offsetting into it, so the stride is that allocation's byte
-    count divided by the expert count. For the fused Q4_K gate_up stack the
-    primary allocation is the raw blocks the prefill owners read, so the
-    ``half_bytes = stride // 2`` offset they use lands on a Q4_K block boundary
-    -- the raw row is a whole number of 144-byte blocks.
-    """
-
-    from types import SimpleNamespace
-
-    class _StubAllocation:
-        def __init__(self, nbytes: int) -> None:
-            self.buffer = SimpleNamespace(nbytes=nbytes)
-
-    monkeypatch.setenv("HIPENGINE_GEMMA4_MOE_PREFILL", "wmma")
-    gate_up = _gate_up_stack_specs(reader)
-    assert gate_up, "fixture has no fused gate_up expert slot"
-    spec = gate_up[0]
-    assert spec.allocation_names[0] == "raw", spec.slot_path
-    raw_nbytes = int(spec.source.nbytes)
-    tiles_nbytes = _t16_tiles_nbytes(spec)
-    weight = Gemma4GGUFDeviceWeight(
-        spec=spec,
-        allocations={
-            "raw": _StubAllocation(raw_nbytes),
-            "t16_gate": _StubAllocation(tiles_nbytes // 2),
-            "t16_up": _StubAllocation(tiles_nbytes // 2),
-        },
-        backend="hip_gfx1100",
-    )
-    experts = int(spec.source.shape[0])
-    assert weight.expert_stride_bytes == raw_nbytes // experts
-    assert weight.expert_stride_bytes != tiles_nbytes // experts
-
-    # A raw stacked tensor keeps the stride it had (allocation == file bytes).
-    raw_stacked = next(
-        spec
-        for spec in plan_gemma4_gguf_resident_specs(reader)
-        if len(spec.source.shape) == 3 and spec.allocation_names == ("raw",)
-    )
-    raw_weight = Gemma4GGUFDeviceWeight(
-        spec=raw_stacked,
-        allocations={"raw": _StubAllocation(int(raw_stacked.source.nbytes))},
-        backend="hip_gfx1100",
-    )
-    assert raw_weight.expert_stride_bytes == int(raw_stacked.source.nbytes) // int(
-        raw_stacked.source.shape[0]
-    )
 
 
 def test_t16_gate_up_dispatch_keys_resolve() -> None:

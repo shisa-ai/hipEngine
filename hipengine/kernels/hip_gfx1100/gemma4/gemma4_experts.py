@@ -618,7 +618,7 @@ def gemma4_experts_forward_bf16(
     #    once per call and only when a projection will actually use it.
     fused = 2 * intermediate
     mode = "selected" if row_exact else _prefill_mode()
-    gate_up_wmma, compensated, use_mmq = _prefill_route_flags(mode)
+    _, _, use_mmq = _prefill_route_flags(mode)
     pinned = mode != "auto"
     fused_wmma_leaf = None if pinned else _fused_wmma_owner(
         gate_up_proj, lanes, hidden_size, intermediate, num_experts
@@ -654,7 +654,7 @@ def gemma4_experts_forward_bf16(
     # BF16 activations directly and reassociates against that owner; it is not
     # the int8 MMQ down above. A call whose tile plan is empty falls through to
     # the exact owner regardless.
-    down_wmma = gate_up_wmma or use_mmq or not pinned
+    down_wmma = use_mmq or not pinned
     mmq_rows = 0
     if use_mmq and fused_wmma_leaf is None:
         # The grouped int8 MMQ leaf reads Gemma's fused ``ffn_gate_up_exps``
@@ -666,13 +666,13 @@ def gemma4_experts_forward_bf16(
                 scratch, expert_start.ptr, lanes, stream=stream, runtime=runtime
             )
     wmma_rows = 0
-    # Only the WMMA gate_up needs the plan here. The down's plan is built later,
-    # just before the down itself, because on the MMQ route it has to come after
-    # the gate_up has finished with the 32-row plan that shares these buffers.
-    # Building it here under ``down_wmma`` alone would overwrite that plan before
-    # the gate_up ran and fault the MMQ leaf.
+    # Only the fused T16 gate_up needs the plan here. The down's plan is built
+    # later, just before the down itself, because on the MMQ route it has to come
+    # after the gate_up has finished with the 32-row plan that shares these
+    # buffers. Building it here under ``down_wmma`` alone would overwrite that
+    # plan before the gate_up ran and fault the MMQ leaf.
     if (
-        (gate_up_wmma or fused_wmma_leaf is not None)
+        fused_wmma_leaf is not None
         and lanes >= _WMMA_PREFILL_MIN_LANES_PER_EXPERT * num_experts
     ):
         wmma_rows = _build_wmma_tile_plan(
@@ -746,23 +746,6 @@ def gemma4_experts_forward_bf16(
         mmq_rows,
         tokens=tokens,
         top_k=top_k,
-        stream=stream,
-        runtime=runtime,
-    ):
-        pass
-    elif gate_up_wmma and wmma_rows and gemma4_project_experts_wmma_dual(
-        gate_up_proj,
-        packed_hidden.ptr,
-        expert_start.ptr,
-        scratch.buffer("wmma_expert_start").ptr,
-        scratch.buffer("wmma_tile_expert").ptr,
-        gate_up_out.ptr,
-        lanes,
-        num_experts,
-        hidden_size,
-        intermediate,
-        wmma_rows,
-        compensated=compensated,
         stream=stream,
         runtime=runtime,
     ):
@@ -875,7 +858,7 @@ def gemma4_experts_forward_bf16(
                 **kwargs,
             )
     elif down_wmma and wmma_rows and (
-        (not compensated and _gemma4_project_experts_down_wmma_t16(
+        _gemma4_project_experts_down_wmma_t16(
             down_proj,
             activated.ptr,
             expert_start.ptr,
@@ -889,23 +872,22 @@ def gemma4_experts_forward_bf16(
             wmma_rows,
             stream=stream,
             runtime=runtime,
-        ))
+        )
         or gemma4_project_experts_wmma(
-        down_proj,
-        activated.ptr,
-        expert_start.ptr,
-        scratch.buffer("wmma_expert_start").ptr,
-        scratch.buffer("wmma_tile_expert").ptr,
-        expert_out.ptr,
-        lanes,
-        num_experts,
-        intermediate,
-        hidden_size,
-        wmma_rows,
-        compensated=compensated,
-        stream=stream,
-        runtime=runtime,
-    )
+            down_proj,
+            activated.ptr,
+            expert_start.ptr,
+            scratch.buffer("wmma_expert_start").ptr,
+            scratch.buffer("wmma_tile_expert").ptr,
+            expert_out.ptr,
+            lanes,
+            num_experts,
+            intermediate,
+            hidden_size,
+            wmma_rows,
+            stream=stream,
+            runtime=runtime,
+        )
     ):
         pass
     elif use_mmq and gemma4_project_experts_mmq(
@@ -1160,45 +1142,19 @@ _MMQ_DOWN_QUANT_KEY = "gguf_q5_1"
 # each expert's block. No split layout is materialized.
 _WMMA_PREFILL_MIN_LANES_PER_EXPERT = 16
 
-# Compensated twins of the two WMMA owners. The plain owners round every
-# dequantised weight to fp16 (~2^-11 relative), which is accurate enough for the
-# kernels' own parity contract but leaves a measurable tail divergence against
-# the strict f32 dequant baseline. The compensated owners carry each weight as
-# an fp16 high part plus an fp16 residual and issue a second WMMA per k-tile,
-# which costs one extra op per weight on a path that runs far below WMMA issue
-# rate. Both are registered per quant and probed exactly like the plain ones.
-_WMMA_PREFILL_COMP_VARIANT = (
-    "selected_grouped_wmma_prefill_compact_comp_bf16_bf16_out"
-)
-
-# A fused ``gate_up`` expert tensor stores both halves in one allocation, so the
-# dual WMMA owner needs the fused stride rather than each half's own width. The
-# variant name is the ABI for the fused form; the two-tensor form registers
-# under the same name without the stride.
-_WMMA_DUAL_PREFILL_VARIANT = "selected_dual_wmma_prefill_compact_bf16_bf16_out"
-_WMMA_DUAL_PREFILL_COMP_VARIANT = (
-    "selected_dual_wmma_prefill_compact_comp_bf16_bf16_out"
-)
-
 # Prefill expert-route selector. A pinned mode picks one owner family by name;
 # ``auto`` pins nothing and leaves the default path to its own default-on levers
 # (see ``_prefill_route_flags``). Unrecognised values fall back to ``auto``.
 #
-# ``wmma`` selects the compensated WMMA owners instead. They are 2.7x faster on
-# a 1024-token prefill but breach the campaign's absolute ``kl_max`` bar on 1 of
-# 1023 rows (0.0609 against 0.05) while passing every aggregate bar with 10-200x
-# margin and leaving top-1 unchanged on all 1023 rows. The breach is reduction
-# association, not a defect: compensating the fp16 weight rounding moves it from
-# 0.182 to 0.061, and a two-way accumulator split moves it to 0.082. Treating an
-# absolute ``kl_max`` as inapplicable to a reordering-class change is an open
-# lead decision recorded in docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md, so the
-# arm stays off the default path until that is ruled on.
-#
-# ``wmma_plain`` is the uncompensated form, kept as the diagnostic that isolates
-# the fp16 weight-rounding term. ``grouped`` and ``selected`` pin the exact arms.
+# The compensated WMMA candidate (former ``wmma`` / ``wmma_plain`` modes) was
+# retired: on the current T16-converted layout its pin disabled the faster fused
+# T16 default and then fell back to selected_gemv, a ~4x prefill regression on
+# both gfx1151 and gfx1100, and the compensated owner never engaged. The 2.7x
+# premise was measured against an older, slower default. ``grouped`` and
+# ``selected`` pin the exact arms; ``mmq`` pins the int8 family.
 _PREFILL_MODE_ENV = "HIPENGINE_GEMMA4_MOE_PREFILL"
 _PREFILL_MODES = frozenset(
-    {"auto", "wmma", "wmma_plain", "mmq", "grouped", "selected"}
+    {"auto", "mmq", "grouped", "selected"}
 )
 
 
@@ -1226,8 +1182,9 @@ def _prefill_route_flags(mode: str) -> tuple[bool, bool, bool]:
     flips). The split-weight leaf needs gate and up resident separately, so this
     is also the mode the loader materializes that layout for.
 
-    ``grouped`` and ``selected`` pin the exact routes. ``wmma`` probes the WMMA
-    owners in their compensated form, ``wmma_plain`` in their uncompensated form.
+    ``grouped`` and ``selected`` pin the exact routes. The retired compensated
+    WMMA candidate no longer has a mode; the plain WMMA down owner survives only
+    as the fallback behind the T16 down owner on the unpinned/mmq routes.
     """
 
     if mode == "auto":
@@ -1237,10 +1194,6 @@ def _prefill_route_flags(mode: str) -> tuple[bool, bool, bool]:
         # policy. Those levers, not this table, are what the unpinned default
         # runs, which is why ``auto`` pins nothing.
         return False, False, False
-    if mode == "wmma":
-        return True, True, False
-    if mode == "wmma_plain":
-        return True, False, False
     if mode == "mmq":
         return False, False, True
     return False, False, False
@@ -1276,78 +1229,6 @@ def _fused_wmma_owner(
                    variant=key.variant)
 
 
-def gemma4_project_experts_wmma_dual(
-    weight: Gemma4Projection,
-    x_ptr: int,
-    expert_start_ptr: int,
-    expert_start_wmma_ptr: int,
-    tile_expert_ptr: int,
-    out_ptr: int,
-    compact_rows: int,
-    num_experts: int,
-    in_features: int,
-    out_features: int,
-    wmma_total_rows: int,
-    *,
-    stream: int = 0,
-    runtime: object | None = None,
-    compensated: bool = False,
-) -> bool:
-    """Run a fused gate+up projection through the dual WMMA prefill owner.
-
-    ``out_features`` is one half's width: the weight tensor holds ``2 *
-    out_features`` rows per expert with the gate first, and the output row is
-    ``2 * out_features`` wide with the gate in the first half. The owner indexes
-    each half from its own start, so the up half is the same allocation offset
-    by one half's bytes and the expert stride is the full ``2 * out_features``.
-
-    Returns ``False`` when no dual owner serves this weight.
-    """
-
-    if isinstance(weight, int):
-        return False
-    from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
-    from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
-
-    variant = (
-        _WMMA_DUAL_PREFILL_COMP_VARIANT if compensated else _WMMA_DUAL_PREFILL_VARIANT
-    )
-    key = KernelKey(weight.backend, "moe_linear", weight.spec.quant_key, variant)
-    _ensure_linear_kernel_registered(key)
-    try:
-        fn = resolve(
-            backend=key.backend,
-            layer=key.layer,
-            quant=key.quant,
-            variant=key.variant,
-        )
-    except MissingKernelError:
-        return False
-    base = weight.allocation().buffer.ptr
-    # One half's byte length, not a row stride: a Q4_K row is a whole number of
-    # 256-value blocks, so the half boundary lands on a block boundary too.
-    half_bytes = weight.expert_stride_bytes // 2
-    fn(
-        x_ptr,
-        expert_start_ptr,
-        expert_start_wmma_ptr,
-        tile_expert_ptr,
-        base,
-        base + half_bytes,
-        out_ptr,
-        compact_rows,
-        in_features,
-        out_features,
-        out_features,
-        num_experts,
-        wmma_total_rows,
-        expert_stride_rows=2 * out_features,
-        stream=stream,
-        runtime=runtime,
-    )
-    return True
-
-
 def gemma4_project_experts_wmma(
     weight: Gemma4Projection,
     x_ptr: int,
@@ -1363,9 +1244,8 @@ def gemma4_project_experts_wmma(
     *,
     stream: int = 0,
     runtime: object | None = None,
-    compensated: bool = False,
 ) -> bool:
-    """Run one compact-row projection through a WMMA prefill owner.
+    """Run one compact-row projection through the plain WMMA down owner.
 
     ``expert_start_wmma_ptr`` and ``tile_expert_ptr`` are the padded tile plan
     built by :func:`qwen35_moe_wmma_tile_map`; ``wmma_total_rows`` is its row
@@ -1380,7 +1260,7 @@ def gemma4_project_experts_wmma(
     from hipengine.kernels.registry import KernelKey, MissingKernelError, resolve
     from hipengine.runtime.gguf_linear import _ensure_linear_kernel_registered
 
-    variant = _WMMA_PREFILL_COMP_VARIANT if compensated else _WMMA_PREFILL_VARIANT
+    variant = _WMMA_PREFILL_VARIANT
     key = KernelKey(weight.backend, "moe_linear", weight.spec.quant_key, variant)
     _ensure_linear_kernel_registered(key)
     try:

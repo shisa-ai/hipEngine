@@ -479,7 +479,7 @@ not by backend-branched runtime code.
 
 | Variable | Default | Values / notes |
 | --- | --- | --- |
-| `HIPENGINE_GEMMA4_MOE_PREFILL` | `auto` | Pins the prefill owner for the Gemma 4 MoE expert projections. `auto` runs the exact routes only: the grouped rowbatch8 owner where a quant registers one and the selected GEMV otherwise; both measured bit-identical to the strict teacher-forced reference. `wmma` selects the compensated WMMA owners (each dequantised weight carried as an fp16 high part plus an fp16 residual, two WMMA ops per k-tile); they are 2.7x faster on a 1024-token prefill but breach the campaign's absolute `kl_max` bar on 1 of 1023 rows, so the arm stays off the default path pending the lead ruling recorded in `docs/campaigns/GEMMA4-26B-A4B-OPTIMIZATION.md`. `wmma_plain` is the uncompensated form, kept as the diagnostic that isolates the fp16 weight-rounding term. `grouped` and `selected` pin the exact arms. Unrecognised values fall back to `auto`. |
+| `HIPENGINE_GEMMA4_MOE_PREFILL` | `auto` | Pins the prefill owner for the Gemma 4 MoE expert projections. `auto` pins nothing and resolves the default-on fused T16 WMMA gate/up + down owners. `mmq` pins the grouped int8 family. `grouped` and `selected` pin the exact arms, both measured bit-identical to the strict teacher-forced reference. The compensated WMMA candidate (`wmma` / `wmma_plain`) was retired: on the T16-converted layout its pin disabled the faster fused default and fell back to `selected_gemv`, a ~4x prefill regression on both gfx1151 and gfx1100 while the compensated owner never engaged. Those values are no longer modes. Unrecognised values, including the retired `wmma`/`wmma_plain`, fall back to `auto`. |
 
 ## Shared paged-attention decode variables
 

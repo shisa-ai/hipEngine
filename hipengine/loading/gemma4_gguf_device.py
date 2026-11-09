@@ -236,15 +236,12 @@ def _plan_one(
     allocation_names = ("raw",)
     # Keep the local tiles-only fused stack on the default path. Duplicating
     # every Q4_K expert tensor as raw plus split T16 slabs would lose the
-    # request capacity preserved by this branch. Explicit WMMA pins retain the
-    # split layout their registered leaf consumes.
-    from hipengine.kernels.hip_gfx1100.gemma4.gemma4_experts import _prefill_mode
-
+    # request capacity preserved by this branch. The retired WMMA candidate no
+    # longer has a pin that needs the split layout.
     if (
         qtype is GGMLQuantizationType.Q4_K
         and slot_path.endswith(".ffn_gate_up_exps")
         and len(source.shape) == 3
-        and _prefill_mode() not in {"wmma", "wmma_plain"}
     ):
         try:
             Q4_K_T16_SHAPE.validate(source.byte_shape)

@@ -86,7 +86,6 @@ _EXPERT_LEAVES = (
     "gemma4_project_experts_mmq",
     "gemma4_project_experts_mmq_dual",
     "gemma4_project_experts_wmma",
-    "gemma4_project_experts_wmma_dual",
     "gemma4_project_experts_grouped_prefill",
     "gemma4_project_experts_grouped",
     "gemma4_project_experts_grouped_row4",

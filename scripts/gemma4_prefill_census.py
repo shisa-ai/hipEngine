@@ -164,7 +164,7 @@ def main() -> int:
     )
 
     # The int8 MMQ leaf is the first arm of the gate_up chain (mmq_dual ->
-    # wmma_dual -> grouped_dual -> selected) and was the only one unwrapped,
+    # grouped_dual -> selected) and was the only one unwrapped,
     # so the fastest gate_up route ran uncounted inside `unattributed`. The
     # route no longer pins a quant name -- it resolves an mmq32 owner -- so
     # this label is what tells us which quant actually took it.
@@ -182,10 +182,6 @@ def main() -> int:
 
     census.wrap(gemma4_experts, "gemma4_project_experts_mmq", mmq_down_label)
 
-    def wmma_dual_label(weight: Any, x_ptr: int, expert_start_ptr: int, expert_start_wmma_ptr: int, tile_expert_ptr: int, out_ptr: int, compact_rows: int, num_experts: int, in_features: int, out_features: int, wmma_total_rows: int, **kw: Any) -> str:
-        return f"moe_wmma_dual:{quant_of(weight)}"
-
-    census.wrap(gemma4_experts, "gemma4_project_experts_wmma_dual", wmma_dual_label)
     census.wrap(
         gemma4_experts,
         "_build_wmma_tile_plan",
