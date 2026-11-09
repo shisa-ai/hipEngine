@@ -41,34 +41,82 @@ __global__ void eagle4_rope_kernel(
 // row; iterative block-max extraction over a WRITABLE working copy of the scores
 // (the selected element is set to -inf each round). K <= 128. out_ids: [rows, K]
 // i32. scores_work is modified in place; pass a scratch copy of the estimates.
-__global__ void eagle4_topk_kernel(
-    float* __restrict__ scores_work, int* __restrict__ out_ids,
-    int64_t rows, int64_t vocab, int K) {
-  const int64_t row = blockIdx.x;
+// Two-stage parallel top-K. The naive single-block repeated-argmax serialized K
+// full-vocab passes in one workgroup (~14 ms at V=248320, K=128). Stage 1 splits
+// the vocab into disjoint chunks, one workgroup per chunk, each finding its local
+// top-K (disjoint chunks make the -inf marking race-free); stage 2 selects the
+// global top-K from the compact G*K candidates. The selected SET equals repeated
+// global argmax (the global top-K lies in the union of chunk top-Ks); only
+// boundary tie order can differ, which the downstream full-lm_head re-score +
+// argmax makes irrelevant.
+__global__ void eagle4_topk_stage1_kernel(
+    float* __restrict__ scores, float* __restrict__ out_vals,
+    int* __restrict__ out_idxs, int64_t rows, int64_t vocab, int K,
+    int64_t chunk) {
+  const int64_t row = blockIdx.y;
+  const int64_t block = blockIdx.x;
   if (row >= rows) return;
-  float* s = scores_work + row * vocab;
+  const int64_t begin = block * chunk;
+  const int64_t end = min(begin + chunk, vocab);
+  float* s = scores + row * vocab;
   __shared__ float red_val[32];
   __shared__ int red_idx[32];
   const int nwarps = (blockDim.x + 31) / 32;
+  float* ov = out_vals + (row * gridDim.x + block) * K;
+  int* oi = out_idxs + (row * gridDim.x + block) * K;
   for (int i = 0; i < K; i++) {
     float best = -3.402823466e38f;
     int besti = -1;
-    for (int64_t idx = threadIdx.x; idx < vocab; idx += blockDim.x) {
+    for (int64_t idx = begin + threadIdx.x; idx < end; idx += blockDim.x) {
       float v = s[idx];
       if (v > best) { best = v; besti = (int)idx; }
     }
     for (int o = 16; o > 0; o >>= 1) {
-      float ov = __shfl_down(best, o);
-      int oi = __shfl_down(besti, o);
-      if (ov > best) { best = ov; besti = oi; }
+      float ov2 = __shfl_down(best, o);
+      int oi2 = __shfl_down(besti, o);
+      if (ov2 > best) { best = ov2; besti = oi2; }
     }
     if ((threadIdx.x & 31) == 0) { red_val[threadIdx.x >> 5] = best; red_idx[threadIdx.x >> 5] = besti; }
     __syncthreads();
     if (threadIdx.x == 0) {
       float bv = -3.402823466e38f; int bi = -1;
       for (int w = 0; w < nwarps; w++) if (red_val[w] > bv) { bv = red_val[w]; bi = red_idx[w]; }
-      out_ids[row * K + i] = bi;
+      ov[i] = bv; oi[i] = bi;
       if (bi >= 0) s[bi] = -3.402823466e38f;
+    }
+    __syncthreads();
+  }
+}
+
+__global__ void eagle4_topk_stage2_kernel(
+    float* __restrict__ in_vals, const int* __restrict__ in_idxs,
+    int* __restrict__ out_ids, int64_t rows, int64_t ncand, int K) {
+  const int64_t row = blockIdx.x;
+  if (row >= rows) return;
+  float* v = in_vals + row * ncand;
+  const int* idx = in_idxs + row * ncand;
+  __shared__ float red_val[32];
+  __shared__ int red_idx[32];
+  const int nwarps = (blockDim.x + 31) / 32;
+  for (int i = 0; i < K; i++) {
+    float best = -3.402823466e38f;
+    int besti = -1;
+    for (int64_t j = threadIdx.x; j < ncand; j += blockDim.x) {
+      float val = v[j];
+      if (val > best) { best = val; besti = (int)j; }
+    }
+    for (int o = 16; o > 0; o >>= 1) {
+      float ov2 = __shfl_down(best, o);
+      int oi2 = __shfl_down(besti, o);
+      if (ov2 > best) { best = ov2; besti = oi2; }
+    }
+    if ((threadIdx.x & 31) == 0) { red_val[threadIdx.x >> 5] = best; red_idx[threadIdx.x >> 5] = besti; }
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      float bv = -3.402823466e38f; int bi = -1;
+      for (int w = 0; w < nwarps; w++) if (red_val[w] > bv) { bv = red_val[w]; bi = red_idx[w]; }
+      out_ids[row * K + i] = (bi >= 0) ? idx[bi] : -1;
+      if (bi >= 0) v[bi] = -3.402823466e38f;
     }
     __syncthreads();
   }
@@ -142,7 +190,30 @@ extern "C" int hipengine_eagle4_topk(
     void* scores_work, void* out_ids, int64_t rows, int64_t vocab, int K,
     hipStream_t stream) {
   if (rows <= 0 || K <= 0 || K > 128) return hipErrorInvalidValue;
-  hipLaunchKernelGGL(eagle4_topk_kernel, dim3((unsigned)rows), dim3(256), 0,
-                     stream, (float*)scores_work, (int*)out_ids, rows, vocab, K);
+  const int64_t chunk = 2048;
+  const int64_t nblocks = (vocab + chunk - 1) / chunk;
+  // Persistent single-stream scratch (the draft head runs sequentially on one
+  // stream); grown on demand, reused across calls to avoid per-launch hipMalloc.
+  static float* s_vals = nullptr;
+  static int* s_idxs = nullptr;
+  static int64_t s_cap = 0;
+  const int64_t need = rows * nblocks * K;
+  if (need > s_cap) {
+    float* nv = nullptr; int* ni = nullptr;
+    hipError_t e1 = hipMalloc(&nv, need * sizeof(float));
+    hipError_t e2 = hipMalloc(&ni, need * sizeof(int));
+    if (e1 != hipSuccess || e2 != hipSuccess) {
+      if (nv) hipFree(nv); if (ni) hipFree(ni);
+      return hipErrorOutOfMemory;
+    }
+    if (s_vals) hipFree(s_vals);
+    if (s_idxs) hipFree(s_idxs);
+    s_vals = nv; s_idxs = ni; s_cap = need;
+  }
+  hipLaunchKernelGGL(eagle4_topk_stage1_kernel,
+                     dim3((unsigned)nblocks, (unsigned)rows), dim3(256), 0, stream,
+                     (float*)scores_work, s_vals, s_idxs, rows, vocab, K, chunk);
+  hipLaunchKernelGGL(eagle4_topk_stage2_kernel, dim3((unsigned)rows), dim3(256), 0,
+                     stream, s_vals, s_idxs, (int*)out_ids, rows, nblocks * K, K);
   return hipGetLastError();
 }

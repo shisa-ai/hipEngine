@@ -62,3 +62,31 @@ def test_gpu_topk_matches_argsort_set():
         free(sb, runtime=rt); free(ob, runtime=rt)
     for r in range(rows):
         assert set(got[r].tolist()) == set(expected[r].tolist()), f"row {r} top-K set mismatch"
+
+
+@pytest.mark.parametrize("rows,vocab,K", [(1, 248320, 128), (2, 248320, 128), (1, 5000, 128), (1, 2049, 128), (1, 300, 128)])
+def test_gpu_topk_two_stage_large_vocab(rows, vocab, K):
+    """Two-stage parallel top-K must return the exact argsort top-K SET at the
+    real draft-head vocab (248320, many chunks) and at chunk-boundary/small
+    geometries. Guards the stage1/chunk + stage2/candidate selection semantics."""
+    from hipengine.core.memory import malloc, free, copy_host_array_to_device, copy_device_to_host, host_array_ptr
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.speculative.eagle4 import eagle4_topk
+
+    rt = get_hip_runtime()
+    rng = np.random.default_rng(vocab + rows)
+    scores = rng.standard_normal((rows, vocab)).astype(np.float32)
+    expected = np.argsort(-scores, axis=-1)[:, :K]
+    sb = malloc(scores.nbytes, runtime=rt); copy_host_array_to_device(sb, np.ascontiguousarray(scores), runtime=rt)
+    ob = malloc(rows * K * 4, runtime=rt)
+    try:
+        eagle4_topk(sb.ptr, ob.ptr, rows, vocab, K, runtime=rt)
+        rt.device_synchronize()
+        got = np.empty(rows * K, dtype=np.int32)
+        copy_device_to_host(host_array_ptr(got), ob, runtime=rt)
+        got = got.reshape(rows, K)
+    finally:
+        free(sb, runtime=rt); free(ob, runtime=rt)
+    for r in range(rows):
+        assert set(got[r].tolist()) == set(expected[r].tolist()), \
+            f"rows={rows} vocab={vocab} K={K} row {r} top-K set mismatch"
