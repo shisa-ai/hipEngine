@@ -354,6 +354,7 @@ def register_builtin_speculative_providers() -> None:
     from hipengine.generation import muse_glimmer_dflash as _muse_glimmer_dflash  # noqa: F401
     from hipengine.generation import qwen4_exp_mtp as _qwen4_exp_mtp  # noqa: F401
     from hipengine.generation import qwen35_gguf_dspine as _qwen35_gguf_dspine  # noqa: F401
+    from hipengine.generation import qwen35_gguf_eagle4 as _qwen35_gguf_eagle4  # noqa: F401
 
     _BUILTINS_REGISTERED = True
 
