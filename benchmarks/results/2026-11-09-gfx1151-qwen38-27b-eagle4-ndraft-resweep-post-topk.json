@@ -1,0 +1,36 @@
+{
+  "artifact": "qwen38-27b-eagle4-ndraft-resweep-post-topk",
+  "date": "2026-11-09",
+  "hardware": "gfx1151 / Radeon 8060S (ZBook, thermally throttled; diagnostic)",
+  "model": "Qwen3.8-27B-Q4_K_M",
+  "drafter": "Qwen3.8-27B-EAGLE-4",
+  "protocol": "scripts/qwen38_eagle4_baseline.py --n-draft N --reps 3 --max-new-tokens 25; 10 mtpbench prompts, 25 greedy outputs, each arm vs own back-to-back AR; AFTER the two-stage parallel top-K (391ec1eea)",
+  "results": [
+    {
+      "n_draft": 2,
+      "eagle4_tok_s": 16.366198041055046,
+      "ar_tok_s": 11.324522211331212,
+      "ratio_vs_ar": 1.4451998711856628,
+      "mean_acceptance": 0.6496212121212122,
+      "exact_all": true
+    },
+    {
+      "n_draft": 3,
+      "eagle4_tok_s": 16.541379131212505,
+      "ar_tok_s": 11.335614232168613,
+      "ratio_vs_ar": 1.459239772316068,
+      "mean_acceptance": 0.5555555555555556,
+      "exact_all": true
+    },
+    {
+      "n_draft": 4,
+      "eagle4_tok_s": 16.0489026849313,
+      "ar_tok_s": 11.307313797976581,
+      "ratio_vs_ar": 1.4193382240619532,
+      "mean_acceptance": 0.5007440476190477,
+      "exact_all": true
+    }
+  ],
+  "conclusion": "The top-K optimization (draft head 13->1.44ms) shifted the n_draft curve from a clear n2 peak to a flat n2-n3 peak: n2 16.37, n3 16.54, n4 16.05 tok/s. n3 is marginally best (+1% over n2) but within thermal noise and at lower acceptance (0.556 vs 0.650). Serving candidate_budget=2 retained for robustness; comment updated to the post-top-K numbers. All depths AR-exact.",
+  "caveats": "Throttled ZBook; AR reference drifted across runs; within-sweep ordering (each arm vs own AR) is the robust signal. The n2/n3 difference is noise-level."
+}

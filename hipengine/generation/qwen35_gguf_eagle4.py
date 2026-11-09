@@ -197,11 +197,12 @@ register_speculative_provider(
     ),
     make_qwen35_eagle4_text_provider,
     # Measured KV-cache chain optimum on the full mtpbench suite (gfx1151,
-    # Qwen3.8-27B-Q4_K_M, 25 new tokens): n_draft 1/2/3/4/6/8 ->
-    # 9.59/10.43/10.41/10.26/8.18/4.61 tok/s (0.86/0.94/0.93/0.92/0.73/0.41x AR)
-    # with the device-resident head. Acceptance ~1.3-2.5/draft, but the per-step
-    # head cost still grows faster than acceptance, so the chain peaks at
-    # n_draft=2 (worklog 20261109T135502 sweep). All depths AR-exact.
+    # Qwen3.8-27B-Q4_K_M, 25 new tokens). After the two-stage parallel top-K
+    # (draft head 13->1.44ms), n_draft 2/3/4 -> 16.37/16.54/16.05 tok/s
+    # (1.45/1.46/1.42x own AR), acceptance 0.650/0.556/0.501, all AR-exact
+    # (worklog 20261109T200212 top-K + post-top-K re-sweep). The curve is a flat
+    # peak at n_draft=2-3; n_draft=2 is retained for its higher acceptance (the
+    # n3 gain is ~1%, within thermal noise on the throttled ZBook).
     candidate_budget=2,
 )
 
