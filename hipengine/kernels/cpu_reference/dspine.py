@@ -199,6 +199,25 @@ class DSpineNumpyDrafter:
         conditional score table from the cached last-layer pre-write state and
         walks the greedy chain left-to-right.
         """
+        K = self.head_topk
+        logits = linear(final_hidden[1:], output_head_weight)  # [n, V]
+        cand = np.argsort(-logits, axis=-1)[:, :K]
+        cand = np.sort(cand, axis=-1).astype(np.int64)         # [n, K] ascending id
+        return self.refine_greedy_from_cand(final_hidden, stash, output_head_weight, anchor, cand)
+
+    def refine_greedy_from_cand(
+        self,
+        final_hidden: np.ndarray,
+        stash: dict,
+        output_head_weight: np.ndarray,
+        anchor: int,
+        cand: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Transition-cache score table + greedy chain walk given top-K ``cand``.
+
+        The GPU refine computes ``cand`` on device (WMMA head projection +
+        top-16) and calls this for the small [n, K, K] table and chain walk.
+        """
         n = final_hidden.shape[0] - 1
         K = self.head_topk
         R = self.rank
@@ -211,10 +230,6 @@ class DSpineNumpyDrafter:
         pred_gate_w = self.bridge.predecessor_gate_weight  # [R, C]
         prev_w = self.bridge.prev_weight                   # [R, C]
         sqrt_c = np.float32(np.sqrt(self.code_size))
-
-        logits = linear(final_hidden[1:], output_head_weight)  # [n, V]
-        cand = np.argsort(-logits, axis=-1)[:, :K]
-        cand = np.sort(cand, axis=-1).astype(np.int64)         # [n, K] ascending id
         head_rows = output_head_weight[cand]                   # [n, K, H]
         base = np.sum((raw[:, None, :] * norm_w) * head_rows, axis=-1)  # [n, K]
 

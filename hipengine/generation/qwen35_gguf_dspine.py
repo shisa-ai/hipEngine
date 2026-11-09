@@ -47,6 +47,7 @@ class Qwen35DSpineTextProvider:
         self.candidate_budget = int(config.candidate_budget)
         self._loaded = False
         self._closed = False
+        self._native = None
         self.last_load_seconds: float | None = None
         self.last_decode_seconds: float | None = None
 
@@ -93,6 +94,9 @@ class Qwen35DSpineTextProvider:
 
     def close(self) -> None:
         self._closed = True
+        if getattr(self, "_native", None) is not None:
+            self._native.close()
+            self._native = None
 
     def _prepare_request(self, request: GenerationRequest) -> tuple[int, ...]:
         if len(request.prompts) != 1:
@@ -132,16 +136,18 @@ class Qwen35DSpineTextProvider:
             self.target.model_path, backend=self.target.backend, compiler_version=None,
             require_cached_build=False, max_sequence_length=max_seq, max_batch_size=1,
         ) as session:
-            native = DSpineNativeDrafter(self._config, self._weights, runtime=session.runtime,
-                                         max_context_len=max_seq)
-            try:
-                ds = run_dspine_cycle(
-                    session, native, self._nd, self._token_embd, self._head,
-                    prompt_ids=prompt_ids, max_new_tokens=request.max_tokens,
-                    runtime=session.runtime, stop_ids=stop_ids, eos_token_id=eos,
-                    ignore_eos=request.ignore_eos)
-            finally:
-                native.close()
+            # Persist the drafter across requests so the refine head upload and
+            # weight uploads amortize; recreate only if a longer context is needed.
+            if self._native is None or self._native.max_context_len < max_seq:
+                if self._native is not None:
+                    self._native.close()
+                self._native = DSpineNativeDrafter(self._config, self._weights,
+                                                   runtime=session.runtime, max_context_len=max_seq)
+            ds = run_dspine_cycle(
+                session, self._native, self._nd, self._token_embd, self._head,
+                prompt_ids=prompt_ids, max_new_tokens=request.max_tokens,
+                runtime=session.runtime, stop_ids=stop_ids, eos_token_id=eos,
+                ignore_eos=request.ignore_eos, use_gpu_refine=True)
         self.last_decode_seconds = ds["elapsed_s"]
         ids = ds["output_ids"]
         text = self.target.tokenizer.decode(ids, skip_special=False)

@@ -75,11 +75,13 @@ def _capture_prompt_taps(session, prompt_ids, tap_layers, hidden_size, runtime):
 
 def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
                      max_new_tokens, runtime, stop_ids=(), eos_token_id=None,
-                     ignore_eos=False) -> dict:
+                     ignore_eos=False, candidate_budget=None, use_gpu_refine=False) -> dict:
     tap_layers = list(nd.config["dflash_config"]["target_layer_ids"])
     block_size = int(nd.config["block_size"])
     mask = nd.mask_token_id
     n_drafts = block_size - 1
+    if candidate_budget is not None:
+        n_drafts = min(n_drafts, max(1, int(candidate_budget)))
     hidden_size = int(session.runner.hidden_size)
     session.reset()
     ctx_taps, bonus = _capture_prompt_taps(session, prompt_ids, tap_layers, hidden_size, runtime)
@@ -97,7 +99,8 @@ def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
         noise = token_embd[block_input].astype(np.float32)
         positions = np.arange(0, ctx_len + block_size, dtype=np.int64)
         native.forward(noise, positions, anchor_id=bonus)
-        drafts = [int(t) for t in native.refine(head, bonus)[:n_drafts]]
+        refine_fn = native.refine_gpu if use_gpu_refine else native.refine
+        drafts = [int(t) for t in refine_fn(head, bonus)[:n_drafts]]
         start_pos = int(session.position)
         bres = session.verify_target_block(
             [bonus] + drafts, bulk_attention_mode="native",

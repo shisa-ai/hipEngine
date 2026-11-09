@@ -12,13 +12,14 @@ from __future__ import annotations
 import numpy as np
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
-from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_array_to_device, host_array_ptr
 from hipengine.kernels.cpu_reference.dspine import DSpineNumpyDrafter
 from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     build_dflash_drafter, dflash_add_bf16, dflash_dense_bf16_to_bf16,
-    dflash_dense_bf16_to_f32, dflash_rmsnorm_bf16, dflash_silu_mul_bf16,
+    dflash_dense_bf16_to_f32, dflash_dense_bf16_to_f32_wmma, dflash_rmsnorm_bf16,
+    dflash_silu_mul_bf16,
 )
-from hipengine.kernels.hip_gfx1100.speculative.dflash2 import build_dflash2
+from hipengine.kernels.hip_gfx1100.speculative.dflash2 import build_dflash2, dflash2_top16_rows
 from hipengine.kernels.hip_gfx1100.speculative.dspine import (
     build_dspine, dspine_codes, dspine_gate_message, dspine_residual, dspine_rms_normalize,
 )
@@ -192,4 +193,34 @@ class DSpineNativeDrafter(DFlash2NativeDrafter):
 
     def refine(self, output_head_weight: np.ndarray, anchor: int) -> np.ndarray:
         drafts, _cand = self._numpy.refine_greedy(self._last_final_hidden, self._last_stash, output_head_weight, anchor)
+        return drafts
+
+    def refine_gpu(self, output_head_weight: np.ndarray, anchor: int) -> np.ndarray:
+        """GPU transition-cache refine: WMMA head projection + top-16 on device,
+        then the small [n, K, K] score table + chain walk on the host. Replaces
+        the 163 ms CPU head projection + 43 ms argsort with device kernels.
+        """
+        bs, H = self.block_size, self.hidden_size
+        V = int(output_head_weight.shape[0])
+        n = bs - 1
+        K = self.head_topk
+        if getattr(self, "_head_dev", None) is None:
+            hb = _to_bf16_bits(np.asarray(output_head_weight, dtype=np.float32))
+            self._head_dev_buf = DeviceBuffer(ptr=self.runtime.malloc(hb.nbytes), nbytes=hb.nbytes)
+            copy_host_array_to_device(self._head_dev_buf, np.ascontiguousarray(hb), runtime=self.runtime)
+            self._head_dev = self._head_dev_buf.ptr
+            self._logits_buf = DeviceBuffer(ptr=self.runtime.malloc(n * V * 4), nbytes=n * V * 4)
+            self._topk_ids_buf = DeviceBuffer(ptr=self.runtime.malloc(n * K * 4), nbytes=n * K * 4)
+            self._topk_vals_buf = DeviceBuffer(ptr=self.runtime.malloc(n * K * 4), nbytes=n * K * 4)
+        fh_ptr = self.block_norm.ptr + H * 2  # final-normed proposal rows 1..bs-1 (bf16)
+        dflash_dense_bf16_to_f32_wmma(fh_ptr, self._head_dev, self._logits_buf.ptr, n, H, V,
+                                      library=self._lib1, runtime=self.runtime)
+        dflash2_top16_rows(self._logits_buf.ptr, self._topk_ids_buf.ptr, self._topk_vals_buf.ptr,
+                           n, V, K, library=self._lib2, runtime=self.runtime)
+        self.runtime.device_synchronize()
+        ids = np.empty(n * K, dtype=np.int32)
+        copy_device_to_host(host_array_ptr(ids), self._topk_ids_buf, runtime=self.runtime)
+        cand = np.sort(ids.reshape(n, K).astype(np.int64), axis=-1)
+        drafts, _cand = self._numpy.refine_greedy_from_cand(
+            self._last_final_hidden, self._last_stash, output_head_weight, anchor, cand)
         return drafts

@@ -61,6 +61,10 @@ def main() -> int:
     ap.add_argument("--max-new-tokens", type=int, default=25)
     ap.add_argument("--backend", default="hip_gfx1151")
     ap.add_argument("--reps", type=int, default=3)
+    ap.add_argument("--candidate-budget", type=int, default=None,
+                    help="drafts verified per block (default: full trained block-1)")
+    ap.add_argument("--gpu-refine", action="store_true",
+                    help="WMMA head projection + top-16 refine on device (persistent drafter)")
     ap.add_argument("--output", type=Path, required=True)
     args = ap.parse_args()
 
@@ -75,16 +79,12 @@ def main() -> int:
 
     def run_prompt(r):
         prompt_ids = tokenizer.encode(_prompt_text(r["messages"]))
-        seq = len(prompt_ids) + args.max_new_tokens + block_size + 2
-        native = DSpineNativeDrafter(config, weights, runtime=runtime, max_context_len=seq)
-        try:
-            ar_out, ar_s = _run_ar(session, prompt_ids=prompt_ids,
-                                   max_new_tokens=args.max_new_tokens, runtime=runtime)
-            ds = run_dspine_cycle(session, native, nd, token_embd, head,
-                                  prompt_ids=prompt_ids, max_new_tokens=args.max_new_tokens,
-                                  runtime=runtime)
-        finally:
-            native.close()
+        ar_out, ar_s = _run_ar(session, prompt_ids=prompt_ids,
+                               max_new_tokens=args.max_new_tokens, runtime=runtime)
+        ds = run_dspine_cycle(session, native, nd, token_embd, head,
+                              prompt_ids=prompt_ids, max_new_tokens=args.max_new_tokens,
+                              runtime=runtime, candidate_budget=args.candidate_budget,
+                              use_gpu_refine=args.gpu_refine)
         ids = ds["output_ids"]
         common = min(len(ids), len(ar_out))
         agree = sum(1 for a, b in zip(ids[:common], ar_out[:common]) if a == b)
@@ -100,7 +100,8 @@ def main() -> int:
         args.model, backend=args.backend, compiler_version=None,
         require_cached_build=False, max_sequence_length=max_seq, max_batch_size=1,
     ) as session:
-        run_prompt(chosen[0])  # discarded warmup
+        native = DSpineNativeDrafter(config, weights, runtime=runtime, max_context_len=max_seq)
+        run_prompt(chosen[0])  # discarded warmup (also uploads the refine head once)
         per_prompt = {r["id"]: [] for r in chosen}
         meta = {}
         for rep in range(args.reps):
@@ -109,6 +110,7 @@ def main() -> int:
                 per_prompt[r["id"]].append(e)
                 meta[r["id"]] = {k: e[k] for k in ("category", "prompt_len", "ar_tok_s", "mean_acceptance", "accepted_per_draft")}
             print(f"rep {rep+1}/{args.reps} done", flush=True)
+        native.close()
 
     results = []
     for pid in FULL:
@@ -140,6 +142,8 @@ def main() -> int:
         "protocol": {
             "prompts_file": args.prompts_file, "suite": "mtpbench-code-general-ja (10 prompts)",
             "max_new_tokens": args.max_new_tokens, "block_size": block_size, "reps": args.reps,
+            "candidate_budget": args.candidate_budget if args.candidate_budget is not None else block_size - 1,
+            "gpu_refine": bool(args.gpu_refine),
             "verify": "native chain (verify_target_block)", "warmup": "1 discarded prompt",
             "aggregation": "median DSpine decode tok/s across reps; AR reference deterministic per prompt",
         },
