@@ -79,9 +79,12 @@ def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
     tap_layers = list(nd.config["dflash_config"]["target_layer_ids"])
     block_size = int(nd.config["block_size"])
     mask = nd.mask_token_id
-    n_drafts = block_size - 1
-    if candidate_budget is not None:
-        n_drafts = min(n_drafts, max(1, int(candidate_budget)))
+    n_drafts = block_size - 1  # always draft the full trained block
+    # candidate_budget truncates the VERIFY prefix, not the drafter input block:
+    # the drafter is trained on block_size rows, so shrinking its input corrupts
+    # the draft (the earlier sweep's acceptance-0.0 budgets). Verify only the first
+    # n_verify drafts to stay inside the cheap <=4-row verify bucket.
+    n_verify = n_drafts if candidate_budget is None else min(n_drafts, max(1, int(candidate_budget)))
     hidden_size = int(session.runner.hidden_size)
     session.reset()
     ctx_taps, bonus = _capture_prompt_taps(session, prompt_ids, tap_layers, hidden_size, runtime)
@@ -101,24 +104,25 @@ def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
         native.forward(noise, positions, anchor_id=bonus)
         refine_fn = native.refine_gpu if use_gpu_refine else native.refine
         drafts = [int(t) for t in refine_fn(head, bonus)[:n_drafts]]
+        verify_drafts = drafts[:n_verify]
         start_pos = int(session.position)
         bres = session.verify_target_block(
-            [bonus] + drafts, bulk_attention_mode="native",
+            [bonus] + verify_drafts, bulk_attention_mode="native",
             capture_layer_output_hidden=tap_layers,
             capture_linear_state_rows=True, defer_linear_state_commit=True)
         target_rows = [int(t) for t in bres.token_ids]
         max_accept = max_new_tokens - produced_total
         k = 0
-        for j in range(n_drafts):
+        for j in range(n_verify):
             if k + 1 >= max_accept:
                 break
-            if target_rows[j] != drafts[j]:
+            if target_rows[j] != verify_drafts[j]:
                 break
             k += 1
         session._commit_verify_linear_state_row(k, position=start_pos + k + 1)
         bonus = int(target_rows[k])
         produced = k + 1
-        accept = [int(block_input[0])] + drafts[:k]
+        accept = [int(block_input[0])] + verify_drafts[:k]
         layh = bres.layer_output_hidden
         new_taps = np.stack([np.asarray(layh[l], dtype=np.float32)[:produced] for l in tap_layers], axis=0)
         new_concat = new_taps.transpose(1, 0, 2).reshape(produced, len(tap_layers) * hidden_size)
@@ -144,7 +148,7 @@ def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
         "output_ids": output_ids,
         "tokens_per_s": len(output_ids) / elapsed if elapsed else 0.0,
         "elapsed_s": elapsed,
-        "mean_acceptance": accepted_sum / (draft_count * n_drafts) if draft_count else 0.0,
+        "mean_acceptance": accepted_sum / (draft_count * n_verify) if draft_count else 0.0,
         "accepted_per_draft": accepted_sum / draft_count if draft_count else 0.0,
         "draft_forwards": draft_count,
         "finish_reason": finish_reason,

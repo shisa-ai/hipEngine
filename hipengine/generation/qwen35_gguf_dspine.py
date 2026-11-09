@@ -147,7 +147,8 @@ class Qwen35DSpineTextProvider:
                 session, self._native, self._nd, self._token_embd, self._head,
                 prompt_ids=prompt_ids, max_new_tokens=request.max_tokens,
                 runtime=session.runtime, stop_ids=stop_ids, eos_token_id=eos,
-                ignore_eos=request.ignore_eos, use_gpu_refine=True)
+                ignore_eos=request.ignore_eos, use_gpu_refine=True,
+                candidate_budget=self.candidate_budget)
         self.last_decode_seconds = ds["elapsed_s"]
         ids = ds["output_ids"]
         text = self.target.tokenizer.decode(ids, skip_special=False)
@@ -204,7 +205,12 @@ register_speculative_provider(
         quant="gguf_q4_k_m",
     ),
     make_qwen35_dspine_text_provider,
-    candidate_budget=15,
+    # Measured prefix-verify optimum on the full mtpbench suite (gfx1151): draft
+    # the full 16-row block, verify the first n drafts. n 1/2/3/4/5/6 ->
+    # 6.92/8.53/10.10/10.60/10.81/10.24 tok/s; peaks at n=5 (0.95x AR). The budget
+    # truncates the verify prefix, not the drafter input (worklog 20261109 prefix-
+    # verify sweep; the earlier input-block sweep was invalid).
+    candidate_budget=5,
 )
 
 
