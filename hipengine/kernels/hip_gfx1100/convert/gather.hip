@@ -27,6 +27,40 @@ __global__ void gather_f32_rows_by_i32id_kernel(
   }
 }
 
+// Bit-exact BF16 row gather (uint16 lanes): selects shortlist lm_head rows or
+// embedding rows by device-resident ids without a host round-trip.
+__global__ void gather_bf16_rows_by_i32id_kernel(
+    const uint16_t* __restrict__ table,
+    const int32_t* __restrict__ ids,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t vocab) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t count = rows * hidden;
+  if (idx < count) {
+    const int64_t row = idx / hidden;
+    const int64_t col = idx - row * hidden;
+    const int64_t id = static_cast<int64_t>(ids[row]);
+    out[idx] = (id < 0 || id >= vocab) ? uint16_t{0} : table[id * hidden + col];
+  }
+}
+
+// Scalar I32 pick: out[r] = table[ids[r]]. Maps a device shortlist argmax index
+// back to its token id through the device top-K candidate table.
+__global__ void gather_i32_by_i32id_kernel(
+    const int32_t* __restrict__ table,
+    const int32_t* __restrict__ ids,
+    int32_t* __restrict__ out,
+    int64_t rows,
+    int64_t vocab) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx < rows) {
+    const int64_t id = static_cast<int64_t>(ids[idx]);
+    out[idx] = (id < 0 || id >= vocab) ? 0 : table[id];
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_gather_f32_rows_by_i32id(
@@ -46,5 +80,43 @@ extern "C" int hipengine_gather_f32_rows_by_i32id(
   hipLaunchKernelGGL(
       gather_f32_rows_by_i32id_kernel, dim3(blocks), dim3(threads), 0, stream,
       table, ids, out, rows, hidden, vocab);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gather_bf16_rows_by_i32id(
+    const uint16_t* table,
+    const int32_t* ids,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t vocab,
+    hipStream_t stream) {
+  if (rows <= 0 || hidden <= 0 || vocab <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t count = rows * hidden;
+  const int threads = 256;
+  const int blocks = static_cast<int>((count + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      gather_bf16_rows_by_i32id_kernel, dim3(blocks), dim3(threads), 0, stream,
+      table, ids, out, rows, hidden, vocab);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gather_i32_by_i32id(
+    const int32_t* table,
+    const int32_t* ids,
+    int32_t* out,
+    int64_t rows,
+    int64_t vocab,
+    hipStream_t stream) {
+  if (rows <= 0 || vocab <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const int blocks = static_cast<int>((rows + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      gather_i32_by_i32id_kernel, dim3(blocks), dim3(threads), 0, stream,
+      table, ids, out, rows, vocab);
   return static_cast<int>(hipGetLastError());
 }

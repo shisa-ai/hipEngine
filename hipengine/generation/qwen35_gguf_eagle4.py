@@ -198,10 +198,10 @@ register_speculative_provider(
     make_qwen35_eagle4_text_provider,
     # Measured KV-cache chain optimum on the full mtpbench suite (gfx1151,
     # Qwen3.8-27B-Q4_K_M, 25 new tokens): n_draft 1/2/3/4/6/8 ->
-    # 9.65/10.42/10.34/10.26/8.04/4.59 tok/s (0.86/0.93/0.92/0.92/0.72/0.41x AR).
-    # The persistent context KV lifts acceptance to ~1.3-2.5/draft, but the per-step
-    # efficient-head cost still grows faster than acceptance, so the chain peaks at
-    # n_draft=2 (worklog 20261109T131849 sweep). All depths AR-exact.
+    # 9.59/10.43/10.41/10.26/8.18/4.61 tok/s (0.86/0.94/0.93/0.92/0.73/0.41x AR)
+    # with the device-resident head. Acceptance ~1.3-2.5/draft, but the per-step
+    # head cost still grows faster than acceptance, so the chain peaks at
+    # n_draft=2 (worklog 20261109T135502 sweep). All depths AR-exact.
     candidate_budget=2,
 )
 

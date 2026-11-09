@@ -9,8 +9,10 @@ estimate and re-scores the shortlist with full head rows. Reuses the DFlash2 nat
 helpers + DFlash dense/norm/attention primitives; EAGLE-specific RoPE-only + top-K
 kernels are kernels/hip_gfx1100/speculative/eagle4.py.
 
-Sequence-forward chain draft for bring-up (recompute attention over the draft
-sequence each step); a KV-cache decode + dynamic tree are speed follow-ups.
+Sequence-forward chain draft for bring-up parity checks; the production path
+is a persistent-KV context drafter (prefill + rows=1 decode + append committed)
+with a device-resident efficient head and draft step (no per-step host
+round-trips). A dynamic tree is a speed follow-up.
 """
 from __future__ import annotations
 
@@ -28,6 +30,10 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash2 import (
     build_dflash2, dflash2_sliding_attention_f32_bf16,
 )
 from hipengine.kernels.hip_gfx1100.speculative.eagle4 import build_eagle4, eagle4_rope, eagle4_topk, eagle4_concat
+from hipengine.kernels.hip_gfx1100.convert.gather import (
+    build_gather, gather_bf16_rows_by_i32id, gather_i32_by_i32id,
+)
+from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32_rows_i32, build_lm_head
 from hipengine.speculative.dflash2_native import DFlash2NativeDrafter, _to_bf16_bits
 
 
@@ -58,6 +64,8 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         self._lib1 = build_dflash_drafter(load=True)
         self._lib2 = build_dflash2(load=True)
         self._lib3 = build_eagle4(load=True)
+        self._lib_gather = build_gather(load=True)
+        self._lib_lm_head = build_lm_head(load=True)
         self._numpy = EAGLE4NumpyDrafter(config, weights)
         max_wbytes = max((int(np.ascontiguousarray(a).nbytes) for a in weights.values()), default=0)
         # Cap the staging buffer; _staged_h2d chunks larger uploads. EAGLE-4's
@@ -109,8 +117,12 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         self.k_cache = _buf(Tp * KVF * 4)
         self.v_cache = _buf(Tp * KVF * 2)
         self.kv_positions = _buf(Tp * 4)
+        # Key positions are always the identity arange (position i holds key i),
+        # so fill once; decode steps read their query position from it via a
+        # 4-byte D2D instead of a per-step H2D.
+        self._staged_h2d(self.kv_positions.ptr, np.arange(Tp, dtype=np.int32))
         self._ctx_len = 0
-        self._last_feature: np.ndarray | None = None
+        self._feature_ready = False
         # Efficient head scratch.
         self.rank_vec = _buf(T * self.rank * 2)
         self.scores = _buf(T * self.vocab_size * 4)
@@ -118,6 +130,14 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         self.cand_ids = _buf(T * self.num_candidates * 4)
         self.head_rows = _buf(T * self.num_candidates * H * 2)
         self.shortlist = _buf(T * self.num_candidates * 4)
+        # Device-resident head outputs: top-1 token id, shortlist argmax index,
+        # and the per-step draft id row the embedding gather reads directly.
+        self.head_token = _buf(4)
+        self.head_pick = _buf(4)
+        self.draft_ids_dev = _buf(T * 4)
+        nblk = max(1, (self.num_candidates + 128 * 4 - 1) // (128 * 4))
+        self.argmax_block_values = _buf(nblk * 4)
+        self.argmax_block_indices = _buf(nblk * 4)
         self.fc_normed = _buf(T * 3 * H * 2)
         self.fc_out = _buf(T * H * 2)
 
@@ -160,23 +180,23 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         self._attend(T, T, self.k_out.ptr, self.v_out.ptr, self.positions_buf.ptr)
         self._ffn(T)
 
-    def _efficient_head_last(self, T: int, k: int = 1):
+    def _efficient_head_last(self, T: int, token_out_ptr: int) -> None:
+        """Device-resident efficient head over row T-1 of ``out_feature``.
+
+        Low-rank retrieve -> top-K -> BF16 shortlist gather from the resident
+        lm_head -> re-score -> row argmax -> token-id pick. No sync, D2H, or host
+        gather; the top-1 token id lands at ``token_out_ptr`` (device i32).
+        """
         H, V, R, C = self.hidden_size, self.vocab_size, self.rank, self.num_candidates
         last_ptr = self.out_feature.ptr + (T - 1) * H * 2
         dflash_dense_bf16_to_bf16(last_ptr, self._w("efficient_lm_head_down_proj.weight"), self.rank_vec.ptr, 1, H, R, library=self._lib1, runtime=self.runtime)
         dflash_dense_bf16_to_f32(self.rank_vec.ptr, self._w("efficient_lm_head.weight"), self.scores.ptr, 1, R, V, library=self._lib1, runtime=self.runtime)
         self._d2d(self.scores_work.ptr, self.scores.ptr, V * 4)
         eagle4_topk(self.scores_work.ptr, self.cand_ids.ptr, 1, V, C, runtime=self.runtime)
-        self.runtime.device_synchronize()
-        cand = self._d2h(self.cand_ids.ptr, (C,), np.int32)
-        head_rows = _to_bf16_bits(self._numpy.w["lm_head.weight"][cand])
-        self._staged_h2d(self.head_rows.ptr, head_rows)
+        gather_bf16_rows_by_i32id(self._w("lm_head.weight"), self.cand_ids.ptr, self.head_rows.ptr, C, H, V, library=self._lib_gather, runtime=self.runtime)
         dflash_dense_bf16_to_f32(last_ptr, self.head_rows.ptr, self.shortlist.ptr, 1, H, C, library=self._lib1, runtime=self.runtime)
-        self.runtime.device_synchronize()
-        logits = self._d2h(self.shortlist.ptr, (C,), np.float32)
-        probs = np.exp(logits - np.max(logits)); probs = probs / np.sum(probs)
-        pick = np.argsort(-probs)[:k]
-        return probs[pick][None, :], cand[pick][None, :]
+        argmax_f32_rows_i32(self.shortlist.ptr, self.argmax_block_values.ptr, self.argmax_block_indices.ptr, self.head_pick.ptr, None, 1, C, threads=128, library=self._lib_lm_head, runtime=self.runtime)
+        gather_i32_by_i32id(self.cand_ids.ptr, self.head_pick.ptr, token_out_ptr, 1, C, library=self._lib_gather, runtime=self.runtime)
 
     def draft_greedy_chain(self, target_aux: np.ndarray, root_token: int, root_pos: int, n_draft: int):
         H = self.hidden_size
@@ -191,8 +211,8 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
             positions = np.arange(pos - T + 1, pos + 1, dtype=np.int32)
             self._staged_h2d(self.positions_buf.ptr, positions)
             self._layer(T)
-            _probs, ids = self._efficient_head_last(T, k=1)
-            next_token = int(ids[0, 0])
+            self._efficient_head_last(T, self.head_token.ptr)
+            next_token = int(self._d2h(self.head_token.ptr, (1,), np.int32)[0])
             out_u16 = self._d2h(self.out_feature.ptr + (T - 1) * H * 2, (H,), np.uint16)
             feature = bf16_to_f32(out_u16)
             draft_ids.append(next_token); features.append(feature); tokens.append(next_token); pos += 1
@@ -206,26 +226,25 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         self._d2d(self.k_cache.ptr + base * KVF * 4, self.k_out.ptr, rows * KVF * 4)
         self._d2d(self.v_cache.ptr + base * KVF * 2, self.v_out.ptr, rows * KVF * 2)
 
-    def _last_position_feature(self, q_row: int, query_pos: int, kv_len: int, residual_row: np.ndarray) -> np.ndarray:
+    def _finish_last_feature(self, q_row: int, query_pos: int, kv_len: int, feature_src_ptr: int) -> None:
         """Attend a single query row (q_out row ``q_row``, absolute position
-        ``query_pos``) against the cache, run the FFN, and return the normed output
-        feature. ``residual_row`` [1, H] is the input hidden for that position."""
-        H = self.hidden_size
+        ``query_pos``) against the cache and run the FFN. The normed output
+        feature stays device-resident in ``out_feature`` row 0;
+        ``feature_src_ptr`` points at the input hidden row used as residual."""
         self._d2d(self.q_out.ptr, self.q_out.ptr + q_row * self.q_features * 4, self.q_features * 4)
-        self._staged_h2d(self.positions_buf.ptr, np.array([query_pos], dtype=np.int32))
+        self._d2d(self.positions_buf.ptr, self.kv_positions.ptr + query_pos * 4, 4)
         self._attend(1, kv_len, self.k_cache.ptr, self.v_cache.ptr, self.kv_positions.ptr)
-        self._staged_h2d(self.feature_seq.ptr, _to_bf16_bits(residual_row))
+        self._d2d(self.feature_seq.ptr, feature_src_ptr, self.hidden_size * 2)
         self._ffn(1)
-        out_u16 = self._d2h(self.out_feature.ptr, (H,), np.uint16)
-        return bf16_to_f32(out_u16)
 
     def prefill_context(self, ctx_aux: np.ndarray, prompt_ids, bonus: int) -> None:
         """Build the drafter K/V cache over the prompt context.
 
         ``ctx_aux`` [P, 3H] is the target aux concat at each prompt position. EAGLE
         pairs feature_i with token_{i+1}, so the input tokens are prompt_ids[1:] +
-        [bonus]. Stores K/V for positions 0..P-1 and sets ``_last_feature`` to the
-        last-position output feature (which predicts the first draft token).
+        [bonus]. Stores K/V for positions 0..P-1 and leaves the last-position
+        output feature device-resident in ``out_feature`` (it predicts the first
+        draft token).
         """
         P = len(prompt_ids)
         if P > self.max_context_len:
@@ -238,39 +257,35 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         self._staged_h2d(self.positions_buf.ptr, positions)
         self._qkv(P)
         self._store_kv(0, P)
-        self._staged_h2d(self.kv_positions.ptr, positions)
         self._ctx_len = P
-        self._last_feature = self._last_position_feature(P - 1, P - 1, P, features[P - 1:P])
+        self._finish_last_feature(P - 1, P - 1, P, self.feature_seq.ptr + (P - 1) * self.hidden_size * 2)
+        self._feature_ready = True
 
     def draft_greedy_chain_cached(self, n_draft: int):
-        """Draft ``n_draft`` tokens as rows=1 decodes against the persistent K/V
-        cache. Requires ``prefill_context``/``append_committed`` to have set
-        ``_last_feature``. Returns (draft_ids [n_draft], None); committed features
-        are re-derived from the target aux by ``append_committed``."""
-        H = self.hidden_size
-        feature = self._last_feature
-        if feature is None:
+        """Draft ``n_draft`` tokens as device-resident rows=1 decodes against the
+        persistent K/V cache. Features, token ids, embeddings, and positions stay
+        on device; a single D2H returns the draft ids at the end. Requires
+        ``prefill_context``/``append_committed`` first; committed features are
+        re-derived from the target aux by ``append_committed``."""
+        H, V = self.hidden_size, self.vocab_size
+        if not self._feature_ready:
             raise RuntimeError("draft_greedy_chain_cached requires prefill_context first")
-        draft_ids = []
+        if not 1 <= n_draft <= self.max_seq:
+            raise ValueError(f"n_draft {n_draft} outside [1, {self.max_seq}]")
         for step in range(n_draft):
-            self._staged_h2d(self.out_feature.ptr, _to_bf16_bits(feature[None, :]))
-            _probs, ids = self._efficient_head_last(1, k=1)
-            nxt = int(ids[0, 0])
-            draft_ids.append(nxt)
+            token_ptr = self.draft_ids_dev.ptr + step * 4
+            self._efficient_head_last(1, token_ptr)
             if step < n_draft - 1:
                 pos = self._ctx_len + step
-                self._staged_h2d(self.feature_seq.ptr, _to_bf16_bits(feature[None, :]))
-                embed = self._numpy.w["embed_tokens.weight"][np.array([nxt], dtype=np.int64)]
-                self._staged_h2d(self.embed_seq.ptr, _to_bf16_bits(embed))
-                self._staged_h2d(self.positions_buf.ptr, np.array([pos], dtype=np.int32))
+                self._d2d(self.feature_seq.ptr, self.out_feature.ptr, H * 2)
+                gather_bf16_rows_by_i32id(self._w("embed_tokens.weight"), token_ptr, self.embed_seq.ptr, 1, H, V, library=self._lib_gather, runtime=self.runtime)
+                self._d2d(self.positions_buf.ptr, self.kv_positions.ptr + pos * 4, 4)
                 self._qkv(1)
                 self._store_kv(pos, 1)
-                self._staged_h2d(self.kv_positions.ptr + pos * 4, np.array([pos], dtype=np.int32))
                 self._attend(1, pos + 1, self.k_cache.ptr, self.v_cache.ptr, self.kv_positions.ptr)
                 self._ffn(1)
-                out_u16 = self._d2h(self.out_feature.ptr, (H,), np.uint16)
-                feature = bf16_to_f32(out_u16)
-        return np.array(draft_ids, dtype=np.int64), None
+        ids = self._d2h(self.draft_ids_dev.ptr, (n_draft,), np.int32)
+        return ids.astype(np.int64), None
 
     def append_committed(self, new_aux: np.ndarray, next_tokens) -> None:
         """Append K/V for committed rows using the TARGET aux (not draft features).
@@ -278,7 +293,8 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         ``new_aux`` [m, 3H] is the target aux concat for the m committed positions;
         ``next_tokens`` [m] is the input token at each (token_{i+1} alignment).
         Overwrites the temporary draft K/V from the finished block, advances
-        ``_ctx_len``, and sets ``_last_feature`` for the next block's first draft.
+        ``_ctx_len``, and leaves the last-position feature device-resident for
+        the next block's first draft.
         """
         m = int(new_aux.shape[0])
         base = self._ctx_len
@@ -292,6 +308,6 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         self._staged_h2d(self.positions_buf.ptr, positions)
         self._qkv(m)
         self._store_kv(base, m)
-        self._staged_h2d(self.kv_positions.ptr + base * 4, positions)
         self._ctx_len = base + m
-        self._last_feature = self._last_position_feature(m - 1, base + m - 1, self._ctx_len, features[m - 1:m])
+        self._finish_last_feature(m - 1, base + m - 1, self._ctx_len, self.feature_seq.ptr + (m - 1) * self.hidden_size * 2)
+        self._feature_ready = True
