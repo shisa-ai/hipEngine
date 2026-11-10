@@ -394,7 +394,12 @@ def _capture(
         scale_dtype="fp32",
         scale_granularity="per_token_head",
     )
-    with Qwen35GGUFResidentSession(
+    # The resident session fixes kv_storage_dtype and the BF16 mirror layer set
+    # at construction from the ambient env. PURE_INT8_ENV must therefore be live
+    # BEFORE the session is built, not only inside the per-arm route blocks;
+    # otherwise the session keeps the default 8-layer BF16 prefix and both arms
+    # silently run BF16 (a bit-identical pass that measures nothing).
+    with route_environment(PURE_INT8_ENV), Qwen35GGUFResidentSession(
         args.model,
         backend=str(args.backend),
         compiler_version=compiler_version,
@@ -414,6 +419,21 @@ def _capture(
     ) as session:
         if session.runner is None:
             raise GateError("GGUF resident session closed during setup")
+        if (
+            getattr(session, "int8_bf16_full_attention_layer_indices", ())
+            or getattr(session, "int8_bf16_prefix_full_attention_layers", 0)
+            or not getattr(session, "int8_kv_no_mirror_qualified", False)
+        ):
+            raise GateError(
+                "INT8 KV session will not engage mirror-free INT8 "
+                f"(no_mirror_qualified={getattr(session, 'int8_kv_no_mirror_qualified', None)}, "
+                f"prefix={getattr(session, 'int8_bf16_prefix_full_attention_layers', None)}, "
+                f"indices={getattr(session, 'int8_bf16_full_attention_layer_indices', None)}); "
+                "the direct INT8 prefill route would not run and the gate would "
+                "measure a BF16-vs-BF16 bit-identity. Construct the session with "
+                "PURE_INT8_ENV and a resolved kv_capability whose runtime_action "
+                "admits the contract (see generation._resolve_int8_kv_capability)."
+            )
         resolved_backend = str(session.runner.backend)
         target_arch = str(session.runner.target_arch)
         validate_strict_baseline(
