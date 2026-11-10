@@ -209,6 +209,31 @@ class DFlash2NativeDrafter:
         except KeyError as exc:
             raise KeyError(f"missing DFlash2 drafter device weight {name!r}") from exc
 
+    def _dense_proj(self, x_ptr: int, name: str, out_ptr: int, rows: int,
+                    in_features: int, out_features: int) -> None:
+        """BF16 dense projection, Q8_0-accelerated when ``name`` is quantized.
+
+        Weights quantized to Q8_0 T16 tiles (``self._q8_tiles``) run the row-tiled
+        Q8 WMMA prefill, which reuses each weight tile across the block's rows and
+        reads ~half the bytes of BF16. Unquantized weights fall back to the BF16
+        WMMA dense kernel. The draft only proposes; the exact target verify keeps
+        committed IDs == true AR regardless of drafter precision.
+        """
+        tiles = getattr(self, "_q8_tiles", None)
+        if tiles and name in tiles:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_prefill import (
+                gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out,
+            )
+            gguf_q8_0_t16_wmma_prefill_auto_2wave_bf16_bf16_out(
+                x_ptr, tiles[name], out_ptr, rows, in_features, out_features,
+                runtime=self.runtime,
+            )
+            return
+        dflash_dense_bf16_to_bf16(
+            x_ptr, self._w(name), out_ptr, rows, in_features, out_features,
+            library=self._lib1, runtime=self.runtime,
+        )
+
     def upload_weight(self, name: str, arr: np.ndarray) -> int:
         """Upload a BF16 weight (e.g. the target ``output_head``) through the
         persistent host staging buffer and return its device pointer.
@@ -365,7 +390,6 @@ class DFlash2NativeDrafter:
         q_proj = self._w(f"layers.{layer}.self_attn.q_proj.weight")
         k_proj = self._w(f"layers.{layer}.self_attn.k_proj.weight")
         v_proj = self._w(f"layers.{layer}.self_attn.v_proj.weight")
-        o_proj = self._w(f"layers.{layer}.self_attn.o_proj.weight")
         q_norm = self._w(f"layers.{layer}.self_attn.q_norm.weight")
         k_norm = self._w(f"layers.{layer}.self_attn.k_norm.weight")
         # Q/K/V via the WMMA-tiled dense kernels (weight read amortized over the
@@ -426,10 +450,9 @@ class DFlash2NativeDrafter:
         )
         # o_proj maps attention output (q_features) -> hidden; in-place would
         # alias the WMMA input, so write to the dedicated o_proj_out buffer.
-        dflash_dense_bf16_to_bf16(
-            self.attn_out.ptr, o_proj, self.o_proj_out.ptr,
+        self._dense_proj(
+            self.attn_out.ptr, f"layers.{layer}.self_attn.o_proj.weight", self.o_proj_out.ptr,
             bs, self.q_features, self.hidden_size,
-            library=self._lib1, runtime=self.runtime,
         )
 
     # -- forward -----------------------------------------------------------

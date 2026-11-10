@@ -9,6 +9,8 @@ Clean-room: arXiv:2609.36173, no vendored reference code.
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
@@ -27,6 +29,29 @@ from hipengine.kernels.hip_gfx1100.speculative.dspine import (
 from hipengine.speculative.dflash2_native import (
     DFlash2NativeDrafter, _dflash2_rope_tables, _to_bf16_bits,
 )
+from hipengine.quant.gguf_t16 import repack_gguf_q8_0_tile16
+
+
+def _quantize_q8_0_tiles(arr: np.ndarray) -> np.ndarray:
+    """Quantize a dense ``[out, in]`` weight to raw GGUF Q8_0, repacked to Q8T16
+    tiles for the row-tiled Q8 WMMA prefill. Per-32-block symmetric int8 with an
+    fp16 scale (amax/127); ~0.6% relative error, acceptable for a drafter whose
+    proposals are gated by the exact target verify."""
+    w = np.ascontiguousarray(arr, dtype=np.float32)
+    out_f, in_f = w.shape
+    if in_f % 32 or out_f % 16:
+        raise ValueError(f"Q8_0 drafter weight needs in%32==0 and out%16==0, got {w.shape}")
+    blocks = w.reshape(out_f, in_f // 32, 32)
+    amax = np.abs(blocks).max(axis=2, keepdims=True)
+    scale = np.where(amax > 0, amax / 127.0, 1.0).astype(np.float16)
+    sf = scale.astype(np.float32)
+    inv = np.where(sf > 0, 1.0 / np.where(sf > 0, sf, 1.0), 0.0)
+    q = np.clip(np.round(blocks * inv), -127, 127).astype(np.int8)
+    raw = np.empty((out_f, in_f // 32, 34), dtype=np.uint8)
+    raw[..., 0:2] = scale.view(np.uint8).reshape(out_f, in_f // 32, 2)
+    raw[..., 2:34] = q.view(np.uint8)
+    tiles = repack_gguf_q8_0_tile16(raw.reshape(out_f, in_f // 32 * 34))
+    return np.ascontiguousarray(tiles.tiles)
 
 
 class DSpineNativeDrafter(DFlash2NativeDrafter):
@@ -89,6 +114,21 @@ class DSpineNativeDrafter(DFlash2NativeDrafter):
         b = _buf(a.nbytes)
         self._staged_h2d(b.ptr, a)
         self.wdev["__packed"] = b.ptr
+        # Q8_0 drafter-weight quantization. The forward is bandwidth-bound (the
+        # BF16 WMMA dense GEMMs read weights at ~57-184 GB/s); the row-tiled Q8
+        # WMMA prefill reads ~half the bytes and is up to 6x faster on the wide
+        # FFN projections. Quantize gate/up/down/o (the wins); v stays BF16 (Q8
+        # is slower at out_features=1024). Rollback: HIPENGINE_DSPINE_DRAFTER_Q8=0.
+        self._q8_tiles: dict[str, int] = {}
+        if os.environ.get("HIPENGINE_DSPINE_DRAFTER_Q8", "1") != "0":
+            for layer in range(self.num_layers):
+                for suffix in ("mlp.gate_proj.weight", "mlp.up_proj.weight",
+                               "mlp.down_proj.weight", "self_attn.o_proj.weight"):
+                    name = f"layers.{layer}.{suffix}"
+                    tiles = _quantize_q8_0_tiles(weights[name])
+                    tb = _buf(tiles.nbytes)
+                    self._staged_h2d(tb.ptr, tiles)
+                    self._q8_tiles[name] = tb.ptr
         self._rope_max = self.max_context_len + self.block_size + 2
         cos, sin = _dflash2_rope_tables(self._rope_max, self.rope_theta, self.head_dim)
         cb = _buf(cos.nbytes); self._staged_h2d(cb.ptr, cos); self.cos_table = cb.ptr
@@ -206,10 +246,10 @@ class DSpineNativeDrafter(DFlash2NativeDrafter):
         self._run_attention(self.block_norm.ptr, positions, layer)
         dflash_add_bf16(self.o_proj_out.ptr, self.block_hidden_a.ptr, self.block_hidden_b.ptr, bs * H, library=self._lib1, runtime=self.runtime)
         dflash_rmsnorm_bf16(self.block_hidden_b.ptr, self._w(f"layers.{layer}.post_attention_layernorm.weight"), self.block_norm.ptr, bs, H, eps=self.eps, library=self._lib1, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.block_norm.ptr, self._w(f"layers.{layer}.mlp.gate_proj.weight"), self.mlp_gate.ptr, bs, H, I, library=self._lib1, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.block_norm.ptr, self._w(f"layers.{layer}.mlp.up_proj.weight"), self.mlp_up.ptr, bs, H, I, library=self._lib1, runtime=self.runtime)
+        self._dense_proj(self.block_norm.ptr, f"layers.{layer}.mlp.gate_proj.weight", self.mlp_gate.ptr, bs, H, I)
+        self._dense_proj(self.block_norm.ptr, f"layers.{layer}.mlp.up_proj.weight", self.mlp_up.ptr, bs, H, I)
         dflash_silu_mul_bf16(self.mlp_gate.ptr, self.mlp_up.ptr, self.mlp_gate.ptr, bs * I, library=self._lib1, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.mlp_gate.ptr, self._w(f"layers.{layer}.mlp.down_proj.weight"), self.conv_out.ptr, bs, I, H, library=self._lib1, runtime=self.runtime)
+        self._dense_proj(self.mlp_gate.ptr, f"layers.{layer}.mlp.down_proj.weight", self.conv_out.ptr, bs, I, H)
         dflash_add_bf16(self.conv_out.ptr, self.block_hidden_b.ptr, self.block_hidden_a.ptr, bs * H, library=self._lib1, runtime=self.runtime)
         self._bridge(layer, anchor_id)
         if debug_callback is not None:

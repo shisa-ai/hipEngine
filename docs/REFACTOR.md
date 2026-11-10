@@ -400,6 +400,29 @@ selection, compare against registered scalar/singleton/add controls, and verify
 cleanup. See the cumulative-prefill worklog entries for migration evidence.
 This remaining checkpoint dependency does not restrict runtime admission.
 
+### R0523 — DSpine drafter Q8_0 quantization rollback control
+
+Owner: `hipengine/runtime/dspine.py`.
+
+Scope: `HIPENGINE_DSPINE_DRAFTER_Q8` (default on); the BF16 fallback branch in
+`DFlash2NativeDrafter._dense_proj` and the per-layer Q8_0 tile upload in
+`DSpineNativeDrafter.__init__`.
+
+The DSpine forward is bandwidth-bound; quantizing gate/up/down/o to Q8_0 T16
+tiles and running the row-tiled Q8 WMMA prefill cuts the forward 44.8->17.4 ms
+(2.57x) and the matched full-mtpbench decode 12.43->14.05 tok/s (+13%), AR-exact,
+acceptance preserved (0.513->0.520). v_proj stays BF16 (the Q8 kernel is slower
+at out_features=1024). The control defaults on (production behavior) and exists
+only as a drafter-precision rollback lever.
+
+Done when: the Q8 drafter path is the validated default across admitted DSpine
+configurations and a precision rollback is no longer required, or the control is
+folded into a general drafter-quantization setting if extended to DFlash2/EAGLE.
+**Clearing action:** run `scripts/qwen38_dspine_baseline.py --candidate-budget 5
+--gpu-refine --reps 3 --max-new-tokens 25` with the control unset, confirm
+AR-exact output and acceptance, then remove the env read and the BF16 fallback
+branch.
+
 ### R0217 — PM4 diagnostic controls and transport rollback
 
 Owner: `scripts/pm4_graph_bench.py`.
