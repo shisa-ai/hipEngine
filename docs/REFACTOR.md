@@ -1287,6 +1287,18 @@ state-transfer or submission change. The old comparison did not show aggregate s
 not a measurement of today's route. Keep default packed execution and its scalar comparison; do not
 infer a current speed result or disable the route from the old timing.
 
+**Status (2026-11-10):** concurrency evidence collected on the W7900 (c1/c2/c4 plus
+neighboring c3/c5 and unrelated c8/c13; dense Qwen3.8-27B-Q4_K_M, BF16 KV, greedy,
+strict): every width is route-clean and deterministic except c4, which shows an
+intermittent packed-decode nondeterminism (1 divergence in 18 runs) — filed as
+R0523. rocprofv3 graph-mode cache-only census collected for c1+c2 and c1+c4
+(capture excluded, one steady replay); c4 closes, c2 is a harness dense-down
+filter false-negative (col8_residual variant uncounted). Prerequisite test bundles
+green. See
+[`worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md`](../worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md)
+and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-r0387-*`. Remaining: the
+R0523 c4 race root-cause/fix and the rocprof dense-down filter correction.
+
 Done when: inspect `scripts/server_f1_concurrency_bench.py --help`, then collect matched
 current c1/c2/c4 and neighboring/unrelated logical-width requests on one gfx1100 host with model,
 quant, KV policy, context, sampler, queue count and execution profile recorded. Confirm actual
@@ -1878,4 +1890,31 @@ BF16 long-context and no-mirror INT8 global-adapter gates on both gfx1100 and gf
 graph-pointer, lifecycle, cancellation, pressure, SLO and production load. Only after remaining
 registered packages migrate may compatibility fixtures retire. Registered strict/unfused/serial
 numerical fallbacks remain independent of allocator cleanup.
+
+### R0523 — Root-cause the intermittent c4 packed-decode nondeterminism
+
+Owner: `hipengine/runtime/gguf_packed_decode_graph.py`.
+
+Scope: native c4 packed AR decode (`gguf_packed_ar_server_decode`) on gfx1100,
+dense Qwen3.8-27B-Q4_K_M; graph-replay state/KV ownership and GEMV split-K decode.
+
+Found by R0387: the native c4 packed decode step intermittently diverges from the
+c1 oracle for one row (request 1, decode position 73, expected token 6866 vs
+observed 3154) — 1 divergence in 18 c4 runs; 15 focused repeats (5+10) were
+byte-identical. c1/c2/c3/c5/c8/c13 are deterministic and route-clean. This is a
+low-rate race, not a stable arithmetic error. See
+[`worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md`](../worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md)
+and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-r0387-packed-concurrency-summary.json`.
+
+Done when: reproduce the divergence under a targeted c4 stress with state/KV
+ownership tracing, attribute it to a kernel or state-movement owner (graph-replay
+dependency, GEMV split-K reduction, or KV write/read race), and fix it so a
+high-repeat c4 burst is byte-deterministic against the c1 oracle. Preserve the
+strict c1-equality binding. Clearing command (gfx1100 ROCm environment, run
+repeatedly until the race is reproduced and then shown fixed): `python
+scripts/server_f1_concurrency_bench.py --engine hipengine --model
+/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --correctness-profile
+strict --hipengine-route-expectation native --hipengine-kv-storage bf16
+--concurrencies 1,4 --live-concurrency 4 --measured-runs 20 --json <out>`.
+
 

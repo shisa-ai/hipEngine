@@ -1,0 +1,105 @@
+{
+ "schema": 1,
+ "kind": "r0387_packed_concurrency_summary",
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "backend": "hip_gfx1100",
+ "device_name": null,
+ "kv_storage": "bf16",
+ "sampler": "greedy_top1",
+ "correctness_profile": "strict",
+ "prompt_length": 512,
+ "decode_tokens": 128,
+ "ctx_per_seq": 1024,
+ "widths": {
+  "1": {
+   "warmups_passed": true,
+   "measured_passed": true,
+   "repeat_determinism_passed": true,
+   "route_ok": true,
+   "route_paths": [
+    "gguf_packed_ar_server_decode"
+   ]
+  },
+  "2": {
+   "warmups_passed": true,
+   "measured_passed": true,
+   "repeat_determinism_passed": true,
+   "route_ok": true,
+   "route_paths": [
+    "gguf_packed_ar_server_decode"
+   ]
+  },
+  "3": {
+   "warmups_passed": true,
+   "measured_passed": true,
+   "repeat_determinism_passed": true,
+   "route_ok": true,
+   "route_paths": [
+    "gguf_packed_ar_server_decode"
+   ]
+  },
+  "4": {
+   "warmups_passed": true,
+   "measured_passed": false,
+   "repeat_determinism_passed": false,
+   "route_ok": true,
+   "route_paths": [
+    "gguf_packed_ar_server_decode"
+   ]
+  },
+  "5": {
+   "warmups_passed": true,
+   "measured_passed": true,
+   "repeat_determinism_passed": true,
+   "route_ok": true,
+   "route_paths": [
+    "gguf_packed_ar_server_decode"
+   ]
+  },
+  "8": {
+   "warmups_passed": true,
+   "measured_passed": true,
+   "repeat_determinism_passed": true,
+   "route_ok": true,
+   "route_paths": [
+    "gguf_packed_ar_server_decode"
+   ]
+  },
+  "13": {
+   "warmups_passed": true,
+   "measured_passed": true,
+   "repeat_determinism_passed": true,
+   "route_ok": true,
+   "route_paths": [
+    "gguf_packed_ar_server_decode"
+   ]
+  }
+ },
+ "c4_defect": {
+  "measured_mismatch_count": 1,
+  "mismatches": [
+   {
+    "record_index": 9,
+    "request_index": 1,
+    "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+    "expected_tokens": 128,
+    "observed_tokens": 128,
+    "first_mismatch_index": 73,
+    "expected_token": 6866,
+    "observed_token": 3154
+   }
+  ],
+  "repeat_run_sha256": [
+   "98c58850151fa91fc08b25ca53d52086900a24f1acf11bb7fb9a4c31c0a60b18",
+   "98c58850151fa91fc08b25ca53d52086900a24f1acf11bb7fb9a4c31c0a60b18",
+   "9135818eae5e3c55f4b504f78b9cb1942017763b181b8f12703cdf161e31bfe6"
+  ]
+ },
+ "c4_reproduction": {
+  "confirm_5_repeats_passed": true,
+  "stress_10_repeats_passed": true,
+  "total_c4_runs": 18,
+  "divergences": 1
+ },
+ "finding": "c4 native packed decode intermittent nondeterminism (1/18 runs); all other widths deterministic and route-clean"
+}

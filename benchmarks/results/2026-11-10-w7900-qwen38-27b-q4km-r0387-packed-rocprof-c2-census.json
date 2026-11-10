@@ -1,0 +1,3141 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_concurrency_c2_recurrent_census",
+  "created_at": "2026-11-10T22:21:13.528824+00:00",
+  "status": "failed",
+  "passed": false,
+  "performance_claim": false,
+  "claim_level": "exact_hybrid_recurrent_closed_profiler_census",
+  "workload": {
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "backend": "hip_gfx1100",
+    "prompt_tokens_per_row": 512,
+    "profiled_decode_transitions": 1,
+    "c1_rows": 1,
+    "c2_rows": 2,
+    "physical_bucket_width": 2,
+    "active_mask": [
+      true,
+      true
+    ],
+    "c1_decode_mode": "graph",
+    "c2_decode_mode": "graph",
+    "submission_transport": "hipgraph",
+    "sampling": "greedy_top1",
+    "speculative_decode": false
+  },
+  "correctness": {
+    "c1_all_tokens_exact": true,
+    "c2_all_tokens_exact": true,
+    "physical_shape_exact": true,
+    "expected_token_id": 9707,
+    "c1_generated_token_ids": [
+      9707,
+      9707,
+      9707
+    ],
+    "c2_warmup_token_ids": [
+      9707,
+      9707
+    ],
+    "c2_profile_token_ids": [
+      9707,
+      9707
+    ],
+    "phase_b_gate": "benchmarks/results/2026-07-16-gfx1100-gguf-concurrency-b4-category-lifecycle.json"
+  },
+  "execution_manifest": {
+    "schema": 1,
+    "kind": "gguf_packed_ar_execution_manifest",
+    "mode": "decode_graph_replay",
+    "claim_level": "exact_hybrid",
+    "rows": 2,
+    "physical_rows": 2,
+    "active_rows": 2,
+    "active_mask": [
+      true,
+      true
+    ],
+    "linear_attention_decode_path": "indexed_batch",
+    "gdn_recurrent_decode_path": "indexed_singleton",
+    "full_attention_decode_path": "kv_live_spans_batch",
+    "moe_decode_path": "dense_ffn_rows",
+    "lm_head_decode_path": "q6_rowtile_f32_logits",
+    "sampler_decode_path": "argmax_i32_rows",
+    "metadata_prepare_path": "device_positions_persistent",
+    "layers": {
+      "total": 64,
+      "linear_attention": 48,
+      "full_attention": 16
+    },
+    "model_step": {
+      "complete_c1_session_replays": 0,
+      "complete_c1_layer_replays": 0,
+      "host_model_row_loop_sites": 0,
+      "host_model_row_iterations": 0,
+      "per_row_model_subgraph_invocations": 0,
+      "expected_exact_row_local_kernel_launches": 0
+    },
+    "layer_families": {
+      "projection": {
+        "execution": "packed_native",
+        "packed_native_work": [
+          "embedding",
+          "full_attention_qkv_o",
+          "moe_selected_and_shared_projections",
+          "linear_attention_qkv_gate",
+          "linear_attention_alpha",
+          "linear_attention_beta",
+          "linear_attention_ssm_out_fp32_input"
+        ],
+        "exact_row_local_work": [],
+        "host_row_loop_sites": 0,
+        "host_row_iterations": 0,
+        "exact_row_local_kernel_launches": 0
+      },
+      "conv_gdn": {
+        "execution": "packed_native",
+        "packed_native_work": [
+          "conv_decode_indexed",
+          "gdn_recurrent_decode_indexed_fp32_out"
+        ],
+        "exact_row_local_work": [],
+        "host_row_loop_sites": 0,
+        "host_row_iterations": 0,
+        "exact_row_local_kernel_launches": 0
+      },
+      "normalization": {
+        "execution": "packed_native",
+        "packed_native_work": [
+          "packed_layer_and_output_norms",
+          "linear_attention_attn_norm"
+        ],
+        "exact_row_local_work": [],
+        "host_row_loop_sites": 0,
+        "host_row_iterations": 0,
+        "exact_row_local_kernel_launches": 0
+      },
+      "full_attention": {
+        "execution": "packed_native",
+        "decode_path": "kv_live_spans_batch",
+        "kv_abi": "KVLiveSpans",
+        "layer_invocations": 16,
+        "row_positions": 2,
+        "live_counts": [
+          514,
+          514
+        ],
+        "host_row_loop_sites": 0,
+        "host_row_iterations": 0,
+        "exact_row_local_kernel_launches": 0
+      },
+      "moe_ffn": {
+        "execution": "packed_native",
+        "decode_path": "dense_ffn_rows",
+        "layer_invocations": 64,
+        "router_rows": 2,
+        "top_k": 0,
+        "selected_lanes": 0,
+        "lane_to_row": "selected_lane // top_k",
+        "host_row_loop_sites": 0,
+        "host_row_iterations": 0,
+        "exact_row_local_kernel_launches": 0
+      },
+      "lm_head": {
+        "execution": "packed_native",
+        "decode_path": "q6_rowtile_f32_logits",
+        "layer_invocations": 1,
+        "output_rows": 2,
+        "full_vocab_host_readback": false,
+        "host_row_loop_sites": 0,
+        "host_row_iterations": 0,
+        "exact_row_local_kernel_launches": 0
+      },
+      "sampler": {
+        "execution": "packed_native",
+        "decode_path": "argmax_i32_rows",
+        "layer_invocations": 1,
+        "host_row_loop_sites": 0,
+        "host_row_iterations": 0,
+        "exact_row_local_kernel_launches": 0,
+        "device_result": "argmax_i32_rows_feedback_i64",
+        "host_readback": "none_in_steady_replay"
+      }
+    },
+    "host_device_movement": {
+      "host_to_device_metadata_copies": 0,
+      "host_to_device_metadata_bytes": 0,
+      "device_metadata_prepare_launches": 1,
+      "device_token_feedback_launches": 1,
+      "device_layer_record_launches": 0,
+      "host_to_device_input_copies": 0,
+      "host_to_device_input_bytes": 0,
+      "host_to_device_total_copies": 0,
+      "host_to_device_total_bytes": 0,
+      "device_to_device_state_import_copies": 0,
+      "device_to_device_state_scatter_copies": 0,
+      "diagnostic_layer_capture_device_to_host_copies": 0,
+      "device_to_host_vector_copies": 0,
+      "device_to_host_vector_values": 0,
+      "device_to_host_vector_bytes": 0,
+      "device_to_host_scalar_copies": 0
+    },
+    "synchronizations": 0,
+    "scalar_fallbacks": 0,
+    "state_import_slots": 0,
+    "state_import_slot_indices": [],
+    "linear_state_storage": "packed_workspace",
+    "scatter_state": false,
+    "steady_packed_state_reused": true,
+    "profiler_contract": {
+      "expected_execution_buckets": [
+        "packed_native"
+      ],
+      "expected_exact_row_local_kernel_launches": 0,
+      "require_cached_build": true
+    },
+    "graph_setup_movement": {
+      "host_to_device_input_copies": 2,
+      "host_to_device_input_bytes": 18,
+      "host_to_device_active_mask_copies": 1,
+      "host_to_device_active_mask_bytes": 2,
+      "device_metadata_prepare_launches": 1,
+      "device_to_device_state_import_copies": 0,
+      "imported_slot_indices": [],
+      "staged_block_table": false,
+      "staged_block_table_bytes": 0
+    },
+    "graph": {
+      "captured": true,
+      "capture_count": 1,
+      "replay_count": 1,
+      "replayed_steps": 1,
+      "replay_call_synchronizations": 1,
+      "bucket_key": {
+        "schema_version": 1,
+        "backend": "hip_gfx1100",
+        "target_arch": "gfx1100",
+        "model_identity_sha256": "148f01d0b78c75575847bbd2ec679872f45a9102f3ef12264d5b693655d50139",
+        "physical_rows": 2,
+        "active_rows": 2,
+        "active_mask": [
+          true,
+          true
+        ],
+        "state_generations": [
+          513,
+          513
+        ],
+        "replay_context_limit": 514,
+        "context_bucket": 768,
+        "block_size": 256,
+        "max_positions": 1024,
+        "steps_per_replay": 1,
+        "max_replay_steps": 1,
+        "record_steps": 1,
+        "record_layer_ids": [],
+        "hidden_size": 5120,
+        "vocab_size": 248320,
+        "layer_types": [
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention",
+          "linear_attention",
+          "linear_attention",
+          "linear_attention",
+          "full_attention"
+        ],
+        "kv_storage_dtype": "bf16",
+        "kv_storage_layout": "uniform",
+        "kv_scale_dtype": "fp16",
+        "kv_scale_granularity": "per_token_head",
+        "use_wmma_prefill": true,
+        "use_gemv_decode": true,
+        "decode_repack": true,
+        "host_token_embedding": true,
+        "lm_head_threads": 128,
+        "lm_head_stage1_blocks": 485,
+        "metadata_prepare_path": "device_positions_persistent",
+        "token_feedback_path": "device_i32_to_i64",
+        "weight_role_sha256": "aa1d71e2b5e485b5e4309b348ffc2eb488f198197b475ba8e97ac2a6e8469808",
+        "buffer_identity_sha256": "796b88bac999c56bc17f53fd6871c6b8cb7d873a17ac8f8b6d71fb8f9e689f68",
+        "buffer_count": 1118,
+        "key_sha256": "05bc1aca293ce441f745d25d6b4b7ed79fdbbd209e58664d36e36837f341258a"
+      },
+      "record_layer_ids": [],
+      "diagnostic_readback": {
+        "token_vector_copies": 1,
+        "token_values": 2,
+        "layer_hidden_copies": 0,
+        "layer_hidden_values": 0,
+        "inside_replay": false
+      },
+      "transport": {
+        "schema_version": 1,
+        "transport": "hipgraph",
+        "backend": "hip_gfx1100",
+        "gfx_arch": "gfx1100",
+        "source": "hip_runtime_graph",
+        "graph_handle": 94847930824560,
+        "graph_exec": 94847929043088,
+        "launches": 1,
+        "submission_started": false,
+        "native_fallbacks": 0,
+        "closed": false,
+        "packed_decode_graph_key_sha256": "05bc1aca293ce441f745d25d6b4b7ed79fdbbd209e58664d36e36837f341258a",
+        "physical_rows": 2,
+        "replayed_steps": 1
+      }
+    }
+  },
+  "profiler_census": {
+    "route_check_passed": true,
+    "packed_concurrency": 2,
+    "c3_family_census": {
+      "route_check_passed": false,
+      "full_attention": {
+        "passed": true,
+        "path": "kv_live_spans_batch",
+        "context_dispatches": 16,
+        "kv_write_dispatches": 16,
+        "row_extent": 2
+      },
+      "moe_ffn": {
+        "passed": false,
+        "path": "dense_ffn_rows",
+        "selected_lanes": 0,
+        "selected_gate_up_dispatches": 0,
+        "selected_down_dispatches": 0,
+        "combine_dispatches": 0,
+        "dense_gate_up_dispatches": 64,
+        "dense_down_dispatches": 32
+      },
+      "lm_head_sampler": {
+        "passed": true,
+        "lm_head_path": "q6_rowtile_f32_logits",
+        "sampler_path": "argmax_i32_rows",
+        "expected_lm_head_dispatches": 1,
+        "lm_head_dispatches": 1,
+        "argmax_stage1_dispatches": 1,
+        "argmax_stage2_dispatches": 1,
+        "full_vocab_host_readback": false
+      },
+      "host_device_movement": {
+        "passed": true,
+        "expected_copy_dispatches": 0,
+        "observed_copy_dispatches": 0,
+        "expected_metadata_prepare_dispatches": 1,
+        "observed_metadata_prepare_dispatches": 1
+      }
+    },
+    "family_attribution": {
+      "c1": {
+        "total_dispatches": 823,
+        "total_duration_ns": 30544795,
+        "families": [
+          {
+            "family": "dense_projection",
+            "dispatches": 385,
+            "total_duration_ns": 24108118,
+            "total_duration_ms": 24.108118,
+            "share_of_gpu_duration": 0.7892709052393378,
+            "kernels": [
+              {
+                "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+                "dispatches": 64,
+                "total_duration_ns": 9952352
+              },
+              {
+                "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+                "dispatches": 160,
+                "total_duration_ns": 6418596
+              },
+              {
+                "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+                "dispatches": 64,
+                "total_duration_ns": 5793027
+              },
+              {
+                "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<...>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+                "dispatches": 1,
+                "total_duration_ns": 1484656
+              },
+              {
+                "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+                "dispatches": 96,
+                "total_duration_ns": 459487
+              }
+            ]
+          },
+          {
+            "family": "moe_selected_combine",
+            "dispatches": 48,
+            "total_duration_ns": 2797990,
+            "total_duration_ms": 2.79799,
+            "share_of_gpu_duration": 0.09160284100777236,
+            "kernels": [
+              {
+                "kernel": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<...>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+                "dispatches": 48,
+                "total_duration_ns": 2797990
+              }
+            ]
+          },
+          {
+            "family": "full_attention_core",
+            "dispatches": 96,
+            "total_duration_ns": 1943545,
+            "total_duration_ms": 1.943545,
+            "share_of_gpu_duration": 0.0636293352107945,
+            "kernels": [
+              {
+                "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<...>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+                "dispatches": 16,
+                "total_duration_ns": 1700823
+              },
+              {
+                "kernel": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<...>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+                "dispatches": 16,
+                "total_duration_ns": 68961
+              },
+              {
+                "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+                "dispatches": 16,
+                "total_duration_ns": 62440
+              },
+              {
+                "kernel": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<...>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+                "dispatches": 16,
+                "total_duration_ns": 52840
+              },
+              {
+                "kernel": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+                "dispatches": 16,
+                "total_duration_ns": 29560
+              },
+              {
+                "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+                "dispatches": 16,
+                "total_duration_ns": 28921
+              }
+            ]
+          },
+          {
+            "family": "linear_attention_state",
+            "dispatches": 96,
+            "total_duration_ns": 1009133,
+            "total_duration_ms": 1.009133,
+            "share_of_gpu_duration": 0.03303780562285653,
+            "kernels": [
+              {
+                "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<...>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
+                "dispatches": 48,
+                "total_duration_ns": 842208
+              },
+              {
+                "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<...>(unsigned short const*, float*, float const*, float*, long, long)",
+                "dispatches": 48,
+                "total_duration_ns": 166925
+              }
+            ]
+          },
+          {
+            "family": "other",
+            "dispatches": 128,
+            "total_duration_ns": 514167,
+            "total_duration_ms": 0.514167,
+            "share_of_gpu_duration": 0.016833211681401037,
+            "kernels": [
+              {
+                "kernel": "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+                "dispatches": 128,
+                "total_duration_ns": 514167
+              }
+            ]
+          },
+          {
+            "family": "norm_residual",
+            "dispatches": 65,
+            "total_duration_ns": 151482,
+            "total_duration_ms": 0.151482,
+            "share_of_gpu_duration": 0.004959339226208589,
+            "kernels": [
+              {
+                "kernel": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+                "dispatches": 64,
+                "total_duration_ns": 139482
+              },
+              {
+                "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+                "dispatches": 1,
+                "total_duration_ns": 12000
+              }
+            ]
+          },
+          {
+            "family": "lm_head_sampler",
+            "dispatches": 2,
+            "total_duration_ns": 9440,
+            "total_duration_ms": 0.00944,
+            "share_of_gpu_duration": 0.00030905429222883966,
+            "kernels": [
+              {
+                "kernel": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+                "dispatches": 1,
+                "total_duration_ns": 6240
+              },
+              {
+                "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+                "dispatches": 1,
+                "total_duration_ns": 3200
+              }
+            ]
+          },
+          {
+            "family": "metadata_lifecycle",
+            "dispatches": 2,
+            "total_duration_ns": 6200,
+            "total_duration_ms": 0.0062,
+            "share_of_gpu_duration": 0.00020298057328589045,
+            "kernels": [
+              {
+                "kernel": "(anonymous namespace)::prepare_packed_decode_metadata_from_positions_kernel(int*, long const*, long*, int*, int*, int*, int*, long*, unsigned char const*, long, long)",
+                "dispatches": 1,
+                "total_duration_ns": 3160
+              },
+              {
+                "kernel": "(anonymous namespace)::commit_packed_decode_graph_step_kernel(int const*, long*, long*, long*, unsigned char const*, int*, long*, long, long)",
+                "dispatches": 1,
+                "total_duration_ns": 3040
+              }
+            ]
+          },
+          {
+            "family": "embedding",
+            "dispatches": 1,
+            "total_duration_ns": 4720,
+            "total_duration_ms": 0.00472,
+            "share_of_gpu_duration": 0.00015452714611441983,
+            "kernels": [
+              {
+                "kernel": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+                "dispatches": 1,
+                "total_duration_ns": 4720
+              }
+            ]
+          }
+        ],
+        "unclassified": {
+          "dispatches": 128,
+          "total_duration_ns": 514167,
+          "kernel_names": [
+            "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)"
+          ]
+        }
+      },
+      "c2": {
+        "total_dispatches": 807,
+        "total_duration_ns": 31311696,
+        "families": [
+          {
+            "family": "dense_projection",
+            "dispatches": 417,
+            "total_duration_ns": 20733659,
+            "total_duration_ms": 20.733659,
+            "share_of_gpu_duration": 0.6621697847347522,
+            "kernels": [
+              {
+                "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+                "dispatches": 64,
+                "total_duration_ns": 10216790
+              },
+              {
+                "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+                "dispatches": 104,
+                "total_duration_ns": 3870679
+              },
+              {
+                "kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_single_wave_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+                "dispatches": 48,
+                "total_duration_ns": 2289902
+              },
+              {
+                "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+                "dispatches": 32,
+                "total_duration_ns": 2015938
+              },
+              {
+                "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_kernel<...>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+                "dispatches": 1,
+                "total_duration_ns": 1508537
+              },
+              {
+                "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+                "dispatches": 96,
+                "total_duration_ns": 476805
+              },
+              {
+                "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+                "dispatches": 24,
+                "total_duration_ns": 269966
+              },
+              {
+                "kernel": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+                "dispatches": 48,
+                "total_duration_ns": 85042
+              }
+            ]
+          },
+          {
+            "family": "norm_residual",
+            "dispatches": 65,
+            "total_duration_ns": 6707273,
+            "total_duration_ms": 6.707273,
+            "share_of_gpu_duration": 0.2142098275353721,
+            "kernels": [
+              {
+                "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual_kernel<...>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+                "dispatches": 32,
+                "total_duration_ns": 4214528
+              },
+              {
+                "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+                "dispatches": 32,
+                "total_duration_ns": 2480745
+              },
+              {
+                "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+                "dispatches": 1,
+                "total_duration_ns": 12000
+              }
+            ]
+          },
+          {
+            "family": "full_attention_core",
+            "dispatches": 96,
+            "total_duration_ns": 1999303,
+            "total_duration_ms": 1.999303,
+            "share_of_gpu_duration": 0.0638516355038705,
+            "kernels": [
+              {
+                "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<...>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+                "dispatches": 16,
+                "total_duration_ns": 1743778
+              },
+              {
+                "kernel": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<...>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+                "dispatches": 16,
+                "total_duration_ns": 79281
+              },
+              {
+                "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+                "dispatches": 16,
+                "total_duration_ns": 64322
+              },
+              {
+                "kernel": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<...>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+                "dispatches": 16,
+                "total_duration_ns": 49280
+              },
+              {
+                "kernel": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+                "dispatches": 16,
+                "total_duration_ns": 34282
+              },
+              {
+                "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+                "dispatches": 16,
+                "total_duration_ns": 28360
+              }
+            ]
+          },
+          {
+            "family": "linear_attention_state",
+            "dispatches": 96,
+            "total_duration_ns": 1284856,
+            "total_duration_ms": 1.284856,
+            "share_of_gpu_duration": 0.04103437897455315,
+            "kernels": [
+              {
+                "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<...>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, long const*, long, float, long, long, long, long)",
+                "dispatches": 48,
+                "total_duration_ns": 1083734
+              },
+              {
+                "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_indexed_lowp_kernel<...>(unsigned short const*, float*, float const*, float*, long const*, long, long, long)",
+                "dispatches": 48,
+                "total_duration_ns": 201122
+              }
+            ]
+          },
+          {
+            "family": "other",
+            "dispatches": 128,
+            "total_duration_ns": 563165,
+            "total_duration_ms": 0.563165,
+            "share_of_gpu_duration": 0.01798577119553026,
+            "kernels": [
+              {
+                "kernel": "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+                "dispatches": 128,
+                "total_duration_ns": 563165
+              }
+            ]
+          },
+          {
+            "family": "lm_head_sampler",
+            "dispatches": 2,
+            "total_duration_ns": 11720,
+            "total_duration_ms": 0.01172,
+            "share_of_gpu_duration": 0.0003743010279609255,
+            "kernels": [
+              {
+                "kernel": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+                "dispatches": 1,
+                "total_duration_ns": 8520
+              },
+              {
+                "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+                "dispatches": 1,
+                "total_duration_ns": 3200
+              }
+            ]
+          },
+          {
+            "family": "metadata_lifecycle",
+            "dispatches": 2,
+            "total_duration_ns": 6800,
+            "total_duration_ms": 0.0068,
+            "share_of_gpu_duration": 0.00021717124489200457,
+            "kernels": [
+              {
+                "kernel": "(anonymous namespace)::commit_packed_decode_graph_step_kernel(int const*, long*, long*, long*, unsigned char const*, int*, long*, long, long)",
+                "dispatches": 1,
+                "total_duration_ns": 3600
+              },
+              {
+                "kernel": "(anonymous namespace)::prepare_packed_decode_metadata_from_positions_kernel(int*, long const*, long*, int*, int*, int*, int*, long*, unsigned char const*, long, long)",
+                "dispatches": 1,
+                "total_duration_ns": 3200
+              }
+            ]
+          },
+          {
+            "family": "embedding",
+            "dispatches": 1,
+            "total_duration_ns": 4920,
+            "total_duration_ms": 0.00492,
+            "share_of_gpu_duration": 0.00015712978306892095,
+            "kernels": [
+              {
+                "kernel": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+                "dispatches": 1,
+                "total_duration_ns": 4920
+              }
+            ]
+          }
+        ],
+        "unclassified": {
+          "dispatches": 128,
+          "total_duration_ns": 563165,
+          "kernel_names": [
+            "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)"
+          ]
+        }
+      }
+    },
+    "c1_reference": {
+      "dispatches": 823,
+      "total_duration_ns": 30544795,
+      "total_duration_ms": 30.544795,
+      "top_kernels": [
+        {
+          "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "dispatches": 64,
+          "total_duration_ns": 9952352,
+          "launch_shapes": [
+            {
+              "count": 64,
+              "grid": [
+                69632,
+                1,
+                1
+              ],
+              "workgroup": [
+                32,
+                1,
+                1
+              ],
+              "vgpr": 176,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "dispatches": 160,
+          "total_duration_ns": 6418596,
+          "launch_shapes": [
+            {
+              "count": 48,
+              "grid": [
+                20480,
+                1,
+                1
+              ],
+              "workgroup": [
+                32,
+                1,
+                1
+              ],
+              "vgpr": 96,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            },
+            {
+              "count": 48,
+              "grid": [
+                24576,
+                1,
+                1
+              ],
+              "workgroup": [
+                32,
+                1,
+                1
+              ],
+              "vgpr": 96,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            },
+            {
+              "count": 24,
+              "grid": [
+                4096,
+                1,
+                1
+              ],
+              "workgroup": [
+                32,
+                1,
+                1
+              ],
+              "vgpr": 96,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            },
+            {
+              "count": 24,
+              "grid": [
+                40960,
+                1,
+                1
+              ],
+              "workgroup": [
+                32,
+                1,
+                1
+              ],
+              "vgpr": 96,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            },
+            {
+              "count": 16,
+              "grid": [
+                49152,
+                1,
+                1
+              ],
+              "workgroup": [
+                32,
+                1,
+                1
+              ],
+              "vgpr": 96,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "dispatches": 64,
+          "total_duration_ns": 5793027,
+          "launch_shapes": [
+            {
+              "count": 32,
+              "grid": [
+                40960,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 80,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            },
+            {
+              "count": 24,
+              "grid": [
+                81920,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 80,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            },
+            {
+              "count": 8,
+              "grid": [
+                8192,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 80,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<...>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "dispatches": 48,
+          "total_duration_ns": 2797990,
+          "launch_shapes": [
+            {
+              "count": 48,
+              "grid": [
+                40960,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 128,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<...>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+          "dispatches": 16,
+          "total_duration_ns": 1700823,
+          "launch_shapes": [
+            {
+              "count": 16,
+              "grid": [
+                6144,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 40,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<...>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "dispatches": 1,
+          "total_duration_ns": 1484656,
+          "launch_shapes": [
+            {
+              "count": 1,
+              "grid": [
+                1986560,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 80,
+              "scratch_bytes": 0,
+              "lds_bytes": 512
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<...>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
+          "dispatches": 48,
+          "total_duration_ns": 842208,
+          "launch_shapes": [
+            {
+              "count": 48,
+              "grid": [
+                6144,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 56,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+          "dispatches": 128,
+          "total_duration_ns": 514167,
+          "launch_shapes": [
+            {
+              "count": 64,
+              "grid": [
+                256,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 48,
+              "scratch_bytes": 0,
+              "lds_bytes": 1536
+            },
+            {
+              "count": 64,
+              "grid": [
+                256,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 80,
+              "scratch_bytes": 0,
+              "lds_bytes": 1536
+            }
+          ]
+        },
+        {
+          "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "dispatches": 96,
+          "total_duration_ns": 459487,
+          "launch_shapes": [
+            {
+              "count": 96,
+              "grid": [
+                12288,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 24,
+              "scratch_bytes": 0,
+              "lds_bytes": 1024
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<...>(unsigned short const*, float*, float const*, float*, long, long)",
+          "dispatches": 48,
+          "total_duration_ns": 166925,
+          "launch_shapes": [
+            {
+              "count": 48,
+              "grid": [
+                10240,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 16,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "dispatches": 64,
+          "total_duration_ns": 139482,
+          "launch_shapes": [
+            {
+              "count": 64,
+              "grid": [
+                5120,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 16,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<...>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          "dispatches": 16,
+          "total_duration_ns": 68961,
+          "launch_shapes": [
+            {
+              "count": 16,
+              "grid": [
+                7168,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 16,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "dispatches": 16,
+          "total_duration_ns": 62440,
+          "launch_shapes": [
+            {
+              "count": 16,
+              "grid": [
+                6144,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 24,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<...>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+          "dispatches": 16,
+          "total_duration_ns": 52840,
+          "launch_shapes": [
+            {
+              "count": 16,
+              "grid": [
+                1024,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 8,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          "dispatches": 16,
+          "total_duration_ns": 29560,
+          "launch_shapes": [
+            {
+              "count": 16,
+              "grid": [
+                6144,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 16,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "dispatches": 16,
+          "total_duration_ns": 28921,
+          "launch_shapes": [
+            {
+              "count": 16,
+              "grid": [
+                1024,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 8,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "dispatches": 1,
+          "total_duration_ns": 12000,
+          "launch_shapes": [
+            {
+              "count": 1,
+              "grid": [
+                256,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 16,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          "dispatches": 1,
+          "total_duration_ns": 6240,
+          "launch_shapes": [
+            {
+              "count": 1,
+              "grid": [
+                62080,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 8,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "dispatches": 1,
+          "total_duration_ns": 4720,
+          "launch_shapes": [
+            {
+              "count": 1,
+              "grid": [
+                5120,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 16,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "dispatches": 1,
+          "total_duration_ns": 3200,
+          "launch_shapes": [
+            {
+              "count": 1,
+              "grid": [
+                128,
+                1,
+                1
+              ],
+              "workgroup": [
+                128,
+                1,
+                1
+              ],
+              "vgpr": 16,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "(anonymous namespace)::prepare_packed_decode_metadata_from_positions_kernel(int*, long const*, long*, int*, int*, int*, int*, long*, unsigned char const*, long, long)",
+          "dispatches": 1,
+          "total_duration_ns": 3160,
+          "launch_shapes": [
+            {
+              "count": 1,
+              "grid": [
+                64,
+                1,
+                1
+              ],
+              "workgroup": [
+                64,
+                1,
+                1
+              ],
+              "vgpr": 16,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
+          "kernel": "(anonymous namespace)::commit_packed_decode_graph_step_kernel(int const*, long*, long*, long*, unsigned char const*, int*, long*, long, long)",
+          "dispatches": 1,
+          "total_duration_ns": 3040,
+          "launch_shapes": [
+            {
+              "count": 1,
+              "grid": [
+                1,
+                1,
+                1
+              ],
+              "workgroup": [
+                1,
+                1,
+                1
+              ],
+              "vgpr": 8,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        }
+      ]
+    },
+    "c2": {
+      "all": {
+        "dispatches": 807,
+        "total_duration_ns": 31311696,
+        "total_duration_ms": 31.311696,
+        "top_kernels": [
+          {
+            "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+            "dispatches": 64,
+            "total_duration_ns": 10216790,
+            "launch_shapes": [
+              {
+                "count": 64,
+                "grid": [
+                  139264,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  64,
+                  1,
+                  1
+                ],
+                "vgpr": 120,
+                "scratch_bytes": 0,
+                "lds_bytes": 512
+              }
+            ]
+          },
+          {
+            "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual_kernel<...>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+            "dispatches": 32,
+            "total_duration_ns": 4214528,
+            "launch_shapes": [
+              {
+                "count": 32,
+                "grid": [
+                  81920,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  128,
+                  1,
+                  1
+                ],
+                "vgpr": 88,
+                "scratch_bytes": 0,
+                "lds_bytes": 512
+              }
+            ]
+          },
+          {
+            "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+            "dispatches": 104,
+            "total_duration_ns": 3870679,
+            "launch_shapes": [
+              {
+                "count": 48,
+                "grid": [
+                  24576,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  32,
+                  1,
+                  1
+                ],
+                "vgpr": 120,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              },
+              {
+                "count": 24,
+                "grid": [
+                  40960,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  32,
+                  1,
+                  1
+                ],
+                "vgpr": 120,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              },
+              {
+                "count": 16,
+                "grid": [
+                  20480,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  32,
+                  1,
+                  1
+                ],
+                "vgpr": 120,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              },
+              {
+                "count": 16,
+                "grid": [
+                  49152,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  32,
+                  1,
+                  1
+                ],
+                "vgpr": 120,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+            "dispatches": 32,
+            "total_duration_ns": 2480745,
+            "launch_shapes": [
+              {
+                "count": 32,
+                "grid": [
+                  20480,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  32,
+                  1,
+                  1
+                ],
+                "vgpr": 120,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_single_wave_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+            "dispatches": 48,
+            "total_duration_ns": 2289902,
+            "launch_shapes": [
+              {
+                "count": 48,
+                "grid": [
+                  20480,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  32,
+                  1,
+                  1
+                ],
+                "vgpr": 128,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+            "dispatches": 32,
+            "total_duration_ns": 2015938,
+            "launch_shapes": [
+              {
+                "count": 24,
+                "grid": [
+                  163840,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  128,
+                  1,
+                  1
+                ],
+                "vgpr": 56,
+                "scratch_bytes": 0,
+                "lds_bytes": 512
+              },
+              {
+                "count": 8,
+                "grid": [
+                  16384,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  128,
+                  1,
+                  1
+                ],
+                "vgpr": 56,
+                "scratch_bytes": 0,
+                "lds_bytes": 512
+              }
+            ]
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<...>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+            "dispatches": 16,
+            "total_duration_ns": 1743778,
+            "launch_shapes": [
+              {
+                "count": 16,
+                "grid": [
+                  6144,
+                  2,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 40,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_kernel<...>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+            "dispatches": 1,
+            "total_duration_ns": 1508537,
+            "launch_shapes": [
+              {
+                "count": 1,
+                "grid": [
+                  1986560,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  128,
+                  1,
+                  1
+                ],
+                "vgpr": 96,
+                "scratch_bytes": 0,
+                "lds_bytes": 512
+              }
+            ]
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<...>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, long const*, long, float, long, long, long, long)",
+            "dispatches": 48,
+            "total_duration_ns": 1083734,
+            "launch_shapes": [
+              {
+                "count": 48,
+                "grid": [
+                  256,
+                  48,
+                  1
+                ],
+                "workgroup": [
+                  128,
+                  1,
+                  1
+                ],
+                "vgpr": 56,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+            "dispatches": 128,
+            "total_duration_ns": 563165,
+            "launch_shapes": [
+              {
+                "count": 64,
+                "grid": [
+                  512,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 48,
+                "scratch_bytes": 0,
+                "lds_bytes": 1536
+              },
+              {
+                "count": 64,
+                "grid": [
+                  512,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 80,
+                "scratch_bytes": 0,
+                "lds_bytes": 1536
+              }
+            ]
+          },
+          {
+            "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+            "dispatches": 96,
+            "total_duration_ns": 476805,
+            "launch_shapes": [
+              {
+                "count": 96,
+                "grid": [
+                  12288,
+                  2,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 24,
+                "scratch_bytes": 0,
+                "lds_bytes": 1024
+              }
+            ]
+          },
+          {
+            "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+            "dispatches": 24,
+            "total_duration_ns": 269966,
+            "launch_shapes": [
+              {
+                "count": 24,
+                "grid": [
+                  8192,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  32,
+                  1,
+                  1
+                ],
+                "vgpr": 64,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_indexed_lowp_kernel<...>(unsigned short const*, float*, float const*, float*, long const*, long, long, long)",
+            "dispatches": 48,
+            "total_duration_ns": 201122,
+            "launch_shapes": [
+              {
+                "count": 48,
+                "grid": [
+                  10240,
+                  2,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 16,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+            "dispatches": 48,
+            "total_duration_ns": 85042,
+            "launch_shapes": [
+              {
+                "count": 48,
+                "grid": [
+                  12288,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 8,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<...>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+            "dispatches": 16,
+            "total_duration_ns": 79281,
+            "launch_shapes": [
+              {
+                "count": 16,
+                "grid": [
+                  7168,
+                  2,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 16,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+            "dispatches": 16,
+            "total_duration_ns": 64322,
+            "launch_shapes": [
+              {
+                "count": 16,
+                "grid": [
+                  12288,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 24,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<...>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+            "dispatches": 16,
+            "total_duration_ns": 49280,
+            "launch_shapes": [
+              {
+                "count": 16,
+                "grid": [
+                  1024,
+                  2,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 8,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+            "dispatches": 16,
+            "total_duration_ns": 34282,
+            "launch_shapes": [
+              {
+                "count": 16,
+                "grid": [
+                  12288,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 16,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+            "dispatches": 16,
+            "total_duration_ns": 28360,
+            "launch_shapes": [
+              {
+                "count": 16,
+                "grid": [
+                  2048,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 8,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+            "dispatches": 1,
+            "total_duration_ns": 12000,
+            "launch_shapes": [
+              {
+                "count": 1,
+                "grid": [
+                  512,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 16,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+            "dispatches": 1,
+            "total_duration_ns": 8520,
+            "launch_shapes": [
+              {
+                "count": 1,
+                "grid": [
+                  62080,
+                  2,
+                  1
+                ],
+                "workgroup": [
+                  128,
+                  1,
+                  1
+                ],
+                "vgpr": 8,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+            "dispatches": 1,
+            "total_duration_ns": 4920,
+            "launch_shapes": [
+              {
+                "count": 1,
+                "grid": [
+                  5120,
+                  2,
+                  1
+                ],
+                "workgroup": [
+                  256,
+                  1,
+                  1
+                ],
+                "vgpr": 16,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "(anonymous namespace)::commit_packed_decode_graph_step_kernel(int const*, long*, long*, long*, unsigned char const*, int*, long*, long, long)",
+            "dispatches": 1,
+            "total_duration_ns": 3600,
+            "launch_shapes": [
+              {
+                "count": 1,
+                "grid": [
+                  1,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  1,
+                  1,
+                  1
+                ],
+                "vgpr": 8,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+            "dispatches": 1,
+            "total_duration_ns": 3200,
+            "launch_shapes": [
+              {
+                "count": 1,
+                "grid": [
+                  256,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  128,
+                  1,
+                  1
+                ],
+                "vgpr": 16,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          },
+          {
+            "kernel": "(anonymous namespace)::prepare_packed_decode_metadata_from_positions_kernel(int*, long const*, long*, int*, int*, int*, int*, long*, unsigned char const*, long, long)",
+            "dispatches": 1,
+            "total_duration_ns": 3200,
+            "launch_shapes": [
+              {
+                "count": 1,
+                "grid": [
+                  64,
+                  1,
+                  1
+                ],
+                "workgroup": [
+                  64,
+                  1,
+                  1
+                ],
+                "vgpr": 16,
+                "scratch_bytes": 0,
+                "lds_bytes": 0
+              }
+            ]
+          }
+        ]
+      },
+      "buckets": {
+        "exact_row_local": {
+          "dispatches": 0,
+          "total_duration_ns": 0,
+          "total_duration_ms": 0.0,
+          "top_kernels": [],
+          "share_of_c2_gpu_duration": 0.0
+        },
+        "packed_native": {
+          "dispatches": 807,
+          "total_duration_ns": 31311696,
+          "total_duration_ms": 31.311696,
+          "top_kernels": [
+            {
+              "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+              "dispatches": 64,
+              "total_duration_ns": 10216790,
+              "launch_shapes": [
+                {
+                  "count": 64,
+                  "grid": [
+                    139264,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    64,
+                    1,
+                    1
+                  ],
+                  "vgpr": 120,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual_kernel<...>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+              "dispatches": 32,
+              "total_duration_ns": 4214528,
+              "launch_shapes": [
+                {
+                  "count": 32,
+                  "grid": [
+                    81920,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 88,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+              "dispatches": 104,
+              "total_duration_ns": 3870679,
+              "launch_shapes": [
+                {
+                  "count": 48,
+                  "grid": [
+                    24576,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    32,
+                    1,
+                    1
+                  ],
+                  "vgpr": 120,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                },
+                {
+                  "count": 24,
+                  "grid": [
+                    40960,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    32,
+                    1,
+                    1
+                  ],
+                  "vgpr": 120,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                },
+                {
+                  "count": 16,
+                  "grid": [
+                    20480,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    32,
+                    1,
+                    1
+                  ],
+                  "vgpr": 120,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                },
+                {
+                  "count": 16,
+                  "grid": [
+                    49152,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    32,
+                    1,
+                    1
+                  ],
+                  "vgpr": 120,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+              "dispatches": 32,
+              "total_duration_ns": 2480745,
+              "launch_shapes": [
+                {
+                  "count": 32,
+                  "grid": [
+                    20480,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    32,
+                    1,
+                    1
+                  ],
+                  "vgpr": 120,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_single_wave_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+              "dispatches": 48,
+              "total_duration_ns": 2289902,
+              "launch_shapes": [
+                {
+                  "count": 48,
+                  "grid": [
+                    20480,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    32,
+                    1,
+                    1
+                  ],
+                  "vgpr": 128,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+              "dispatches": 32,
+              "total_duration_ns": 2015938,
+              "launch_shapes": [
+                {
+                  "count": 24,
+                  "grid": [
+                    163840,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 56,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                },
+                {
+                  "count": 8,
+                  "grid": [
+                    16384,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 56,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<...>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+              "dispatches": 16,
+              "total_duration_ns": 1743778,
+              "launch_shapes": [
+                {
+                  "count": 16,
+                  "grid": [
+                    6144,
+                    2,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 40,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_kernel<...>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+              "dispatches": 1,
+              "total_duration_ns": 1508537,
+              "launch_shapes": [
+                {
+                  "count": 1,
+                  "grid": [
+                    1986560,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 96,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 512
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<...>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, long const*, long, float, long, long, long, long)",
+              "dispatches": 48,
+              "total_duration_ns": 1083734,
+              "launch_shapes": [
+                {
+                  "count": 48,
+                  "grid": [
+                    256,
+                    48,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 56,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+              "dispatches": 128,
+              "total_duration_ns": 563165,
+              "launch_shapes": [
+                {
+                  "count": 64,
+                  "grid": [
+                    512,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 48,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 1536
+                },
+                {
+                  "count": 64,
+                  "grid": [
+                    512,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 80,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 1536
+                }
+              ]
+            },
+            {
+              "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+              "dispatches": 96,
+              "total_duration_ns": 476805,
+              "launch_shapes": [
+                {
+                  "count": 96,
+                  "grid": [
+                    12288,
+                    2,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 24,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 1024
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+              "dispatches": 24,
+              "total_duration_ns": 269966,
+              "launch_shapes": [
+                {
+                  "count": 24,
+                  "grid": [
+                    8192,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    32,
+                    1,
+                    1
+                  ],
+                  "vgpr": 64,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_indexed_lowp_kernel<...>(unsigned short const*, float*, float const*, float*, long const*, long, long, long)",
+              "dispatches": 48,
+              "total_duration_ns": 201122,
+              "launch_shapes": [
+                {
+                  "count": 48,
+                  "grid": [
+                    10240,
+                    2,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+              "dispatches": 48,
+              "total_duration_ns": 85042,
+              "launch_shapes": [
+                {
+                  "count": 48,
+                  "grid": [
+                    12288,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 8,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<...>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+              "dispatches": 16,
+              "total_duration_ns": 79281,
+              "launch_shapes": [
+                {
+                  "count": 16,
+                  "grid": [
+                    7168,
+                    2,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+              "dispatches": 16,
+              "total_duration_ns": 64322,
+              "launch_shapes": [
+                {
+                  "count": 16,
+                  "grid": [
+                    12288,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 24,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<...>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+              "dispatches": 16,
+              "total_duration_ns": 49280,
+              "launch_shapes": [
+                {
+                  "count": 16,
+                  "grid": [
+                    1024,
+                    2,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 8,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+              "dispatches": 16,
+              "total_duration_ns": 34282,
+              "launch_shapes": [
+                {
+                  "count": 16,
+                  "grid": [
+                    12288,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+              "dispatches": 16,
+              "total_duration_ns": 28360,
+              "launch_shapes": [
+                {
+                  "count": 16,
+                  "grid": [
+                    2048,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 8,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+              "dispatches": 1,
+              "total_duration_ns": 12000,
+              "launch_shapes": [
+                {
+                  "count": 1,
+                  "grid": [
+                    512,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+              "dispatches": 1,
+              "total_duration_ns": 8520,
+              "launch_shapes": [
+                {
+                  "count": 1,
+                  "grid": [
+                    62080,
+                    2,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 8,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+              "dispatches": 1,
+              "total_duration_ns": 4920,
+              "launch_shapes": [
+                {
+                  "count": 1,
+                  "grid": [
+                    5120,
+                    2,
+                    1
+                  ],
+                  "workgroup": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "(anonymous namespace)::commit_packed_decode_graph_step_kernel(int const*, long*, long*, long*, unsigned char const*, int*, long*, long, long)",
+              "dispatches": 1,
+              "total_duration_ns": 3600,
+              "launch_shapes": [
+                {
+                  "count": 1,
+                  "grid": [
+                    1,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    1,
+                    1,
+                    1
+                  ],
+                  "vgpr": 8,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+              "dispatches": 1,
+              "total_duration_ns": 3200,
+              "launch_shapes": [
+                {
+                  "count": 1,
+                  "grid": [
+                    256,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    128,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            },
+            {
+              "kernel": "(anonymous namespace)::prepare_packed_decode_metadata_from_positions_kernel(int*, long const*, long*, int*, int*, int*, int*, long*, unsigned char const*, long, long)",
+              "dispatches": 1,
+              "total_duration_ns": 3200,
+              "launch_shapes": [
+                {
+                  "count": 1,
+                  "grid": [
+                    64,
+                    1,
+                    1
+                  ],
+                  "workgroup": [
+                    64,
+                    1,
+                    1
+                  ],
+                  "vgpr": 16,
+                  "scratch_bytes": 0,
+                  "lds_bytes": 0
+                }
+              ]
+            }
+          ],
+          "share_of_c2_gpu_duration": 1.0
+        }
+      },
+      "expected_exact_row_local_dispatches": 0,
+      "observed_exact_row_local_dispatches": 0
+    }
+  },
+  "raw_traces": {
+    "c1": {
+      "kernel_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/trace/epyc/2104082_kernel_trace.csv",
+      "kernel_csv_sha256": "7135d61cf33cdc91fb8c164d89a1d265f97911a87c99effa3bec9e425cdef23f",
+      "marker_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/trace/epyc/2104082_marker_api_trace.csv",
+      "marker_csv_sha256": "f9995f1f58594d2c44cd1897dfac3c004a3d900aace7d9f88c303d5d9f7a554b",
+      "hip_api_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/trace/epyc/2104082_hip_api_trace.csv",
+      "memory_copy_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/trace/epyc/2104082_memory_copy_trace.csv",
+      "whole_trace_dispatches": 5452,
+      "selected_dispatches": 823,
+      "marker_start_ns": 148982052780558,
+      "marker_end_ns": 148982087614951
+    },
+    "c2": {
+      "kernel_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/trace/epyc/2105863_kernel_trace.csv",
+      "kernel_csv_sha256": "827ee55b20e0c24b54b2aae728345460bfc85f64c9220c8dfdb765f487daa305",
+      "marker_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/trace/epyc/2105863_marker_api_trace.csv",
+      "marker_csv_sha256": "9dd894e448e61f464526fcf9e288b5bcd8d30a23c75b6e1ab1b87e95af0f4cd2",
+      "hip_api_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/trace/epyc/2105863_hip_api_trace.csv",
+      "memory_copy_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/trace/epyc/2105863_memory_copy_trace.csv",
+      "whole_trace_dispatches": 5012,
+      "selected_dispatches": 807,
+      "marker_start_ns": 149062662420762,
+      "marker_end_ns": 149062697953135
+    }
+  },
+  "timeline_accounting": {
+    "c1": {
+      "marker_wall_ns": 34834393,
+      "kernel_sum_ns": 30544795,
+      "kernel_interval_union_ns": 30544795,
+      "uncovered_ns": 4289598,
+      "kernel_count": 823,
+      "hip_api_calls": 2,
+      "hip_api_time_ns": 34749022,
+      "memory_copy_ops": 0,
+      "memory_copy_time_ns": 0
+    },
+    "c2": {
+      "marker_wall_ns": 35532373,
+      "kernel_sum_ns": 31311696,
+      "kernel_interval_union_ns": 31311696,
+      "uncovered_ns": 4220677,
+      "kernel_count": 807,
+      "hip_api_calls": 2,
+      "hip_api_time_ns": 35441241,
+      "memory_copy_ops": 0,
+      "memory_copy_time_ns": 0
+    }
+  },
+  "commands": {
+    "parent": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+      "scripts/gguf_packed_ar_rocprof.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--decode-mode",
+      "graph",
+      "--submission-transport",
+      "hipgraph",
+      "--packed-concurrency",
+      "2",
+      "--prompt-length",
+      "512",
+      "--prompt-token-id",
+      "9707",
+      "--expected-token-id",
+      "9707",
+      "--compiler-version-file",
+      "/tmp/refactor-gfx1100/hipcc-version.txt",
+      "--raw-root",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2",
+      "--out",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2.json"
+    ],
+    "warmbuild": [
+      [
+        "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+        "/home/lhl/hipEngine/scripts/gguf_packed_ar_rocprof.py",
+        "--child-mode",
+        "warmbuild",
+        "--concurrency",
+        "1",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--decode-mode",
+        "graph",
+        "--submission-transport",
+        "hipgraph",
+        "--prompt-length",
+        "512",
+        "--prompt-token-id",
+        "9707",
+        "--expected-token-id",
+        "9707",
+        "--child-json",
+        "/tmp/refactor-gfx1100/r0387-rocprof-c2/warmbuild-c1/child.json",
+        "--compiler-version-file",
+        "/tmp/refactor-gfx1100/hipcc-version.txt"
+      ],
+      [
+        "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+        "/home/lhl/hipEngine/scripts/gguf_packed_ar_rocprof.py",
+        "--child-mode",
+        "warmbuild",
+        "--concurrency",
+        "2",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--decode-mode",
+        "graph",
+        "--submission-transport",
+        "hipgraph",
+        "--prompt-length",
+        "512",
+        "--prompt-token-id",
+        "9707",
+        "--expected-token-id",
+        "9707",
+        "--child-json",
+        "/tmp/refactor-gfx1100/r0387-rocprof-c2/warmbuild-c2/child.json",
+        "--compiler-version-file",
+        "/tmp/refactor-gfx1100/hipcc-version.txt"
+      ]
+    ],
+    "c1_profiler": [
+      "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3",
+      "--kernel-trace",
+      "--marker-trace",
+      "--hip-runtime-trace",
+      "--memory-copy-trace",
+      "--output-format",
+      "csv",
+      "-d",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/trace",
+      "--",
+      "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+      "/home/lhl/hipEngine/scripts/gguf_packed_ar_rocprof.py",
+      "--child-mode",
+      "profile",
+      "--concurrency",
+      "1",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--decode-mode",
+      "graph",
+      "--submission-transport",
+      "hipgraph",
+      "--prompt-length",
+      "512",
+      "--prompt-token-id",
+      "9707",
+      "--expected-token-id",
+      "9707",
+      "--child-json",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/child.json",
+      "--compiler-version-file",
+      "/tmp/refactor-gfx1100/hipcc-version.txt",
+      "--require-cached-build"
+    ],
+    "c2_profiler": [
+      "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3",
+      "--kernel-trace",
+      "--marker-trace",
+      "--hip-runtime-trace",
+      "--memory-copy-trace",
+      "--output-format",
+      "csv",
+      "-d",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/trace",
+      "--",
+      "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+      "/home/lhl/hipEngine/scripts/gguf_packed_ar_rocprof.py",
+      "--child-mode",
+      "profile",
+      "--concurrency",
+      "2",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--decode-mode",
+      "graph",
+      "--submission-transport",
+      "hipgraph",
+      "--prompt-length",
+      "512",
+      "--prompt-token-id",
+      "9707",
+      "--expected-token-id",
+      "9707",
+      "--child-json",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/child.json",
+      "--compiler-version-file",
+      "/tmp/refactor-gfx1100/hipcc-version.txt",
+      "--require-cached-build"
+    ]
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 3,
+    "collected_at": "2026-11-10T22:21:13.491224+00:00",
+    "host_name": "epyc",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "403f3378f4377187925aeaa6f513453a9493e755",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 1,
+    "dirty": true,
+    "dirty_paths": [],
+    "dirty_path_count": 0,
+    "untracked_paths": [
+      "worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md"
+    ],
+    "execution_affecting_dirty": false,
+    "execution_affecting_paths": [],
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+      "size_bytes": 17106773984,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+      "scripts/gguf_packed_ar_rocprof.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--decode-mode",
+      "graph",
+      "--submission-transport",
+      "hipgraph",
+      "--packed-concurrency",
+      "2",
+      "--prompt-length",
+      "512",
+      "--prompt-token-id",
+      "9707",
+      "--expected-token-id",
+      "9707",
+      "--compiler-version-file",
+      "/tmp/refactor-gfx1100/hipcc-version.txt",
+      "--raw-root",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2",
+      "--out",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2.json"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/refactor-gfx1100/hipcc-version.txt",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": null,
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "build_profile": "cached_only_paired_c1_c2_leaf_rocprof",
+    "timing_protocol": "single_synchronized_graph_steady_decode_marker_window_nonperformance",
+    "warmups": 1,
+    "repetitions": 1,
+    "profiler": {
+      "kind": "rocprofv3_kernel_marker_hipapi_memcopy_trace",
+      "c1_command": [
+        "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3",
+        "--kernel-trace",
+        "--marker-trace",
+        "--hip-runtime-trace",
+        "--memory-copy-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/trace",
+        "--",
+        "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+        "/home/lhl/hipEngine/scripts/gguf_packed_ar_rocprof.py",
+        "--child-mode",
+        "profile",
+        "--concurrency",
+        "1",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--decode-mode",
+        "graph",
+        "--submission-transport",
+        "hipgraph",
+        "--prompt-length",
+        "512",
+        "--prompt-token-id",
+        "9707",
+        "--expected-token-id",
+        "9707",
+        "--child-json",
+        "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/child.json",
+        "--compiler-version-file",
+        "/tmp/refactor-gfx1100/hipcc-version.txt",
+        "--require-cached-build"
+      ],
+      "c2_command": [
+        "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/rocprofv3",
+        "--kernel-trace",
+        "--marker-trace",
+        "--hip-runtime-trace",
+        "--memory-copy-trace",
+        "--output-format",
+        "csv",
+        "-d",
+        "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/trace",
+        "--",
+        "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+        "/home/lhl/hipEngine/scripts/gguf_packed_ar_rocprof.py",
+        "--child-mode",
+        "profile",
+        "--concurrency",
+        "2",
+        "--model",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--backend",
+        "hip_gfx1100",
+        "--decode-mode",
+        "graph",
+        "--submission-transport",
+        "hipgraph",
+        "--prompt-length",
+        "512",
+        "--prompt-token-id",
+        "9707",
+        "--expected-token-id",
+        "9707",
+        "--child-json",
+        "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/child.json",
+        "--compiler-version-file",
+        "/tmp/refactor-gfx1100/hipcc-version.txt",
+        "--require-cached-build"
+      ]
+    }
+  },
+  "limitations": [
+    "One synchronized steady decode transition is a route census, not a throughput sample.",
+    "C2 closes the recurrent linear-attention row loop, but the route remains exact_hybrid until the later C3/C4 correctness, replay, and scaling gates complete.",
+    "Profiler instrumentation and marker synchronization make all durations diagnostic only."
+  ]
+}
