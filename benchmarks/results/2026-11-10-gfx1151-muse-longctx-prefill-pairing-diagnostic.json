@@ -1,0 +1,35 @@
+{
+ "schema": 1,
+ "kind": "long_context_prefill_pairing",
+ "status": "diagnostic_retained",
+ "date": "2026-11-10",
+ "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified, Desktop)",
+ "hipengine_commit": "825023f12e021ca38d826d89b188b8b39fc813c4",
+ "llama_cpp_commit": "3b4d6ab3f79651935fba1dd93732f29022a7f5f5",
+ "model_path": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+ "protocol": "hipEngine: muse_glimmer_ar_bench.py workloads 32768/8,131072/8, max-context 135168, 2 reps median, synchronized session prefill wall. llama.cpp: llama-bench -p N -n 0 -ngl 99 -fa 1 -ctk f16 -ctv f16, 3 reps at 32K / 1 rep at 131K. Serial same-day runs.",
+ "rows": [
+  {
+   "context": 32768,
+   "hipengine_prefill_tok_s": 452.2,
+   "hipengine_prefill_s": 72.4,
+   "llamacpp_prefill_tok_s": 426.4,
+   "llamacpp_stddev_ts": 0.36,
+   "ratio": 1.061
+  },
+  {
+   "context": 131072,
+   "hipengine_prefill_tok_s": 286.4,
+   "hipengine_prefill_s": 456.5,
+   "llamacpp_prefill_tok_s": 338.4,
+   "llamacpp_stddev_ts": 0.0,
+   "ratio": 0.846
+  }
+ ],
+ "verdict": "Prefill lead shrinks with context: 1.11-1.18x at 512-4K (Gate A pairing) -> 1.06x at 32K -> 0.85x at 131K (15% behind; TTFT 456.5s vs 387.3s). Long-context prefill is the real remaining prefill lever; kernel-level profile in progress to split attention vs projection shares.",
+ "source_artifacts": [
+  "results/2026-11-10-gfx1151-muse-longctx-prefill-hipengine.json",
+  "results/2026-11-10-gfx1151-muse-longctx-prefill-llamacpp-32k.json",
+  "results/2026-11-10-gfx1151-muse-longctx-prefill-llamacpp-131k.json"
+ ]
+}
