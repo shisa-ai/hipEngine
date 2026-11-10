@@ -14,6 +14,8 @@ driver.
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
@@ -46,6 +48,7 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     dflash_silu_mul_bf16,
 )
 from hipengine.loading.dflash import DFlashDraftConfig
+from hipengine.quant.gguf_t16 import repack_gguf_q8_0_tile16
 
 # Re-exported helpers used by tests / the cycle driver.
 __all__ = ["DFlash2NativeDrafter"]
@@ -70,6 +73,28 @@ def _dflash2_rope_tables(max_positions: int, rope_theta: float, head_dim: int) -
     freqs = pos[:, None] * inv_freq[None, :]
     emb = np.concatenate((freqs, freqs), axis=-1)
     return np.cos(emb).astype(np.float32), np.sin(emb).astype(np.float32)
+
+
+def _quantize_q8_0_tiles(arr: np.ndarray) -> np.ndarray:
+    """Quantize a dense ``[out, in]`` weight to raw GGUF Q8_0, repacked to Q8T16
+    tiles for the row-tiled Q8 WMMA prefill. Per-32-block symmetric int8 with an
+    fp16 scale (amax/127); ~0.6% relative error, acceptable for a drafter whose
+    proposals are gated by the exact target verify."""
+    w = np.ascontiguousarray(arr, dtype=np.float32)
+    out_f, in_f = w.shape
+    if in_f % 32 or out_f % 16:
+        raise ValueError(f"Q8_0 drafter weight needs in%32==0 and out%16==0, got {w.shape}")
+    blocks = w.reshape(out_f, in_f // 32, 32)
+    amax = np.abs(blocks).max(axis=2, keepdims=True)
+    scale = np.where(amax > 0, amax / 127.0, 1.0).astype(np.float16)
+    sf = scale.astype(np.float32)
+    inv = np.where(sf > 0, 1.0 / np.where(sf > 0, sf, 1.0), 0.0)
+    q = np.clip(np.round(blocks * inv), -127, 127).astype(np.int8)
+    raw = np.empty((out_f, in_f // 32, 34), dtype=np.uint8)
+    raw[..., 0:2] = scale.view(np.uint8).reshape(out_f, in_f // 32, 2)
+    raw[..., 2:34] = q.view(np.uint8)
+    tiles = repack_gguf_q8_0_tile16(raw.reshape(out_f, in_f // 32 * 34))
+    return np.ascontiguousarray(tiles.tiles)
 
 
 class DFlash2NativeDrafter:
@@ -143,6 +168,21 @@ class DFlash2NativeDrafter:
         self.wdev: dict[str, int] = {
             name: _upload(name, _to_bf16_bits(arr)).ptr for name, arr in weights.items()
         }
+        # Q8_0 drafter-weight quantization (bandwidth-bound forward). Quantize
+        # gate/up/down/o; v + conv projections stay BF16 (Q8 is slower at small
+        # out_features). Rollback: HIPENGINE_DFLASH2_DRAFTER_Q8=0.
+        self._q8_tiles: dict[str, int] = {}
+        if os.environ.get("HIPENGINE_DFLASH2_DRAFTER_Q8", "1") != "0":
+            for layer in range(self.num_layers):
+                for suffix in ("mlp.gate_proj.weight", "mlp.up_proj.weight",
+                               "mlp.down_proj.weight", "self_attn.o_proj.weight"):
+                    name = f"layers.{layer}.{suffix}"
+                    if name not in weights:
+                        continue
+                    tiles = _quantize_q8_0_tiles(weights[name])
+                    tb = _buf(tiles.nbytes)
+                    self._staged_h2d(tb.ptr, tiles)
+                    self._q8_tiles[name] = tb.ptr
         # Precomputed rotary tables (position * rotary_dim layout).
         self._rope_max = self.max_context_len + self.block_size + 2
         cos, sin = _dflash2_rope_tables(self._rope_max, self.rope_theta, self.head_dim)
@@ -468,9 +508,9 @@ class DFlash2NativeDrafter:
         conv_kp = self._w(f"layers.{layer}.attention_conv.kernel_projection.weight")
         mlp_base = self._w(f"layers.{layer}.mlp_conv.base_kernel")
         mlp_kp = self._w(f"layers.{layer}.mlp_conv.kernel_projection.weight")
-        gate_proj = self._w(f"layers.{layer}.mlp.gate_proj.weight")
-        up_proj = self._w(f"layers.{layer}.mlp.up_proj.weight")
-        down_proj = self._w(f"layers.{layer}.mlp.down_proj.weight")
+        gate_proj = f"layers.{layer}.mlp.gate_proj.weight"
+        up_proj = f"layers.{layer}.mlp.up_proj.weight"
+        down_proj = f"layers.{layer}.mlp.down_proj.weight"
 
         # input_layernorm
         dflash_rmsnorm_bf16(self.block_hidden_a.ptr, in_layernorm, self.block_norm.ptr, bs, self.hidden_size,
@@ -491,14 +531,14 @@ class DFlash2NativeDrafter:
         self._dense_bf16(self.block_norm.ptr, mlp_kp, self.conv_proj.ptr, bs, self.conv_proj_features)
         self._conv(self.block_norm.ptr, self.conv_proj.ptr, mlp_base, self.conv_out.ptr, bs, 0)
         # MLP: gate/up -> silu_mul -> down
-        dflash_dense_bf16_to_bf16(self.conv_out.ptr, gate_proj, self.mlp_gate.ptr,
-                                  bs, self.hidden_size, self.intermediate_size, library=self._lib1, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.conv_out.ptr, up_proj, self.mlp_up.ptr,
-                                  bs, self.hidden_size, self.intermediate_size, library=self._lib1, runtime=self.runtime)
+        self._dense_proj(self.conv_out.ptr, gate_proj, self.mlp_gate.ptr,
+                         bs, self.hidden_size, self.intermediate_size)
+        self._dense_proj(self.conv_out.ptr, up_proj, self.mlp_up.ptr,
+                         bs, self.hidden_size, self.intermediate_size)
         dflash_silu_mul_bf16(self.mlp_gate.ptr, self.mlp_up.ptr, self.mlp_gate.ptr,
                              bs * self.intermediate_size, library=self._lib1, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.mlp_gate.ptr, down_proj, self.conv_out.ptr,
-                                  bs, self.intermediate_size, self.hidden_size, library=self._lib1, runtime=self.runtime)
+        self._dense_proj(self.mlp_gate.ptr, down_proj, self.conv_out.ptr,
+                         bs, self.intermediate_size, self.hidden_size)
         # MLP conv finish (output side) — write to mlp_finish (not in-place).
         self._conv(self.conv_out.ptr, self.conv_proj.ptr, mlp_base + 2 * self.hidden_size * 2, self.mlp_finish.ptr, bs, half_offset)
         # residual: layer_out (B) + mlp_finish -> next input (A)

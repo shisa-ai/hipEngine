@@ -27,31 +27,8 @@ from hipengine.kernels.hip_gfx1100.speculative.dspine import (
     dspine_residual, dspine_rms_normalize,
 )
 from hipengine.speculative.dflash2_native import (
-    DFlash2NativeDrafter, _dflash2_rope_tables, _to_bf16_bits,
+    DFlash2NativeDrafter, _dflash2_rope_tables, _to_bf16_bits, _quantize_q8_0_tiles,
 )
-from hipengine.quant.gguf_t16 import repack_gguf_q8_0_tile16
-
-
-def _quantize_q8_0_tiles(arr: np.ndarray) -> np.ndarray:
-    """Quantize a dense ``[out, in]`` weight to raw GGUF Q8_0, repacked to Q8T16
-    tiles for the row-tiled Q8 WMMA prefill. Per-32-block symmetric int8 with an
-    fp16 scale (amax/127); ~0.6% relative error, acceptable for a drafter whose
-    proposals are gated by the exact target verify."""
-    w = np.ascontiguousarray(arr, dtype=np.float32)
-    out_f, in_f = w.shape
-    if in_f % 32 or out_f % 16:
-        raise ValueError(f"Q8_0 drafter weight needs in%32==0 and out%16==0, got {w.shape}")
-    blocks = w.reshape(out_f, in_f // 32, 32)
-    amax = np.abs(blocks).max(axis=2, keepdims=True)
-    scale = np.where(amax > 0, amax / 127.0, 1.0).astype(np.float16)
-    sf = scale.astype(np.float32)
-    inv = np.where(sf > 0, 1.0 / np.where(sf > 0, sf, 1.0), 0.0)
-    q = np.clip(np.round(blocks * inv), -127, 127).astype(np.int8)
-    raw = np.empty((out_f, in_f // 32, 34), dtype=np.uint8)
-    raw[..., 0:2] = scale.view(np.uint8).reshape(out_f, in_f // 32, 2)
-    raw[..., 2:34] = q.view(np.uint8)
-    tiles = repack_gguf_q8_0_tile16(raw.reshape(out_f, in_f // 32 * 34))
-    return np.ascontiguousarray(tiles.tiles)
 
 
 class DSpineNativeDrafter(DFlash2NativeDrafter):

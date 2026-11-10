@@ -423,6 +423,28 @@ folded into a general drafter-quantization setting if extended to DFlash2/EAGLE.
 AR-exact output and acceptance, then remove the env read and the BF16 fallback
 branch.
 
+### R0524 — DFlash2 drafter Q8_0 quantization rollback control
+
+Owner: `hipengine/speculative/dflash2_native.py`.
+
+Scope: `HIPENGINE_DFLASH2_DRAFTER_Q8` (default on); the BF16 fallback branch in
+`DFlash2NativeDrafter._dense_proj` and the per-layer Q8_0 tile upload in
+`DFlash2NativeDrafter.__init__`.
+
+Companion to R0523 (DSpine). Quantizing gate/up/down/o to Q8_0 T16 tiles and
+running the row-tiled Q8 WMMA prefill lifts the matched full-mtpbench DFlash2 B3
+decode 9.89->10.83 tok/s (+9.5%), AR-exact, acceptance unchanged (2.319). v and
+the conv projections stay BF16 (Q8 is slower at small out_features). The control
+defaults on (production behavior) and exists only as a drafter-precision
+rollback lever.
+
+Done when: the Q8 drafter path is the validated default across admitted DFlash2
+configurations and a precision rollback is no longer required, or the control is
+folded into a general drafter-quantization setting.
+**Clearing action:** run `scripts/qwen38_dflash2_baseline.py --block-size 3
+--reps 3 --max-new-tokens 25` with the control unset, confirm AR-exact output and
+acceptance, then remove the env read and the BF16 fallback branch.
+
 ### R0217 — PM4 diagnostic controls and transport rollback
 
 Owner: `scripts/pm4_graph_bench.py`.
