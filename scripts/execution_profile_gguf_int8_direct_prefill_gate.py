@@ -23,6 +23,7 @@ D2H traffic cannot contaminate wall claims.
 from __future__ import annotations
 
 import argparse
+import copy
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -240,6 +241,14 @@ def _rearm_bulk_workspace(session: Any) -> None:
     if release is None:
         raise GateError("resident session lacks the bulk prefill workspace release")
     release()
+    # The release frees the workspace buffers but keeps the cached INT8 prefill
+    # lifetime plan, which was built from the FIRST arm's env. The direct route
+    # only engages when the plan mode is ``chunk_outer_direct_int8``, so the plan
+    # must be rebuilt under each arm's HIPENGINE_GGUF_INT8_PREFILL_DIRECT value;
+    # otherwise the candidate arm reuses the strict arm's oracle-bridge plan and
+    # the gate measures the BF16 oracle, not the direct INT8 leaf.
+    if hasattr(session, "_int8_prefill_lifetime_plan"):
+        session._int8_prefill_lifetime_plan = None
 
 
 def _state_summary(session: Any, trajectory: Sequence[Mapping[str, Any]], forced_input_ids: Sequence[int]) -> dict[str, Any]:
@@ -321,8 +330,18 @@ def _capture(
     str,
     str,
 ]:
+    from hipengine.kernels.backends import (
+        hip_target_arch_for_backend,
+        resolve_backend,
+    )
     from hipengine.kvcache import resolve_kv_policy
-    from hipengine.loading.gguf import scan_gguf
+    from hipengine.loading.gguf import gguf_execution_fingerprint, scan_gguf
+    from hipengine.models import resolve_model
+    from hipengine.models.kv_capabilities import (
+        KVCapabilityKey,
+        model_artifact_identity,
+        resolve_kv_capability,
+    )
     from hipengine.runtime.prefill import PrefillConfig
     from hipengine.runtime.qwen35_gguf_runner import (
         Qwen35GGUFResidentSession,
@@ -337,7 +356,8 @@ def _capture(
         if args.compiler_version_file is None
         else args.compiler_version_file.read_text(encoding="utf-8")
     )
-    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(scan_gguf(args.model))
+    gguf_info = scan_gguf(args.model)
+    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(gguf_info)
     prompt_tokens = {
         str(row["id"]): build_chat_prompt(tokenizer, str(row["prompt"]))
         for row in prompt_rows
@@ -394,6 +414,52 @@ def _capture(
         scale_dtype="fp32",
         scale_granularity="per_token_head",
     )
+    # Resolve the INT8 KV capability exactly as the shipping generator does
+    # (generation/qwen35_gguf.py::_resolve_int8_kv_capability). The resident
+    # session admits mirror-free INT8 only when kv_capability.runtime_action is
+    # "admit"; passing None (the prior behavior) fails admission closed to BF16,
+    # so both arms ran BF16 and the gate reported a trivial bit-identity. The
+    # plugin is resolved from the GGUF architecture so dense and MoE artifacts
+    # each use their own declarations/evidence.
+    identity = model_artifact_identity(args.model)
+    if not identity.content_verified:
+        raise GateError(f"model identity unavailable: {identity.error}")
+    capability_backend = resolve_backend(str(args.backend), warn=False)
+    model_plugin = resolve_model(gguf_info.architecture or "")
+    quant_name = str(getattr(gguf_info, "file_type_name", "") or "").strip().lower()
+    if quant_name.startswith("mostly_"):
+        quant_name = quant_name[len("mostly_"):]
+    if not quant_name:
+        raise GateError("GGUF metadata does not expose file_type_name")
+    capability_key = KVCapabilityKey(
+        artifact_sha256=identity.sha256,
+        artifact_size_bytes=identity.size_bytes,
+        artifact_execution_fingerprint=gguf_execution_fingerprint(gguf_info),
+        backend=capability_backend,
+        target_arch=hip_target_arch_for_backend(capability_backend),
+        weight_quant=f"gguf_{quant_name}",
+        kv_storage=policy.storage_dtype.value,
+        storage_layout=str(policy.storage_layout),
+        scale_dtype=policy.scale_dtype.value,
+        scale_granularity=str(policy.scale_granularity),
+    )
+    plugin_resolver = getattr(model_plugin, "resolve_kv_capability", None)
+    if callable(plugin_resolver):
+        kv_resolution = plugin_resolver(key=capability_key, artifact=identity)
+    else:
+        kv_resolution = resolve_kv_capability(
+            (),
+            key=capability_key,
+            artifact=identity,
+            declarations=getattr(model_plugin, "kv_capability_declarations", ()),
+        )
+    if kv_resolution.runtime_action != "admit":
+        raise GateError(
+            "INT8 KV capability not admitted for this artifact/backend "
+            f"(status={kv_resolution.status}): {kv_resolution.reason}; the "
+            "direct INT8 prefill route cannot be evaluated on a BF16 fallback"
+        )
+    kv_capability = copy.deepcopy(kv_resolution.as_dict())
     # The resident session fixes kv_storage_dtype and the BF16 mirror layer set
     # at construction from the ambient env. PURE_INT8_ENV must therefore be live
     # BEFORE the session is built, not only inside the per-arm route blocks;
@@ -409,6 +475,7 @@ def _capture(
             attn_aotriton_min_tokens=int(args.attn_aotriton_min_tokens)
         ),
         kv_policy=policy.create_policy(),
+        kv_capability=kv_capability,
         kv_scale_dtype="fp32",
         kv_scale_granularity="per_token_head",
         # The shipping serving owner sets both selectors on every request; a
@@ -436,6 +503,12 @@ def _capture(
             )
         resolved_backend = str(session.runner.backend)
         target_arch = str(session.runner.target_arch)
+        if resolved_backend != capability_backend:
+            raise GateError(
+                f"capability resolved for backend {capability_backend!r} but the "
+                f"session runs {resolved_backend!r}; the INT8 admission would "
+                "not describe the executed route"
+            )
         validate_strict_baseline(
             requested_mode=str(args.baseline_gdn_mode),
             backend_exact_mode=_gguf_gdn_prefill_backend_exact_mode(resolved_backend),
