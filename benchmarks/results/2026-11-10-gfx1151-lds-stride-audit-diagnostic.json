@@ -1,0 +1,77 @@
+{
+ "schema": 1,
+ "kind": "lds_stride_audit",
+ "status": "diagnostic_retained",
+ "date": "2026-11-10",
+ "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified, Desktop)",
+ "hipengine_commit_base": "4c93146ed8527a13ef291080947d692729fb38ee",
+ "bug_class": "2D LDS tiles with row stride a multiple of the 128 B bank window and lane-strided fragment reads: all lanes hit one bank group (16/32-way conflict). Fix: pad the row stride; keep 16 B alignment where the compiler emits b128 LDS reads.",
+ "inventory": [
+  {
+   "kernel": "muse_glimmer_flash_prefill_wmma_mt",
+   "status": "fixed_be3550ba6",
+   "evidence": "stride 128->130; bit-exact; 131K prefill +29.8% end-to-end"
+  },
+  {
+   "kernel": "muse_glimmer_decode_attn_shared (+combine)",
+   "status": "fixed_4c93146ed",
+   "evidence": "stride 128->130; bit-exact 160/160; multi-row verify 5-22% faster"
+  },
+  {
+   "kernel": "dense_flash_prefill (Llama head_dim 128)",
+   "status": "fixed_this_unit",
+   "evidence": "stride 128->130 on k_s/v_s; bit-exact; 512x8192 32Q/8KV 185.4->88.4 ms (2.10x); 28/28 dense prefill tests"
+  },
+  {
+   "kernel": "muse_glimmer_flash_prefill_wmma (single-token fallback)",
+   "status": "confirmed_deferred",
+   "evidence": "same 16-way pattern, but padding regresses it 19% (+2 and +8 strides both; b128 alignment/vec tradeoff). Left unpadded; needs a swizzle rather than padding. Fallback only (multi_token=False); production uses mt."
+  },
+  {
+   "kernel": "gemma4_attention_prefill_wmma / _full",
+   "status": "already_clean",
+   "evidence": "kKvStride = kHeadDim + kPad (8)"
+  },
+  {
+   "kernel": "laguna_flash_attention_prefill",
+   "status": "already_clean",
+   "evidence": "HEAD_DIM + K_PAD (8)"
+  },
+  {
+   "kernel": "gguf_q4/q6_t16_dense_wmma_prefill (selected prefill)",
+   "status": "already_clean",
+   "evidence": "SLAB_STRIDE = 272 halves (544 B = 17x32 B), explicit anti-conflict comment"
+  },
+  {
+   "kernel": "gguf_iq_wmma_prefill",
+   "status": "already_clean",
+   "evidence": "SLAB_STRIDE = QK_K + 16"
+  },
+  {
+   "kernel": "qwen4_exp_qsa_flash",
+   "status": "already_clean",
+   "evidence": "SLAB_STRIDE = QK_K + 16"
+  },
+  {
+   "kernel": "gguf_t16_grouped_gemv",
+   "status": "not_applicable",
+   "evidence": "only a small cross-wave exchange buffer, no 2D tile staging"
+  },
+  {
+   "kernel": "gemma4_attention_decode_wmma_full",
+   "status": "not_applicable",
+   "evidence": "no LDS K/V tiles (direct global WMMA loads)"
+  },
+  {
+   "kernel": "gguf_k_mmq_prefill (struct MMQ tiles)",
+   "status": "needs_deep_review",
+   "evidence": "dp4a struct-tile access pattern; not the lane-strided WMMA frag class; no quick verdict"
+  },
+  {
+   "kernel": "gemma4_attention_int8 / dms_compact staging",
+   "status": "needs_deep_review",
+   "evidence": "extern-shared staging; read-pattern analysis pending"
+  }
+ ],
+ "verdict": "Three production kernels fixed across the session (prefill mt, shared decode/verify, dense Llama prefill), all bit-exact. The single-token Muse fallback has the pattern but padding regresses it \u2014 deferred with a named approach (swizzle). Most quant WMMA prefill owners were already padded by design."
+}
