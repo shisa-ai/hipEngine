@@ -34,24 +34,42 @@ __device__ __forceinline__ uint16_t f32_to_bf16(float f) {
   return static_cast<uint16_t>(u >> 16);
 }
 
+// Graph-safe live split bound: with a zero-based unwindowed range, absolute
+// splits 0..ceil(live/split_keys)-1 are the only non-empty ones and they map
+// to the same-numbered blocks, so the -INF block suffix can be skipped.
+// Skipping is bit-exact: fmaxf(m, -INF) == m, and the accumulate loop already
+// continues on -INF entries. Windowed/offset ranges keep the full scan.
+__device__ __forceinline__ int64_t glimmer_combine_scan(
+    int64_t n_splits, const int64_t* key_end_dev, int64_t split_keys,
+    int64_t key_begin, int64_t window) {
+  if (key_end_dev == nullptr || key_begin != 0 || window != 0 || split_keys <= 0)
+    return n_splits;
+  const int64_t live = *key_end_dev;
+  const int64_t active = live <= 0 ? 0 : (live + split_keys - 1) / split_keys;
+  return active < n_splits ? active : n_splits;
+}
+
 __global__ void muse_glimmer_decode_attn_combine_kernel(
     const float* __restrict__ partials, uint16_t* __restrict__ out,
-    int64_t n_q_heads, int64_t n_splits, int64_t tokens) {
+    int64_t n_q_heads, int64_t n_splits, int64_t tokens,
+    const int64_t* __restrict__ key_end_dev, int64_t split_keys,
+    int64_t key_begin, int64_t window) {
   const int qh = blockIdx.x;
   const int token = blockIdx.y;
   const int lane = threadIdx.x;  // 128 threads, one per dim
   if (qh >= n_q_heads || token >= tokens) return;
+  const int64_t scan = glimmer_combine_scan(n_splits, key_end_dev, split_keys, key_begin, window);
   float m = -INFINITY;
   const int64_t stride = GLIMMER_HEAD_DIM + 2;
   const int64_t base = (int64_t)token * n_q_heads + qh;
   const int64_t tstride = tokens * n_q_heads * stride;
-  for (int64_t s = 0; s < n_splits; s++) {
+  for (int64_t s = 0; s < scan; s++) {
     float ms = partials[s * tstride + base * stride + GLIMMER_HEAD_DIM];
     m = fmaxf(m, ms);
   }
   float l = 0.0f;
   float acc = 0.0f;
-  for (int64_t s = 0; s < n_splits; s++) {
+  for (int64_t s = 0; s < scan; s++) {
     const float* p = partials + s * tstride + base * stride;
     float ms = p[GLIMMER_HEAD_DIM];
     if (ms == -INFINITY) continue;  // empty split: contributes exactly zero
@@ -79,22 +97,25 @@ __device__ __forceinline__ float glimmer_sigmoidf_stable(float value) {
 
 __global__ void muse_glimmer_decode_attn_combine_gated_kernel(
     const float* __restrict__ partials, const uint16_t* __restrict__ gate,
-    uint16_t* __restrict__ out, int64_t n_q_heads, int64_t n_splits, int64_t tokens) {
+    uint16_t* __restrict__ out, int64_t n_q_heads, int64_t n_splits, int64_t tokens,
+    const int64_t* __restrict__ key_end_dev, int64_t split_keys,
+    int64_t key_begin, int64_t window) {
   const int qh = blockIdx.x;
   const int token = blockIdx.y;
   const int lane = threadIdx.x;
   if (qh >= n_q_heads || token >= tokens) return;
+  const int64_t scan = glimmer_combine_scan(n_splits, key_end_dev, split_keys, key_begin, window);
   float m = -INFINITY;
   const int64_t stride = GLIMMER_HEAD_DIM + 2;
   const int64_t base = (int64_t)token * n_q_heads + qh;
   const int64_t tstride = tokens * n_q_heads * stride;
-  for (int64_t s = 0; s < n_splits; s++) {
+  for (int64_t s = 0; s < scan; s++) {
     float ms = partials[s * tstride + base * stride + GLIMMER_HEAD_DIM];
     m = fmaxf(m, ms);
   }
   float l = 0.0f;
   float acc = 0.0f;
-  for (int64_t s = 0; s < n_splits; s++) {
+  for (int64_t s = 0; s < scan; s++) {
     const float* p = partials + s * tstride + base * stride;
     float ms = p[GLIMMER_HEAD_DIM];
     if (ms == -INFINITY) continue;  // empty split: contributes exactly zero
@@ -363,10 +384,12 @@ extern "C" int hipengine_muse_glimmer_decode_attn_shared(
   dim3 cgrid(static_cast<unsigned>(n_q_heads), static_cast<unsigned>(tokens));
   if (gate != nullptr) {
     muse_glimmer_decode_attn_combine_gated_kernel<<<cgrid, 128, 0, stream>>>(
-        partials, gate, out, n_q_heads, n_blocks, tokens);
+        partials, gate, out, n_q_heads, n_blocks, tokens,
+        key_end_dev, split_keys, key_begin, window);
   } else {
     muse_glimmer_decode_attn_combine_kernel<<<cgrid, 128, 0, stream>>>(
-        partials, out, n_q_heads, n_blocks, tokens);
+        partials, out, n_q_heads, n_blocks, tokens,
+        key_end_dev, split_keys, key_begin, window);
   }
   return static_cast<int>(hipGetLastError());
 }
@@ -482,15 +505,26 @@ extern "C" int hipengine_muse_glimmer_qk_norm_rope_kv_append(
 // 256-thread block per row, the gemma4 tree reduction and expressions, and
 // stage 2 reads back the rounded residual this same thread stored, so both
 // outputs are bit-identical to the two-launch chain.
-#define GLIMMER_NORM_THREADS 256
+#define GLIMMER_NORM_THREADS 1024
 
 __device__ __forceinline__ void glimmer_block_sum(float* partial, float value) {
-  partial[threadIdx.x] = value;
+  // Warp-shuffle tree: 2 syncs instead of log2(threads) LDS rounds. The
+  // reduction order differs from the stride tree (production reassociation,
+  // gated by the norm oracle + end-to-end ID equality).
+#pragma unroll
+  for (int off = 16; off; off >>= 1) value += __shfl_down(value, off);
+  const int warp = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  if (lane == 0) partial[warp] = value;
   __syncthreads();
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-    if (threadIdx.x < stride) partial[threadIdx.x] += partial[threadIdx.x + stride];
-    __syncthreads();
+  const int nw = (static_cast<int>(blockDim.x) + 31) >> 5;
+  if (warp == 0) {
+    value = lane < nw ? partial[lane] : 0.f;
+#pragma unroll
+    for (int off = 16; off; off >>= 1) value += __shfl_down(value, off);
+    if (lane == 0) partial[0] = value;
   }
+  __syncthreads();
 }
 
 __global__ __launch_bounds__(GLIMMER_NORM_THREADS)
