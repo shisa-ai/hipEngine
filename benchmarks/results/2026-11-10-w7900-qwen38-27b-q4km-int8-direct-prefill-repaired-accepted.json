@@ -1,0 +1,1652 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_execution_profile_gguf_int8_direct_prefill_gate",
+  "status": "passed",
+  "created_at": "2026-11-10T21:28:15.847257+00:00",
+  "measurement_valid": true,
+  "performance_claim": false,
+  "candidate": {
+    "name": "int8_direct_prefill_flash",
+    "classification": "T2",
+    "mechanism": "prefill full-attention reads the retained INT8 K/V store directly with per-token/head scales through the GQA-grouped flash kernel (LDS tile staging, online softmax in registers), removing the BF16 oracle pair and the AOTriton bridge",
+    "strict_fallback": "pure-INT8 oracle-bridge prefill (BF16 oracle + AOTriton)",
+    "strict_environment": {
+      "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+      "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": "none",
+      "HIPENGINE_GGUF_INT8_PREFILL_DIRECT": "0",
+      "HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON": "1"
+    },
+    "candidate_environment": {
+      "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+      "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": "none",
+      "HIPENGINE_GGUF_INT8_PREFILL_DIRECT": "1",
+      "HIPENGINE_GGUF_INT8_PREFILL_KERNEL": "flash",
+      "HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON": "1"
+    }
+  },
+  "protocol": {
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "prompt_suites": [
+      "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "complete_prompt_and_heldout_suite": true,
+    "prompt_count": 18,
+    "baseline_gdn_mode": "chain_lds32_direct_nonvolatile",
+    "prefill_entry": "scalar_bulk",
+    "attn_aotriton_min_tokens": 512,
+    "min_prompt_rows": 4096,
+    "prompts_left_padded": true,
+    "aotriton_engaging_prompts": null,
+    "decode_steps": 24,
+    "teacher_forced_rows": 450,
+    "candidate_repeat_runs": 3,
+    "thresholds": {
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "max_kl_max": 0.05,
+      "top1_min": 0.99,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02
+    },
+    "kv_policy": "int8_per_token_head fp32 per-token-head scales"
+  },
+  "prompts": [
+    {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4056,
+      "prompt_token_ids_sha256": "0895e51fa1eda661cd441316d91405a7e1ecd56cf24db6d8e663c8a1d77d62d6"
+    },
+    {
+      "id": "code_topological_sort",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4046,
+      "prompt_token_ids_sha256": "4215090acb8b2530342e9ed12508a419cfb0c3becfc6daa4b7379e514635749f"
+    },
+    {
+      "id": "code_lru_cache",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4049,
+      "prompt_token_ids_sha256": "2e804d845476fecfee62c650b997e72c05fa9b2a3cd696edf627d6349321ad6b"
+    },
+    {
+      "id": "code_markdown_table",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4044,
+      "prompt_token_ids_sha256": "ae34eb84336686290cbdd53bb45f0022759f112b75c044b00d009803e79f4340"
+    },
+    {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4057,
+      "prompt_token_ids_sha256": "f789ff7b25e4057015ff4332c43b6ec9df2ed3aba3830302b60cd4bf4cffe5c9"
+    },
+    {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4056,
+      "prompt_token_ids_sha256": "f8dbb80520630a8b4499541920ee7f06265170a1acc9ce1b693b07871185d533"
+    },
+    {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4053,
+      "prompt_token_ids_sha256": "15068fe4412f5599668a684c76549a99a80bcd33faeb88345286719f8b76a658"
+    },
+    {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4053,
+      "prompt_token_ids_sha256": "929072f052312101ab0a563700f1c5f7541486a7960e264a4420b40b4ed0664d"
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4032,
+      "prompt_token_ids_sha256": "1799052f2683a231b7928ecc52c0c4bafdfe27edff7ed937682101e817354ed2"
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4025,
+      "prompt_token_ids_sha256": "101286c279f159adcc895fcfccf3d3bad5169d93456b1c74261b717219fc1036"
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "a64214894c73cc4db1253641e0c723b101dc8ef660d9f06fd063c5f59c97feb6",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4041,
+      "prompt_token_ids_sha256": "1c4eb449c7d7d80bf8f97f288a9fbb4d55698c554a63d63611fa0f53a41c12d9"
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "f9574bb80a26bb5b1c52b1811f2e6e1ec683f514b9c907b2530cd0afc96084cb",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4044,
+      "prompt_token_ids_sha256": "7f9687910aaf884a154773d84dd3ff005baaf2dc401c57d562b56cb7f9cc72ad"
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "32275637d440fd542e19fab51aaab79d6aedf068929f8ffa38ce9bd269f9044a",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4051,
+      "prompt_token_ids_sha256": "6522cbf3b09a63738db4b6219574aa3bc4c239e7ca510a68023ca9fc7a951129"
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "30d56cc8ef44e814daf6dd0f29dffaaea83b1d2705e956adce630ad8114d6288",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4040,
+      "prompt_token_ids_sha256": "1509fcde9390a7b4e57d1171412dec35b6a5195124f517cc288133d0af7de668"
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4043,
+      "prompt_token_ids_sha256": "0615b763a24757808d514d9b8bb2bc5804206ec7cdc856b4c35b7588488c1c44"
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4051,
+      "prompt_token_ids_sha256": "3b3254ae7ef1ad1a6258c9759b706d1857c4b31f11796e4a7af1c8b59689dfdb"
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "085fce890f18591f27cb6985e577ce959a5e44361dff79b6373fa854ee7e5a44",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4044,
+      "prompt_token_ids_sha256": "d5a8f572b8954435a2e5fee436990549c52760e8b109c6e8aa4b15cde6588a5b"
+    },
+    {
+      "id": "heldout_mixed_review",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "1d111758768713e15792e350917d879b0bb97c27c4ab2a0605026547fe191a61",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4040,
+      "prompt_token_ids_sha256": "6204c0e6460e0cb170de48159ec8432c84fdc4f7499194b6c0b675e5a62d47e5"
+    }
+  ],
+  "quality": {
+    "quality": {
+      "finite": true,
+      "top_k": 5,
+      "thresholds": {
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "max_kl_max": 0.05,
+        "top1_min": 0.99,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02
+      },
+      "summary": {
+        "rows": 450,
+        "kl_mean": 0.00017557007402432977,
+        "kl_p50": 1.6734494825935576e-05,
+        "kl_p95": 0.0008198638397318542,
+        "kl_p99": 0.0019745938709104407,
+        "kl_max": 0.0036920391198345024,
+        "top1_agreement": 1.0,
+        "top1_matches": 450,
+        "topk_overlap_mean": 0.9906666666666667,
+        "strict_teacher_nll_mean": 0.18236684041792034,
+        "candidate_teacher_nll_mean": 0.18185973600535452,
+        "teacher_nll_delta": -0.0005071044125658231,
+        "teacher_delta_p_mean": 0.00023017223012858942,
+        "strict_margin_min": 0.04159736633300781,
+        "max_abs_logit_delta": 1.7026371955871582,
+        "flip_eligible_rows": 24,
+        "flip_eligible_share": 0.05333333333333334,
+        "top1_mismatches_flip_eligible": 0,
+        "top1_mismatches_outside_flip_eligible": 0,
+        "diagnostics": {
+          "gating": false,
+          "rows": 450,
+          "sequence_count": 18,
+          "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+          "top1_flips": {
+            "rows": 450,
+            "flips": 0,
+            "rate": 0.0,
+            "wilson95_iid_rows": {
+              "low": 0.0,
+              "high": 0.008464318862970664
+            }
+          },
+          "margin_buckets": [
+            {
+              "lower_inclusive": 0.0,
+              "upper_exclusive": 0.05,
+              "rows": 2,
+              "flips": 0,
+              "rate": 0.0,
+              "wilson95_iid_rows": {
+                "low": 0.0,
+                "high": 0.6576197724933469
+              }
+            },
+            {
+              "lower_inclusive": 0.05,
+              "upper_exclusive": 0.5,
+              "rows": 33,
+              "flips": 0,
+              "rate": 0.0,
+              "wilson95_iid_rows": {
+                "low": 0.0,
+                "high": 0.10426999754245206
+              }
+            },
+            {
+              "lower_inclusive": 0.5,
+              "upper_exclusive": 2.0,
+              "rows": 90,
+              "flips": 0,
+              "rate": 0.0,
+              "wilson95_iid_rows": {
+                "low": 0.0,
+                "high": 0.04093562556432678
+              }
+            },
+            {
+              "lower_inclusive": 2.0,
+              "upper_exclusive": null,
+              "rows": 325,
+              "flips": 0,
+              "rate": 0.0,
+              "wilson95_iid_rows": {
+                "low": 0.0,
+                "high": 0.01168179594650424
+              }
+            }
+          ],
+          "total_variation": {
+            "mean": 0.0036551020599864537,
+            "min": 1.5659045488304954e-08,
+            "max": 0.03909019273245242,
+            "p05": 4.1401639543120944e-07,
+            "p50": 0.0005427160746987001,
+            "p95": 0.015205197969552739,
+            "p99": 0.026808147811052712
+          },
+          "entropy_delta_nats": {
+            "mean": -0.0008709048037962483,
+            "min": -0.1546376503113851,
+            "max": 0.07738007344299747,
+            "p05": -0.022536049452055538,
+            "p50": -2.2646283370923704e-05,
+            "p95": 0.016700136577662773,
+            "p99": 0.039717755741790345
+          },
+          "max_probability_delta": {
+            "mean": 0.00023017223012858942,
+            "min": -0.03876503190732827,
+            "max": 0.03218979532553912,
+            "p05": -0.007790411884779605,
+            "p50": 1.6161466867559149e-06,
+            "p95": 0.010977386574091912,
+            "p99": 0.0214218015726878
+          }
+        }
+      },
+      "by_scope": {
+        "category": {
+          "code": {
+            "rows": 150,
+            "kl_mean": 9.896046713089403e-05,
+            "kl_p50": 6.880243446992585e-07,
+            "kl_p95": 0.0004950370065748577,
+            "kl_p99": 0.0015657594058684436,
+            "kl_max": 0.0026808078286145688,
+            "top1_agreement": 1.0,
+            "top1_matches": 150,
+            "topk_overlap_mean": 0.9906666666666668,
+            "strict_teacher_nll_mean": 0.05506120315444962,
+            "candidate_teacher_nll_mean": 0.054836587236728865,
+            "teacher_nll_delta": -0.00022461591772075795,
+            "teacher_delta_p_mean": 0.0001867462381185736,
+            "strict_margin_min": 0.2206439971923828,
+            "max_abs_logit_delta": 0.7324533462524414,
+            "flip_eligible_rows": 1,
+            "flip_eligible_share": 0.006666666666666667,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 150,
+              "sequence_count": 6,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 150,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 1.734723475976807e-18,
+                  "high": 0.0249702443680766
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 0,
+                  "flips": 0,
+                  "rate": null,
+                  "wilson95_iid_rows": null
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 2,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.6576197724933469
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 18,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 1.3877787807814457e-17,
+                    "high": 0.17587922364665765
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 130,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 1.734723475976807e-18,
+                    "high": 0.028701561194431423
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.0018178501278291528,
+                "min": 1.5659045488304954e-08,
+                "max": 0.025510208450759023,
+                "p05": 1.1145664722689423e-07,
+                "p50": 1.3705410758640258e-05,
+                "p95": 0.011702328251601786,
+                "p99": 0.021078870385863018
+              },
+              "entropy_delta_nats": {
+                "mean": -0.0003455798681907667,
+                "min": -0.03622409106020433,
+                "max": 0.04940463483410529,
+                "p05": -0.010103930439786954,
+                "p50": -7.724849570593098e-06,
+                "p95": 0.009871650872599688,
+                "p99": 0.01852949579119197
+              },
+              "max_probability_delta": {
+                "mean": 0.0001867462381185736,
+                "min": -0.024283941138771747,
+                "max": 0.02083869448509912,
+                "p05": -0.0031490564468946046,
+                "p50": 1.2645214179096698e-06,
+                "p95": 0.004120944424132955,
+                "p99": 0.013503778080128391
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "general_en": {
+            "rows": 100,
+            "kl_mean": 0.00018620406876577474,
+            "kl_p50": 4.513423894674353e-05,
+            "kl_p95": 0.0006510529026036136,
+            "kl_p99": 0.0018533372851112363,
+            "kl_max": 0.002093425324993667,
+            "top1_agreement": 1.0,
+            "top1_matches": 100,
+            "topk_overlap_mean": 0.992,
+            "strict_teacher_nll_mean": 0.24613562853940857,
+            "candidate_teacher_nll_mean": 0.24408756886741018,
+            "teacher_nll_delta": -0.0020480596719983923,
+            "teacher_delta_p_mean": 0.001142619244446071,
+            "strict_margin_min": 0.047779083251953125,
+            "max_abs_logit_delta": 1.7026371955871582,
+            "flip_eligible_rows": 6,
+            "flip_eligible_share": 0.06,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 100,
+              "sequence_count": 4,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 100,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 3.469446951953614e-18,
+                  "high": 0.03699349820698568
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 1,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.7934506856227626
+                  }
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 8,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.32440756488388023
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 30,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 6.938893903907228e-18,
+                    "high": 0.11351339317396875
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 61,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.059243867898112826
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.00426656858160334,
+                "min": 7.540616180411767e-07,
+                "max": 0.029546232424404517,
+                "p05": 1.0259311553095993e-05,
+                "p50": 0.0011299543992583665,
+                "p95": 0.015022448591792296,
+                "p99": 0.028070098036947985
+              },
+              "entropy_delta_nats": {
+                "mean": -0.001886742556932848,
+                "min": -0.037370792534797914,
+                "max": 0.019259067907571037,
+                "p05": -0.019562085888338132,
+                "p50": -0.00018798493073151007,
+                "p95": 0.009561831679213139,
+                "p99": 0.01358252679507661
+              },
+              "max_probability_delta": {
+                "mean": 0.001142619244446071,
+                "min": -0.022423253196291737,
+                "max": 0.029207278997466335,
+                "p05": -0.005628807171742983,
+                "p50": 6.673413222857416e-06,
+                "p95": 0.01200510634886775,
+                "p99": 0.028058585892130308
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "general_ja": {
+            "rows": 100,
+            "kl_mean": 0.0002786909336462106,
+            "kl_p50": 9.42764016130301e-05,
+            "kl_p95": 0.001028857779599512,
+            "kl_p99": 0.002352604796738576,
+            "kl_max": 0.0036920391198345024,
+            "top1_agreement": 1.0,
+            "top1_matches": 100,
+            "topk_overlap_mean": 0.9860000000000001,
+            "strict_teacher_nll_mean": 0.2785935105886549,
+            "candidate_teacher_nll_mean": 0.27935354365564047,
+            "teacher_nll_delta": 0.000760033066985577,
+            "teacher_delta_p_mean": -0.000896198164850234,
+            "strict_margin_min": 0.07970809936523438,
+            "max_abs_logit_delta": 0.9416933059692383,
+            "flip_eligible_rows": 10,
+            "flip_eligible_share": 0.1,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 100,
+              "sequence_count": 4,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 100,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 3.469446951953614e-18,
+                  "high": 0.03699349820698568
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 0,
+                  "flips": 0,
+                  "rate": null,
+                  "wilson95_iid_rows": null
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 14,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.21531080273763584
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 24,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.1379762046749802
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 62,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.058344072101372484
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.005657423937999236,
+                "min": 4.930320095759205e-08,
+                "max": 0.03909019273245242,
+                "p05": 3.0844034992557575e-06,
+                "p50": 0.003529339481638117,
+                "p95": 0.020678692062989012,
+                "p99": 0.030361344231979663
+              },
+              "entropy_delta_nats": {
+                "mean": 0.0012013050416466216,
+                "min": -0.042845061486168845,
+                "max": 0.07738007344299747,
+                "p05": -0.02456495959576045,
+                "p50": -2.875546381150639e-06,
+                "p95": 0.022279877090792193,
+                "p99": 0.07349741301964674
+              },
+              "max_probability_delta": {
+                "mean": -0.000896198164850234,
+                "min": -0.03876503190732827,
+                "max": 0.021690472252922977,
+                "p05": -0.014911823377734204,
+                "p50": -6.58053577073936e-07,
+                "p95": 0.011640160598282172,
+                "p99": 0.021147647817345797
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "mixed_ja_en": {
+            "rows": 100,
+            "kl_mean": 0.00017672963000115761,
+            "kl_p50": 2.8738490036634953e-05,
+            "kl_p95": 0.0006447907696964457,
+            "kl_p99": 0.0013425164330141952,
+            "kl_max": 0.0033470521534561056,
+            "top1_agreement": 1.0,
+            "top1_matches": 100,
+            "topk_overlap_mean": 0.9940000000000001,
+            "strict_teacher_nll_mean": 0.21332983802090363,
+            "candidate_teacher_nll_mean": 0.2126728186459512,
+            "teacher_nll_delta": -0.0006570193749524389,
+            "teacher_delta_p_mean": 0.0005092345988049552,
+            "strict_margin_min": 0.04159736633300781,
+            "max_abs_logit_delta": 0.4631146192550659,
+            "flip_eligible_rows": 7,
+            "flip_eligible_share": 0.07,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 100,
+              "sequence_count": 4,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 100,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 3.469446951953614e-18,
+                  "high": 0.03699349820698568
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 1,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.7934506856227626
+                  }
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 9,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 2.7755575615628914e-17,
+                    "high": 0.29914504841954404
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 18,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 1.3877787807814457e-17,
+                    "high": 0.17587922364665765
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 72,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.05065117259645781
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.0037971915585927342,
+                "min": 6.812796666516621e-08,
+                "max": 0.032568042699425,
+                "p05": 3.2712224534514624e-06,
+                "p50": 0.0009811145342579369,
+                "p95": 0.012445578517569736,
+                "p99": 0.021502909429885534
+              },
+              "entropy_delta_nats": {
+                "mean": -0.0027152642995107406,
+                "min": -0.1546376503113851,
+                "max": 0.037904951431519174,
+                "p05": -0.02608400020991559,
+                "p50": -0.00022912519959095916,
+                "p95": 0.024822015403244142,
+                "p99": 0.03580048940171962
+              },
+              "max_probability_delta": {
+                "mean": 0.0005092345988049552,
+                "min": -0.01735565111788595,
+                "max": 0.03218979532553912,
+                "p05": -0.009683408765301221,
+                "p50": 1.139730088417501e-05,
+                "p95": 0.008483003600025305,
+                "p99": 0.01552353092213861
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          }
+        },
+        "shape": {
+          "c1": {
+            "rows": 432,
+            "kl_mean": 0.00016517509063241533,
+            "kl_p50": 1.409920253260474e-05,
+            "kl_p95": 0.0007470409768994684,
+            "kl_p99": 0.0020182462417981575,
+            "kl_max": 0.0036920391198345024,
+            "top1_agreement": 1.0,
+            "top1_matches": 432,
+            "topk_overlap_mean": 0.9907407407407407,
+            "strict_teacher_nll_mean": 0.1771660277080732,
+            "candidate_teacher_nll_mean": 0.1767250045105864,
+            "teacher_nll_delta": -0.00044102319748678953,
+            "teacher_delta_p_mean": 0.00017764227731334426,
+            "strict_margin_min": 0.04159736633300781,
+            "max_abs_logit_delta": 1.7026371955871582,
+            "flip_eligible_rows": 22,
+            "flip_eligible_share": 0.05092592592592592,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 432,
+              "sequence_count": 18,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 432,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 0.0,
+                  "high": 0.00881389033316931
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 2,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.6576197724933469
+                  }
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 31,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 6.938893903907228e-18,
+                    "high": 0.11025539546043595
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 81,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 3.469446951953614e-18,
+                    "high": 0.0452780854324152
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 318,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.011935873130733904
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.0034954132167008987,
+                "min": 1.5659045488304954e-08,
+                "max": 0.03909019273245242,
+                "p05": 3.6448789739875066e-07,
+                "p50": 0.00043635370742519335,
+                "p95": 0.014950332611452207,
+                "p99": 0.02726624405586227
+              },
+              "entropy_delta_nats": {
+                "mean": -0.0007294728390700107,
+                "min": -0.1546376503113851,
+                "max": 0.07738007344299747,
+                "p05": -0.019624490677925717,
+                "p50": -2.2387771385261535e-05,
+                "p95": 0.014748963384844297,
+                "p99": 0.04035756902776844
+              },
+              "max_probability_delta": {
+                "mean": 0.00017764227731334426,
+                "min": -0.03876503190732827,
+                "max": 0.03218979532553912,
+                "p05": -0.0076848729382784356,
+                "p50": 1.6041400064947808e-06,
+                "p95": 0.010577707414137527,
+                "p99": 0.021048088962525604
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "prefill_last": {
+            "rows": 18,
+            "kl_mean": 0.0004250496754302754,
+            "kl_p50": 0.00031186919282994943,
+            "kl_p95": 0.0011185532689397394,
+            "kl_p99": 0.0012558510933824174,
+            "kl_max": 0.0012901755494930873,
+            "top1_agreement": 1.0,
+            "top1_matches": 18,
+            "topk_overlap_mean": 0.9888888888888889,
+            "strict_teacher_nll_mean": 0.3071863454542517,
+            "candidate_teacher_nll_mean": 0.30509329187978873,
+            "teacher_nll_delta": -0.0020930535744629886,
+            "teacher_delta_p_mean": 0.0014908910976944732,
+            "strict_margin_min": 0.2837638854980469,
+            "max_abs_logit_delta": 0.5546331405639648,
+            "flip_eligible_rows": 2,
+            "flip_eligible_share": 0.1111111111111111,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 18,
+              "sequence_count": 18,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 18,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 1.3877787807814457e-17,
+                  "high": 0.17587922364665765
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 0,
+                  "flips": 0,
+                  "rate": null,
+                  "wilson95_iid_rows": null
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 2,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.6576197724933469
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 9,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 2.7755575615628914e-17,
+                    "high": 0.29914504841954404
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 7,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 2.7755575615628914e-17,
+                    "high": 0.3543304350666875
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.007487634298839773,
+                "min": 0.00013831838743084244,
+                "max": 0.022404011892213624,
+                "p05": 0.0007853572456557454,
+                "p50": 0.006623441796124136,
+                "p95": 0.0186014348262618,
+                "p99": 0.021643496479023253
+              },
+              "entropy_delta_nats": {
+                "mean": -0.004265271957225942,
+                "min": -0.043325377977810664,
+                "max": 0.03577923220949941,
+                "p05": -0.03728928409784528,
+                "p50": -0.0021515207475027998,
+                "p95": 0.02640887297190115,
+                "p99": 0.03390516036197974
+              },
+              "max_probability_delta": {
+                "mean": 0.0014908910976944732,
+                "min": -0.011007004719386315,
+                "max": 0.021991824550901207,
+                "p05": -0.0058625909567131705,
+                "p50": 0.00011209922076982348,
+                "p95": 0.013168849813516539,
+                "p99": 0.020227229603424258
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          }
+        },
+        "transition": {
+          "prefill_to_c1": {
+            "rows": 18,
+            "kl_mean": 0.0004250496754302754,
+            "kl_p50": 0.00031186919282994943,
+            "kl_p95": 0.0011185532689397394,
+            "kl_p99": 0.0012558510933824174,
+            "kl_max": 0.0012901755494930873,
+            "top1_agreement": 1.0,
+            "top1_matches": 18,
+            "topk_overlap_mean": 0.9888888888888889,
+            "strict_teacher_nll_mean": 0.3071863454542517,
+            "candidate_teacher_nll_mean": 0.30509329187978873,
+            "teacher_nll_delta": -0.0020930535744629886,
+            "teacher_delta_p_mean": 0.0014908910976944732,
+            "strict_margin_min": 0.2837638854980469,
+            "max_abs_logit_delta": 0.5546331405639648,
+            "flip_eligible_rows": 2,
+            "flip_eligible_share": 0.1111111111111111,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 18,
+              "sequence_count": 18,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 18,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 1.3877787807814457e-17,
+                  "high": 0.17587922364665765
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 0,
+                  "flips": 0,
+                  "rate": null,
+                  "wilson95_iid_rows": null
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 2,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.6576197724933469
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 9,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 2.7755575615628914e-17,
+                    "high": 0.29914504841954404
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 7,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 2.7755575615628914e-17,
+                    "high": 0.3543304350666875
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.007487634298839773,
+                "min": 0.00013831838743084244,
+                "max": 0.022404011892213624,
+                "p05": 0.0007853572456557454,
+                "p50": 0.006623441796124136,
+                "p95": 0.0186014348262618,
+                "p99": 0.021643496479023253
+              },
+              "entropy_delta_nats": {
+                "mean": -0.004265271957225942,
+                "min": -0.043325377977810664,
+                "max": 0.03577923220949941,
+                "p05": -0.03728928409784528,
+                "p50": -0.0021515207475027998,
+                "p95": 0.02640887297190115,
+                "p99": 0.03390516036197974
+              },
+              "max_probability_delta": {
+                "mean": 0.0014908910976944732,
+                "min": -0.011007004719386315,
+                "max": 0.021991824550901207,
+                "p05": -0.0058625909567131705,
+                "p50": 0.00011209922076982348,
+                "p95": 0.013168849813516539,
+                "p99": 0.020227229603424258
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "steady": {
+            "rows": 432,
+            "kl_mean": 0.00016517509063241533,
+            "kl_p50": 1.409920253260474e-05,
+            "kl_p95": 0.0007470409768994684,
+            "kl_p99": 0.0020182462417981575,
+            "kl_max": 0.0036920391198345024,
+            "top1_agreement": 1.0,
+            "top1_matches": 432,
+            "topk_overlap_mean": 0.9907407407407407,
+            "strict_teacher_nll_mean": 0.1771660277080732,
+            "candidate_teacher_nll_mean": 0.1767250045105864,
+            "teacher_nll_delta": -0.00044102319748678953,
+            "teacher_delta_p_mean": 0.00017764227731334426,
+            "strict_margin_min": 0.04159736633300781,
+            "max_abs_logit_delta": 1.7026371955871582,
+            "flip_eligible_rows": 22,
+            "flip_eligible_share": 0.05092592592592592,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 432,
+              "sequence_count": 18,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 432,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 0.0,
+                  "high": 0.00881389033316931
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 2,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.6576197724933469
+                  }
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 31,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 6.938893903907228e-18,
+                    "high": 0.11025539546043595
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 81,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 3.469446951953614e-18,
+                    "high": 0.0452780854324152
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 318,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.011935873130733904
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.0034954132167008987,
+                "min": 1.5659045488304954e-08,
+                "max": 0.03909019273245242,
+                "p05": 3.6448789739875066e-07,
+                "p50": 0.00043635370742519335,
+                "p95": 0.014950332611452207,
+                "p99": 0.02726624405586227
+              },
+              "entropy_delta_nats": {
+                "mean": -0.0007294728390700107,
+                "min": -0.1546376503113851,
+                "max": 0.07738007344299747,
+                "p05": -0.019624490677925717,
+                "p50": -2.2387771385261535e-05,
+                "p95": 0.014748963384844297,
+                "p99": 0.04035756902776844
+              },
+              "max_probability_delta": {
+                "mean": 0.00017764227731334426,
+                "min": -0.03876503190732827,
+                "max": 0.03218979532553912,
+                "p05": -0.0076848729382784356,
+                "p50": 1.6041400064947808e-06,
+                "p95": 0.010577707414137527,
+                "p99": 0.021048088962525604
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          }
+        }
+      },
+      "scope_failures": [],
+      "scope_kl_advisories": [],
+      "rows_over_review_boundary": [],
+      "top1_mismatch_rows": [],
+      "hard_gates_passed": true,
+      "requires_outlier_review": false,
+      "eligible_for_automatic_admission": true
+    },
+    "repeat_determinism": {
+      "runs": 3,
+      "passed": true,
+      "mismatches": [],
+      "trajectory_sha256_by_prompt": [
+        [
+          "ea8f8af1bb05c8ba1a106052f0ce9fa38f9e87626a4b9a8c0f941c8808af33dc",
+          "ea8f8af1bb05c8ba1a106052f0ce9fa38f9e87626a4b9a8c0f941c8808af33dc",
+          "ea8f8af1bb05c8ba1a106052f0ce9fa38f9e87626a4b9a8c0f941c8808af33dc"
+        ],
+        [
+          "84799167c0fb5d8c644d66ef7fb00edaff6001afbe85c700e552b8e08dc9c6f5",
+          "84799167c0fb5d8c644d66ef7fb00edaff6001afbe85c700e552b8e08dc9c6f5",
+          "84799167c0fb5d8c644d66ef7fb00edaff6001afbe85c700e552b8e08dc9c6f5"
+        ],
+        [
+          "465e70a80141234bf353078732fbe02e8882bf15d3a3a2c079e5a5e1b4340d6b",
+          "465e70a80141234bf353078732fbe02e8882bf15d3a3a2c079e5a5e1b4340d6b",
+          "465e70a80141234bf353078732fbe02e8882bf15d3a3a2c079e5a5e1b4340d6b"
+        ],
+        [
+          "34427e9e21c5366a2d6d254fe311fc48e348988b6402603e586275333c58b807",
+          "34427e9e21c5366a2d6d254fe311fc48e348988b6402603e586275333c58b807",
+          "34427e9e21c5366a2d6d254fe311fc48e348988b6402603e586275333c58b807"
+        ],
+        [
+          "bdd96e5c71e7a05c37f166a3878a85010d9c300783d5fc6101f3a34a049a4fc6",
+          "bdd96e5c71e7a05c37f166a3878a85010d9c300783d5fc6101f3a34a049a4fc6",
+          "bdd96e5c71e7a05c37f166a3878a85010d9c300783d5fc6101f3a34a049a4fc6"
+        ],
+        [
+          "d883dcf4cf7fca5404a3a73c2453f95cb0e731f4b0259feb8de49c320c659300",
+          "d883dcf4cf7fca5404a3a73c2453f95cb0e731f4b0259feb8de49c320c659300",
+          "d883dcf4cf7fca5404a3a73c2453f95cb0e731f4b0259feb8de49c320c659300"
+        ],
+        [
+          "3277fe2bae3881e94e507185e1a4229e014ee539d7a28f3210149861162e3c6a",
+          "3277fe2bae3881e94e507185e1a4229e014ee539d7a28f3210149861162e3c6a",
+          "3277fe2bae3881e94e507185e1a4229e014ee539d7a28f3210149861162e3c6a"
+        ],
+        [
+          "77b6f3dc2a08d3c233aaba134fbd3062c5a7ab4754658736f2e2de82dfad6af1",
+          "77b6f3dc2a08d3c233aaba134fbd3062c5a7ab4754658736f2e2de82dfad6af1",
+          "77b6f3dc2a08d3c233aaba134fbd3062c5a7ab4754658736f2e2de82dfad6af1"
+        ],
+        [
+          "97cae8a4c5ea1f84c9e33e07279c8020383b1daafcf1db3b8bdb7361da7a494d",
+          "97cae8a4c5ea1f84c9e33e07279c8020383b1daafcf1db3b8bdb7361da7a494d",
+          "97cae8a4c5ea1f84c9e33e07279c8020383b1daafcf1db3b8bdb7361da7a494d"
+        ],
+        [
+          "4b1b3d923c905f6af07ed39cc98f9a2c9781b53c47c0e604bd141167bbde6625",
+          "4b1b3d923c905f6af07ed39cc98f9a2c9781b53c47c0e604bd141167bbde6625",
+          "4b1b3d923c905f6af07ed39cc98f9a2c9781b53c47c0e604bd141167bbde6625"
+        ],
+        [
+          "faa72f8e0d5540704187e8267b049423c64bae50112aee2559df224f389ef0f8",
+          "faa72f8e0d5540704187e8267b049423c64bae50112aee2559df224f389ef0f8",
+          "faa72f8e0d5540704187e8267b049423c64bae50112aee2559df224f389ef0f8"
+        ],
+        [
+          "333f8ad194b94ef64e4ad5fdbffc63663df10fd6ce42ea9e9679e4a92fbb5cea",
+          "333f8ad194b94ef64e4ad5fdbffc63663df10fd6ce42ea9e9679e4a92fbb5cea",
+          "333f8ad194b94ef64e4ad5fdbffc63663df10fd6ce42ea9e9679e4a92fbb5cea"
+        ],
+        [
+          "86c9d05e16b201210a62fd4b43a4d9c6cb0be92d3403bd8a94e29bbe4d8e6a54",
+          "86c9d05e16b201210a62fd4b43a4d9c6cb0be92d3403bd8a94e29bbe4d8e6a54",
+          "86c9d05e16b201210a62fd4b43a4d9c6cb0be92d3403bd8a94e29bbe4d8e6a54"
+        ],
+        [
+          "f7f19939d88a74ff1df0863d308a83e57fd152ce794ee5140fe09972c211ad79",
+          "f7f19939d88a74ff1df0863d308a83e57fd152ce794ee5140fe09972c211ad79",
+          "f7f19939d88a74ff1df0863d308a83e57fd152ce794ee5140fe09972c211ad79"
+        ],
+        [
+          "d4e6b0d63ab68840614a55324223a9270cd8ce80539e397c8759dd45a56bd71d",
+          "d4e6b0d63ab68840614a55324223a9270cd8ce80539e397c8759dd45a56bd71d",
+          "d4e6b0d63ab68840614a55324223a9270cd8ce80539e397c8759dd45a56bd71d"
+        ],
+        [
+          "d6199c96665810e0240394777a6becf16a61afd33bb411d1c8eebf08264855b7",
+          "d6199c96665810e0240394777a6becf16a61afd33bb411d1c8eebf08264855b7",
+          "d6199c96665810e0240394777a6becf16a61afd33bb411d1c8eebf08264855b7"
+        ],
+        [
+          "df9c7fa357933002006da788f12c3908b0c9ee261c53b1ca85d7024fe437a173",
+          "df9c7fa357933002006da788f12c3908b0c9ee261c53b1ca85d7024fe437a173",
+          "df9c7fa357933002006da788f12c3908b0c9ee261c53b1ca85d7024fe437a173"
+        ],
+        [
+          "4f39a9154654a99844f25fc9c293a4d70178fbd5efa10470c77eea675cd8b506",
+          "4f39a9154654a99844f25fc9c293a4d70178fbd5efa10470c77eea675cd8b506",
+          "4f39a9154654a99844f25fc9c293a4d70178fbd5efa10470c77eea675cd8b506"
+        ]
+      ]
+    },
+    "strict_logits_sha256": "b9b45555d4c7288b6c95bff450ae6c4bc929f1e6f5700ada6a4854325f2a8e89",
+    "candidate_logits_sha256": "710afefb9b6f38fd8abc538c253366029f09e5df2950ef56d62c2de49426d0bb",
+    "strict_selected_token_ids_sha256": "40ec0a6a503d330dd4bab10a53719f8a64eb46c9f91add4199b8887c2994ac4f"
+  },
+  "state_repeat_gate": {
+    "passed": true,
+    "mismatches": [],
+    "prompts": [
+      {
+        "prompt_id": "code_merge_intervals",
+        "strict_state_sha256": "8712aa0987487be6ab860d7b176c3be0d7b7771cf17a1ddca5e8a422ec323f3b",
+        "candidate_state_sha256": [
+          "c4096ed209581b2292dae65b2f22d95c88b00d055f3ee34afb26ef1ae717c7fb",
+          "c4096ed209581b2292dae65b2f22d95c88b00d055f3ee34afb26ef1ae717c7fb",
+          "c4096ed209581b2292dae65b2f22d95c88b00d055f3ee34afb26ef1ae717c7fb"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "code_topological_sort",
+        "strict_state_sha256": "d0fc8517d37b63711564add30470217e41dcdc963923ecd8f77e8939387c0d9d",
+        "candidate_state_sha256": [
+          "1ee23a4a391a0e50f4d52fb8960601c5b7054e32b85a3a6e00d2a2b271cf42e7",
+          "1ee23a4a391a0e50f4d52fb8960601c5b7054e32b85a3a6e00d2a2b271cf42e7",
+          "1ee23a4a391a0e50f4d52fb8960601c5b7054e32b85a3a6e00d2a2b271cf42e7"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "code_lru_cache",
+        "strict_state_sha256": "5d02f79f2ad96662df8f2f8d8def864fd1eff899575ab10543b273a9b9c434b0",
+        "candidate_state_sha256": [
+          "c4655cbb8bc33a7294060552499e1f6cbcfde40b0966d40e8c7a779724b26b57",
+          "c4655cbb8bc33a7294060552499e1f6cbcfde40b0966d40e8c7a779724b26b57",
+          "c4655cbb8bc33a7294060552499e1f6cbcfde40b0966d40e8c7a779724b26b57"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "code_markdown_table",
+        "strict_state_sha256": "955fd9a2aa7f88608e80acadf2c2a5fa5263ddcfbc89596fd8567bb953301bd8",
+        "candidate_state_sha256": [
+          "573af1dd4d92bd0837603adddd765627ce6ea09d5b1b5d0114959ce4c3c3b998",
+          "573af1dd4d92bd0837603adddd765627ce6ea09d5b1b5d0114959ce4c3c3b998",
+          "573af1dd4d92bd0837603adddd765627ce6ea09d5b1b5d0114959ce4c3c3b998"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "general_en_plan",
+        "strict_state_sha256": "1bff2931fdbaff35ae4d4e8f4ce00b8452ad85210131adbcd337c6e1582923e9",
+        "candidate_state_sha256": [
+          "cf99fd2296d99a6960e0f5865510dc32db0ef953d4427fbeccd2db5541feeb8d",
+          "cf99fd2296d99a6960e0f5865510dc32db0ef953d4427fbeccd2db5541feeb8d",
+          "cf99fd2296d99a6960e0f5865510dc32db0ef953d4427fbeccd2db5541feeb8d"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "general_en_explain",
+        "strict_state_sha256": "446d0a8331b32a44a2336c9f88ceda2ea6dc478ae3d3e210fa997286c2850fc1",
+        "candidate_state_sha256": [
+          "3963fdb5bfbafd14012e1724be96543522e01f1e50eb78a02060722b54c8e94f",
+          "3963fdb5bfbafd14012e1724be96543522e01f1e50eb78a02060722b54c8e94f",
+          "3963fdb5bfbafd14012e1724be96543522e01f1e50eb78a02060722b54c8e94f"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "general_ja_plan",
+        "strict_state_sha256": "ba334b537611383cb47eba692d8a24fc43b2a1eccf51fd0a63e0491e5627215e",
+        "candidate_state_sha256": [
+          "e9133e035a2b0e374a730d8b053a0be5516c73119b3291ddf8218f9d2a380ff4",
+          "e9133e035a2b0e374a730d8b053a0be5516c73119b3291ddf8218f9d2a380ff4",
+          "e9133e035a2b0e374a730d8b053a0be5516c73119b3291ddf8218f9d2a380ff4"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "general_ja_explain",
+        "strict_state_sha256": "25b258653155235e3ab81577f6dd1c4a6d012b684842e149ca30e42d63ff3278",
+        "candidate_state_sha256": [
+          "31419be7f57ca3b3388ada7538e9565fe1a96d0d0358517698a99ad0392b1543",
+          "31419be7f57ca3b3388ada7538e9565fe1a96d0d0358517698a99ad0392b1543",
+          "31419be7f57ca3b3388ada7538e9565fe1a96d0d0358517698a99ad0392b1543"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "mixed_ja_en_translate",
+        "strict_state_sha256": "bf1cca80d0063c56ab377cdbb820f0bcb65f97a7cdff8609b5c58526952a345d",
+        "candidate_state_sha256": [
+          "69931fc21efccca6b315e8c27de1bb45d89b9dab04ddb09319d3df30e77c7832",
+          "69931fc21efccca6b315e8c27de1bb45d89b9dab04ddb09319d3df30e77c7832",
+          "69931fc21efccca6b315e8c27de1bb45d89b9dab04ddb09319d3df30e77c7832"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "mixed_ja_en_review",
+        "strict_state_sha256": "555f5e648b3884bfa4d82ebbd61727676028b587deebca3fcfc56e6e1881d6ab",
+        "candidate_state_sha256": [
+          "f6b324f7e656be1c72a394987241b217c134e343bba252d6e6a7097ef1fcc164",
+          "f6b324f7e656be1c72a394987241b217c134e343bba252d6e6a7097ef1fcc164",
+          "f6b324f7e656be1c72a394987241b217c134e343bba252d6e6a7097ef1fcc164"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_code_rate_limiter",
+        "strict_state_sha256": "9a381b91ab00b015eec16f9cbe2041d540766013313a1743e84f873fcf916235",
+        "candidate_state_sha256": [
+          "d677f77e3c356ec160cbb2874c054d0fce0427503d35893f4c7cb38d4635bf67",
+          "d677f77e3c356ec160cbb2874c054d0fce0427503d35893f4c7cb38d4635bf67",
+          "d677f77e3c356ec160cbb2874c054d0fce0427503d35893f4c7cb38d4635bf67"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_code_interval_schedule",
+        "strict_state_sha256": "3d611c218ed35b776022d35355f337cc7c277a3a88ab73be2bd1102c59ddb516",
+        "candidate_state_sha256": [
+          "7a91400ab992a7e353627a3f2f6dac7c23cee201e8faf1d95c4771cecf7e4389",
+          "7a91400ab992a7e353627a3f2f6dac7c23cee201e8faf1d95c4771cecf7e4389",
+          "7a91400ab992a7e353627a3f2f6dac7c23cee201e8faf1d95c4771cecf7e4389"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_general_en_incident",
+        "strict_state_sha256": "7a86c1b78c4f495b294dbe03cfbd03bfc8b190472328ab45f24eb5ec4dba18b4",
+        "candidate_state_sha256": [
+          "d976136b73457db22bc1085675d4658e75c61abfeadf5988de407051ee6f9216",
+          "d976136b73457db22bc1085675d4658e75c61abfeadf5988de407051ee6f9216",
+          "d976136b73457db22bc1085675d4658e75c61abfeadf5988de407051ee6f9216"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_general_en_quant",
+        "strict_state_sha256": "1ff3b420465e2e5c8828f361db6dd6ec0a60af6e81c57d675ba8ef4340117c77",
+        "candidate_state_sha256": [
+          "e10b978904a5b48d23c628d48e74908d4decc8878ce6407c50ab12d733a98528",
+          "e10b978904a5b48d23c628d48e74908d4decc8878ce6407c50ab12d733a98528",
+          "e10b978904a5b48d23c628d48e74908d4decc8878ce6407c50ab12d733a98528"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_general_ja_migration",
+        "strict_state_sha256": "95b2b9370af841b015daa1f8a0d71b055be37706ef097b63bcbf1b5bc34df861",
+        "candidate_state_sha256": [
+          "ee9af14e2c8b96b8e587186098e51969cd42192e53d6a389506693fb67649c7d",
+          "ee9af14e2c8b96b8e587186098e51969cd42192e53d6a389506693fb67649c7d",
+          "ee9af14e2c8b96b8e587186098e51969cd42192e53d6a389506693fb67649c7d"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_general_ja_speculative",
+        "strict_state_sha256": "b39ef6eb2eca08d4d72677dedb2c79863a2ff70a8e20d6df4fc5c2a16c8b4a7c",
+        "candidate_state_sha256": [
+          "b12fd3c675b2ef876598e683673eab4fb20e5039ce0c6bea5c08e9c21cf89dd4",
+          "b12fd3c675b2ef876598e683673eab4fb20e5039ce0c6bea5c08e9c21cf89dd4",
+          "b12fd3c675b2ef876598e683673eab4fb20e5039ce0c6bea5c08e9c21cf89dd4"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_mixed_summary",
+        "strict_state_sha256": "9c1f727855e5d8b4200d5f37af1adf0170febb9aa4a80ce6710327da4166e675",
+        "candidate_state_sha256": [
+          "bc481143c58626999fd376c3ec48edec452f746ea02f4c8bb7c937a8c08bf8e6",
+          "bc481143c58626999fd376c3ec48edec452f746ea02f4c8bb7c937a8c08bf8e6",
+          "bc481143c58626999fd376c3ec48edec452f746ea02f4c8bb7c937a8c08bf8e6"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_mixed_review",
+        "strict_state_sha256": "ed3fe31020888f55ff6dfb900550efc50e4aa4b0c5b5669b6716828eab542c79",
+        "candidate_state_sha256": [
+          "f4340d143db957249b6273be9deb4cba8ba7546cc3deb4c311010a958ba3c38e",
+          "f4340d143db957249b6273be9deb4cba8ba7546cc3deb4c311010a958ba3c38e",
+          "f4340d143db957249b6273be9deb4cba8ba7546cc3deb4c311010a958ba3c38e"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      }
+    ]
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 3,
+    "collected_at": "2026-11-10T21:28:15.847115+00:00",
+    "host_name": "epyc",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "757b2cc1e250d78392453099d34d9ebcf0520b78",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "dirty_paths": [],
+    "dirty_path_count": 0,
+    "untracked_paths": [],
+    "execution_affecting_dirty": false,
+    "execution_affecting_paths": [],
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+      "size_bytes": 17106773984,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "int8_per_token_head_fp32_scale",
+    "command": [
+      "python3",
+      "/home/lhl/hipEngine/scripts/execution_profile_gguf_int8_direct_prefill_gate.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--kernel",
+      "flash",
+      "--min-prompt-rows",
+      "4096",
+      "--decode-steps",
+      "24",
+      "--repeat-runs",
+      "3",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--json",
+      "/tmp/int8-direct-prefill-repaired.json"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": "gfx1100",
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_GGUF_DECODE_REPACK": "0",
+      "strict_route_environment": "{'HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG': '1', 'HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS': 'none', 'HIPENGINE_GGUF_INT8_PREFILL_DIRECT': '0', 'HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON': '1'}",
+      "candidate_route_environment": "{'HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG': '1', 'HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS': 'none', 'HIPENGINE_GGUF_INT8_PREFILL_DIRECT': '1', 'HIPENGINE_GGUF_INT8_PREFILL_KERNEL': 'flash', 'HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON': '1'}"
+    },
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": "execution_profile_gguf_int8_direct_prefill_gate",
+    "timing_protocol": "none_full_logits_and_state_only_v1",
+    "warmups": 0,
+    "repetitions": 3,
+    "profiler": {
+      "enabled": false,
+      "kind": null,
+      "command": null
+    }
+  }
+}

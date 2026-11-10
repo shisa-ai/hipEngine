@@ -1304,17 +1304,21 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 
 Scope: `HIPENGINE_GGUF_INT8_PREFILL_DIRECT`.
 
-Done when: Remaining evaluation: the historical direct-prefill rejection was measured before the
-dtype-adapter repair. It records an observed failure, not proof that the entire discrepancy is inherent INT8
-quantization error. Preserve the artifact, but rerun the calibrated same-prefix evaluator before
-making a new quality claim or changing the arithmetic default. Start with `python
+Done when: Per-token-head numerical choice resolved; tail-four Hadamard and task gates remain.
+The historical rejection was a gate false-pass (both arms ran BF16), not inherent INT8 error.
+Three harness defects (env timing, `kv_capability=None`, cached lifetime plan) were fixed in the
+gate, and the full calibrated same-prefix evaluator now passes for the direct per-token-head INT8
+route: 18 prompts × 3 repeats, 3456 direct flash-leaf launches, `kl_mean=1.76e-4`, `top1=1.0`,
+state-repeat clean. See
+[`worklog/entries/20261110T213027.483989Z-lhl-r0404-full-gate-verdict-5e70bf.md`](../worklog/entries/20261110T213027.483989Z-lhl-r0404-full-gate-verdict-5e70bf.md)
+and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-int8-direct-prefill-repaired-accepted.json`.
+Before any arithmetic-default promotion, complete the execution-profile task gates and separate
+tail-four Hadamard coverage; the per-token evaluator does not establish Hadamard or task quality.
+Clearing command (already run for per-token-head): `python
 scripts/execution_profile_gguf_int8_direct_prefill_gate.py --model "$GGUF_MODEL" --backend
 hip_gfx1100 --kernel flash --min-prompt-rows 4096 --decode-steps 24 --repeat-runs 3
 --use-wmma-prefill --use-gemv-decode --json /tmp/int8-direct-prefill-repaired.json` in the ROCm
-environment. Complete the execution-profile category/heldout, shape, repeat/isolation and task
-gates, including separate tail-four coverage; this per-token evaluator does not establish Hadamard
-quality. Preserve explicit direct execution and the oracle path while resolving that numerical
-choice.
+environment. Preserve explicit direct execution and the oracle path.
 
 ### R0459 — Row-split GDN recurrence removal decision
 
