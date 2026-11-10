@@ -22,10 +22,12 @@ DFlash decode is at parity between the two engines (0.7% apart); each is
 about 2.1x its own no-draft AR. hipEngine's generated IDs equal true greedy
 AR token-for-token on every prompt: the block verify is bit-identical to AR,
 so speculation changes only how many tokens commit per forward, never the
-output. Short-prompt prefill is overhead-dominated on both engines (median
-TTFT 0.44-0.52 s here); long-prompt prefill is not yet paired.
+output. hipEngine leads prefill at every measured shape, 1.10-1.20x over
+llama.cpp from 512 to 131K context (371.6 vs 338.4 tok/s at 131K); at short
+prompts both engines are overhead-dominated.
 [hipEngine artifact](results/2026-11-09-gfx1151-muse-glimmer-depth-adaptive-ab.json) ·
-[llama.cpp baseline](results/2026-11-10-gfx1151-muse-glimmer-llamacpp-head-mtpbench.json).
+[llama.cpp baseline](results/2026-11-10-gfx1151-muse-glimmer-llamacpp-head-mtpbench.json) ·
+[prefill pairing](results/2026-11-10-gfx1151-muse-prefill-padding-ab-diagnostic.json).
 
 ## 16K INT8/MTP with and without DMS — RX 7900 XTX
 
