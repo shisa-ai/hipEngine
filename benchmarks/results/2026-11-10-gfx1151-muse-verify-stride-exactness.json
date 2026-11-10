@@ -1,0 +1,1068 @@
+{
+  "schema": 1,
+  "kind": "muse_glimmer_hipengine_dflash_mtpbench",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "date": "2026-11-10",
+  "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified)",
+  "model_path": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+  "draft_path": "/models/gguf/Muse-Glimmer-30B-GGUF/dflash-Muse-Glimmer-30B-Q4_K_M.gguf",
+  "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "max_tokens": 512,
+  "candidate_budget": 4,
+  "adaptive_depth": true,
+  "repeats": 1,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 3,
+    "collected_at": "2026-11-10T10:54:55.128248+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "4930c76172f16d004f156dc68004810e3f251e4e",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": true,
+    "dirty_paths": [
+      "hipengine/kernels/hip_gfx1100/attention/muse_glimmer_decode_attention.hip"
+    ],
+    "dirty_path_count": 1,
+    "untracked_paths": [],
+    "execution_affecting_dirty": true,
+    "execution_affecting_paths": [
+      "hipengine/kernels/hip_gfx1100/attention/muse_glimmer_decode_attention.hip"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "0c34990e9926ceab29c14f6f253b5b90d7c48c204d1aa88d866c785220ce189e",
+      "size_bytes": 16756683904,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8377817664,
+        16755635328
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "f16/f16",
+    "command": [
+      "scripts/muse_glimmer_dflash_bench.py",
+      "--max-tokens",
+      "512",
+      "--output",
+      "benchmarks/results/2026-11-10-gfx1151-muse-verify-stride-exactness.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": "post-prefill decode wall; output transitions; per-cycle logits readback sync",
+    "warmups": null,
+    "repetitions": 1,
+    "profiler": null
+  },
+  "gate_b_target_tok_s": 21.3,
+  "exactness_all": true,
+  "ar_summary": {
+    "generated_tokens": 3496,
+    "decode_wall_s": 271.88911338709295,
+    "decode_tok_s": 12.858183089599061,
+    "transition_normalized_tok_s": 12.821403389686019,
+    "per_request_decode_tok_s_median": 12.846790272830333
+  },
+  "dflash_summary": {
+    "generated_tokens": 3496,
+    "decode_wall_s": 126.843187388964,
+    "decode_tok_s": 27.561590590431425,
+    "transition_normalized_tok_s": 27.482753088742548,
+    "per_request_decode_tok_s_median": 23.871092756135383
+  },
+  "speedup_vs_ar": 2.143505843584223,
+  "beats_gate_b": true,
+  "economics": {
+    "proposed": 4192,
+    "accepted": 2313,
+    "acceptance": 0.5517652671755725,
+    "committed": 3496,
+    "target_forwards": 1200,
+    "tokens_per_target_forward": 2.9133333333333336
+  },
+  "rows": [
+    {
+      "repeat": 0,
+      "id": "code_merge_intervals",
+      "category": "code",
+      "prompt_tokens": 30,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.42751742200925946,
+      "ar_decode_s": 39.86017651995644,
+      "spec_prefill_s": 0.43237389699788764,
+      "spec_decode_s": 12.759691632003523,
+      "exact": true,
+      "proposed": 556,
+      "accepted": 400,
+      "committed": 512,
+      "target_forwards": 116,
+      "draft_forwards": 115,
+      "acceptance": 0.7194244604316546,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 5,
+        "cycles": 115,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9703369140625
+          },
+          {
+            "cycle": 12,
+            "action": "revert",
+            "from": 5,
+            "to": 4,
+            "probe_rate": 0.03275476146853717,
+            "base_rate": 0.04441867631303488
+          },
+          {
+            "cycle": 32,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9563152298291403
+          },
+          {
+            "cycle": 36,
+            "action": "keep",
+            "from": 4,
+            "to": 5,
+            "probe_rate": 0.04478791436432848,
+            "base_rate": 0.04332196068317748
+          },
+          {
+            "cycle": 88,
+            "action": "probe",
+            "from": 5,
+            "to": 6,
+            "acceptance_ewma": 0.8179537370094884
+          },
+          {
+            "cycle": 92,
+            "action": "revert",
+            "from": 6,
+            "to": 5,
+            "probe_rate": 0.029071317951415213,
+            "base_rate": 0.045375730144725596
+          },
+          {
+            "cycle": 112,
+            "action": "probe",
+            "from": 5,
+            "to": 6,
+            "acceptance_ewma": 0.9572775610027241
+          }
+        ],
+        "stats": {
+          "4": {
+            "samples": 27,
+            "tokens_per_ms": 0.04332196068317748,
+            "acceptance_ewma": 0.9563152298291403
+          },
+          "5": {
+            "samples": 80,
+            "tokens_per_ms": 0.05135983138610653,
+            "acceptance_ewma": 0.9572775610027241
+          },
+          "6": {
+            "samples": 8,
+            "tokens_per_ms": 0.0354346217796538,
+            "acceptance_ewma": 0.51318359375
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "code_topological_sort",
+      "category": "code",
+      "prompt_tokens": 39,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.5192348519922234,
+      "ar_decode_s": 39.862166912993416,
+      "spec_prefill_s": 0.44562428403878585,
+      "spec_decode_s": 12.01658612396568,
+      "exact": true,
+      "proposed": 534,
+      "accepted": 407,
+      "committed": 512,
+      "target_forwards": 107,
+      "draft_forwards": 106,
+      "acceptance": 0.7621722846441947,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 6,
+        "cycles": 106,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9703369140625
+          },
+          {
+            "cycle": 12,
+            "action": "revert",
+            "from": 5,
+            "to": 4,
+            "probe_rate": 0.04147830443481244,
+            "base_rate": 0.044386680393621085
+          },
+          {
+            "cycle": 48,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9594867997570511
+          },
+          {
+            "cycle": 52,
+            "action": "keep",
+            "from": 4,
+            "to": 5,
+            "probe_rate": 0.045941885161934,
+            "base_rate": 0.04362834994134194
+          },
+          {
+            "cycle": 64,
+            "action": "probe",
+            "from": 5,
+            "to": 6,
+            "acceptance_ewma": 0.9128534120798577
+          },
+          {
+            "cycle": 68,
+            "action": "keep",
+            "from": 5,
+            "to": 6,
+            "probe_rate": 0.06014423064553793,
+            "base_rate": 0.04988196061841414
+          },
+          {
+            "cycle": 80,
+            "action": "probe",
+            "from": 6,
+            "to": 7,
+            "acceptance_ewma": 0.9013716876506805
+          },
+          {
+            "cycle": 84,
+            "action": "revert",
+            "from": 7,
+            "to": 6,
+            "probe_rate": 0.04945242394909545,
+            "base_rate": 0.05530378764652681
+          }
+        ],
+        "stats": {
+          "4": {
+            "samples": 43,
+            "tokens_per_ms": 0.04362834994134194,
+            "acceptance_ewma": 0.9594867997570511
+          },
+          "5": {
+            "samples": 20,
+            "tokens_per_ms": 0.04988196061841414,
+            "acceptance_ewma": 0.9128534120798577
+          },
+          "6": {
+            "samples": 39,
+            "tokens_per_ms": 0.03500790722300115,
+            "acceptance_ewma": 0.5144406008221423
+          },
+          "7": {
+            "samples": 4,
+            "tokens_per_ms": 0.04945242394909545,
+            "acceptance_ewma": 1.0
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "code_lru_cache",
+      "category": "code",
+      "prompt_tokens": 36,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.5193960280157626,
+      "ar_decode_s": 39.86038880801061,
+      "spec_prefill_s": 0.44256801396841183,
+      "spec_decode_s": 13.246087436040398,
+      "exact": true,
+      "proposed": 526,
+      "accepted": 392,
+      "committed": 512,
+      "target_forwards": 121,
+      "draft_forwards": 120,
+      "acceptance": 0.7452471482889734,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 5,
+        "cycles": 120,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9703369140625
+          },
+          {
+            "cycle": 12,
+            "action": "revert",
+            "from": 5,
+            "to": 4,
+            "probe_rate": 0.03863178315024014,
+            "base_rate": 0.04435461976663683
+          },
+          {
+            "cycle": 64,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.969649625053666
+          },
+          {
+            "cycle": 68,
+            "action": "revert",
+            "from": 5,
+            "to": 4,
+            "probe_rate": 0.04283316347209269,
+            "base_rate": 0.04389571493833
+          },
+          {
+            "cycle": 88,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9446524800342309
+          },
+          {
+            "cycle": 92,
+            "action": "keep",
+            "from": 4,
+            "to": 5,
+            "probe_rate": 0.05010287982481057,
+            "base_rate": 0.04293192366184999
+          },
+          {
+            "cycle": 96,
+            "action": "probe",
+            "from": 5,
+            "to": 6,
+            "acceptance_ewma": 0.9751318639144301
+          },
+          {
+            "cycle": 100,
+            "action": "revert",
+            "from": 6,
+            "to": 5,
+            "probe_rate": 0.051609446282072834,
+            "base_rate": 0.0522217658466997
+          },
+          {
+            "cycle": 120,
+            "action": "probe",
+            "from": 5,
+            "to": 6,
+            "acceptance_ewma": 0.9946953646909741
+          }
+        ],
+        "stats": {
+          "4": {
+            "samples": 79,
+            "tokens_per_ms": 0.04293192366184999,
+            "acceptance_ewma": 0.9446524800342309
+          },
+          "5": {
+            "samples": 36,
+            "tokens_per_ms": 0.053035410440491246,
+            "acceptance_ewma": 0.9946953646909741
+          },
+          "6": {
+            "samples": 5,
+            "tokens_per_ms": 0.05370168631940634,
+            "acceptance_ewma": 0.875
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "code_markdown_table",
+      "category": "code",
+      "prompt_tokens": 42,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.5224227429716848,
+      "ar_decode_s": 39.86017634102609,
+      "spec_prefill_s": 0.4477212040219456,
+      "spec_decode_s": 15.2842951840139,
+      "exact": true,
+      "proposed": 546,
+      "accepted": 374,
+      "committed": 512,
+      "target_forwards": 141,
+      "draft_forwards": 140,
+      "acceptance": 0.684981684981685,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 6,
+        "cycles": 140,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9703369140625
+          },
+          {
+            "cycle": 12,
+            "action": "revert",
+            "from": 5,
+            "to": 4,
+            "probe_rate": 0.04323887557704127,
+            "base_rate": 0.04437683776612185
+          },
+          {
+            "cycle": 48,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.18392592121134854
+          },
+          {
+            "cycle": 52,
+            "action": "keep",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.029947010050803833,
+            "base_rate": 0.01657796106860366
+          },
+          {
+            "cycle": 64,
+            "action": "probe",
+            "from": 3,
+            "to": 4,
+            "acceptance_ewma": 0.8896600734442472
+          },
+          {
+            "cycle": 68,
+            "action": "revert",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.03369333395159724,
+            "base_rate": 0.03395906152868729
+          },
+          {
+            "cycle": 88,
+            "action": "probe",
+            "from": 3,
+            "to": 4,
+            "acceptance_ewma": 0.9336264576861848
+          },
+          {
+            "cycle": 92,
+            "action": "revert",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.029669718706955655,
+            "base_rate": 0.03484756056959651
+          },
+          {
+            "cycle": 112,
+            "action": "probe",
+            "from": 3,
+            "to": 4,
+            "acceptance_ewma": 0.8964201304261415
+          },
+          {
+            "cycle": 116,
+            "action": "keep",
+            "from": 3,
+            "to": 4,
+            "probe_rate": 0.04004641903513527,
+            "base_rate": 0.033943673106086376
+          },
+          {
+            "cycle": 120,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9560745541390621
+          },
+          {
+            "cycle": 124,
+            "action": "keep",
+            "from": 4,
+            "to": 5,
+            "probe_rate": 0.046105921379484424,
+            "base_rate": 0.04326041362379169
+          },
+          {
+            "cycle": 128,
+            "action": "probe",
+            "from": 5,
+            "to": 6,
+            "acceptance_ewma": 0.8629266738891601
+          },
+          {
+            "cycle": 132,
+            "action": "keep",
+            "from": 5,
+            "to": 6,
+            "probe_rate": 0.05647554359899806,
+            "base_rate": 0.04767390158513073
+          },
+          {
+            "cycle": 136,
+            "action": "probe",
+            "from": 6,
+            "to": 7,
+            "acceptance_ewma": 0.9360860188802084
+          },
+          {
+            "cycle": 140,
+            "action": "revert",
+            "from": 7,
+            "to": 6,
+            "probe_rate": 0.030562816605663186,
+            "base_rate": 0.05671059252387684
+          }
+        ],
+        "stats": {
+          "3": {
+            "samples": 56,
+            "tokens_per_ms": 0.033943673106086376,
+            "acceptance_ewma": 0.8964201304261415
+          },
+          "4": {
+            "samples": 59,
+            "tokens_per_ms": 0.04326041362379169,
+            "acceptance_ewma": 0.9560745541390621
+          },
+          "5": {
+            "samples": 12,
+            "tokens_per_ms": 0.04767390158513073,
+            "acceptance_ewma": 0.8629266738891601
+          },
+          "6": {
+            "samples": 9,
+            "tokens_per_ms": 0.05751898309356728,
+            "acceptance_ewma": 0.9520645141601562
+          },
+          "7": {
+            "samples": 4,
+            "tokens_per_ms": 0.030562816605663186,
+            "acceptance_ewma": 0.3683035714285714
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "general_en_plan",
+      "category": "general_en",
+      "prompt_tokens": 29,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.49141918402165174,
+      "ar_decode_s": 39.85312219901243,
+      "spec_prefill_s": 0.4382694020168856,
+      "spec_decode_s": 27.359462846943643,
+      "exact": true,
+      "proposed": 668,
+      "accepted": 248,
+      "committed": 512,
+      "target_forwards": 266,
+      "draft_forwards": 265,
+      "acceptance": 0.3712574850299401,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 2,
+        "cycles": 265,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.1578369140625
+          },
+          {
+            "cycle": 12,
+            "action": "keep",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.03267834799830596,
+            "base_rate": 0.015780104576526607
+          },
+          {
+            "cycle": 64,
+            "action": "probe",
+            "from": 3,
+            "to": 2,
+            "acceptance_ewma": 0.15742429639664238
+          },
+          {
+            "cycle": 68,
+            "action": "revert",
+            "from": 2,
+            "to": 3,
+            "probe_rate": 0.011593173235922495,
+            "base_rate": 0.014413841035637387
+          },
+          {
+            "cycle": 136,
+            "action": "probe",
+            "from": 3,
+            "to": 2,
+            "acceptance_ewma": 0.09780938425268694
+          },
+          {
+            "cycle": 140,
+            "action": "keep",
+            "from": 3,
+            "to": 2,
+            "probe_rate": 0.016938799413557033,
+            "base_rate": 0.012713458681230099
+          }
+        ],
+        "stats": {
+          "2": {
+            "samples": 134,
+            "tokens_per_ms": 0.019234219646871557,
+            "acceptance_ewma": 0.4814042315104966
+          },
+          "3": {
+            "samples": 124,
+            "tokens_per_ms": 0.012713458681230099,
+            "acceptance_ewma": 0.09780938425268694
+          },
+          "4": {
+            "samples": 7,
+            "tokens_per_ms": 0.015780104576526607,
+            "acceptance_ewma": 0.1578369140625
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "general_en_explain",
+      "category": "general_en",
+      "prompt_tokens": 28,
+      "ar_generated": 115,
+      "spec_generated": 115,
+      "ar_prefill_s": 0.48934337304672226,
+      "ar_decode_s": 8.879707098996732,
+      "spec_prefill_s": 0.43803085695253685,
+      "spec_decode_s": 7.371921988029499,
+      "exact": true,
+      "proposed": 272,
+      "accepted": 44,
+      "committed": 115,
+      "target_forwards": 72,
+      "draft_forwards": 71,
+      "acceptance": 0.16176470588235295,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 71,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 16,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.14759038388729095
+          },
+          {
+            "cycle": 20,
+            "action": "revert",
+            "from": 3,
+            "to": 4,
+            "probe_rate": 0.011771552752081898,
+            "base_rate": 0.015125926835442302
+          },
+          {
+            "cycle": 40,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.10661424676825465
+          },
+          {
+            "cycle": 44,
+            "action": "revert",
+            "from": 3,
+            "to": 4,
+            "probe_rate": 0.011896262010909493,
+            "base_rate": 0.013807586116118611
+          },
+          {
+            "cycle": 64,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.19787121759173343
+          },
+          {
+            "cycle": 68,
+            "action": "revert",
+            "from": 3,
+            "to": 4,
+            "probe_rate": 0.013782784376854538,
+            "base_rate": 0.01698847253554721
+          }
+        ],
+        "stats": {
+          "3": {
+            "samples": 12,
+            "tokens_per_ms": 0.013782784376854538,
+            "acceptance_ewma": 0.1304636001586914
+          },
+          "4": {
+            "samples": 59,
+            "tokens_per_ms": 0.01702108541076391,
+            "acceptance_ewma": 0.1973733149411344
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "prompt_tokens": 36,
+      "ar_generated": 2,
+      "spec_generated": 2,
+      "ar_prefill_s": 0.4266004509991035,
+      "ar_decode_s": 0.07811988104367629,
+      "spec_prefill_s": 0.4337149939965457,
+      "spec_decode_s": 0.20340048399521038,
+      "exact": true,
+      "proposed": 8,
+      "accepted": 0,
+      "committed": 2,
+      "target_forwards": 3,
+      "draft_forwards": 2,
+      "acceptance": 0.0,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 2,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 2,
+            "tokens_per_ms": 0.009880982503628597,
+            "acceptance_ewma": 0.0
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "prompt_tokens": 34,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.5128309059655294,
+      "ar_decode_s": 39.85550378204789,
+      "spec_prefill_s": 0.440977819962427,
+      "spec_decode_s": 24.843783397984225,
+      "exact": true,
+      "proposed": 724,
+      "accepted": 273,
+      "committed": 512,
+      "target_forwards": 240,
+      "draft_forwards": 239,
+      "acceptance": 0.3770718232044199,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 3,
+        "cycles": 239,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.17034912109375
+          },
+          {
+            "cycle": 12,
+            "action": "keep",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.0261731974365379,
+            "base_rate": 0.01631944637262135
+          },
+          {
+            "cycle": 48,
+            "action": "probe",
+            "from": 3,
+            "to": 2,
+            "acceptance_ewma": 0.17029924711799738
+          },
+          {
+            "cycle": 52,
+            "action": "revert",
+            "from": 2,
+            "to": 3,
+            "probe_rate": 0.010100579829408186,
+            "base_rate": 0.014854935154914043
+          },
+          {
+            "cycle": 208,
+            "action": "probe",
+            "from": 3,
+            "to": 4,
+            "acceptance_ewma": 0.8141711629861079
+          },
+          {
+            "cycle": 212,
+            "action": "revert",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.028554798381903133,
+            "base_rate": 0.0316807535396507
+          }
+        ],
+        "stats": {
+          "2": {
+            "samples": 4,
+            "tokens_per_ms": 0.010100579829408186,
+            "acceptance_ewma": 0.0
+          },
+          "3": {
+            "samples": 224,
+            "tokens_per_ms": 0.019389313336098793,
+            "acceptance_ewma": 0.349124765200185
+          },
+          "4": {
+            "samples": 11,
+            "tokens_per_ms": 0.028554798381903133,
+            "acceptance_ewma": 0.5236260890960693
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 53,
+      "ar_generated": 254,
+      "spec_generated": 254,
+      "ar_prefill_s": 0.5289936200133525,
+      "ar_decode_s": 19.72715369099751,
+      "spec_prefill_s": 0.4498897509765811,
+      "spec_decode_s": 11.725791356991976,
+      "exact": true,
+      "proposed": 282,
+      "accepted": 141,
+      "committed": 254,
+      "target_forwards": 114,
+      "draft_forwards": 113,
+      "acceptance": 0.5,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 3,
+        "cycles": 113,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.12890625
+          },
+          {
+            "cycle": 12,
+            "action": "keep",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.018337399788085598,
+            "base_rate": 0.014499725894441932
+          },
+          {
+            "cycle": 24,
+            "action": "probe",
+            "from": 3,
+            "to": 2,
+            "acceptance_ewma": 0.07423715014010668
+          },
+          {
+            "cycle": 28,
+            "action": "keep",
+            "from": 3,
+            "to": 2,
+            "probe_rate": 0.023907668510094956,
+            "base_rate": 0.01208849650778379
+          },
+          {
+            "cycle": 88,
+            "action": "probe",
+            "from": 2,
+            "to": 3,
+            "acceptance_ewma": 0.861698668643095
+          },
+          {
+            "cycle": 92,
+            "action": "keep",
+            "from": 2,
+            "to": 3,
+            "probe_rate": 0.029224154992195692,
+            "base_rate": 0.025834369580860342
+          }
+        ],
+        "stats": {
+          "2": {
+            "samples": 64,
+            "tokens_per_ms": 0.025834369580860342,
+            "acceptance_ewma": 0.861698668643095
+          },
+          "3": {
+            "samples": 42,
+            "tokens_per_ms": 0.021226364661706725,
+            "acceptance_ewma": 0.4095062119824839
+          },
+          "4": {
+            "samples": 7,
+            "tokens_per_ms": 0.014499725894441932,
+            "acceptance_ewma": 0.12890625
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 62,
+      "ar_generated": 53,
+      "spec_generated": 53,
+      "ar_prefill_s": 0.5289826639927924,
+      "ar_decode_s": 4.052598153008148,
+      "spec_prefill_s": 0.4540707350242883,
+      "spec_decode_s": 2.0321669389959425,
+      "exact": true,
+      "proposed": 76,
+      "accepted": 34,
+      "committed": 53,
+      "target_forwards": 20,
+      "draft_forwards": 19,
+      "acceptance": 0.4473684210526316,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 19,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 19,
+            "tokens_per_ms": 0.027947113290165543,
+            "acceptance_ewma": 0.5022032489650883
+          }
+        }
+      }
+    }
+  ],
+  "timing_boundary": {
+    "decode_tok_s": "sum(generated tokens) / sum(post-prefill decode wall)",
+    "transition_normalized_tok_s": "(sum(generated) - requests) / sum(decode wall); mirrors llama.cpp (predicted_n-1)/predicted_ms",
+    "sync": "each verify/decode cycle ends in a device-to-host logits readback"
+  },
+  "notes": [
+    "Gate B: hipEngine DFlash must beat llama.cpp draft-dflash 21.300 tok/s (transition-normalized) with exact greedy ID equality vs true AR.",
+    "Diagnostic until a retained rollup attaches the correctness gate + provenance."
+  ]
+}

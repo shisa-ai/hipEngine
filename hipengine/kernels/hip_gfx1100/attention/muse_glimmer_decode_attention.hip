@@ -161,6 +161,11 @@ constexpr int HEAD_DIM = 128;
 constexpr int GQA = 16;
 constexpr int K_TILE = 16;
 constexpr int MAX_TOKENS = 8;
+// LDS row stride padded by 2 halves (260 B) — same bank-conflict fix as
+// the prefill mt kernel: the 256 B stride put all 16 lanes of a k_frag
+// read on one bank group (16-way) and staging writes on 8 banks. Layout
+// only; per-key arithmetic and split order unchanged (bit-identical).
+constexpr int KV_STRIDE = HEAD_DIM + 2;
 
 typedef _Float16 half_t;
 typedef half_t __attribute__((ext_vector_type(16))) half16_t;
@@ -224,8 +229,8 @@ void muse_glimmer_decode_attn_shared_kernel(
 #pragma unroll
   for (int dt = 0; dt < HEAD_DIM / 16; ++dt) out_acc[dt] = zero8();
 
-  __shared__ __align__(1024) half_t k_tile[K_TILE * HEAD_DIM];
-  __shared__ __align__(1024) half_t v_tile[K_TILE * HEAD_DIM];
+  __shared__ __align__(1024) half_t k_tile[K_TILE * KV_STRIDE];
+  __shared__ __align__(1024) half_t v_tile[K_TILE * KV_STRIDE];
 
   const int64_t kv_stride = n_kv_heads * HEAD_DIM;
   const int64_t first_split = union_begin / split_keys;
@@ -253,8 +258,8 @@ void muse_glimmer_decode_attn_shared_kernel(
         const uint16_t* vb = reinterpret_cast<const uint16_t*>(&vraw);
 #pragma unroll
         for (int e = 0; e < 8; ++e) {
-          k_tile[key_local * HEAD_DIM + dim + e] = static_cast<half_t>(bf16_to_f32(kb[e]));
-          v_tile[key_local * HEAD_DIM + dim + e] = static_cast<half_t>(bf16_to_f32(vb[e]));
+          k_tile[key_local * KV_STRIDE + dim + e] = static_cast<half_t>(bf16_to_f32(kb[e]));
+          v_tile[key_local * KV_STRIDE + dim + e] = static_cast<half_t>(bf16_to_f32(vb[e]));
         }
       }
       __syncthreads();
@@ -279,7 +284,7 @@ void muse_glimmer_decode_attn_shared_kernel(
         for (int dt = 0; dt < HEAD_DIM / 16; ++dt) {
           half16_t k_frag;
 #pragma unroll
-          for (int k = 0; k < 16; ++k) k_frag[k] = k_tile[lane16 * HEAD_DIM + dt * 16 + k];
+          for (int k = 0; k < 16; ++k) k_frag[k] = k_tile[lane16 * KV_STRIDE + dt * 16 + k];
           if (partial && !lane_key_visible) k_frag = half16_t{};
           scores = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(k_frag, q_frag[dt], scores);
         }
@@ -333,7 +338,7 @@ void muse_glimmer_decode_attn_shared_kernel(
         for (int dt = 0; dt < HEAD_DIM / 16; ++dt) {
           half16_t v_frag;
 #pragma unroll
-          for (int k = 0; k < 16; ++k) v_frag[k] = v_tile[k * HEAD_DIM + dt * 16 + lane16];
+          for (int k = 0; k < 16; ++k) v_frag[k] = v_tile[k * KV_STRIDE + dt * 16 + lane16];
           if (partial) {
 #pragma unroll
             for (int k = 0; k < 16; ++k)
