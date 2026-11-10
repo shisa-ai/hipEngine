@@ -62,22 +62,6 @@ attribution only. Preserve
 and `admission_basis="implementation"` in both modes. Never invent a fingerprint or use a
 byte-digest match to conflate qwen36-dense and qwen38 execution identity.
 
-### R0200 — gfx1100 Q4-T16 row64 down-projection bisection
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `hipengine/runtime/gguf_linear.py` — gfx1100 Q4-T16 row64 down-projection bisection.
-
-Done when: Run a defaults-only, same-protocol public repeat for the Q4-T16 down owner at `(17408,5120)`,
-rows33-192. Confirm selected launches, output/state parity and teardown; preserve the registered
-256-row shared-B parent outside that scope.
-
-**Engagement note (2026-11-08, W7900):** the `GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64` down owner did not
-engage in ordinary C1 prefill (rows 32-200) or in the exact/padded C8 MTP target traces; those paths
-used the shared-B parent. Identify and trace the specific public context that selects the row64 down
-owner before closing. See
-`worklog/entries/20261108T214006.973468Z-lhl-r0199-prefill-retile-closure-f3da3c.md`.
-
 ### R0249/R0250 — Laguna public cache-owner validation
 
 Owner: `scripts/laguna_public_correctness.py`.
