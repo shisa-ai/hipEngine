@@ -494,14 +494,14 @@ def build_c3_family_census(
             c4_rows,
             "dense_dual_rowtile_silu_gemv_kernel",
         )
-        dense_q6_down = [
-            row
-            for row in _rows_matching(
-                c4_rows,
-                "q6_k_t16_qmicro_planar_gemv_rowtile",
-            )
-            if "unsigned char const*, unsigned short*" in row.kernel
-        ]
+        dense_q6_down = _rows_matching(
+            c4_rows,
+            "q6_k_t16_qmicro_planar_gemv_rowtile_col8",
+        )
+        # Both col8 and col8_residual down variants are dense FFN owners; the
+        # col8 name match counts both and excludes the float-output lm_head
+        # rowtile. The residual variant's extra `unsigned short const*` input
+        # made the old output-signature filter undercount it at c2.
         moe_passed = (
             not selected_gate_up
             and not selected_down

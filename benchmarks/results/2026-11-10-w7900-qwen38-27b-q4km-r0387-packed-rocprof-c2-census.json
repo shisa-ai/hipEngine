@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "kind": "gfx1100_gguf_concurrency_c2_recurrent_census",
-  "created_at": "2026-11-10T22:21:13.528824+00:00",
-  "status": "failed",
-  "passed": false,
+  "kind": "gfx1100_gguf_concurrency_c2_graph_replay_census",
+  "created_at": "2026-11-10T22:48:49.638748+00:00",
+  "status": "c2_graph_replay_census_complete",
+  "passed": true,
   "performance_claim": false,
-  "claim_level": "exact_hybrid_recurrent_closed_profiler_census",
+  "claim_level": "native_c2_graph_replay_profiler_census",
   "workload": {
     "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
     "quant": "Q4_K_M",
@@ -317,9 +317,9 @@
         "metadata_prepare_path": "device_positions_persistent",
         "token_feedback_path": "device_i32_to_i64",
         "weight_role_sha256": "aa1d71e2b5e485b5e4309b348ffc2eb488f198197b475ba8e97ac2a6e8469808",
-        "buffer_identity_sha256": "796b88bac999c56bc17f53fd6871c6b8cb7d873a17ac8f8b6d71fb8f9e689f68",
+        "buffer_identity_sha256": "b3c9b488bd2559d183898064b2e89fbdce4c02b5ac084ebed82bd001a6c09297",
         "buffer_count": 1118,
-        "key_sha256": "05bc1aca293ce441f745d25d6b4b7ed79fdbbd209e58664d36e36837f341258a"
+        "key_sha256": "b6b65048f8653c60e2285dc03c8b15ee743a7f69f8114934b9ab99cb012d43c6"
       },
       "record_layer_ids": [],
       "diagnostic_readback": {
@@ -335,13 +335,13 @@
         "backend": "hip_gfx1100",
         "gfx_arch": "gfx1100",
         "source": "hip_runtime_graph",
-        "graph_handle": 94847930824560,
-        "graph_exec": 94847929043088,
+        "graph_handle": 94721254282464,
+        "graph_exec": 94721253042224,
         "launches": 1,
         "submission_started": false,
         "native_fallbacks": 0,
         "closed": false,
-        "packed_decode_graph_key_sha256": "05bc1aca293ce441f745d25d6b4b7ed79fdbbd209e58664d36e36837f341258a",
+        "packed_decode_graph_key_sha256": "b6b65048f8653c60e2285dc03c8b15ee743a7f69f8114934b9ab99cb012d43c6",
         "physical_rows": 2,
         "replayed_steps": 1
       }
@@ -351,7 +351,7 @@
     "route_check_passed": true,
     "packed_concurrency": 2,
     "c3_family_census": {
-      "route_check_passed": false,
+      "route_check_passed": true,
       "full_attention": {
         "passed": true,
         "path": "kv_live_spans_batch",
@@ -360,14 +360,14 @@
         "row_extent": 2
       },
       "moe_ffn": {
-        "passed": false,
+        "passed": true,
         "path": "dense_ffn_rows",
         "selected_lanes": 0,
         "selected_gate_up_dispatches": 0,
         "selected_down_dispatches": 0,
         "combine_dispatches": 0,
         "dense_gate_up_dispatches": 64,
-        "dense_down_dispatches": 32
+        "dense_down_dispatches": 64
       },
       "lm_head_sampler": {
         "passed": true,
@@ -390,182 +390,182 @@
     "family_attribution": {
       "c1": {
         "total_dispatches": 823,
-        "total_duration_ns": 30544795,
+        "total_duration_ns": 30579279,
         "families": [
           {
             "family": "dense_projection",
             "dispatches": 385,
-            "total_duration_ns": 24108118,
-            "total_duration_ms": 24.108118,
-            "share_of_gpu_duration": 0.7892709052393378,
+            "total_duration_ns": 24130096,
+            "total_duration_ms": 24.130096,
+            "share_of_gpu_duration": 0.7890995729493818,
             "kernels": [
               {
                 "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
                 "dispatches": 64,
-                "total_duration_ns": 9952352
+                "total_duration_ns": 9969490
               },
               {
                 "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
                 "dispatches": 160,
-                "total_duration_ns": 6418596
+                "total_duration_ns": 6423780
               },
               {
                 "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
                 "dispatches": 64,
-                "total_duration_ns": 5793027
+                "total_duration_ns": 5792931
               },
               {
                 "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<...>(unsigned short const*, unsigned char const*, float*, long, long, long)",
                 "dispatches": 1,
-                "total_duration_ns": 1484656
+                "total_duration_ns": 1482933
               },
               {
                 "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
                 "dispatches": 96,
-                "total_duration_ns": 459487
+                "total_duration_ns": 460962
               }
             ]
           },
           {
             "family": "moe_selected_combine",
             "dispatches": 48,
-            "total_duration_ns": 2797990,
-            "total_duration_ms": 2.79799,
-            "share_of_gpu_duration": 0.09160284100777236,
+            "total_duration_ns": 2806748,
+            "total_duration_ms": 2.806748,
+            "share_of_gpu_duration": 0.09178594433178101,
             "kernels": [
               {
                 "kernel": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<...>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
                 "dispatches": 48,
-                "total_duration_ns": 2797990
+                "total_duration_ns": 2806748
               }
             ]
           },
           {
             "family": "full_attention_core",
             "dispatches": 96,
-            "total_duration_ns": 1943545,
-            "total_duration_ms": 1.943545,
-            "share_of_gpu_duration": 0.0636293352107945,
+            "total_duration_ns": 1939657,
+            "total_duration_ms": 1.939657,
+            "share_of_gpu_duration": 0.06343043601518532,
             "kernels": [
               {
                 "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<...>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
                 "dispatches": 16,
-                "total_duration_ns": 1700823
+                "total_duration_ns": 1710974
               },
               {
                 "kernel": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<...>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
                 "dispatches": 16,
-                "total_duration_ns": 68961
-              },
-              {
-                "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
-                "dispatches": 16,
-                "total_duration_ns": 62440
+                "total_duration_ns": 69881
               },
               {
                 "kernel": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<...>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
                 "dispatches": 16,
-                "total_duration_ns": 52840
+                "total_duration_ns": 52000
+              },
+              {
+                "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+                "dispatches": 16,
+                "total_duration_ns": 47801
               },
               {
                 "kernel": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
                 "dispatches": 16,
-                "total_duration_ns": 29560
+                "total_duration_ns": 30361
               },
               {
                 "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
                 "dispatches": 16,
-                "total_duration_ns": 28921
+                "total_duration_ns": 28640
               }
             ]
           },
           {
             "family": "linear_attention_state",
             "dispatches": 96,
-            "total_duration_ns": 1009133,
-            "total_duration_ms": 1.009133,
-            "share_of_gpu_duration": 0.03303780562285653,
+            "total_duration_ns": 987889,
+            "total_duration_ms": 0.987889,
+            "share_of_gpu_duration": 0.03230583036310307,
             "kernels": [
               {
                 "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<...>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
                 "dispatches": 48,
-                "total_duration_ns": 842208
+                "total_duration_ns": 839967
               },
               {
                 "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<...>(unsigned short const*, float*, float const*, float*, long, long)",
                 "dispatches": 48,
-                "total_duration_ns": 166925
+                "total_duration_ns": 147922
               }
             ]
           },
           {
             "family": "other",
             "dispatches": 128,
-            "total_duration_ns": 514167,
-            "total_duration_ms": 0.514167,
-            "share_of_gpu_duration": 0.016833211681401037,
+            "total_duration_ns": 530646,
+            "total_duration_ms": 0.530646,
+            "share_of_gpu_duration": 0.017353123335576356,
             "kernels": [
               {
                 "kernel": "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
                 "dispatches": 128,
-                "total_duration_ns": 514167
+                "total_duration_ns": 530646
               }
             ]
           },
           {
             "family": "norm_residual",
             "dispatches": 65,
-            "total_duration_ns": 151482,
-            "total_duration_ms": 0.151482,
-            "share_of_gpu_duration": 0.004959339226208589,
+            "total_duration_ns": 164123,
+            "total_duration_ms": 0.164123,
+            "share_of_gpu_duration": 0.005367131121698455,
             "kernels": [
               {
                 "kernel": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
                 "dispatches": 64,
-                "total_duration_ns": 139482
+                "total_duration_ns": 152842
               },
               {
                 "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
                 "dispatches": 1,
-                "total_duration_ns": 12000
+                "total_duration_ns": 11281
               }
             ]
           },
           {
             "family": "lm_head_sampler",
             "dispatches": 2,
-            "total_duration_ns": 9440,
-            "total_duration_ms": 0.00944,
-            "share_of_gpu_duration": 0.00030905429222883966,
+            "total_duration_ns": 9000,
+            "total_duration_ms": 0.009,
+            "share_of_gpu_duration": 0.00029431694579849316,
             "kernels": [
               {
                 "kernel": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
                 "dispatches": 1,
-                "total_duration_ns": 6240
+                "total_duration_ns": 5960
               },
               {
                 "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
                 "dispatches": 1,
-                "total_duration_ns": 3200
+                "total_duration_ns": 3040
               }
             ]
           },
           {
             "family": "metadata_lifecycle",
             "dispatches": 2,
-            "total_duration_ns": 6200,
-            "total_duration_ms": 0.0062,
-            "share_of_gpu_duration": 0.00020298057328589045,
+            "total_duration_ns": 6400,
+            "total_duration_ms": 0.0064,
+            "share_of_gpu_duration": 0.00020929205034559513,
             "kernels": [
+              {
+                "kernel": "(anonymous namespace)::commit_packed_decode_graph_step_kernel(int const*, long*, long*, long*, unsigned char const*, int*, long*, long, long)",
+                "dispatches": 1,
+                "total_duration_ns": 3240
+              },
               {
                 "kernel": "(anonymous namespace)::prepare_packed_decode_metadata_from_positions_kernel(int*, long const*, long*, int*, int*, int*, int*, long*, unsigned char const*, long, long)",
                 "dispatches": 1,
                 "total_duration_ns": 3160
-              },
-              {
-                "kernel": "(anonymous namespace)::commit_packed_decode_graph_step_kernel(int const*, long*, long*, long*, unsigned char const*, int*, long*, long, long)",
-                "dispatches": 1,
-                "total_duration_ns": 3040
               }
             ]
           },
@@ -574,7 +574,7 @@
             "dispatches": 1,
             "total_duration_ns": 4720,
             "total_duration_ms": 0.00472,
-            "share_of_gpu_duration": 0.00015452714611441983,
+            "share_of_gpu_duration": 0.0001543528871298764,
             "kernels": [
               {
                 "kernel": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
@@ -586,7 +586,7 @@
         ],
         "unclassified": {
           "dispatches": 128,
-          "total_duration_ns": 514167,
+          "total_duration_ns": 530646,
           "kernel_names": [
             "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)"
           ]
@@ -594,209 +594,209 @@
       },
       "c2": {
         "total_dispatches": 807,
-        "total_duration_ns": 31311696,
+        "total_duration_ns": 31356765,
         "families": [
           {
             "family": "dense_projection",
             "dispatches": 417,
-            "total_duration_ns": 20733659,
-            "total_duration_ms": 20.733659,
-            "share_of_gpu_duration": 0.6621697847347522,
+            "total_duration_ns": 20767034,
+            "total_duration_ms": 20.767034,
+            "share_of_gpu_duration": 0.6622824133803343,
             "kernels": [
               {
                 "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
                 "dispatches": 64,
-                "total_duration_ns": 10216790
+                "total_duration_ns": 10215458
               },
               {
                 "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
                 "dispatches": 104,
-                "total_duration_ns": 3870679
+                "total_duration_ns": 3876073
               },
               {
                 "kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_single_wave_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
                 "dispatches": 48,
-                "total_duration_ns": 2289902
+                "total_duration_ns": 2304097
               },
               {
                 "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
                 "dispatches": 32,
-                "total_duration_ns": 2015938
+                "total_duration_ns": 2017781
               },
               {
                 "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_kernel<...>(unsigned short const*, unsigned char const*, float*, long, long, long)",
                 "dispatches": 1,
-                "total_duration_ns": 1508537
+                "total_duration_ns": 1508614
               },
               {
                 "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
                 "dispatches": 96,
-                "total_duration_ns": 476805
+                "total_duration_ns": 487767
               },
               {
                 "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
                 "dispatches": 24,
-                "total_duration_ns": 269966
+                "total_duration_ns": 272363
               },
               {
                 "kernel": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
                 "dispatches": 48,
-                "total_duration_ns": 85042
+                "total_duration_ns": 84881
               }
             ]
           },
           {
             "family": "norm_residual",
             "dispatches": 65,
-            "total_duration_ns": 6707273,
-            "total_duration_ms": 6.707273,
-            "share_of_gpu_duration": 0.2142098275353721,
+            "total_duration_ns": 6715061,
+            "total_duration_ms": 6.715061,
+            "share_of_gpu_duration": 0.2141503117429365,
             "kernels": [
               {
                 "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual_kernel<...>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
                 "dispatches": 32,
-                "total_duration_ns": 4214528
+                "total_duration_ns": 4230396
               },
               {
                 "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
                 "dispatches": 32,
-                "total_duration_ns": 2480745
+                "total_duration_ns": 2472265
               },
               {
                 "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
                 "dispatches": 1,
-                "total_duration_ns": 12000
+                "total_duration_ns": 12400
               }
             ]
           },
           {
             "family": "full_attention_core",
             "dispatches": 96,
-            "total_duration_ns": 1999303,
-            "total_duration_ms": 1.999303,
-            "share_of_gpu_duration": 0.0638516355038705,
+            "total_duration_ns": 1995380,
+            "total_duration_ms": 1.99538,
+            "share_of_gpu_duration": 0.06363475313859705,
             "kernels": [
               {
                 "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<...>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
                 "dispatches": 16,
-                "total_duration_ns": 1743778
+                "total_duration_ns": 1746297
               },
               {
                 "kernel": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<...>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
                 "dispatches": 16,
-                "total_duration_ns": 79281
+                "total_duration_ns": 78280
               },
               {
                 "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
                 "dispatches": 16,
-                "total_duration_ns": 64322
+                "total_duration_ns": 64321
               },
               {
                 "kernel": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<...>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
                 "dispatches": 16,
-                "total_duration_ns": 49280
+                "total_duration_ns": 48040
               },
               {
                 "kernel": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
                 "dispatches": 16,
-                "total_duration_ns": 34282
+                "total_duration_ns": 34561
               },
               {
                 "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
                 "dispatches": 16,
-                "total_duration_ns": 28360
+                "total_duration_ns": 23881
               }
             ]
           },
           {
             "family": "linear_attention_state",
             "dispatches": 96,
-            "total_duration_ns": 1284856,
-            "total_duration_ms": 1.284856,
-            "share_of_gpu_duration": 0.04103437897455315,
+            "total_duration_ns": 1293848,
+            "total_duration_ms": 1.293848,
+            "share_of_gpu_duration": 0.04126216463975158,
             "kernels": [
               {
                 "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<...>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, long const*, long, float, long, long, long, long)",
                 "dispatches": 48,
-                "total_duration_ns": 1083734
+                "total_duration_ns": 1092048
               },
               {
                 "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_indexed_lowp_kernel<...>(unsigned short const*, float*, float const*, float*, long const*, long, long, long)",
                 "dispatches": 48,
-                "total_duration_ns": 201122
+                "total_duration_ns": 201800
               }
             ]
           },
           {
             "family": "other",
             "dispatches": 128,
-            "total_duration_ns": 563165,
-            "total_duration_ms": 0.563165,
-            "share_of_gpu_duration": 0.01798577119553026,
+            "total_duration_ns": 562721,
+            "total_duration_ms": 0.562721,
+            "share_of_gpu_duration": 0.017945760667594377,
             "kernels": [
               {
                 "kernel": "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
                 "dispatches": 128,
-                "total_duration_ns": 563165
+                "total_duration_ns": 562721
               }
             ]
           },
           {
             "family": "lm_head_sampler",
             "dispatches": 2,
-            "total_duration_ns": 11720,
-            "total_duration_ms": 0.01172,
-            "share_of_gpu_duration": 0.0003743010279609255,
+            "total_duration_ns": 11400,
+            "total_duration_ms": 0.0114,
+            "share_of_gpu_duration": 0.00036355791166595153,
             "kernels": [
               {
                 "kernel": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
                 "dispatches": 1,
-                "total_duration_ns": 8520
+                "total_duration_ns": 8280
               },
               {
                 "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
                 "dispatches": 1,
-                "total_duration_ns": 3200
+                "total_duration_ns": 3120
               }
             ]
           },
           {
             "family": "metadata_lifecycle",
             "dispatches": 2,
-            "total_duration_ns": 6800,
-            "total_duration_ms": 0.0068,
-            "share_of_gpu_duration": 0.00021717124489200457,
+            "total_duration_ns": 6400,
+            "total_duration_ms": 0.0064,
+            "share_of_gpu_duration": 0.0002041026872510605,
             "kernels": [
               {
                 "kernel": "(anonymous namespace)::commit_packed_decode_graph_step_kernel(int const*, long*, long*, long*, unsigned char const*, int*, long*, long, long)",
                 "dispatches": 1,
-                "total_duration_ns": 3600
+                "total_duration_ns": 3240
               },
               {
                 "kernel": "(anonymous namespace)::prepare_packed_decode_metadata_from_positions_kernel(int*, long const*, long*, int*, int*, int*, int*, long*, unsigned char const*, long, long)",
                 "dispatches": 1,
-                "total_duration_ns": 3200
+                "total_duration_ns": 3160
               }
             ]
           },
           {
             "family": "embedding",
             "dispatches": 1,
-            "total_duration_ns": 4920,
-            "total_duration_ms": 0.00492,
-            "share_of_gpu_duration": 0.00015712978306892095,
+            "total_duration_ns": 4921,
+            "total_duration_ms": 0.004921,
+            "share_of_gpu_duration": 0.00015693583186913572,
             "kernels": [
               {
                 "kernel": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
                 "dispatches": 1,
-                "total_duration_ns": 4920
+                "total_duration_ns": 4921
               }
             ]
           }
         ],
         "unclassified": {
           "dispatches": 128,
-          "total_duration_ns": 563165,
+          "total_duration_ns": 562721,
           "kernel_names": [
             "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)"
           ]
@@ -805,13 +805,13 @@
     },
     "c1_reference": {
       "dispatches": 823,
-      "total_duration_ns": 30544795,
-      "total_duration_ms": 30.544795,
+      "total_duration_ns": 30579279,
+      "total_duration_ms": 30.579279,
       "top_kernels": [
         {
           "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
           "dispatches": 64,
-          "total_duration_ns": 9952352,
+          "total_duration_ns": 9969490,
           "launch_shapes": [
             {
               "count": 64,
@@ -834,7 +834,7 @@
         {
           "kernel": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
           "dispatches": 160,
-          "total_duration_ns": 6418596,
+          "total_duration_ns": 6423780,
           "launch_shapes": [
             {
               "count": 48,
@@ -921,7 +921,7 @@
         {
           "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
           "dispatches": 64,
-          "total_duration_ns": 5793027,
+          "total_duration_ns": 5792931,
           "launch_shapes": [
             {
               "count": 32,
@@ -976,7 +976,7 @@
         {
           "kernel": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<...>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
           "dispatches": 48,
-          "total_duration_ns": 2797990,
+          "total_duration_ns": 2806748,
           "launch_shapes": [
             {
               "count": 48,
@@ -999,7 +999,7 @@
         {
           "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<...>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
           "dispatches": 16,
-          "total_duration_ns": 1700823,
+          "total_duration_ns": 1710974,
           "launch_shapes": [
             {
               "count": 16,
@@ -1022,7 +1022,7 @@
         {
           "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<...>(unsigned short const*, unsigned char const*, float*, long, long, long)",
           "dispatches": 1,
-          "total_duration_ns": 1484656,
+          "total_duration_ns": 1482933,
           "launch_shapes": [
             {
               "count": 1,
@@ -1045,7 +1045,7 @@
         {
           "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<...>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
           "dispatches": 48,
-          "total_duration_ns": 842208,
+          "total_duration_ns": 839967,
           "launch_shapes": [
             {
               "count": 48,
@@ -1068,7 +1068,7 @@
         {
           "kernel": "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
           "dispatches": 128,
-          "total_duration_ns": 514167,
+          "total_duration_ns": 530646,
           "launch_shapes": [
             {
               "count": 64,
@@ -1107,7 +1107,7 @@
         {
           "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
           "dispatches": 96,
-          "total_duration_ns": 459487,
+          "total_duration_ns": 460962,
           "launch_shapes": [
             {
               "count": 96,
@@ -1128,32 +1128,9 @@
           ]
         },
         {
-          "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<...>(unsigned short const*, float*, float const*, float*, long, long)",
-          "dispatches": 48,
-          "total_duration_ns": 166925,
-          "launch_shapes": [
-            {
-              "count": 48,
-              "grid": [
-                10240,
-                1,
-                1
-              ],
-              "workgroup": [
-                256,
-                1,
-                1
-              ],
-              "vgpr": 16,
-              "scratch_bytes": 0,
-              "lds_bytes": 0
-            }
-          ]
-        },
-        {
           "kernel": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
           "dispatches": 64,
-          "total_duration_ns": 139482,
+          "total_duration_ns": 152842,
           "launch_shapes": [
             {
               "count": 64,
@@ -1174,9 +1151,32 @@
           ]
         },
         {
+          "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<...>(unsigned short const*, float*, float const*, float*, long, long)",
+          "dispatches": 48,
+          "total_duration_ns": 147922,
+          "launch_shapes": [
+            {
+              "count": 48,
+              "grid": [
+                10240,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 16,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
           "kernel": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<...>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
           "dispatches": 16,
-          "total_duration_ns": 68961,
+          "total_duration_ns": 69881,
           "launch_shapes": [
             {
               "count": 16,
@@ -1197,32 +1197,9 @@
           ]
         },
         {
-          "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
-          "dispatches": 16,
-          "total_duration_ns": 62440,
-          "launch_shapes": [
-            {
-              "count": 16,
-              "grid": [
-                6144,
-                1,
-                1
-              ],
-              "workgroup": [
-                256,
-                1,
-                1
-              ],
-              "vgpr": 24,
-              "scratch_bytes": 0,
-              "lds_bytes": 0
-            }
-          ]
-        },
-        {
           "kernel": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<...>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
           "dispatches": 16,
-          "total_duration_ns": 52840,
+          "total_duration_ns": 52000,
           "launch_shapes": [
             {
               "count": 16,
@@ -1243,9 +1220,32 @@
           ]
         },
         {
+          "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "dispatches": 16,
+          "total_duration_ns": 47801,
+          "launch_shapes": [
+            {
+              "count": 16,
+              "grid": [
+                6144,
+                1,
+                1
+              ],
+              "workgroup": [
+                256,
+                1,
+                1
+              ],
+              "vgpr": 24,
+              "scratch_bytes": 0,
+              "lds_bytes": 0
+            }
+          ]
+        },
+        {
           "kernel": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
           "dispatches": 16,
-          "total_duration_ns": 29560,
+          "total_duration_ns": 30361,
           "launch_shapes": [
             {
               "count": 16,
@@ -1268,7 +1268,7 @@
         {
           "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
           "dispatches": 16,
-          "total_duration_ns": 28921,
+          "total_duration_ns": 28640,
           "launch_shapes": [
             {
               "count": 16,
@@ -1291,7 +1291,7 @@
         {
           "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
           "dispatches": 1,
-          "total_duration_ns": 12000,
+          "total_duration_ns": 11281,
           "launch_shapes": [
             {
               "count": 1,
@@ -1314,7 +1314,7 @@
         {
           "kernel": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
           "dispatches": 1,
-          "total_duration_ns": 6240,
+          "total_duration_ns": 5960,
           "launch_shapes": [
             {
               "count": 1,
@@ -1358,23 +1358,23 @@
           ]
         },
         {
-          "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "kernel": "(anonymous namespace)::commit_packed_decode_graph_step_kernel(int const*, long*, long*, long*, unsigned char const*, int*, long*, long, long)",
           "dispatches": 1,
-          "total_duration_ns": 3200,
+          "total_duration_ns": 3240,
           "launch_shapes": [
             {
               "count": 1,
               "grid": [
-                128,
+                1,
                 1,
                 1
               ],
               "workgroup": [
-                128,
+                1,
                 1,
                 1
               ],
-              "vgpr": 16,
+              "vgpr": 8,
               "scratch_bytes": 0,
               "lds_bytes": 0
             }
@@ -1404,23 +1404,23 @@
           ]
         },
         {
-          "kernel": "(anonymous namespace)::commit_packed_decode_graph_step_kernel(int const*, long*, long*, long*, unsigned char const*, int*, long*, long, long)",
+          "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
           "dispatches": 1,
           "total_duration_ns": 3040,
           "launch_shapes": [
             {
               "count": 1,
               "grid": [
-                1,
+                128,
                 1,
                 1
               ],
               "workgroup": [
-                1,
+                128,
                 1,
                 1
               ],
-              "vgpr": 8,
+              "vgpr": 16,
               "scratch_bytes": 0,
               "lds_bytes": 0
             }
@@ -1431,13 +1431,13 @@
     "c2": {
       "all": {
         "dispatches": 807,
-        "total_duration_ns": 31311696,
-        "total_duration_ms": 31.311696,
+        "total_duration_ns": 31356765,
+        "total_duration_ms": 31.356765,
         "top_kernels": [
           {
             "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
             "dispatches": 64,
-            "total_duration_ns": 10216790,
+            "total_duration_ns": 10215458,
             "launch_shapes": [
               {
                 "count": 64,
@@ -1460,7 +1460,7 @@
           {
             "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual_kernel<...>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
             "dispatches": 32,
-            "total_duration_ns": 4214528,
+            "total_duration_ns": 4230396,
             "launch_shapes": [
               {
                 "count": 32,
@@ -1483,7 +1483,7 @@
           {
             "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
             "dispatches": 104,
-            "total_duration_ns": 3870679,
+            "total_duration_ns": 3876073,
             "launch_shapes": [
               {
                 "count": 48,
@@ -1554,7 +1554,7 @@
           {
             "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
             "dispatches": 32,
-            "total_duration_ns": 2480745,
+            "total_duration_ns": 2472265,
             "launch_shapes": [
               {
                 "count": 32,
@@ -1577,7 +1577,7 @@
           {
             "kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_single_wave_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
             "dispatches": 48,
-            "total_duration_ns": 2289902,
+            "total_duration_ns": 2304097,
             "launch_shapes": [
               {
                 "count": 48,
@@ -1600,7 +1600,7 @@
           {
             "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
             "dispatches": 32,
-            "total_duration_ns": 2015938,
+            "total_duration_ns": 2017781,
             "launch_shapes": [
               {
                 "count": 24,
@@ -1639,7 +1639,7 @@
           {
             "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<...>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
             "dispatches": 16,
-            "total_duration_ns": 1743778,
+            "total_duration_ns": 1746297,
             "launch_shapes": [
               {
                 "count": 16,
@@ -1662,7 +1662,7 @@
           {
             "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_kernel<...>(unsigned short const*, unsigned char const*, float*, long, long, long)",
             "dispatches": 1,
-            "total_duration_ns": 1508537,
+            "total_duration_ns": 1508614,
             "launch_shapes": [
               {
                 "count": 1,
@@ -1685,7 +1685,7 @@
           {
             "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<...>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, long const*, long, float, long, long, long, long)",
             "dispatches": 48,
-            "total_duration_ns": 1083734,
+            "total_duration_ns": 1092048,
             "launch_shapes": [
               {
                 "count": 48,
@@ -1708,7 +1708,7 @@
           {
             "kernel": "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
             "dispatches": 128,
-            "total_duration_ns": 563165,
+            "total_duration_ns": 562721,
             "launch_shapes": [
               {
                 "count": 64,
@@ -1747,7 +1747,7 @@
           {
             "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
             "dispatches": 96,
-            "total_duration_ns": 476805,
+            "total_duration_ns": 487767,
             "launch_shapes": [
               {
                 "count": 96,
@@ -1770,7 +1770,7 @@
           {
             "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
             "dispatches": 24,
-            "total_duration_ns": 269966,
+            "total_duration_ns": 272363,
             "launch_shapes": [
               {
                 "count": 24,
@@ -1793,7 +1793,7 @@
           {
             "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_indexed_lowp_kernel<...>(unsigned short const*, float*, float const*, float*, long const*, long, long, long)",
             "dispatches": 48,
-            "total_duration_ns": 201122,
+            "total_duration_ns": 201800,
             "launch_shapes": [
               {
                 "count": 48,
@@ -1816,7 +1816,7 @@
           {
             "kernel": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
             "dispatches": 48,
-            "total_duration_ns": 85042,
+            "total_duration_ns": 84881,
             "launch_shapes": [
               {
                 "count": 48,
@@ -1839,7 +1839,7 @@
           {
             "kernel": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<...>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
             "dispatches": 16,
-            "total_duration_ns": 79281,
+            "total_duration_ns": 78280,
             "launch_shapes": [
               {
                 "count": 16,
@@ -1862,7 +1862,7 @@
           {
             "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
             "dispatches": 16,
-            "total_duration_ns": 64322,
+            "total_duration_ns": 64321,
             "launch_shapes": [
               {
                 "count": 16,
@@ -1885,7 +1885,7 @@
           {
             "kernel": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<...>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
             "dispatches": 16,
-            "total_duration_ns": 49280,
+            "total_duration_ns": 48040,
             "launch_shapes": [
               {
                 "count": 16,
@@ -1908,7 +1908,7 @@
           {
             "kernel": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
             "dispatches": 16,
-            "total_duration_ns": 34282,
+            "total_duration_ns": 34561,
             "launch_shapes": [
               {
                 "count": 16,
@@ -1931,7 +1931,7 @@
           {
             "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
             "dispatches": 16,
-            "total_duration_ns": 28360,
+            "total_duration_ns": 23881,
             "launch_shapes": [
               {
                 "count": 16,
@@ -1954,7 +1954,7 @@
           {
             "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
             "dispatches": 1,
-            "total_duration_ns": 12000,
+            "total_duration_ns": 12400,
             "launch_shapes": [
               {
                 "count": 1,
@@ -1977,7 +1977,7 @@
           {
             "kernel": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
             "dispatches": 1,
-            "total_duration_ns": 8520,
+            "total_duration_ns": 8280,
             "launch_shapes": [
               {
                 "count": 1,
@@ -2000,7 +2000,7 @@
           {
             "kernel": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
             "dispatches": 1,
-            "total_duration_ns": 4920,
+            "total_duration_ns": 4921,
             "launch_shapes": [
               {
                 "count": 1,
@@ -2023,7 +2023,7 @@
           {
             "kernel": "(anonymous namespace)::commit_packed_decode_graph_step_kernel(int const*, long*, long*, long*, unsigned char const*, int*, long*, long, long)",
             "dispatches": 1,
-            "total_duration_ns": 3600,
+            "total_duration_ns": 3240,
             "launch_shapes": [
               {
                 "count": 1,
@@ -2044,19 +2044,19 @@
             ]
           },
           {
-            "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+            "kernel": "(anonymous namespace)::prepare_packed_decode_metadata_from_positions_kernel(int*, long const*, long*, int*, int*, int*, int*, long*, unsigned char const*, long, long)",
             "dispatches": 1,
-            "total_duration_ns": 3200,
+            "total_duration_ns": 3160,
             "launch_shapes": [
               {
                 "count": 1,
                 "grid": [
-                  256,
+                  64,
                   1,
                   1
                 ],
                 "workgroup": [
-                  128,
+                  64,
                   1,
                   1
                 ],
@@ -2067,19 +2067,19 @@
             ]
           },
           {
-            "kernel": "(anonymous namespace)::prepare_packed_decode_metadata_from_positions_kernel(int*, long const*, long*, int*, int*, int*, int*, long*, unsigned char const*, long, long)",
+            "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
             "dispatches": 1,
-            "total_duration_ns": 3200,
+            "total_duration_ns": 3120,
             "launch_shapes": [
               {
                 "count": 1,
                 "grid": [
-                  64,
+                  256,
                   1,
                   1
                 ],
                 "workgroup": [
-                  64,
+                  128,
                   1,
                   1
                 ],
@@ -2101,13 +2101,13 @@
         },
         "packed_native": {
           "dispatches": 807,
-          "total_duration_ns": 31311696,
-          "total_duration_ms": 31.311696,
+          "total_duration_ns": 31356765,
+          "total_duration_ms": 31.356765,
           "top_kernels": [
             {
               "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
               "dispatches": 64,
-              "total_duration_ns": 10216790,
+              "total_duration_ns": 10215458,
               "launch_shapes": [
                 {
                   "count": 64,
@@ -2130,7 +2130,7 @@
             {
               "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_residual_kernel<...>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
               "dispatches": 32,
-              "total_duration_ns": 4214528,
+              "total_duration_ns": 4230396,
               "launch_shapes": [
                 {
                   "count": 32,
@@ -2153,7 +2153,7 @@
             {
               "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
               "dispatches": 104,
-              "total_duration_ns": 3870679,
+              "total_duration_ns": 3876073,
               "launch_shapes": [
                 {
                   "count": 48,
@@ -2224,7 +2224,7 @@
             {
               "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
               "dispatches": 32,
-              "total_duration_ns": 2480745,
+              "total_duration_ns": 2472265,
               "launch_shapes": [
                 {
                   "count": 32,
@@ -2247,7 +2247,7 @@
             {
               "kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_single_wave_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
               "dispatches": 48,
-              "total_duration_ns": 2289902,
+              "total_duration_ns": 2304097,
               "launch_shapes": [
                 {
                   "count": 48,
@@ -2270,7 +2270,7 @@
             {
               "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
               "dispatches": 32,
-              "total_duration_ns": 2015938,
+              "total_duration_ns": 2017781,
               "launch_shapes": [
                 {
                   "count": 24,
@@ -2309,7 +2309,7 @@
             {
               "kernel": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<...>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
               "dispatches": 16,
-              "total_duration_ns": 1743778,
+              "total_duration_ns": 1746297,
               "launch_shapes": [
                 {
                   "count": 16,
@@ -2332,7 +2332,7 @@
             {
               "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_kernel<...>(unsigned short const*, unsigned char const*, float*, long, long, long)",
               "dispatches": 1,
-              "total_duration_ns": 1508537,
+              "total_duration_ns": 1508614,
               "launch_shapes": [
                 {
                   "count": 1,
@@ -2355,7 +2355,7 @@
             {
               "kernel": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel<...>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, long const*, long, float, long, long, long, long)",
               "dispatches": 48,
-              "total_duration_ns": 1083734,
+              "total_duration_ns": 1092048,
               "launch_shapes": [
                 {
                   "count": 48,
@@ -2378,7 +2378,7 @@
             {
               "kernel": "void gguf_norm_fixed5120_wave256_kernel<...>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
               "dispatches": 128,
-              "total_duration_ns": 563165,
+              "total_duration_ns": 562721,
               "launch_shapes": [
                 {
                   "count": 64,
@@ -2417,7 +2417,7 @@
             {
               "kernel": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
               "dispatches": 96,
-              "total_duration_ns": 476805,
+              "total_duration_ns": 487767,
               "launch_shapes": [
                 {
                   "count": 96,
@@ -2440,7 +2440,7 @@
             {
               "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
               "dispatches": 24,
-              "total_duration_ns": 269966,
+              "total_duration_ns": 272363,
               "launch_shapes": [
                 {
                   "count": 24,
@@ -2463,7 +2463,7 @@
             {
               "kernel": "void (anonymous namespace)::qwen35_linear_attn_conv_decode_indexed_lowp_kernel<...>(unsigned short const*, float*, float const*, float*, long const*, long, long, long)",
               "dispatches": 48,
-              "total_duration_ns": 201122,
+              "total_duration_ns": 201800,
               "launch_shapes": [
                 {
                   "count": 48,
@@ -2486,7 +2486,7 @@
             {
               "kernel": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
               "dispatches": 48,
-              "total_duration_ns": 85042,
+              "total_duration_ns": 84881,
               "launch_shapes": [
                 {
                   "count": 48,
@@ -2509,7 +2509,7 @@
             {
               "kernel": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<...>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
               "dispatches": 16,
-              "total_duration_ns": 79281,
+              "total_duration_ns": 78280,
               "launch_shapes": [
                 {
                   "count": 16,
@@ -2532,7 +2532,7 @@
             {
               "kernel": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
               "dispatches": 16,
-              "total_duration_ns": 64322,
+              "total_duration_ns": 64321,
               "launch_shapes": [
                 {
                   "count": 16,
@@ -2555,7 +2555,7 @@
             {
               "kernel": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<...>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
               "dispatches": 16,
-              "total_duration_ns": 49280,
+              "total_duration_ns": 48040,
               "launch_shapes": [
                 {
                   "count": 16,
@@ -2578,7 +2578,7 @@
             {
               "kernel": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
               "dispatches": 16,
-              "total_duration_ns": 34282,
+              "total_duration_ns": 34561,
               "launch_shapes": [
                 {
                   "count": 16,
@@ -2601,7 +2601,7 @@
             {
               "kernel": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
               "dispatches": 16,
-              "total_duration_ns": 28360,
+              "total_duration_ns": 23881,
               "launch_shapes": [
                 {
                   "count": 16,
@@ -2624,7 +2624,7 @@
             {
               "kernel": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
               "dispatches": 1,
-              "total_duration_ns": 12000,
+              "total_duration_ns": 12400,
               "launch_shapes": [
                 {
                   "count": 1,
@@ -2647,7 +2647,7 @@
             {
               "kernel": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
               "dispatches": 1,
-              "total_duration_ns": 8520,
+              "total_duration_ns": 8280,
               "launch_shapes": [
                 {
                   "count": 1,
@@ -2670,7 +2670,7 @@
             {
               "kernel": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
               "dispatches": 1,
-              "total_duration_ns": 4920,
+              "total_duration_ns": 4921,
               "launch_shapes": [
                 {
                   "count": 1,
@@ -2693,7 +2693,7 @@
             {
               "kernel": "(anonymous namespace)::commit_packed_decode_graph_step_kernel(int const*, long*, long*, long*, unsigned char const*, int*, long*, long, long)",
               "dispatches": 1,
-              "total_duration_ns": 3600,
+              "total_duration_ns": 3240,
               "launch_shapes": [
                 {
                   "count": 1,
@@ -2714,19 +2714,19 @@
               ]
             },
             {
-              "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+              "kernel": "(anonymous namespace)::prepare_packed_decode_metadata_from_positions_kernel(int*, long const*, long*, int*, int*, int*, int*, long*, unsigned char const*, long, long)",
               "dispatches": 1,
-              "total_duration_ns": 3200,
+              "total_duration_ns": 3160,
               "launch_shapes": [
                 {
                   "count": 1,
                   "grid": [
-                    256,
+                    64,
                     1,
                     1
                   ],
                   "workgroup": [
-                    128,
+                    64,
                     1,
                     1
                   ],
@@ -2737,19 +2737,19 @@
               ]
             },
             {
-              "kernel": "(anonymous namespace)::prepare_packed_decode_metadata_from_positions_kernel(int*, long const*, long*, int*, int*, int*, int*, long*, unsigned char const*, long, long)",
+              "kernel": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
               "dispatches": 1,
-              "total_duration_ns": 3200,
+              "total_duration_ns": 3120,
               "launch_shapes": [
                 {
                   "count": 1,
                   "grid": [
-                    64,
+                    256,
                     1,
                     1
                   ],
                   "workgroup": [
-                    64,
+                    128,
                     1,
                     1
                   ],
@@ -2769,50 +2769,50 @@
   },
   "raw_traces": {
     "c1": {
-      "kernel_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/trace/epyc/2104082_kernel_trace.csv",
-      "kernel_csv_sha256": "7135d61cf33cdc91fb8c164d89a1d265f97911a87c99effa3bec9e425cdef23f",
-      "marker_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/trace/epyc/2104082_marker_api_trace.csv",
-      "marker_csv_sha256": "f9995f1f58594d2c44cd1897dfac3c004a3d900aace7d9f88c303d5d9f7a554b",
-      "hip_api_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/trace/epyc/2104082_hip_api_trace.csv",
-      "memory_copy_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/trace/epyc/2104082_memory_copy_trace.csv",
+      "kernel_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c1/trace/epyc/2138411_kernel_trace.csv",
+      "kernel_csv_sha256": "0f9d81d8d26ebfaafd6746bab5deaa5a56c0638b21e227b3cf10dda49751d183",
+      "marker_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c1/trace/epyc/2138411_marker_api_trace.csv",
+      "marker_csv_sha256": "7b3537d4bf7f845a2f5d4d65b84e5fd3822055f6fc430f69e388ec19d8d7bbf7",
+      "hip_api_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c1/trace/epyc/2138411_hip_api_trace.csv",
+      "memory_copy_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c1/trace/epyc/2138411_memory_copy_trace.csv",
       "whole_trace_dispatches": 5452,
       "selected_dispatches": 823,
-      "marker_start_ns": 148982052780558,
-      "marker_end_ns": 148982087614951
+      "marker_start_ns": 150638173114828,
+      "marker_end_ns": 150638208007944
     },
     "c2": {
-      "kernel_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/trace/epyc/2105863_kernel_trace.csv",
-      "kernel_csv_sha256": "827ee55b20e0c24b54b2aae728345460bfc85f64c9220c8dfdb765f487daa305",
-      "marker_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/trace/epyc/2105863_marker_api_trace.csv",
-      "marker_csv_sha256": "9dd894e448e61f464526fcf9e288b5bcd8d30a23c75b6e1ab1b87e95af0f4cd2",
-      "hip_api_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/trace/epyc/2105863_hip_api_trace.csv",
-      "memory_copy_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/trace/epyc/2105863_memory_copy_trace.csv",
+      "kernel_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c2/trace/epyc/2140046_kernel_trace.csv",
+      "kernel_csv_sha256": "6de483c352f433a17cce1240e0ecab1bbabe4f64499d955f54cf2b680512377f",
+      "marker_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c2/trace/epyc/2140046_marker_api_trace.csv",
+      "marker_csv_sha256": "60171c11f3474a0c9323f6b7ee472f71b4a788611b35a930c4459fe1f6ae7f02",
+      "hip_api_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c2/trace/epyc/2140046_hip_api_trace.csv",
+      "memory_copy_csv": "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c2/trace/epyc/2140046_memory_copy_trace.csv",
       "whole_trace_dispatches": 5012,
       "selected_dispatches": 807,
-      "marker_start_ns": 149062662420762,
-      "marker_end_ns": 149062697953135
+      "marker_start_ns": 150718759501496,
+      "marker_end_ns": 150718795085771
     }
   },
   "timeline_accounting": {
     "c1": {
-      "marker_wall_ns": 34834393,
-      "kernel_sum_ns": 30544795,
-      "kernel_interval_union_ns": 30544795,
-      "uncovered_ns": 4289598,
+      "marker_wall_ns": 34893116,
+      "kernel_sum_ns": 30579279,
+      "kernel_interval_union_ns": 30579279,
+      "uncovered_ns": 4313837,
       "kernel_count": 823,
       "hip_api_calls": 2,
-      "hip_api_time_ns": 34749022,
+      "hip_api_time_ns": 34801425,
       "memory_copy_ops": 0,
       "memory_copy_time_ns": 0
     },
     "c2": {
-      "marker_wall_ns": 35532373,
-      "kernel_sum_ns": 31311696,
-      "kernel_interval_union_ns": 31311696,
-      "uncovered_ns": 4220677,
+      "marker_wall_ns": 35584275,
+      "kernel_sum_ns": 31356765,
+      "kernel_interval_union_ns": 31356765,
+      "uncovered_ns": 4227510,
       "kernel_count": 807,
       "hip_api_calls": 2,
-      "hip_api_time_ns": 35441241,
+      "hip_api_time_ns": 35492624,
       "memory_copy_ops": 0,
       "memory_copy_time_ns": 0
     }
@@ -2840,7 +2840,7 @@
       "--compiler-version-file",
       "/tmp/refactor-gfx1100/hipcc-version.txt",
       "--raw-root",
-      "/tmp/refactor-gfx1100/r0387-rocprof-c2",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2",
       "--out",
       "/tmp/refactor-gfx1100/r0387-rocprof-c2.json"
     ],
@@ -2867,7 +2867,7 @@
         "--expected-token-id",
         "9707",
         "--child-json",
-        "/tmp/refactor-gfx1100/r0387-rocprof-c2/warmbuild-c1/child.json",
+        "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/warmbuild-c1/child.json",
         "--compiler-version-file",
         "/tmp/refactor-gfx1100/hipcc-version.txt"
       ],
@@ -2893,7 +2893,7 @@
         "--expected-token-id",
         "9707",
         "--child-json",
-        "/tmp/refactor-gfx1100/r0387-rocprof-c2/warmbuild-c2/child.json",
+        "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/warmbuild-c2/child.json",
         "--compiler-version-file",
         "/tmp/refactor-gfx1100/hipcc-version.txt"
       ]
@@ -2907,7 +2907,7 @@
       "--output-format",
       "csv",
       "-d",
-      "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/trace",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c1/trace",
       "--",
       "/home/lhl/mambaforge/envs/therock/bin/python3.12",
       "/home/lhl/hipEngine/scripts/gguf_packed_ar_rocprof.py",
@@ -2930,7 +2930,7 @@
       "--expected-token-id",
       "9707",
       "--child-json",
-      "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/child.json",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c1/child.json",
       "--compiler-version-file",
       "/tmp/refactor-gfx1100/hipcc-version.txt",
       "--require-cached-build"
@@ -2944,7 +2944,7 @@
       "--output-format",
       "csv",
       "-d",
-      "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/trace",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c2/trace",
       "--",
       "/home/lhl/mambaforge/envs/therock/bin/python3.12",
       "/home/lhl/hipEngine/scripts/gguf_packed_ar_rocprof.py",
@@ -2967,7 +2967,7 @@
       "--expected-token-id",
       "9707",
       "--child-json",
-      "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/child.json",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c2/child.json",
       "--compiler-version-file",
       "/tmp/refactor-gfx1100/hipcc-version.txt",
       "--require-cached-build"
@@ -2976,23 +2976,27 @@
   "provenance": {
     "kind": "hipengine_artifact_provenance",
     "schema_version": 3,
-    "collected_at": "2026-11-10T22:21:13.491224+00:00",
+    "collected_at": "2026-11-10T22:48:49.601355+00:00",
     "host_name": "epyc",
     "repo_root": "/home/lhl/hipEngine",
-    "hipengine_commit": "403f3378f4377187925aeaa6f513453a9493e755",
+    "hipengine_commit": "bcd9631d0d44c5be9cc13444f1798f8f0561d6dc",
     "git_branch": "main",
     "staged_dirty": false,
-    "unstaged_dirty": false,
-    "untracked_dirty": true,
-    "untracked_count": 1,
+    "unstaged_dirty": true,
+    "untracked_dirty": false,
+    "untracked_count": 0,
     "dirty": true,
-    "dirty_paths": [],
-    "dirty_path_count": 0,
-    "untracked_paths": [
-      "worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md"
+    "dirty_paths": [
+      "scripts/gguf_packed_ar_rocprof.py",
+      "tests/test_unit_gguf_packed_ar_rocprof.py"
     ],
-    "execution_affecting_dirty": false,
-    "execution_affecting_paths": [],
+    "dirty_path_count": 2,
+    "untracked_paths": [],
+    "execution_affecting_dirty": true,
+    "execution_affecting_paths": [
+      "scripts/gguf_packed_ar_rocprof.py",
+      "tests/test_unit_gguf_packed_ar_rocprof.py"
+    ],
     "configured_backend": "hip_gfx1100",
     "resolved_backend": "hip_gfx1100",
     "target_arch": "gfx1100",
@@ -3036,7 +3040,7 @@
       "--compiler-version-file",
       "/tmp/refactor-gfx1100/hipcc-version.txt",
       "--raw-root",
-      "/tmp/refactor-gfx1100/r0387-rocprof-c2",
+      "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2",
       "--out",
       "/tmp/refactor-gfx1100/r0387-rocprof-c2.json"
     ],
@@ -3066,7 +3070,7 @@
         "--output-format",
         "csv",
         "-d",
-        "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/trace",
+        "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c1/trace",
         "--",
         "/home/lhl/mambaforge/envs/therock/bin/python3.12",
         "/home/lhl/hipEngine/scripts/gguf_packed_ar_rocprof.py",
@@ -3089,7 +3093,7 @@
         "--expected-token-id",
         "9707",
         "--child-json",
-        "/tmp/refactor-gfx1100/r0387-rocprof-c2/c1/child.json",
+        "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c1/child.json",
         "--compiler-version-file",
         "/tmp/refactor-gfx1100/hipcc-version.txt",
         "--require-cached-build"
@@ -3103,7 +3107,7 @@
         "--output-format",
         "csv",
         "-d",
-        "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/trace",
+        "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c2/trace",
         "--",
         "/home/lhl/mambaforge/envs/therock/bin/python3.12",
         "/home/lhl/hipEngine/scripts/gguf_packed_ar_rocprof.py",
@@ -3126,7 +3130,7 @@
         "--expected-token-id",
         "9707",
         "--child-json",
-        "/tmp/refactor-gfx1100/r0387-rocprof-c2/c2/child.json",
+        "/tmp/refactor-gfx1100/r0387-rocprof-c2-v2/c2/child.json",
         "--compiler-version-file",
         "/tmp/refactor-gfx1100/hipcc-version.txt",
         "--require-cached-build"
@@ -3135,7 +3139,7 @@
   },
   "limitations": [
     "One synchronized steady decode transition is a route census, not a throughput sample.",
-    "C2 closes the recurrent linear-attention row loop, but the route remains exact_hybrid until the later C3/C4 correctness, replay, and scaling gates complete.",
+    "Physical c2 proves one real graph replay with zero undeclared c1 work or steady transfer; native/scaling promotion still requires the d128 and direct performance packet.",
     "Profiler instrumentation and marker synchronization make all durations diagnostic only."
   ]
 }

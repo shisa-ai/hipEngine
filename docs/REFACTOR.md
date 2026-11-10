@@ -1292,12 +1292,12 @@ neighboring c3/c5 and unrelated c8/c13; dense Qwen3.8-27B-Q4_K_M, BF16 KV, greed
 strict): every width is route-clean and deterministic except c4, which shows an
 intermittent packed-decode nondeterminism (1 divergence in 18 runs) — filed as
 R0523. rocprofv3 graph-mode cache-only census collected for c1+c2 and c1+c4
-(capture excluded, one steady replay); c4 closes, c2 is a harness dense-down
-filter false-negative (col8_residual variant uncounted). Prerequisite test bundles
-green. See
+(capture excluded, one steady replay); both c2 and c4 close (the c2 dense-down
+census filter was corrected to count the col8_residual variant). Prerequisite test
+bundles green. See
 [`worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md`](../worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md)
 and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-r0387-*`. Remaining: the
-R0523 c4 race root-cause/fix and the rocprof dense-down filter correction.
+R0523 c4 race root-cause/fix.
 
 Done when: inspect `scripts/server_f1_concurrency_bench.py --help`, then collect matched
 current c1/c2/c4 and neighboring/unrelated logical-width requests on one gfx1100 host with model,
