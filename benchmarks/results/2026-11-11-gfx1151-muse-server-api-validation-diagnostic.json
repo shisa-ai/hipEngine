@@ -1,0 +1,98 @@
+{
+ "schema": 1,
+ "kind": "muse_server_api_anti_overfit_validation",
+ "status": "diagnostic_retained",
+ "date": "2026-11-11",
+ "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified, Desktop)",
+ "hipengine_commit_base": "429dd049d38e939d32632b764b81bc42b7808d20",
+ "question": "Does the Muse DFlash tuning (LDS-padded prefill/verify, adaptive-split shared decode attention, combine live-scan, norm) generalize to the real hipengine server API, or is it overfitted to the mtpbench harness?",
+ "server_command": "hipengine serve --model Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf --speculative-provider dflash --draft-model dflash-Muse-Glimmer-30B-Q4_K_M.gguf --kv-storage bf16 --max-context-tokens 8192 (under rocprofv3 --kernel-trace)",
+ "request_surface": "OpenAI-compatible /v1/chat/completions and /v1/completions; DFlash selected per request with speculative:true (generic provider, explicit-only, raw-greedy BF16 c=1 guard); AR baseline omits speculative.",
+ "verdict": "NOT overfitted. The tuned DFlash path runs through the real server API and is output-invariant: AR and DFlash return identical token IDs for short, completion, and 6011-token long-context prompts; repeat requests deterministic; buffered==streaming.",
+ "parity_rows": [
+  {
+   "prompt_class": "short_chat",
+   "ar_route": "default",
+   "dflash_route": "speculative",
+   "text_identical": true,
+   "token_ids_identical": true,
+   "prompt_tokens": 28,
+   "completion_tokens": 24
+  },
+  {
+   "prompt_class": "completion",
+   "ar_route": "default",
+   "dflash_route": "speculative",
+   "text_identical": true,
+   "token_ids_identical": true,
+   "prompt_tokens": 14,
+   "completion_tokens": 64
+  },
+  {
+   "prompt_class": "long_context_6011tok",
+   "ar_route": "default",
+   "dflash_route": "speculative",
+   "text_identical": true,
+   "token_ids_identical": true,
+   "prompt_tokens": 6011,
+   "completion_tokens": 32
+  }
+ ],
+ "determinism": {
+  "chat_dflash_repeat_identical": true,
+  "long_dflash_repeat_identical": true
+ },
+ "streaming_parity": {
+  "completion_buffered_eq_stream": true,
+  "chat_buffered_eq_stream": true
+ },
+ "route_telemetry": {
+  "ar_generation_shape_route": "default",
+  "dflash_generation_shape_route": "speculative",
+  "fallback_used": false,
+  "note": "hipengine.speculative_mtp extension reads used:false/draft_tokens:0 because that accounting is native-MTP-only and does not cover the generic provider; generation_shape.route='speculative' plus the DFlash-specific draft-kernel dispatches are the conclusive route evidence."
+ },
+ "kernel_trace": {
+  "total_dispatches": 228076,
+  "tuned_kernel_dispatches": {
+   "muse_glimmer_draft_flash_wmma_kernel": 675,
+   "muse_glimmer_flash_prefill_wmma_mt_kernel": 1144,
+   "muse_glimmer_decode_attn_shared_kernel": 13520,
+   "muse_glimmer_decode_attn_combine_gated_kernel": 13520,
+   "muse_glimmer_add_rmsnorm_rmsnorm_reg_kernel": 27040
+  },
+  "shared_decode_attention_grid_x_values": [
+   512,
+   1536,
+   2048,
+   2560,
+   6144,
+   8192,
+   10240
+  ],
+  "interpretation": "muse_glimmer_draft_flash_wmma_kernel (675) is DFlash-draft-specific and never runs in AR decode; its presence plus route='speculative' proves the tuned path executed, not an AR fallback. Seven distinct shared-decode grid.x configs (512..10240) show the adaptive split-block logic engaged across context lengths, including the 6011-token prompt past the 2048 crossing."
+ },
+ "server_integration_tests": {
+  "bundle": "tests/test_integration_server_*.py (27 files)",
+  "passed": 1043,
+  "failed": 0,
+  "skipped": 0
+ },
+ "caveats": [
+  "Correctness/path-engagement validation, not a server throughput claim; rocprofv3 trace adds overhead and no tok/s is asserted here. Performance claims remain with the mtpbench artifacts.",
+  "Muse DFlash on the server is explicit-only per request (speculative:true) and requires --speculative-provider dflash --draft-model <sidecar>; ordinary chat requests default to AR by documented design. --speculative-mtp-serving is the native-MTP flag and does not route Muse (run 1 used it by mistake and correctly fell back to AR)."
+ ],
+ "requests_recorded": [
+  "A1_chat_ar",
+  "A2_chat_dflash",
+  "A3_chat_dflash_repeat",
+  "B1_compl_ar",
+  "B2_compl_dflash",
+  "B3_compl_dflash_stream",
+  "C1_long_ar",
+  "C2_long_dflash",
+  "C3_long_dflash_repeat",
+  "D1_chat_dflash_stream"
+ ],
+ "errors": []
+}
