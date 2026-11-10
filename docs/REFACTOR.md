@@ -1898,12 +1898,16 @@ Owner: `hipengine/runtime/gguf_packed_decode_graph.py`.
 Scope: native c4 packed AR decode (`gguf_packed_ar_server_decode`) on gfx1100,
 dense Qwen3.8-27B-Q4_K_M; graph-replay state/KV ownership and GEMV split-K decode.
 
-Found by R0387: the native c4 packed decode step intermittently diverges from the
-c1 oracle for one row (request 1, decode position 73, expected token 6866 vs
-observed 3154) — 1 divergence in 18 c4 runs; 15 focused repeats (5+10) were
-byte-identical. c1/c2/c3/c5/c8/c13 are deterministic and route-clean. This is a
-low-rate race, not a stable arithmetic error. See
-[`worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md`](../worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md)
+Found by R0387 and reproduced: the native c4 packed decode step intermittently
+diverges from the c1 oracle — 2 divergences in 48 c4 runs (~4%), at different rows
+and positions (request 1 pos 73: 6866 vs 3154; request 3 pos 17: 16 vs 15), so it
+is a general c4 packed-step race, not a fixed slot. A 30-repeat c2 burst was
+byte-clean, narrowing the race to c4. The only c2/c4 dispatch difference is the
+down residual (c2 fuses col8_residual; c4 runs the col8 down plus a standalone
+bf16_add). Inspection has ruled out the attention/split-K/GDN-state/down
+reductions as the source. See
+[`worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md`](../worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md),
+[`worklog/entries/20261110T232102.871853Z-lhl-r0523-c4-race-narrowed-4fa452.md`](../worklog/entries/20261110T232102.871853Z-lhl-r0523-c4-race-narrowed-4fa452.md)
 and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-r0387-packed-concurrency-summary.json`.
 
 Done when: reproduce the divergence under a targeted c4 stress with state/KV

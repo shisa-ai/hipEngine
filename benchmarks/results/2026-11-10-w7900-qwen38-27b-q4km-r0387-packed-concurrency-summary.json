@@ -98,8 +98,23 @@
  "c4_reproduction": {
   "confirm_5_repeats_passed": true,
   "stress_10_repeats_passed": true,
-  "total_c4_runs": 18,
-  "divergences": 1
+  "stress30_passed": false,
+  "stress30_mismatch": {
+   "record_index": 15,
+   "request_index": 3,
+   "prompt_token_ids_sha256": "f3ac5a82713d82b99fa6529ea1cfc218cdc9fc148b69d298d70f50bae14201d3",
+   "expected_tokens": 128,
+   "observed_tokens": 128,
+   "first_mismatch_index": 17,
+   "expected_token": 16,
+   "observed_token": 15
+  },
+  "c2_stress30_passed": true,
+  "total_c4_runs": 48,
+  "c4_divergences": 2,
+  "c2_runs": 30,
+  "c2_divergences": 0,
+  "note": "c4-specific race; two hits at different rows/positions (req1 pos73, req3 pos17); c2 byte-clean over 30"
  },
- "finding": "c4 native packed decode intermittent nondeterminism (1/18 runs); all other widths deterministic and route-clean"
+ "finding": "c4-specific intermittent packed-decode race (2/48 c4 runs; c2 0/30); down-residual dispatch is the only c2/c4 kernel difference"
 }
