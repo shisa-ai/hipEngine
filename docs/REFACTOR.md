@@ -1891,22 +1891,3 @@ graph-pointer, lifecycle, cancellation, pressure, SLO and production load. Only 
 registered packages migrate may compatibility fixtures retire. Registered strict/unfused/serial
 numerical fallbacks remain independent of allocator cleanup.
 
-### R0522 — Streaming-cohort graph-capture memory growth
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `_invalidate_live_packed_decode_graphs`; packed decode graph capture/close buffer accounting.
-
-Observed on the W7900 dense C8 streaming path: repeated identical streaming cohorts (8 requests,
-64 tokens) grow tracked memory ~450 MB per cohort, and a no-cancel control reproduces the same
-trajectory, so this is not a cancellation leak. The packed workspace and KV pool stay constant while
-graph-bucket captures equal invalidations, retained entries stay at zero, and graph hits freeze after
-the first cohort. Prefill intentionally invalidates slot-binding decode graphs, so each cohort
-re-captures; the open question is whether the per-recapture bytes are unreleased capture buffers or
-bounded retention. Evidence and the control are recorded in
-`worklog/entries/20261108T194835.580722Z-lhl-gfx1100-physical-mtp-closures-f5c86c.md`.
-
-Done when: reproduce the growth with a controlled streaming-cohort loop, attribute it to graph
-capture/close buffer accounting (allocator or rocprofv3 memory trace), decide leak versus bounded
-retention, fix or bound it, and verify tracked memory plateaus across repeated identical cohorts
-with clean teardown. Do not disable graph replay or the prefill invalidation contract to hide it.
