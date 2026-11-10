@@ -1,32 +1,31 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-11-06 UTC**
+Last updated: **2026-11-10 UTC**
 
 ## Muse Glimmer 30B DFlash — Radeon 8060S (gfx1151)
 
-Muse Glimmer 30B GGUF `Q4_K_M`, host **zbook / Radeon 8060S** (`gfx1151`),
-DFlash block-diffusion speculative decode (draft budget 4), greedy, one
-request. Ten natural mtpbench prompts (code / general / Japanese), 512
-outputs, three measured repetitions after warmup. Decode uses the
-cross-engine transition boundary: output tokens minus the prompt-produced
-first token, divided by the post-prefill decode wall.
+Muse Glimmer 30B GGUF `Q4_K_M` (KQuant-17GB), host **Desktop / Radeon 8060S**
+(`gfx1151`, Ryzen AI MAX+ PRO 395, 128 GiB unified), greedy, one request.
+Ten natural mtpbench prompts (code / general / Japanese), 512 outputs.
+hipEngine runs acceptance-triggered adaptive draft depth; llama.cpp is
+upstream HEAD `3b4d6ab3f` (HIP, flash attention, f16 KV) with
+`draft-dflash`. Decode uses the shared cross-engine transition boundary:
+output tokens minus the prompt-produced first token, divided by the
+post-prefill decode wall.
 
-| Engine | Decode tok/s |
-| --- | ---: |
-| hipEngine DFlash | **21.6** |
-| llama.cpp `draft-dflash` | 21.3 |
-| hipEngine AR (no draft) | 10.9 |
+| Engine | AR decode tok/s | DFlash decode tok/s | DFlash/AR | Draft acceptance |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine | 12.61 | 27.38 | 2.17x | 0.549 |
+| llama.cpp `draft-dflash` | 12.83 | 27.20 | 2.12x | 0.557 |
 
-hipEngine DFlash decode exceeds the llama.cpp `draft-dflash` server on the
-same suite and is **1.98x** its own no-draft AR. Every generated ID equals
-true greedy AR token-for-token: the block verify is bit-identical to AR
-(row-independent weight-amortized projections plus decode-equivalent
-attention), so speculation changes only how many tokens commit per forward,
-never the output. Draft acceptance is 0.49. The rate comes from verifying a
-whole draft block in one target forward and folding the corrected boundary
-token into the next verify rather than running a separate forward for it.
-[hipEngine artifact](results/2026-11-06-gfx1151-muse-glimmer-hipengine-dflash-mtpbench.json) ·
-[llama.cpp baseline](results/2026-11-06-gfx1151-muse-glimmer-llamacpp-dflash-mtpbench-baseline.json).
+DFlash decode is at parity between the two engines (0.7% apart); each is
+about 2.1x its own no-draft AR. hipEngine's generated IDs equal true greedy
+AR token-for-token on every prompt: the block verify is bit-identical to AR,
+so speculation changes only how many tokens commit per forward, never the
+output. Short-prompt prefill is overhead-dominated on both engines (median
+TTFT 0.44-0.52 s here); long-prompt prefill is not yet paired.
+[hipEngine artifact](results/2026-11-09-gfx1151-muse-glimmer-depth-adaptive-ab.json) ·
+[llama.cpp baseline](results/2026-11-10-gfx1151-muse-glimmer-llamacpp-head-mtpbench.json).
 
 ## 16K INT8/MTP with and without DMS — RX 7900 XTX
 

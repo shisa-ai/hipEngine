@@ -5877,3 +5877,30 @@ API window falls from 17.844 to 16.752 microseconds, but this does not establish
 an end-to-end MTP speedup. The public trace confirms fused execution; four device
 cases preserve exact selection, routing and cast bits, and four expert tests pass.
 [Source, commands, attribution and samples](results/2026-10-23-gfx1151-flashnext-router-default.json).
+
+## Muse Glimmer DFlash Gate-B pairing — zbook, November 6
+
+Archived from the topline 2026-11-10 when the Desktop pairing against
+llama.cpp upstream HEAD refreshed the Muse section. Preserved because the
+MUSE-GLIMMER campaign's Gate B records reference the 21.3 tok/s target.
+
+Muse Glimmer 30B GGUF `Q4_K_M`, host **zbook / Radeon 8060S** (`gfx1151`),
+DFlash block-diffusion speculative decode (draft budget 4), greedy, one
+request. Ten natural mtpbench prompts (code / general / Japanese), 512
+outputs, three measured repetitions after warmup. Decode uses the
+cross-engine transition boundary: output tokens minus the prompt-produced
+first token, divided by the post-prefill decode wall.
+
+| Engine | Decode tok/s |
+| --- | ---: |
+| hipEngine DFlash | 21.6 |
+| llama.cpp `draft-dflash` | 21.3 |
+| hipEngine AR (no draft) | 10.9 |
+
+hipEngine DFlash decode exceeded the llama.cpp `draft-dflash` server on the
+same suite and was 1.98x its own no-draft AR, with every generated ID equal
+to true greedy AR token-for-token and draft acceptance 0.49. The llama.cpp
+side ran commit `e0f142d5` against an existing server; the hipEngine side
+predates the shared-row attention, grouped-GEMV, and adaptive-depth levers.
+[hipEngine artifact](results/2026-11-06-gfx1151-muse-glimmer-hipengine-dflash-mtpbench.json) ·
+[llama.cpp baseline](results/2026-11-06-gfx1151-muse-glimmer-llamacpp-dflash-mtpbench-baseline.json).
