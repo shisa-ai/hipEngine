@@ -1,0 +1,111 @@
+{
+  "kind": "xtx_server_capacity_refresh",
+  "schema": 1,
+  "performance_claim": false,
+  "date": "2026-11-10",
+  "device": "AMD Radeon RX 7900 XTX (GPU1, gfx1100, 24 GiB)",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "confirmed_bound_tokens": 92160,
+  "confirmation": {
+    "status": "pass",
+    "server_teardown": "clean",
+    "prompt_rows": 92144,
+    "decode_tokens": 8,
+    "request_wall_seconds": 240.527,
+    "startup_seconds": 87.038
+  },
+  "policy": {
+    "kv_storage": "int8_per_token_head",
+    "kv_scale_dtype": "fp32",
+    "kv_scale_granularity": "per_token_head",
+    "speculative_mtp_serving": "off",
+    "prefix_cache": "off",
+    "max_context_tokens": 92160,
+    "automatic_context": false,
+    "max_active_requests": 1,
+    "automatic_serving_capacity": false,
+    "dms_metadata": null,
+    "dms_metadata_path": null
+  },
+  "identity": {
+    "hostname": "epyc",
+    "platform": "Linux-7.3.0-4-cachyos-x86_64-with-glibc2.44",
+    "head": "bc88971a9",
+    "dirty": null,
+    "probe_script_sha256": "dd890795e1ef6a28ee13843ab8c5f1fb12fc9945b833295057aa31ad5a55ae49"
+  },
+  "kv_estimate": {
+    "storage": "int8_per_token_head",
+    "scale_dtype": "fp32",
+    "scale_granularity": "per_token_head",
+    "estimate": {
+      "requested_context_tokens": 92160,
+      "model_max_context_tokens": 262144,
+      "allocatable_context_tokens": 123904,
+      "max_batch_size": 1,
+      "requested_kv_bytes": 3067084800,
+      "bytes_per_token": 56650,
+      "usable_bytes": 7665090560,
+      "reserve_bytes": 805306368,
+      "fits_model_max": false,
+      "kv_storage_dtype": "int8_per_token_head",
+      "kv_scale_dtype": "fp32"
+    },
+    "pool": {
+      "current_bytes": 3067084800.0,
+      "high_water_observed_bytes": 8519680.0,
+      "current_pages": 360.0,
+      "high_water_observed_pages": 1.0,
+      "grow_events": 0.0,
+      "grow_failures": 0.0,
+      "shrink_events": 0.0,
+      "free_pages": 360.0,
+      "refcounted_pages": 0.0,
+      "pinned_pages": 0.0,
+      "max_pages": 778.0,
+      "budget_bytes": 6628311040.0,
+      "retired_pages": 0.0,
+      "retired_bytes": 0.0
+    }
+  },
+  "domains_gib": {
+    "pool_high_water": 2.8564,
+    "pool_pinned_pages": 0.0,
+    "workspace_owner_deduped": 0.3035,
+    "workspace_leased_pool": 0.0,
+    "prefill_oracle_live": 0.0,
+    "prefill_oracle_observed_peak": 0.3516,
+    "prefill_oracle_observed_peak_owners": 1.0,
+    "prefill_oracle_owners": 0.0,
+    "hidden_bulk_owners": 1.035,
+    "request_owned_kv_after": 0.0
+  },
+  "final": {
+    "hipengine_kv_pool_current_bytes": 3067084800.0,
+    "hipengine_kv_pool_high_water_observed_bytes": 3067084800.0,
+    "hipengine_kv_pool_pinned_pages": 0.0,
+    "hipengine_resident_packed_workspace_current_bytes": 325930536.0,
+    "hipengine_resident_packed_workspace_leased_pool_bytes": 0.0,
+    "hipengine_resident_prefill_oracle_owner_bytes": 0.0,
+    "hipengine_resident_prefill_oracle_observed_peak_bytes": 377487360.0,
+    "hipengine_resident_prefill_oracle_observed_peak_owners": 1.0,
+    "hipengine_resident_prefill_oracle_owners": 0.0,
+    "hipengine_resident_prefill_hidden_owner_bytes": 1111362984.0,
+    "hipengine_resident_kv_total_bytes": 0.0
+  },
+  "kvcache_log": [],
+  "over_bound_rejection": {
+    "requested_context": 196608,
+    "status": "request_failed",
+    "request_error": "HTTPError: HTTP Error 400: Bad Request",
+    "kvcache_log": []
+  },
+  "per_token_breakdown_bytes": {
+    "kv_pool": 33280,
+    "transient_context": 12288,
+    "prefill_workspace": 10473,
+    "scratch_context": 608,
+    "total_marginal": 56650
+  },
+  "note": "Tier-1 probes above 92160 pass misleadingly (server caps context; probe fills only 2048 rows). Full-depth at 196608 rejected (resident capacity 92160); full-depth at 92160 passed. KV payload is 33280 B/token; ~23 KB/token is context-scaled prefill workspace/transient, the lever for fitting more."
+}

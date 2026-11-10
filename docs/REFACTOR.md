@@ -1332,25 +1332,6 @@ gates, including separate tail-four coverage; this per-token evaluator does not 
 quality. Preserve explicit direct execution and the oracle path while resolving that numerical
 choice.
 
-### R0406 — RX 7900 XTX server capacity refresh
-
-Owner: `scripts/gguf_server_allocation_probe.py`.
-
-Scope: `scripts/gguf_server_allocation_probe.py` — RX 7900 XTX server capacity refresh.
-
-**Deferred hardware validation:** refresh the RX 7900 XTX single-request server context bound. The
-XTX is now present in this host as the second gfx1100 device (24 GiB); the refresh has not run yet.
-Select the XTX explicitly and start with a short, multi-slab allocation probe, for example:
-
-```bash
-python scripts/gguf_server_allocation_probe.py --model "$GGUF_MODEL" --kv-storage int8_per_token_head --kv-scale-dtype fp32 --kv-scale-granularity per_token_head --speculative-mtp-serving off --prefix-cache off --max-active-requests 1 --max-context-tokens 54272 --prompt-rows 2048 --decode-tokens 8 --json /tmp/xtx-server-capacity-54272.json
-```
-
-Done when: Select the XTX explicitly in its ROCm environment. Record resolved server policy,
-readiness/capability/response documents, allocation ownership and teardown. Bracket capacity with
-short probes, then confirm the chosen context with the full-depth workload; the example context is
-not a maximum.
-
 ### R0459 — Row-split GDN recurrence removal decision
 
 Owner: `hipengine/generation/qwen4_exp_profiles.py`.
