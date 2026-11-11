@@ -184,18 +184,24 @@ Owner: `hipengine/kernels/hip_gfx1100/__init__.py`.
 Scope: `scripts/qwen35_08b_cumulative_semantic.py`; `HIPENGINE_GGUF_Q8_T16_DUAL_WMMA_PREFILL`,
 `HIPENGINE_GGUF_DENSE_WMMA_RESIDUAL`; `HIPENGINE_GGUF_DENSE_WMMA_BULK`.
 
-Done when: validate the actual Qwen3.5-0.8B Q4_K_M and Q8_0 callers. Neither
-checkpoint is present in the local `/models/gguf` catalogue; other available Qwen
-models do not establish engagement of the narrow rows512/K1024/N16+N16 pair.
+Done when: validate the actual Qwen3.5-0.8B Q4_K_M and Q8_0 callers on gfx1151.
+Both checkpoints are now present in the local `/models/gguf` catalogue (added
+2026-11-09, valid GGUF v3), so the artifact dependency is resolved. The clearing
+is gfx1151-only: the dense-WMMA bulk (`GGUF_DENSE_BF16_WMMA_BULK_PREFILL`) and the
+narrow rows512/K1024/N16+N16 Q8-T16 pair (`GGUF_Q8_T16_DUAL_WMMA_PREFILL_SHAPES =
+{(512, 1024, 16, 16)}`) are declared only in `hipengine/kernels/hip_gfx1151/policy_gguf.py`; gfx1100
+declares neither, and the cumulative harness is bound to `hip_gfx1151`. Deferred
+to the gfx1151 machine; other available Qwen models do not establish engagement of
+the narrow pair.
 The diagnostic-control migration is implemented: the cumulative harness uses
 `cumulative_prefill_diagnostic`, threshold children carry explicit scoped arguments,
 and production no longer reads these three environment controls. Dispatch tests
 cover bulk policy at 511/512/513 and unrelated lengths; defaults and primitive
-fallbacks are unchanged. **Clearing action:** with those checkpoints available,
+fallbacks are unchanged. **Clearing action:** on a gfx1151 host with those checkpoints (now available),
 exercise public p512 generation and eager/graph decode, trace pair/residual
 selection, compare against registered scalar/singleton/add controls, and verify
 cleanup. See the cumulative-prefill worklog entries for migration evidence.
-This remaining checkpoint dependency does not restrict runtime admission.
+This remaining backend dependency does not restrict runtime admission.
 
 ### R0217 — PM4 diagnostic controls and transport rollback
 
