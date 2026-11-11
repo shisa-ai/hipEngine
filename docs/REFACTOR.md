@@ -150,24 +150,6 @@ closed as intentional reference code. See
 Done when: Validation dependency: a local Laguna checkpoint. Run the R0273 gfx1151 public command and
 confirm range-direct selection, output parity and teardown.
 
-### R0171 — Public raw-Q5 sidecar and route validation
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `hipengine/runtime/qwen35_gguf_runner.py` — Public raw-Q5 sidecar and route validation.
-
-Done when: Dependency: gfx1100 public C8 physical MTP execution with raw-Q5 sidecars. **Clearing action:**
-run `hipengine serve` at eight active requests, confirm sidecar ownership and MMQ launches at
-admitted R24/R32 shapes, then compare output/acceptance and allocation cleanup with grouped T16.
-Include fewer-request and missing-workspace cases to verify fallback, without weakening admission.
-
-**Status (2026-11-11):** public C8/R32 raw-Q5 sidecar engagement captured on the W7900
-(rocprofv3 kernel trace, 500 ms batch window, K3/D24, production, explicit MTP):
-`gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel<5,bf16,2>` 144 dispatches alongside the source-Q5
-MMQ at R32; 10/10 token-exact, acceptance 0.65-0.84, overall teardown 0->0. See
-[`worklog/entries/20261111T011507.214968Z-lhl-r0168-r0170-r0171-physical-width-policy-e5c32f.md`](../worklog/entries/20261111T011507.214968Z-lhl-r0168-r0170-r0171-physical-width-policy-e5c32f.md).
-**Remaining:** the fewer-request and missing-workspace fallback cases.
-
 ### R0172 — Public grouped Q5 C8 validation
 
 Owner: `hipengine/runtime/gguf_linear.py`.

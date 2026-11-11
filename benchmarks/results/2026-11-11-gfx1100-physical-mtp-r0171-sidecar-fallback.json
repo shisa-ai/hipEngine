@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "kind": "physical_mtp_raw_q5_sidecar_fallback",
+  "date": "2026-11-11",
+  "refactor_item": "R0171",
+  "backend": "hip_gfx1100",
+  "gpu": "W7900 (gfx1100)",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "source_commit": "806db9550",
+  "protocol": {
+    "candidate_budget": 3,
+    "max_tokens": 24,
+    "batch_window_ms": 500,
+    "execution_profile": "production",
+    "mtp_request_mode": "explicit",
+    "correctness": "ar_exact"
+  },
+  "c8_admitted": {
+    "raw_q5_mmq32_dispatches": 144,
+    "note": "see 2026-11-11-gfx1100-physical-mtp-r24-r32-owner-trace.json"
+  },
+  "c2_fewer_request": {
+    "cells_exact": 10,
+    "cells_engaged": 10,
+    "kernel_owners": {
+      "q5_rowtile_fallback": 13440
+    },
+    "teardown_current_allocated_bytes": [
+      0,
+      0
+    ],
+    "note": "sidecar not admitted at C2; Q5 rowtile fallback runs token-exact; admission not weakened"
+  },
+  "missing_workspace": {
+    "behavior": "q5_raw_mmq_target_session raises ValueError on missing/undersized device workspace (fail-loud, no silent downgrade)",
+    "tests": [
+      "test_q5_raw_mmq_target_session_uses_sidecar_and_bounded_workspace",
+      "test_q5_raw_mmq_target_session_rejects_undersized_workspace"
+    ],
+    "passed": true
+  },
+  "closed": [
+    "R0171"
+  ]
+}
