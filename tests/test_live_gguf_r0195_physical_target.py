@@ -34,6 +34,10 @@ _PROMPTS = [
     "List three prime numbers:",
     "Explain gravity in one sentence.",
     "Write a haiku about the sea.",
+    "Describe the water cycle briefly.",
+    "What is the speed of light?",
+    "Name a programming language.",
+    "Summarize photosynthesis in a sentence.",
 ]
 _MAX_TOKENS = 24
 
@@ -92,13 +96,14 @@ def _find_adapter(root):
     return None
 
 
-def _worker(budget: int, profile: str) -> None:
+def _worker(budget: int, profile: str, num_prompts: int = 4) -> None:
     from hipengine import LLM, SamplingParams
 
+    prompts = _PROMPTS[:num_prompts]
     engine = LLM(
         str(_MODEL), backend=_BACKEND, execution_profile=profile,
         speculative_candidate_budget=budget,
-        max_active_requests=len(_PROMPTS), max_sequence_length=512,
+        max_active_requests=num_prompts, max_sequence_length=512,
     )
     sampling = SamplingParams(
         max_tokens=_MAX_TOKENS, temperature=0.0, top_p=1.0,
@@ -106,7 +111,7 @@ def _worker(budget: int, profile: str) -> None:
     )
     result: dict = {"budget": budget, "profile": profile}
     try:
-        outputs = engine.generate_detailed(_PROMPTS, sampling)
+        outputs = engine.generate_detailed(prompts, sampling)
         result["token_ids"] = [list(o.generated_token_ids or ()) for o in outputs]
         result["status"] = "ok"
     except Exception as exc:  # noqa: BLE001
@@ -122,8 +127,8 @@ def _worker(budget: int, profile: str) -> None:
     print("R0195_WORKER_RESULT " + json.dumps(result, default=str), flush=True)
 
 
-def _run_case(budget: int, profile: str) -> dict:
-    env = dict(os.environ, R0195_WORKER=f"{budget}:{profile}",
+def _run_case(budget: int, profile: str, num_prompts: int = 4) -> dict:
+    env = dict(os.environ, R0195_WORKER=f"{budget}:{profile}:{num_prompts}",
                R0195_TEST_MODEL=str(_MODEL))
     proc = subprocess.run([sys.executable, __file__], env=env,
                           capture_output=True, text=True, timeout=900)
@@ -171,8 +176,30 @@ def test_unsupported_candidate_depth_fails_with_named_capability() -> None:
     assert "mtp_candidate_depth_unsupported" in result["error"], result["error"]
 
 
+def test_wider_group_realizes_eight_request_capacity() -> None:
+    # 8 prompts + max_active_requests=8 lifts owner capacity so the width-8
+    # physical cell is admissible; the realized verify group is wider than the
+    # 2-request default and attributes a valid row-multiple reason.
+    result = _run_case(3, "production", num_prompts=8)
+    assert result["status"] == "ok", result.get("error")
+    partition = result["last_partition"]
+    assert partition["owner_capacity"] == 8, partition
+    assert partition["physical_max_requests"] == 8, partition
+    assert partition["resolved_max_requests"] == 8, partition
+    shape = result["last_target_shape"]
+    assert shape["request_count"] >= 2, shape
+    assert shape["reason"] in {
+        "aligned_row_multiple", "padded_to_row_multiple", "exact_row_count",
+    }, shape
+    assert shape["selected_rows"] >= shape["logical_rows"], shape
+    assert len(result["token_ids"]) == 8, result
+    assert all(len(t) == _MAX_TOKENS for t in result["token_ids"]), result
+
+
 if __name__ == "__main__":
     spec = os.environ.get("R0195_WORKER")
     if spec:
-        b, p = spec.split(":")
-        _worker(int(b), p)
+        parts = spec.split(":")
+        b, p = int(parts[0]), parts[1]
+        n = int(parts[2]) if len(parts) > 2 else 4
+        _worker(b, p, n)

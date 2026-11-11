@@ -1697,11 +1697,13 @@ pads physical groups to the admitted rows6 rowtile
 rowtiles (`no_padding_policy`, empty plan), the padded production
 `generated_token_ids` are bit-identical to the unpadded strict route, the
 offset/selector `last_partition` is attributed, and an unsupported C4 depth raises the
-named `mtp_candidate_depth_unsupported` capability miss. See
+named `mtp_candidate_depth_unsupported` capability miss. A wider-group case
+(8 prompts, `max_active_requests=8`, C3) realizes `owner_capacity=8`,
+`physical_max_requests=8`, `resolved_max_requests=8` and a >2-request verify group
+attributing `aligned_row_multiple`. See
 [`device evidence`](../worklog/entries/20261111T215955.267498Z-lhl-r0195-device-3f4a30.md).
-Still outstanding: wider supported groups (>2 realized requests), explicit shape-miss
-fallbacks, C1/C3 in the permanent gate, and device recurrent/KV state comparison beyond
-token IDs.
+Still outstanding: explicit shape-miss fallbacks (`accept_capacity_fallback`), C1 in
+the permanent gate, and device recurrent/KV state comparison beyond token IDs.
 Reuse RF-1/RF-10 ownership rather than add a parallel selector. Retire the two rollback flags
 only with explicit coverage of their replacement policies and diagnostic controls.
 
