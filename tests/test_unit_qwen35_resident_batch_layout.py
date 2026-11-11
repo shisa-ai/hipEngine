@@ -1020,6 +1020,14 @@ def test_qwen35_resident_slot_full_spans_use_live_counts_for_decode_threshold() 
     assert append_spans1.max_live_count == 7
     assert decode_spans1.max_live_count == 8
 
+    session._decode_graph_context_limit = 576
+    _, graph_append, graph_decode = session._slot_full_spans(0, 0)
+    assert graph_append.max_live_count == 575
+    assert graph_decode.max_live_count == 576
+    assert graph_decode.live_counts.ptr == decode_spans.live_counts.ptr
+    del session._decode_graph_context_limit
+    assert session._slot_full_spans(0, 0)[2].max_live_count == 513
+
 
 def test_qwen35_resident_native_prefill_layers_gate_int8_to_bf16_oracle_by_default() -> None:
     device = Device("hip", 0)
