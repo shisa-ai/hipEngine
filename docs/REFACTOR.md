@@ -176,18 +176,6 @@ exercise `LLM.generate()` and `hipengine serve` on both backends, trace Q6 root 
 requests and a non-divisible packed width, and compare logits/output and cleanup with the registered
 R4 composition.
 
-### R0182 — Public fused packed-state transfer validation
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `hipengine/runtime/qwen35_gguf_runner.py` — Public fused packed-state transfer validation.
-
-Done when: Dependency: public gfx1100 physical MTP execution using packed state imports. **Clearing
-action:** run `hipengine serve`, trace the fused pointer-table gather where direct resident indexing
-is inapplicable, and compare imported Conv/GDN state with the per-layer parent. Include single-slot
-fallback, rejection, cancellation and resource cleanup. CPU ownership tests do not prove public GPU
-state-transfer engagement.
-
 ### R0213 — Mirrored INT8 fallback migration and validation
 
 Owner: `hipengine/kvcache/dense.py`.
