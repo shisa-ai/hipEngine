@@ -6244,19 +6244,11 @@ class Qwen35GGUFFullStackRunner:
                         runtime=runtime,
                     )
                 else:
-                    # Below the split threshold the scalar owner picks its
-                    # short-context batch leaf from this row's own ``position + 1``
-                    # cap. That leaf takes the cap as a scalar argument, so it is
-                    # only the scalar owner's arithmetic when the caller can
-                    # vouch for the row's position: the eager verifier stages the
-                    # metadata it reads back, while the captured target graph
-                    # updates positions on device and the host mirror is a
-                    # capture-time guess. Using a guessed cap launches the batch
-                    # leaf with the wrong live count and breaks AR identity on the
-                    # retained 3-prompt ladder (shared prefix 7/16). Without that
-                    # guarantee the plain span leaf is the correct choice: its
-                    # loop is bounded by the row's own live count, so the
-                    # span-wide limit stays inert.
+                    # The batch leaf reads live counts on device. Eager rows
+                    # use their exact cap; graph rows use the immutable bucket
+                    # bound, never the capture-time host position. Select the
+                    # scalar owner's variant only when that whole bound lies
+                    # within its short-context range.
                     row_active_context = int(row_scratch.position_host[0]) + 1
                     row_short_batch_max_context = max(
                         0,
@@ -6268,10 +6260,12 @@ class Qwen35GGUFFullStackRunner:
                             )
                         ),
                     )
-                    if (
-                        row_views_have_scalar_caps
-                        and 0 < row_active_context <= row_short_batch_max_context
-                    ):
+                    batch_context_limit = (
+                        row_active_context
+                        if row_views_have_scalar_caps
+                        else attention_context_limit
+                    )
+                    if 0 < batch_context_limit <= row_short_batch_max_context:
                         self._full_attn_decode_short_batch_fn(
                             row_scratch.decode_spans
                         )(
@@ -6281,7 +6275,7 @@ class Qwen35GGUFFullStackRunner:
                             context_ptr,
                             row_scratch.decode_spans,
                             1,
-                            row_active_context,
+                            batch_context_limit,
                             row_scratch.block_size,
                             cfg.head_count,
                             cfg.head_count_kv,

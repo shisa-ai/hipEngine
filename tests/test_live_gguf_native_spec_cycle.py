@@ -2822,16 +2822,11 @@ def test_staged_full_attention_uses_split_k_rows_across_the_split_boundary(
 def test_staged_full_attention_below_threshold_leaf_follows_the_caller_guarantee(
     monkeypatch,
 ) -> None:
-    """The short-context leaf needs a vouched-for row position.
+    """Use exact eager caps or a graph bucket entirely inside the short range.
 
-    The scalar owner picks its short-context batch leaf from ``position + 1`` and
-    passes that cap as a scalar argument. The eager verifier stages the row
-    metadata it reads back, so it can vouch for it; the captured target graph
-    updates positions on device and its host mirror is a capture-time guess.
-    Launching the batch leaf with a guessed cap broke AR identity on the
-    retained 3-prompt ladder (shared prefix 7 of 16), while dropping the leaf for
-    every caller breaks the long-context gate's per-row teacher parity. The
-    caller's guarantee therefore decides, and both sides are asserted here.
+    Both leaves read live counts from the device. Graph calls must pass the
+    bucket bound, not the capture-time row position, and must select the same
+    short-context variant as scalar decoding when the bucket fits its range.
     """
 
     from hipengine.runtime import qwen35_gguf_runner as qgr
@@ -2856,7 +2851,7 @@ def test_staged_full_attention_below_threshold_leaf_follows_the_caller_guarantee
         raising=False,
     )
 
-    def run(**kwargs):
+    def run(*, context_limit=8192, **kwargs):
         calls.clear()
         runner._run_full_attention_attn_chain_rows_exact(
             7,
@@ -2867,7 +2862,7 @@ def test_staged_full_attention_below_threshold_leaf_follows_the_caller_guarantee
             decode_row_scratches=tuple(row_scratches),
             start_position=11,
             hidden_f32_ptr=0x12000,
-            attention_context_limit=8192,
+            attention_context_limit=context_limit,
             **kwargs,
         )
         return [
@@ -2876,11 +2871,15 @@ def test_staged_full_attention_below_threshold_leaf_follows_the_caller_guarantee
             if call[0] in {"attn", "attn_short", "attn_batch"}
         ]
 
-    # Graph-supplied views: the host position is not authoritative, so the row
-    # keeps the span leaf whose loop is bounded by its own live count.
+    # A graph bucket outside the short range retains the span leaf.
     graph_calls = run()
     assert [call[0] for call in graph_calls] == ["attn"] * 4
     assert [call[-1] for call in graph_calls] == [8192] * 4
+
+    for context_limit in (127, 777, 1023):
+        graph_calls = run(context_limit=context_limit)
+        assert [call[0] for call in graph_calls] == ["attn_short"] * 4
+        assert [call[-1] for call in graph_calls] == [context_limit] * 4
 
     # Eager views: the caller staged the metadata, so the row reproduces the
     # scalar owner's leaf and its own ``position + 1`` cap.
