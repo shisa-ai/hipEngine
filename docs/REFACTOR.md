@@ -1296,12 +1296,25 @@ unchanged.
 
 The host bundle and public gfx1151 optional-adapter on/off checks pass, including
 C2 AR after the BF16-QKV/FP32-Conv scratch repair. They execute `ar_decode_rows`
-and `ar_prefill`, not `ar_decode_native_rows`. The remaining blocker is public
-scheduler integration: `SubmitPollTextGenerator` uses packed `step_batch_native`
-or serial session steps, never the separate `_generate_greedy_batch` native-row
-owner. Disabling packed/stream controls or adding a certificate operation does
-not connect those state owners. See
-[`worklog/entries/20261031T230425.271053Z-lhl-r0471-native-public-gap-869c31.md`](../worklog/entries/20261031T230425.271053Z-lhl-r0471-native-public-gap-869c31.md).
+and `ar_prefill`, not `ar_decode_native_rows`. The public scheduler integration is
+now implemented on gfx1100: `Qwen35GGUFResidentModelRunner._step_native_rows_compact`
+(`hipengine/generation/qwen35_gguf.py`) routes a compact, all-greedy physical group
+through the batch owner's `step_rows_native` when the generator requests
+`native_batch_decode`, flushing packed state, aligning the owner cursor to
+slot-view 0 and recording tokens through `_record_native_token`; it returns False
+to fall back to packed/serial, so the default path is untouched. Host ownership
+tests (`tests/test_unit_gguf_native_rows_scheduler.py`) pass RED->GREEN. See
+[`worklog/entries/20261111T211401.188154Z-lhl-r0471-impl-fe7f1d.md`](../worklog/entries/20261111T211401.188154Z-lhl-r0471-impl-fe7f1d.md).
+
+The remaining blocker is the public engaged/unengaged device run, which is
+model-availability-bound on this gfx1100 machine: `ar_decode_native_rows` admission
+requires BF16 recurrent `ssm_alpha`/`ssm_beta` weights and resident device operands
+(the UD-Q3_K_M artifact class). Every locally present artifact fails with a named
+capability miss — Q4_K_M has Q8_0 recurrent weights, Qwen3.8-27B-UD-Q4_K_M uses
+deferred device slots, and Qwen3.6-35B-A3B-UD-Q4_K_M has F32 recurrent weights — and
+no UD-Q3_K_M GGUF is on disk. The route is a load-time session choice
+(`_native_rows_ready`), so it must be requested at construction, not toggled on a
+live session.
 
 Done when: integrate compact native-row execution with resident scheduler session,
 position, active-slot, state/KV and reclaim ownership, preserving packed/serial
@@ -1313,8 +1326,10 @@ report the unconverted record. The clearing host checks are
 `tests/test_integration_gguf_selected_call_intents.py` and
 `tests/test_integration_gguf_execution_authorization.py`, all passing today for
 the host contract. Any changed arithmetic default additionally follows the
-execution-profile gate. The optional contract and compatibility native-row route
-are implemented; their public scheduler integration is not.
+execution-profile gate. The optional contract, the compatibility native-row route,
+and its public scheduler integration are implemented; the public engaged/unengaged
+device run remains blocked on a UD-Q3_K_M artifact being present on the gfx1100
+machine.
 
 ### R0484 — Surya decode fallback and sparse-chunk work
 
