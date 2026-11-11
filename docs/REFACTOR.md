@@ -910,14 +910,19 @@ Scope: `HIPENGINE_LAGUNA_F16_DECODE`.
 selection, and the long-context profiler no longer mutates the process environment for
 baseline/candidate comparisons. The environment control remains a compatibility input.
 See `worklog/entries/20261106T112718.560230Z-lhl-r0340-decode-scope-b2f8f1.md`.
-Real public model validation still needs the Laguna artifact (R0273); GPU leaf shape
-validation can run independently of model weights.
+The gfx1100 GPU leaf shape matrix is complete: `tests/test_gpu_laguna_f16_projection.py` 50/50 pass
+on the physical gfx1100 ROCm host (onebarrier/fixedk/nontemporal vs GEMV byte-exact at generic K
+256/512/3071/3073/4096/9217 and fixed K 3072/6144/9216, single/dual/triple/quad, tiled bit-exact,
+wmma quality gates, alternate launch widths threads 64/128/256), plus 182 shape-policy/projection/
+runner/profiler unit tests; see
+`worklog/entries/20261111T172439.497624Z-lhl-r0340-f16-decode-gfx1100-9a8eef.md`.
+Real public model validation still needs the Laguna artifact (R0273), deferred to a gfx1151 machine.
 
-Done when: run shape-policy, F16 projection, backend, runner and profiler tests. On a ROCm
-host, execute generic-K widths below/above/unrelated to the fixed set, single/triple and alternate
-launch widths against the GEMV oracle. Run public `LLM.generate()` with an available artifact and
-verify the intended variant, output/continuation and clean teardown. Preserve generic registered
-owners and explicit capability failures during selector migration.
+Done when: the shape-policy, F16 projection, backend, runner and profiler tests and the ROCm-host
+generic-K/single/triple/alternate-launch-width GEMV-oracle matrix are complete on gfx1100 (recorded
+above). The remaining scope is the public `LLM.generate()` selected-variant/output/teardown check
+with the Laguna artifact (R0273), deferred to gfx1151. Preserve generic registered owners and
+explicit capability failures during selector migration.
 
 ### R0336 — Laguna packed-output comparison migration
 
