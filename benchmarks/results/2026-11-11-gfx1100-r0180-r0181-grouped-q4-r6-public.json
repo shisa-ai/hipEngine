@@ -1,0 +1,105 @@
+{
+ "schema": 1,
+ "kind": "gfx1100_grouped_q4_r6_public_closure",
+ "date": "2026-11-11",
+ "items": [
+  "R0180",
+  "R0181"
+ ],
+ "backend": "hip_gfx1100",
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "revision": null,
+  "fingerprint": {
+   "algorithm": "sha256-sampled-v1",
+   "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+   "size_bytes": 17106773984,
+   "sampled_bytes": 3145728,
+   "sample_offsets": [
+    0,
+    8552862704,
+    17105725408
+   ],
+   "exists": true,
+   "path_type": "file"
+  }
+ },
+ "public_route": "hipengine serve via scripts/gguf_mtp_c1c8_server_bench.py, width 8, 500ms batch window, rocprofv3 kernel-trace",
+ "trace": "/tmp/refactor-gfx1100/r32-trace-c8/epyc/2324773_kernel_trace.csv",
+ "harness_artifact": "/tmp/refactor-gfx1100/r32-trace-c8.json",
+ "harness_passed": true,
+ "summary_width8": {
+  "exact_cells": 10,
+  "engaged_cells": 10,
+  "budget_conformed_cells": 10,
+  "cells": 10,
+  "route_expectation_passed": true
+ },
+ "grouped_q4_rows6": {
+  "dispatches": 2448,
+  "by_out_features": {
+   "1024": 208,
+   "5120": 384,
+   "6144": 384,
+   "10240": 192,
+   "12288": 128,
+   "17408": 1152
+  },
+  "by_packed_rows": {
+   "18": 1440,
+   "24": 1008
+  }
+ },
+ "grouped_q4_rows8": {
+  "dispatches": 11520,
+  "by_out_features": {
+   "1024": 1712,
+   "5120": 3456,
+   "6144": 3456,
+   "10240": 1728,
+   "12288": 1152,
+   "17408": 16
+  },
+  "by_packed_rows": {
+   "24": 320,
+   "32": 11200
+  }
+ },
+ "teardown": {
+  "current_allocated_bytes": 0,
+  "peak_allocated_bytes": 30617072640,
+  "total_allocated_bytes": 31509667013,
+  "total_freed_bytes": 31509667013,
+  "active_allocations": 0,
+  "peak_allocations": 2268
+ },
+ "seams": {
+  "R0180_pair": "hipengine/runtime/gguf_linear.py:_launch_gguf_linear_pair_impl (grouped-R6 via GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY, pad chunk 6, rows%6==0, rows>=12); launch_gguf_linear_pair called at runner FFN gate+up sites",
+  "R0181_single": "hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.py:gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out (grouped-R6 when rows>6, rows%6==0, extra-rowtiles enabled, shape in physical rowtile set)"
+ },
+ "gates": {
+  "host_pair": [
+   "test_physical_q4_pair_chunks_rows6_and_preserves_unfused_fallback",
+   "test_physical_q4_pair_grouped_rows6_policy_consolidates_both_outputs",
+   "test_gfx1100_grouped_q4_pair_rows6_policy_defaults_on_and_is_shape_scoped"
+  ],
+  "gpu_single": [
+   "test_q4_t16_dense_rowtile16_w2_grouped_rows6_matches_repeated_bits[12]",
+   "test_q4_t16_dense_rowtile16_w2_grouped_rows6_matches_repeated_bits[24]",
+   "test_gfx1100_grouped_rows6_policy_consolidates_physical_q4_launches"
+  ],
+  "cancellation": [
+   "test_physical_c1_cancelled_cycle_restores_provider_and_fails_closed",
+   "test_cancel_after_verification_restores_target_then_provider"
+  ],
+  "all_passed": true
+ },
+ "single_owner_fallback_host_check": {
+  "rows24_5120x17408": "grouped6",
+  "rows18_5120x17408": "grouped6",
+  "rows6_5120x17408": "two_wave (non-grouped)",
+  "rows17_5120x17408": "not grouped6 (non-grouped)",
+  "rows24_5120x5120": "not grouped6 (outside-policy shape)",
+  "rows12_17408x5120": "grouped6 (down shape)"
+ }
+}

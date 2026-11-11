@@ -213,28 +213,6 @@ compare output and acceptance with the registered repeated R6 primitive. Include
 outside physical scope and cancellation/cleanup. Direct GPU bit parity does not establish public
 routing.
 
-### R0180 — Public grouped Q4 R6 pair validation
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `hipengine/runtime/gguf_linear.py` — Public grouped Q4 R6 pair validation.
-
-Done when: Dependency: public gfx1100 physical target execution reaching grouped pairs. **Clearing
-action:** run `hipengine serve` across admitted pair widths, trace both grouped output launches, and
-compare output/acceptance with the registered repeated-R6 composition. Include a shape outside pair
-policy and cancellation cleanup. Direct grouped-kernel bit parity is not public pair-route evidence.
-
-### R0181 — Public grouped Q4 R6 single-owner validation
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `hipengine/runtime/gguf_linear.py` — Public grouped Q4 R6 single-owner validation.
-
-Done when: Dependency: public gfx1100 physical target execution reaching this wrapper. **Clearing action:**
-run `hipengine serve` at admitted grouped widths, confirm single-owner grouped launches, and compare
-output/acceptance with repeated R6. Include non-grouped rows, a shape outside policy, and
-cancellation/cleanup. Direct grouped-kernel bit parity does not establish public wrapper engagement.
-
 ### R0182 — Public fused packed-state transfer validation
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
