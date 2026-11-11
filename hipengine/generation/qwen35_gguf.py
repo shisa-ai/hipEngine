@@ -12029,12 +12029,19 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             elif self.generator._ar_packed_decode_enabled() and (
                 group.active_rows > 1 or group.physical_rows > 1
             ):
-                packed = self._step_native_chunk(
-                    group_rows,
-                    physical_rows=group.physical_rows,
-                    active_slot_indices=group.active_slot_indices,
-                    allow_graph=len(groups) == 1,
-                )
+                if bool(getattr(self.generator, "native_batch_decode", False)):
+                    packed = self._step_native_rows_compact(
+                        group_rows,
+                        physical_rows=group.physical_rows,
+                        active_slot_indices=group.active_slot_indices,
+                    )
+                if not packed:
+                    packed = self._step_native_chunk(
+                        group_rows,
+                        physical_rows=group.physical_rows,
+                        active_slot_indices=group.active_slot_indices,
+                        allow_graph=len(groups) == 1,
+                    )
             if packed:
                 execution_path = "packed_native"
             else:
@@ -12142,6 +12149,90 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             for row in self._rows.values()
             if row.native_greedy and not row.native_sampled
         )
+
+    def _step_native_rows_compact(
+        self,
+        rows: Sequence[_GGUFResidentLoopRow],
+        *,
+        physical_rows: int | None = None,
+        active_slot_indices: Sequence[int] = (),
+    ) -> bool:
+        """Opt-in compact native-row decode on the resident batch owner (R0471).
+
+        Connects the resident scheduler to ``step_rows_native`` (the
+        ``ar_decode_native_rows`` route, where the optional DP4A adapter can
+        engage). Engages only when the generator requested ``native_batch_decode``,
+        the physical group is compact (active lanes == physical width, >= 2 rows),
+        and every row is greedy. Returns False to fall back to the packed/serial
+        route whenever it cannot engage, so the default path is untouched.
+        """
+        generator = getattr(self, "generator", None)
+        if not bool(getattr(generator, "native_batch_decode", False)):
+            return False
+        slots = [row.slot for row in rows]
+        if any(slot is None for slot in slots):
+            return False
+        concrete = [slot for slot in slots if slot is not None]
+        width = int(physical_rows or len(concrete))
+        active_indices = (
+            tuple(range(len(concrete)))
+            if not active_slot_indices
+            else tuple(int(index) for index in active_slot_indices)
+        )
+        # step_rows_native requires compact physical slots and at least two rows.
+        if (
+            width < 2
+            or len(concrete) != width
+            or active_indices != tuple(range(width))
+        ):
+            return False
+        # Sampled / native-sampler rows stay on the packed/serial route.
+        if not all(
+            row.native_greedy and not row.native_sampled and not row.native_sampler
+            for row in rows
+        ):
+            return False
+        owner = self._packed_execution_owner(concrete[0].session)
+        step_rows = getattr(owner, "step_rows_native", None)
+        if not callable(step_rows):
+            return False
+        # Flush any packed-workspace state back to the sessions before switching
+        # to the native-row state layout.
+        flush_packed_decode_owners_if_chunk_changed(concrete)
+        # Align the owner's scalar cursor with slot-view 0. position_host[1:] is
+        # already shared through the slot-view scratch views; row_positions
+        # overrides index 0 with this scalar.
+        owner._position = int(concrete[0].seq_position)
+        try:
+            result = step_rows(
+                [int(slot.prev_token) for slot in concrete],
+                return_logits=False,
+            )
+        except NotImplementedError:
+            return False
+        except MemoryAdmissionRefused:
+            # Workspace could not back this step; decode via packed/serial
+            # instead of failing the requests.
+            self._fallback_reasons["native_rows_workspace_refused"] += 1
+            return False
+        if result is None:
+            return False
+        tokens = tuple(int(token) for token in result.token_ids)
+        if len(tokens) != len(concrete):
+            raise RuntimeError(
+                f"GGUF resident native-row decode returned {len(tokens)} token(s) "
+                f"for {len(concrete)} row(s)"
+            )
+        self._route_counts["native_rows_decode_steps"] += 1
+        self._route_counts[f"native_c{width}_decode_steps"] += 1
+        for row, slot, token in zip(rows, concrete, tokens, strict=True):
+            self._record_native_token(row, token)
+            slot.packed_decode_owner = owner
+            slot.native_decode_steps += 1
+        manifest = getattr(owner, "last_native_rows_execution_manifest", None)
+        if isinstance(manifest, Mapping):
+            self._last_execution_manifest = copy.deepcopy(dict(manifest))
+        return True
 
     def _step_native_chunk(
         self,
