@@ -1689,9 +1689,19 @@ Profile construction now combines those snapshots in one immutable
 views. See [`unified plan`](../worklog/entries/20261106T101816.788220Z-lhl-r0195-unified-plan-30cfe8.md).
 Public gfx1151 production and strict width 1–4 probes confirm same-width token
 repeatability, packed shape accounting and clean teardown, not exact state parity.
-The general registry manifest schema is unchanged. Exact device state/offset/
-selector coverage, shape misses and wider gfx1100 device validation remain
-outstanding.
+The general registry manifest schema is unchanged. gfx1100 now has a public device
+gate, `tests/test_live_gguf_r0195_physical_target.py` (HIP + model guarded,
+subprocess-per-case): on the nextn-bearing Qwen3.8-27B-Q4_K_M artifact, production
+pads physical groups to the admitted rows6 rowtile
+(`selected_rows=6`, `reason=padded_to_row_multiple`, `pad_counts=[6]`), strict uses no
+rowtiles (`no_padding_policy`, empty plan), the padded production
+`generated_token_ids` are bit-identical to the unpadded strict route, the
+offset/selector `last_partition` is attributed, and an unsupported C4 depth raises the
+named `mtp_candidate_depth_unsupported` capability miss. See
+[`device evidence`](../worklog/entries/20261111T215955.267498Z-lhl-r0195-device-3f4a30.md).
+Still outstanding: wider supported groups (>2 realized requests), explicit shape-miss
+fallbacks, C1/C3 in the permanent gate, and device recurrent/KV state comparison beyond
+token IDs.
 Reuse RF-1/RF-10 ownership rather than add a parallel selector. Retire the two rollback flags
 only with explicit coverage of their replacement policies and diagnostic controls.
 
