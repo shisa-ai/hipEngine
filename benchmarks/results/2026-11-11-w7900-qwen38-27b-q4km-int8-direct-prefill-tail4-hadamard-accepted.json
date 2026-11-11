@@ -1,0 +1,1677 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_execution_profile_gguf_int8_direct_prefill_gate",
+  "status": "passed",
+  "created_at": "2026-11-11T19:54:38.265289+00:00",
+  "measurement_valid": true,
+  "performance_claim": false,
+  "candidate": {
+    "name": "int8_direct_prefill_sequential",
+    "classification": "T2",
+    "mechanism": "prefill full-attention reads the retained INT8 K/V store directly with Hadamard-group32 fp16 scales on the four INT8 tail layers through the sequential online-softmax kernel, removing the BF16 oracle pair and the AOTriton bridge",
+    "strict_fallback": "pure-INT8 oracle-bridge prefill (BF16 oracle + AOTriton)",
+    "strict_environment": {
+      "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+      "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": "none",
+      "HIPENGINE_GGUF_INT8_PREFILL_DIRECT": "0",
+      "HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON": "1"
+    },
+    "candidate_environment": {
+      "HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG": "1",
+      "HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS": "none",
+      "HIPENGINE_GGUF_INT8_PREFILL_DIRECT": "1",
+      "HIPENGINE_GGUF_INT8_PREFILL_KERNEL": "sequential",
+      "HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON": "1"
+    }
+  },
+  "protocol": {
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "prompt_suites": [
+      "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "complete_prompt_and_heldout_suite": true,
+    "prompt_count": 18,
+    "baseline_gdn_mode": "chain_lds32_direct_nonvolatile",
+    "prefill_entry": "scalar_bulk",
+    "attn_aotriton_min_tokens": 512,
+    "min_prompt_rows": 4096,
+    "prompts_left_padded": true,
+    "aotriton_engaging_prompts": null,
+    "decode_steps": 24,
+    "teacher_forced_rows": 450,
+    "candidate_repeat_runs": 3,
+    "thresholds": {
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "max_kl_max": 0.05,
+      "top1_min": 0.99,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02
+    },
+    "kv_policy": "tail4_hadamard_group32 fp16 Hadamard-group32 scales"
+  },
+  "prompts": [
+    {
+      "id": "code_merge_intervals",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4056,
+      "prompt_token_ids_sha256": "0895e51fa1eda661cd441316d91405a7e1ecd56cf24db6d8e663c8a1d77d62d6"
+    },
+    {
+      "id": "code_topological_sort",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4046,
+      "prompt_token_ids_sha256": "4215090acb8b2530342e9ed12508a419cfb0c3becfc6daa4b7379e514635749f"
+    },
+    {
+      "id": "code_lru_cache",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4049,
+      "prompt_token_ids_sha256": "2e804d845476fecfee62c650b997e72c05fa9b2a3cd696edf627d6349321ad6b"
+    },
+    {
+      "id": "code_markdown_table",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4044,
+      "prompt_token_ids_sha256": "ae34eb84336686290cbdd53bb45f0022759f112b75c044b00d009803e79f4340"
+    },
+    {
+      "id": "general_en_plan",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4057,
+      "prompt_token_ids_sha256": "f789ff7b25e4057015ff4332c43b6ec9df2ed3aba3830302b60cd4bf4cffe5c9"
+    },
+    {
+      "id": "general_en_explain",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4056,
+      "prompt_token_ids_sha256": "f8dbb80520630a8b4499541920ee7f06265170a1acc9ce1b693b07871185d533"
+    },
+    {
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4053,
+      "prompt_token_ids_sha256": "15068fe4412f5599668a684c76549a99a80bcd33faeb88345286719f8b76a658"
+    },
+    {
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4053,
+      "prompt_token_ids_sha256": "929072f052312101ab0a563700f1c5f7541486a7960e264a4420b40b4ed0664d"
+    },
+    {
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4032,
+      "prompt_token_ids_sha256": "1799052f2683a231b7928ecc52c0c4bafdfe27edff7ed937682101e817354ed2"
+    },
+    {
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4025,
+      "prompt_token_ids_sha256": "101286c279f159adcc895fcfccf3d3bad5169d93456b1c74261b717219fc1036"
+    },
+    {
+      "id": "heldout_code_rate_limiter",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "a64214894c73cc4db1253641e0c723b101dc8ef660d9f06fd063c5f59c97feb6",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4041,
+      "prompt_token_ids_sha256": "1c4eb449c7d7d80bf8f97f288a9fbb4d55698c554a63d63611fa0f53a41c12d9"
+    },
+    {
+      "id": "heldout_code_interval_schedule",
+      "category": "code",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "f9574bb80a26bb5b1c52b1811f2e6e1ec683f514b9c907b2530cd0afc96084cb",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4044,
+      "prompt_token_ids_sha256": "7f9687910aaf884a154773d84dd3ff005baaf2dc401c57d562b56cb7f9cc72ad"
+    },
+    {
+      "id": "heldout_general_en_incident",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "32275637d440fd542e19fab51aaab79d6aedf068929f8ffa38ce9bd269f9044a",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4051,
+      "prompt_token_ids_sha256": "6522cbf3b09a63738db4b6219574aa3bc4c239e7ca510a68023ca9fc7a951129"
+    },
+    {
+      "id": "heldout_general_en_quant",
+      "category": "general_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "30d56cc8ef44e814daf6dd0f29dffaaea83b1d2705e956adce630ad8114d6288",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4040,
+      "prompt_token_ids_sha256": "1509fcde9390a7b4e57d1171412dec35b6a5195124f517cc288133d0af7de668"
+    },
+    {
+      "id": "heldout_general_ja_migration",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4043,
+      "prompt_token_ids_sha256": "0615b763a24757808d514d9b8bb2bc5804206ec7cdc856b4c35b7588488c1c44"
+    },
+    {
+      "id": "heldout_general_ja_speculative",
+      "category": "general_ja",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4051,
+      "prompt_token_ids_sha256": "3b3254ae7ef1ad1a6258c9759b706d1857c4b31f11796e4a7af1c8b59689dfdb"
+    },
+    {
+      "id": "heldout_mixed_summary",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "085fce890f18591f27cb6985e577ce959a5e44361dff79b6373fa854ee7e5a44",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4044,
+      "prompt_token_ids_sha256": "d5a8f572b8954435a2e5fee436990549c52760e8b109c6e8aa4b15cde6588a5b"
+    },
+    {
+      "id": "heldout_mixed_review",
+      "category": "mixed_ja_en",
+      "suite": "/home/lhl/hipEngine/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+      "prompt_sha256": "1d111758768713e15792e350917d879b0bb97c27c4ab2a0605026547fe191a61",
+      "prompt_tokens": 4096,
+      "left_pad_rows": 4040,
+      "prompt_token_ids_sha256": "6204c0e6460e0cb170de48159ec8432c84fdc4f7499194b6c0b675e5a62d47e5"
+    }
+  ],
+  "quality": {
+    "quality": {
+      "finite": true,
+      "top_k": 5,
+      "thresholds": {
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "max_kl_max": 0.05,
+        "top1_min": 0.99,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02
+      },
+      "summary": {
+        "rows": 450,
+        "kl_mean": 2.566698159524828e-05,
+        "kl_p50": 2.051290507331181e-06,
+        "kl_p95": 0.00013041150584072923,
+        "kl_p99": 0.0002949885129238806,
+        "kl_max": 0.0005467085886235038,
+        "top1_agreement": 0.9977777777777778,
+        "top1_matches": 449,
+        "topk_overlap_mean": 0.9991111111111112,
+        "strict_teacher_nll_mean": 0.18157156016736703,
+        "candidate_teacher_nll_mean": 0.1818073411519401,
+        "teacher_nll_delta": 0.00023578098457308072,
+        "teacher_delta_p_mean": -7.93835895669197e-05,
+        "strict_margin_min": 0.0048122406005859375,
+        "max_abs_logit_delta": 0.21167802810668945,
+        "flip_eligible_rows": 15,
+        "flip_eligible_share": 0.03333333333333333,
+        "top1_mismatches_flip_eligible": 1,
+        "top1_mismatches_outside_flip_eligible": 0,
+        "diagnostics": {
+          "gating": false,
+          "rows": 450,
+          "sequence_count": 18,
+          "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+          "top1_flips": {
+            "rows": 450,
+            "flips": 1,
+            "rate": 0.0022222222222222222,
+            "wilson95_iid_rows": {
+              "low": 0.0003923845536375403,
+              "high": 0.012478759558831033
+            }
+          },
+          "margin_buckets": [
+            {
+              "lower_inclusive": 0.0,
+              "upper_exclusive": 0.05,
+              "rows": 2,
+              "flips": 1,
+              "rate": 0.5,
+              "wilson95_iid_rows": {
+                "low": 0.09453120573423074,
+                "high": 0.9054687942657693
+              }
+            },
+            {
+              "lower_inclusive": 0.05,
+              "upper_exclusive": 0.5,
+              "rows": 31,
+              "flips": 0,
+              "rate": 0.0,
+              "wilson95_iid_rows": {
+                "low": 6.938893903907228e-18,
+                "high": 0.11025539546043595
+              }
+            },
+            {
+              "lower_inclusive": 0.5,
+              "upper_exclusive": 2.0,
+              "rows": 93,
+              "flips": 0,
+              "rate": 0.0,
+              "wilson95_iid_rows": {
+                "low": 0.0,
+                "high": 0.03966750261173514
+              }
+            },
+            {
+              "lower_inclusive": 2.0,
+              "upper_exclusive": null,
+              "rows": 324,
+              "flips": 0,
+              "rate": 0.0,
+              "wilson95_iid_rows": {
+                "low": 8.673617379884035e-19,
+                "high": 0.011717428401253938
+              }
+            }
+          ],
+          "total_variation": {
+            "mean": 0.0014413943641328972,
+            "min": 2.234471033166922e-08,
+            "max": 0.014673263668226282,
+            "p05": 1.7423755042862362e-07,
+            "p50": 0.00019151296085467904,
+            "p95": 0.006588491830956995,
+            "p99": 0.010350253502115611
+          },
+          "entropy_delta_nats": {
+            "mean": 1.6101780754040287e-05,
+            "min": -0.027738858989857507,
+            "max": 0.0328153111590026,
+            "p05": -0.006419988595316996,
+            "p50": -2.0816837704527977e-06,
+            "p95": 0.006581998495554735,
+            "p99": 0.014778854909527711
+          },
+          "max_probability_delta": {
+            "mean": -7.921151482795196e-05,
+            "min": -0.014632211294607456,
+            "max": 0.012673390789220473,
+            "p05": -0.004115494027533672,
+            "p50": 1.3572135698636245e-07,
+            "p95": 0.0036425627158272085,
+            "p99": 0.008697771417884413
+          }
+        }
+      },
+      "by_scope": {
+        "category": {
+          "code": {
+            "rows": 150,
+            "kl_mean": 8.122580713377028e-06,
+            "kl_p50": 7.749575425651808e-08,
+            "kl_p95": 4.1742485522510123e-05,
+            "kl_p99": 0.00014298292467119044,
+            "kl_max": 0.00019149174005686566,
+            "top1_agreement": 1.0,
+            "top1_matches": 150,
+            "topk_overlap_mean": 1.0,
+            "strict_teacher_nll_mean": 0.05469848448195718,
+            "candidate_teacher_nll_mean": 0.05470197283359555,
+            "teacher_nll_delta": 3.4883516383671376e-06,
+            "teacher_delta_p_mean": -8.75445468232779e-06,
+            "strict_margin_min": 0.2468852996826172,
+            "max_abs_logit_delta": 0.21167802810668945,
+            "flip_eligible_rows": 0,
+            "flip_eligible_share": 0.0,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 150,
+              "sequence_count": 6,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 150,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 1.734723475976807e-18,
+                  "high": 0.0249702443680766
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 0,
+                  "flips": 0,
+                  "rate": null,
+                  "wilson95_iid_rows": null
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 2,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.6576197724933469
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 18,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 1.3877787807814457e-17,
+                    "high": 0.17587922364665765
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 130,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 1.734723475976807e-18,
+                    "high": 0.028701561194431423
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.0005433343522416757,
+                "min": 2.234471033166922e-08,
+                "max": 0.008775099260613001,
+                "p05": 7.966633204475319e-08,
+                "p50": 4.745774289884729e-06,
+                "p95": 0.00305363143566121,
+                "p99": 0.007601795013665794
+              },
+              "entropy_delta_nats": {
+                "mean": 4.215976328957134e-06,
+                "min": -0.009267251125291476,
+                "max": 0.007865004583058832,
+                "p05": -0.002665779413038055,
+                "p50": 1.0416978574473315e-07,
+                "p95": 0.002715009618266878,
+                "p99": 0.007100096477760869
+              },
+              "max_probability_delta": {
+                "mean": -8.75445468232779e-06,
+                "min": -0.006455378544726553,
+                "max": 0.00877412857382076,
+                "p05": -0.0013949454532307282,
+                "p50": 1.5843071465848624e-08,
+                "p95": 0.0010177022583257034,
+                "p99": 0.006582424604666914
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "general_en": {
+            "rows": 100,
+            "kl_mean": 3.6548633547436657e-05,
+            "kl_p50": 4.578478092247428e-06,
+            "kl_p95": 0.00016424507071343956,
+            "kl_p99": 0.00033207070557511153,
+            "kl_max": 0.00040959221317998036,
+            "top1_agreement": 0.99,
+            "top1_matches": 99,
+            "topk_overlap_mean": 0.996,
+            "strict_teacher_nll_mean": 0.24444883455955577,
+            "candidate_teacher_nll_mean": 0.24435343247452435,
+            "teacher_nll_delta": -9.540208503142078e-05,
+            "teacher_delta_p_mean": 0.00011894991542808153,
+            "strict_margin_min": 0.0048122406005859375,
+            "max_abs_logit_delta": 0.14850234985351562,
+            "flip_eligible_rows": 5,
+            "flip_eligible_share": 0.05,
+            "top1_mismatches_flip_eligible": 1,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 100,
+              "sequence_count": 4,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 100,
+                "flips": 1,
+                "rate": 0.01,
+                "wilson95_iid_rows": {
+                  "low": 0.0017674320641406505,
+                  "high": 0.054486196178705315
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 1,
+                  "flips": 1,
+                  "rate": 1.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.20654931437723745,
+                    "high": 1.0
+                  }
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 7,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 2.7755575615628914e-17,
+                    "high": 0.3543304350666875
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 31,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 6.938893903907228e-18,
+                    "high": 0.11025539546043595
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 61,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.059243867898112826
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.0021015771601542834,
+                "min": 1.8097616415374349e-06,
+                "max": 0.012732731621506642,
+                "p05": 5.134313958970869e-06,
+                "p50": 0.0007948311083903446,
+                "p95": 0.007956516817795807,
+                "p99": 0.010729265335800677
+              },
+              "entropy_delta_nats": {
+                "mean": -0.0005274417932902205,
+                "min": -0.027738858989857507,
+                "max": 0.01607674062570774,
+                "p05": -0.008727696006061299,
+                "p50": -0.00010599114476018663,
+                "p95": 0.007583450575348927,
+                "p99": 0.01255494660467625
+              },
+              "max_probability_delta": {
+                "mean": 0.00011972425175343637,
+                "min": -0.010706247573971872,
+                "max": 0.012673390789220473,
+                "p05": -0.006077579261883448,
+                "p50": 7.694762985122061e-06,
+                "p95": 0.00505476257001872,
+                "p99": 0.009876612350861234
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "general_ja": {
+            "rows": 100,
+            "kl_mean": 4.022783497871871e-05,
+            "kl_p50": 8.07851964674954e-06,
+            "kl_p95": 0.00018467228737977976,
+            "kl_p99": 0.00032742709806870033,
+            "kl_max": 0.0005467085886235038,
+            "top1_agreement": 1.0,
+            "top1_matches": 100,
+            "topk_overlap_mean": 1.0,
+            "strict_teacher_nll_mean": 0.2780885974334418,
+            "candidate_teacher_nll_mean": 0.27849100626888496,
+            "teacher_nll_delta": 0.00040240883544317985,
+            "teacher_delta_p_mean": -9.042320723720327e-05,
+            "strict_margin_min": 0.0377197265625,
+            "max_abs_logit_delta": 0.16591930389404297,
+            "flip_eligible_rows": 6,
+            "flip_eligible_share": 0.06,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 100,
+              "sequence_count": 4,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 100,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 3.469446951953614e-18,
+                  "high": 0.03699349820698568
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 1,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.7934506856227626
+                  }
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 13,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.22809537235419838
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 24,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.1379762046749802
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 62,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.058344072101372484
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.002109393423804899,
+                "min": 7.291354908961428e-08,
+                "max": 0.014673263668226282,
+                "p05": 1.337893489423172e-06,
+                "p50": 0.0007993402640326711,
+                "p95": 0.007318692993941631,
+                "p99": 0.011185268515473839
+              },
+              "entropy_delta_nats": {
+                "mean": 9.668672125228771e-05,
+                "min": -0.02148981873983402,
+                "max": 0.0328153111590026,
+                "p05": -0.008533355461643166,
+                "p50": -1.2085701341227068e-05,
+                "p95": 0.007591370873054667,
+                "p99": 0.023374733398666605
+              },
+              "max_probability_delta": {
+                "mean": -9.042320723720327e-05,
+                "min": -0.014632211294607456,
+                "max": 0.008700659052854887,
+                "p05": -0.005042131293386631,
+                "p50": 1.3159864393208487e-06,
+                "p95": 0.003952226531624119,
+                "p99": 0.006437485709932735
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "mixed_ja_en": {
+            "rows": 100,
+            "kl_mean": 2.6541077582396344e-05,
+            "kl_p50": 3.722642972488129e-06,
+            "kl_p95": 0.00012537006186031884,
+            "kl_p99": 0.0002657556746215051,
+            "kl_max": 0.00048597122101047205,
+            "top1_agreement": 1.0,
+            "top1_matches": 100,
+            "topk_overlap_mean": 1.0,
+            "strict_teacher_nll_mean": 0.21248686203721828,
+            "candidate_teacher_nll_mean": 0.2132356371899279,
+            "teacher_nll_delta": 0.0007487751527096298,
+            "teacher_delta_p_mean": -0.00037262117921852523,
+            "strict_margin_min": 0.06240653991699219,
+            "max_abs_logit_delta": 0.14646172523498535,
+            "flip_eligible_rows": 4,
+            "flip_eligible_share": 0.04,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 100,
+              "sequence_count": 4,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 100,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 3.469446951953614e-18,
+                  "high": 0.03699349820698568
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 0,
+                  "flips": 0,
+                  "rate": null,
+                  "wilson95_iid_rows": null
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 9,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 2.7755575615628914e-17,
+                    "high": 0.29914504841954404
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 20,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.16112515805281938
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 71,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.05132795219689035
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.0014603025262763423,
+                "min": 6.662470059283142e-08,
+                "max": 0.010063954512330308,
+                "p05": 2.052701388864742e-06,
+                "p50": 0.0003264259788837141,
+                "p95": 0.006635223378288041,
+                "p99": 0.009423449036857413
+              },
+              "entropy_delta_nats": {
+                "mean": 0.0004968891209376784,
+                "min": -0.013642201584784575,
+                "max": 0.02469798882929597,
+                "p05": -0.004444197934327787,
+                "p50": 3.0408477747119173e-06,
+                "p95": 0.007500822725230648,
+                "p99": 0.013540694211788157
+              },
+              "max_probability_delta": {
+                "mean": -0.00037262117921852523,
+                "min": -0.010063630689677971,
+                "max": 0.005909438023467051,
+                "p05": -0.0037717205038045984,
+                "p50": -5.277600234609992e-07,
+                "p95": 0.0017585825427201265,
+                "p99": 0.004926760727522254
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          }
+        },
+        "shape": {
+          "c1": {
+            "rows": 432,
+            "kl_mean": 2.488112411086811e-05,
+            "kl_p50": 1.5774305961816542e-06,
+            "kl_p95": 0.00012995209197094555,
+            "kl_p99": 0.000306091067427711,
+            "kl_max": 0.0005467085886235038,
+            "top1_agreement": 0.9976851851851852,
+            "top1_matches": 431,
+            "topk_overlap_mean": 0.9990740740740741,
+            "strict_teacher_nll_mean": 0.1763376107804135,
+            "candidate_teacher_nll_mean": 0.17653987766325277,
+            "teacher_nll_delta": 0.0002022668828392804,
+            "teacher_delta_p_mean": -6.918958931811223e-05,
+            "strict_margin_min": 0.0048122406005859375,
+            "max_abs_logit_delta": 0.19639801979064941,
+            "flip_eligible_rows": 15,
+            "flip_eligible_share": 0.034722222222222224,
+            "top1_mismatches_flip_eligible": 1,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 432,
+              "sequence_count": 18,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 432,
+                "flips": 1,
+                "rate": 0.0023148148148148147,
+                "wilson95_iid_rows": {
+                  "low": 0.0004087385900556498,
+                  "high": 0.012993976324904542
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 2,
+                  "flips": 1,
+                  "rate": 0.5,
+                  "wilson95_iid_rows": {
+                    "low": 0.09453120573423074,
+                    "high": 0.9054687942657693
+                  }
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 29,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.11696979849974076
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 84,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.04373172841465988
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 317,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.011973074910000856
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.0013829892259643456,
+                "min": 2.234471033166922e-08,
+                "max": 0.014673263668226282,
+                "p05": 1.6832313232236252e-07,
+                "p50": 0.0001670522642316729,
+                "p95": 0.00653560077207959,
+                "p99": 0.010451300204392784
+              },
+              "entropy_delta_nats": {
+                "mean": 1.7549645144032266e-05,
+                "min": -0.027738858989857507,
+                "max": 0.0328153111590026,
+                "p05": -0.0062203164232690344,
+                "p50": -2.26404815591047e-06,
+                "p95": 0.00657808355212342,
+                "p99": 0.015255629254246915
+              },
+              "max_probability_delta": {
+                "mean": -6.901034479835417e-05,
+                "min": -0.014632211294607456,
+                "max": 0.012673390789220473,
+                "p05": -0.0036737325696555357,
+                "p50": 1.675746816864887e-07,
+                "p95": 0.0035498642201484015,
+                "p99": 0.008002065706848407
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "prefill_last": {
+            "rows": 18,
+            "kl_mean": 4.45275612203723e-05,
+            "kl_p50": 2.2754309100240516e-05,
+            "kl_p95": 0.000131914632602872,
+            "kl_p99": 0.0001960073010455825,
+            "kl_max": 0.0002120304681562603,
+            "top1_agreement": 1.0,
+            "top1_matches": 18,
+            "topk_overlap_mean": 1.0,
+            "strict_teacher_nll_mean": 0.30718634545425166,
+            "candidate_teacher_nll_mean": 0.3082264648804369,
+            "teacher_nll_delta": 0.0010401194261852598,
+            "teacher_delta_p_mean": -0.00032403959553829894,
+            "strict_margin_min": 0.2837638854980469,
+            "max_abs_logit_delta": 0.21167802810668945,
+            "flip_eligible_rows": 0,
+            "flip_eligible_share": 0.0,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 18,
+              "sequence_count": 18,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 18,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 1.3877787807814457e-17,
+                  "high": 0.17587922364665765
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 0,
+                  "flips": 0,
+                  "rate": null,
+                  "wilson95_iid_rows": null
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 2,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.6576197724933469
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 9,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 2.7755575615628914e-17,
+                    "high": 0.29914504841954404
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 7,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 2.7755575615628914e-17,
+                    "high": 0.3543304350666875
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.002843117680178141,
+                "min": 0.0001435551350256283,
+                "max": 0.00957274284073725,
+                "p05": 0.00022475408137092147,
+                "p50": 0.0017943600294113892,
+                "p95": 0.007634340922690118,
+                "p99": 0.009185062457127819
+              },
+              "entropy_delta_nats": {
+                "mean": -1.8646964605766652e-05,
+                "min": -0.012440632011625485,
+                "max": 0.011692384893551733,
+                "p05": -0.012056330817050709,
+                "p50": 0.001194658559254047,
+                "p95": 0.007044203424213178,
+                "p99": 0.010762748599684013
+              },
+              "max_probability_delta": {
+                "mean": -0.00032403959553829894,
+                "min": -0.006815188579182563,
+                "max": 0.009497791294686864,
+                "p05": -0.005277359778711279,
+                "p50": -0.0004779780000405687,
+                "p95": 0.005247311249376039,
+                "p99": 0.008647695285624691
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          }
+        },
+        "transition": {
+          "prefill_to_c1": {
+            "rows": 18,
+            "kl_mean": 4.45275612203723e-05,
+            "kl_p50": 2.2754309100240516e-05,
+            "kl_p95": 0.000131914632602872,
+            "kl_p99": 0.0001960073010455825,
+            "kl_max": 0.0002120304681562603,
+            "top1_agreement": 1.0,
+            "top1_matches": 18,
+            "topk_overlap_mean": 1.0,
+            "strict_teacher_nll_mean": 0.30718634545425166,
+            "candidate_teacher_nll_mean": 0.3082264648804369,
+            "teacher_nll_delta": 0.0010401194261852598,
+            "teacher_delta_p_mean": -0.00032403959553829894,
+            "strict_margin_min": 0.2837638854980469,
+            "max_abs_logit_delta": 0.21167802810668945,
+            "flip_eligible_rows": 0,
+            "flip_eligible_share": 0.0,
+            "top1_mismatches_flip_eligible": 0,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 18,
+              "sequence_count": 18,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 18,
+                "flips": 0,
+                "rate": 0.0,
+                "wilson95_iid_rows": {
+                  "low": 1.3877787807814457e-17,
+                  "high": 0.17587922364665765
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 0,
+                  "flips": 0,
+                  "rate": null,
+                  "wilson95_iid_rows": null
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 2,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.6576197724933469
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 9,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 2.7755575615628914e-17,
+                    "high": 0.29914504841954404
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 7,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 2.7755575615628914e-17,
+                    "high": 0.3543304350666875
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.002843117680178141,
+                "min": 0.0001435551350256283,
+                "max": 0.00957274284073725,
+                "p05": 0.00022475408137092147,
+                "p50": 0.0017943600294113892,
+                "p95": 0.007634340922690118,
+                "p99": 0.009185062457127819
+              },
+              "entropy_delta_nats": {
+                "mean": -1.8646964605766652e-05,
+                "min": -0.012440632011625485,
+                "max": 0.011692384893551733,
+                "p05": -0.012056330817050709,
+                "p50": 0.001194658559254047,
+                "p95": 0.007044203424213178,
+                "p99": 0.010762748599684013
+              },
+              "max_probability_delta": {
+                "mean": -0.00032403959553829894,
+                "min": -0.006815188579182563,
+                "max": 0.009497791294686864,
+                "p05": -0.005277359778711279,
+                "p50": -0.0004779780000405687,
+                "p95": 0.005247311249376039,
+                "p99": 0.008647695285624691
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          },
+          "steady": {
+            "rows": 432,
+            "kl_mean": 2.488112411086811e-05,
+            "kl_p50": 1.5774305961816542e-06,
+            "kl_p95": 0.00012995209197094555,
+            "kl_p99": 0.000306091067427711,
+            "kl_max": 0.0005467085886235038,
+            "top1_agreement": 0.9976851851851852,
+            "top1_matches": 431,
+            "topk_overlap_mean": 0.9990740740740741,
+            "strict_teacher_nll_mean": 0.1763376107804135,
+            "candidate_teacher_nll_mean": 0.17653987766325277,
+            "teacher_nll_delta": 0.0002022668828392804,
+            "teacher_delta_p_mean": -6.918958931811223e-05,
+            "strict_margin_min": 0.0048122406005859375,
+            "max_abs_logit_delta": 0.19639801979064941,
+            "flip_eligible_rows": 15,
+            "flip_eligible_share": 0.034722222222222224,
+            "top1_mismatches_flip_eligible": 1,
+            "top1_mismatches_outside_flip_eligible": 0,
+            "diagnostics": {
+              "gating": false,
+              "rows": 432,
+              "sequence_count": 18,
+              "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats.",
+              "top1_flips": {
+                "rows": 432,
+                "flips": 1,
+                "rate": 0.0023148148148148147,
+                "wilson95_iid_rows": {
+                  "low": 0.0004087385900556498,
+                  "high": 0.012993976324904542
+                }
+              },
+              "margin_buckets": [
+                {
+                  "lower_inclusive": 0.0,
+                  "upper_exclusive": 0.05,
+                  "rows": 2,
+                  "flips": 1,
+                  "rate": 0.5,
+                  "wilson95_iid_rows": {
+                    "low": 0.09453120573423074,
+                    "high": 0.9054687942657693
+                  }
+                },
+                {
+                  "lower_inclusive": 0.05,
+                  "upper_exclusive": 0.5,
+                  "rows": 29,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.11696979849974076
+                  }
+                },
+                {
+                  "lower_inclusive": 0.5,
+                  "upper_exclusive": 2.0,
+                  "rows": 84,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.04373172841465988
+                  }
+                },
+                {
+                  "lower_inclusive": 2.0,
+                  "upper_exclusive": null,
+                  "rows": 317,
+                  "flips": 0,
+                  "rate": 0.0,
+                  "wilson95_iid_rows": {
+                    "low": 0.0,
+                    "high": 0.011973074910000856
+                  }
+                }
+              ],
+              "total_variation": {
+                "mean": 0.0013829892259643456,
+                "min": 2.234471033166922e-08,
+                "max": 0.014673263668226282,
+                "p05": 1.6832313232236252e-07,
+                "p50": 0.0001670522642316729,
+                "p95": 0.00653560077207959,
+                "p99": 0.010451300204392784
+              },
+              "entropy_delta_nats": {
+                "mean": 1.7549645144032266e-05,
+                "min": -0.027738858989857507,
+                "max": 0.0328153111590026,
+                "p05": -0.0062203164232690344,
+                "p50": -2.26404815591047e-06,
+                "p95": 0.00657808355212342,
+                "p99": 0.015255629254246915
+              },
+              "max_probability_delta": {
+                "mean": -6.901034479835417e-05,
+                "min": -0.014632211294607456,
+                "max": 0.012673390789220473,
+                "p05": -0.0036737325696555357,
+                "p50": 1.675746816864887e-07,
+                "p95": 0.0035498642201484015,
+                "p99": 0.008002065706848407
+              }
+            },
+            "kl_within_global_limits": true,
+            "passed": true
+          }
+        }
+      },
+      "scope_failures": [],
+      "scope_kl_advisories": [],
+      "rows_over_review_boundary": [],
+      "top1_mismatch_rows": [
+        {
+          "scenario_id": "gguf-Qwen3.8-27B-Q4_K_M-int8-direct-prefill-sequential-tail4_hadamard",
+          "scenario_step": 127,
+          "request_id": "general_en_explain",
+          "teacher_step": 2,
+          "category": "general_en",
+          "shape": "c1",
+          "transition": "steady",
+          "teacher_token_id": 11,
+          "row_index": 127,
+          "kl": 3.7453249018268625e-06,
+          "top1_equal": false,
+          "strict_top1_token_id": 11,
+          "candidate_top1_token_id": 383,
+          "topk_overlap": 1.0,
+          "strict_margin": 0.0048122406005859375,
+          "strict_top1_candidate_rank": 2,
+          "strict_teacher_nll": 1.012155879800075,
+          "candidate_teacher_nll": 1.0148985969477295,
+          "teacher_delta_p": -0.000995432626142767,
+          "max_abs_logit_delta": 0.08792471885681152
+        }
+      ],
+      "hard_gates_passed": true,
+      "requires_outlier_review": false,
+      "eligible_for_automatic_admission": true
+    },
+    "repeat_determinism": {
+      "runs": 3,
+      "passed": true,
+      "mismatches": [],
+      "trajectory_sha256_by_prompt": [
+        [
+          "09a1ac5e1592a0a847fdd1dca5d98ad83536fc5a1965b81e9c037bd811f40336",
+          "09a1ac5e1592a0a847fdd1dca5d98ad83536fc5a1965b81e9c037bd811f40336",
+          "09a1ac5e1592a0a847fdd1dca5d98ad83536fc5a1965b81e9c037bd811f40336"
+        ],
+        [
+          "73adc3a84a05f76fbff21ba53e8502bb611cd316cc40ac98a4596a873892e6e9",
+          "73adc3a84a05f76fbff21ba53e8502bb611cd316cc40ac98a4596a873892e6e9",
+          "73adc3a84a05f76fbff21ba53e8502bb611cd316cc40ac98a4596a873892e6e9"
+        ],
+        [
+          "d1fb2d7e7bd1ec7b9fb736d461a1683c97693b00206af91b8e9469258e92f79f",
+          "d1fb2d7e7bd1ec7b9fb736d461a1683c97693b00206af91b8e9469258e92f79f",
+          "d1fb2d7e7bd1ec7b9fb736d461a1683c97693b00206af91b8e9469258e92f79f"
+        ],
+        [
+          "c1b2e61a2c60bf7ca250acc9fe0d8ec5417d2742e02b9ca1b4c268155321193c",
+          "c1b2e61a2c60bf7ca250acc9fe0d8ec5417d2742e02b9ca1b4c268155321193c",
+          "c1b2e61a2c60bf7ca250acc9fe0d8ec5417d2742e02b9ca1b4c268155321193c"
+        ],
+        [
+          "8f27384e0f38a971399ea4d1b028c5adcaef6898bdaa385c52205052047980f3",
+          "8f27384e0f38a971399ea4d1b028c5adcaef6898bdaa385c52205052047980f3",
+          "8f27384e0f38a971399ea4d1b028c5adcaef6898bdaa385c52205052047980f3"
+        ],
+        [
+          "8a5c630c4a11bfdd289a1b7872766c5c7ee3b1d16856809ad9fc809fdbe26a1a",
+          "8a5c630c4a11bfdd289a1b7872766c5c7ee3b1d16856809ad9fc809fdbe26a1a",
+          "8a5c630c4a11bfdd289a1b7872766c5c7ee3b1d16856809ad9fc809fdbe26a1a"
+        ],
+        [
+          "17f6949fba744adf6e8eab5ddf8044b5f5d162271c26f169cbcb34568cb7d618",
+          "17f6949fba744adf6e8eab5ddf8044b5f5d162271c26f169cbcb34568cb7d618",
+          "17f6949fba744adf6e8eab5ddf8044b5f5d162271c26f169cbcb34568cb7d618"
+        ],
+        [
+          "90231ff27d7b479a8f0d9e5f650ee126aa13feee11685bf1da652d9a16b33d57",
+          "90231ff27d7b479a8f0d9e5f650ee126aa13feee11685bf1da652d9a16b33d57",
+          "90231ff27d7b479a8f0d9e5f650ee126aa13feee11685bf1da652d9a16b33d57"
+        ],
+        [
+          "c05b6f83102ff74284702f05acb1d408f82bef0f2e215f84befa0b205ccefb7b",
+          "c05b6f83102ff74284702f05acb1d408f82bef0f2e215f84befa0b205ccefb7b",
+          "c05b6f83102ff74284702f05acb1d408f82bef0f2e215f84befa0b205ccefb7b"
+        ],
+        [
+          "79813ec0f7e535051843f2cc803b69b717f61501ebf51caf1a3e59009dbbd011",
+          "79813ec0f7e535051843f2cc803b69b717f61501ebf51caf1a3e59009dbbd011",
+          "79813ec0f7e535051843f2cc803b69b717f61501ebf51caf1a3e59009dbbd011"
+        ],
+        [
+          "dc27f14873d47a4486f63b6a3bd37707f863c5ff7b3a9cd9aa424806fb536f5f",
+          "dc27f14873d47a4486f63b6a3bd37707f863c5ff7b3a9cd9aa424806fb536f5f",
+          "dc27f14873d47a4486f63b6a3bd37707f863c5ff7b3a9cd9aa424806fb536f5f"
+        ],
+        [
+          "8f4911a125000196e9154623709f0a086163df3fd240f7011721bad35543708e",
+          "8f4911a125000196e9154623709f0a086163df3fd240f7011721bad35543708e",
+          "8f4911a125000196e9154623709f0a086163df3fd240f7011721bad35543708e"
+        ],
+        [
+          "1c6c0000249335b7fd87262bf92e779b7be8d828b234a9b53ae2ed250bb70695",
+          "1c6c0000249335b7fd87262bf92e779b7be8d828b234a9b53ae2ed250bb70695",
+          "1c6c0000249335b7fd87262bf92e779b7be8d828b234a9b53ae2ed250bb70695"
+        ],
+        [
+          "e67857a19ffd8f3ea7d315b165682730b0189207acb2eed67f471ff3d38e638f",
+          "e67857a19ffd8f3ea7d315b165682730b0189207acb2eed67f471ff3d38e638f",
+          "e67857a19ffd8f3ea7d315b165682730b0189207acb2eed67f471ff3d38e638f"
+        ],
+        [
+          "80893d68be6d3e08864715a8c5f88d31abbe6a6df0ad63e5a6002c38e4ca7bd6",
+          "80893d68be6d3e08864715a8c5f88d31abbe6a6df0ad63e5a6002c38e4ca7bd6",
+          "80893d68be6d3e08864715a8c5f88d31abbe6a6df0ad63e5a6002c38e4ca7bd6"
+        ],
+        [
+          "680660d4dbb31c9125a2b34251cb90bb6123c6d8fafa2958b95f5008bcc87f8b",
+          "680660d4dbb31c9125a2b34251cb90bb6123c6d8fafa2958b95f5008bcc87f8b",
+          "680660d4dbb31c9125a2b34251cb90bb6123c6d8fafa2958b95f5008bcc87f8b"
+        ],
+        [
+          "2e555f58d92948ede0ee4ed027e8d07b058d6f6a8d674d0eb78c3133202bab91",
+          "2e555f58d92948ede0ee4ed027e8d07b058d6f6a8d674d0eb78c3133202bab91",
+          "2e555f58d92948ede0ee4ed027e8d07b058d6f6a8d674d0eb78c3133202bab91"
+        ],
+        [
+          "2502a375414c640a1b2a7497d1511efa8a02cb05e62d36b3245b3b786fa8e361",
+          "2502a375414c640a1b2a7497d1511efa8a02cb05e62d36b3245b3b786fa8e361",
+          "2502a375414c640a1b2a7497d1511efa8a02cb05e62d36b3245b3b786fa8e361"
+        ]
+      ]
+    },
+    "strict_logits_sha256": "02591f7bc4c07e5cbbf4fb27b15dc171129fdbbd476a8be502965a3435a74815",
+    "candidate_logits_sha256": "30a3bf914db23a3bebe176e94da746133107cd82bf75481e777f7b4c444f6675",
+    "strict_selected_token_ids_sha256": "40ec0a6a503d330dd4bab10a53719f8a64eb46c9f91add4199b8887c2994ac4f"
+  },
+  "state_repeat_gate": {
+    "passed": true,
+    "mismatches": [],
+    "prompts": [
+      {
+        "prompt_id": "code_merge_intervals",
+        "strict_state_sha256": "3bbf29ec7abe0f6868880ea27e0a3f82174d1579458f520725436be123d9016a",
+        "candidate_state_sha256": [
+          "049b5320a67375dccf35b2bb283fc65341f7c1fb57c9f222fb48144c249e6a31",
+          "049b5320a67375dccf35b2bb283fc65341f7c1fb57c9f222fb48144c249e6a31",
+          "049b5320a67375dccf35b2bb283fc65341f7c1fb57c9f222fb48144c249e6a31"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "code_topological_sort",
+        "strict_state_sha256": "c563003992fe7a5199ec5a80d134125fc9098247d4c3c34619df9c91822af419",
+        "candidate_state_sha256": [
+          "c4d76502195ef07ba78fcd03e458647eab27a79938df42849ed5a4e699949452",
+          "c4d76502195ef07ba78fcd03e458647eab27a79938df42849ed5a4e699949452",
+          "c4d76502195ef07ba78fcd03e458647eab27a79938df42849ed5a4e699949452"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "code_lru_cache",
+        "strict_state_sha256": "ca4a2ab319abb2102ccef16355f28aa815334358729886a1c527c4ab8208a565",
+        "candidate_state_sha256": [
+          "b8972c630838118fd89e131836f772b7e390595eec23fd7f51fca68ed69fd68c",
+          "b8972c630838118fd89e131836f772b7e390595eec23fd7f51fca68ed69fd68c",
+          "b8972c630838118fd89e131836f772b7e390595eec23fd7f51fca68ed69fd68c"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "code_markdown_table",
+        "strict_state_sha256": "621fea58ba9198990ba4150d7072ae820aaf2d8daf2bebb61b4706c8e0d41393",
+        "candidate_state_sha256": [
+          "5fce500b54611d456268ace2975bdd28aba4a78bc51b4a44014a3b77f89d0b11",
+          "5fce500b54611d456268ace2975bdd28aba4a78bc51b4a44014a3b77f89d0b11",
+          "5fce500b54611d456268ace2975bdd28aba4a78bc51b4a44014a3b77f89d0b11"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "general_en_plan",
+        "strict_state_sha256": "544f9d215b1f0b622ee2f3beabf55a2e1f728d1342d4bf8fe84f731f8afef30f",
+        "candidate_state_sha256": [
+          "bcf600c5d1c9ff07fec95adc7a9513dbb23957055821c65d30dec2a5c0590cad",
+          "bcf600c5d1c9ff07fec95adc7a9513dbb23957055821c65d30dec2a5c0590cad",
+          "bcf600c5d1c9ff07fec95adc7a9513dbb23957055821c65d30dec2a5c0590cad"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "general_en_explain",
+        "strict_state_sha256": "fecf057db00ce9a9e18b5cc3eb5dc6697eb5db1fac6c9c0284ece3476d6745ab",
+        "candidate_state_sha256": [
+          "6344ad64a124b25a0fdd5ee73760b5baac5bc714faa8012c8c73667fcd1f93af",
+          "6344ad64a124b25a0fdd5ee73760b5baac5bc714faa8012c8c73667fcd1f93af",
+          "6344ad64a124b25a0fdd5ee73760b5baac5bc714faa8012c8c73667fcd1f93af"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "general_ja_plan",
+        "strict_state_sha256": "a5846420522277f5a3b68653b4a89d7853005af56c4c784b4e2303a6e22a12e9",
+        "candidate_state_sha256": [
+          "70d69e59196a8dbb60f46e337e55193455149e601515220f07ad49e1d4897066",
+          "70d69e59196a8dbb60f46e337e55193455149e601515220f07ad49e1d4897066",
+          "70d69e59196a8dbb60f46e337e55193455149e601515220f07ad49e1d4897066"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "general_ja_explain",
+        "strict_state_sha256": "683360c008df2b507639ec6f14b3a1b986fc3509ab067e075400b17e2156709d",
+        "candidate_state_sha256": [
+          "abdad6339743cb43c29d820a4c051e3e0de9f1b024d1f1c98a5064ad0c67fe46",
+          "abdad6339743cb43c29d820a4c051e3e0de9f1b024d1f1c98a5064ad0c67fe46",
+          "abdad6339743cb43c29d820a4c051e3e0de9f1b024d1f1c98a5064ad0c67fe46"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "mixed_ja_en_translate",
+        "strict_state_sha256": "a20ad5c51a6f2c530161cd2a5e92956abb56aab9549f029e68baf56a50dde116",
+        "candidate_state_sha256": [
+          "a8634bb0c41aed2de2d84b5e05ac556a73a7a6b918a44154e1f83428bd588208",
+          "a8634bb0c41aed2de2d84b5e05ac556a73a7a6b918a44154e1f83428bd588208",
+          "a8634bb0c41aed2de2d84b5e05ac556a73a7a6b918a44154e1f83428bd588208"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "mixed_ja_en_review",
+        "strict_state_sha256": "8ec443383aa20c3b280a0478315a3a67bf5bd4a69bc88f5efa77f19cdc0d59e0",
+        "candidate_state_sha256": [
+          "559ac9406aefd03f802b6883337efd4cccc4a2e43bc8f9903beae4ac44d02b52",
+          "559ac9406aefd03f802b6883337efd4cccc4a2e43bc8f9903beae4ac44d02b52",
+          "559ac9406aefd03f802b6883337efd4cccc4a2e43bc8f9903beae4ac44d02b52"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_code_rate_limiter",
+        "strict_state_sha256": "cd37e9bfe457f57f3351ac4e1aec720a616794a9642c0378d49fdcc04861c2ed",
+        "candidate_state_sha256": [
+          "f5c85c928e3cbcfde5f6d48d1f8b8eda5aa02605abb8a45ac684d274bf23e342",
+          "f5c85c928e3cbcfde5f6d48d1f8b8eda5aa02605abb8a45ac684d274bf23e342",
+          "f5c85c928e3cbcfde5f6d48d1f8b8eda5aa02605abb8a45ac684d274bf23e342"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_code_interval_schedule",
+        "strict_state_sha256": "cd1099a78cdea9aaa9315e8c8b06c692cb50319d593b6a1277c3b4dddb6dffae",
+        "candidate_state_sha256": [
+          "2635609560143d6c34b5711f3a5c3929fc522f649f9d73e90bab1f938627ba99",
+          "2635609560143d6c34b5711f3a5c3929fc522f649f9d73e90bab1f938627ba99",
+          "2635609560143d6c34b5711f3a5c3929fc522f649f9d73e90bab1f938627ba99"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_general_en_incident",
+        "strict_state_sha256": "2bebf86a25a8baf4a887928ae24ab4bf755333fd5bb380eeaa0700a43bdf310a",
+        "candidate_state_sha256": [
+          "77c505e10da34a23d4f7915743e1119c67dc9b0671424aa2c49dd75cb9b875e4",
+          "77c505e10da34a23d4f7915743e1119c67dc9b0671424aa2c49dd75cb9b875e4",
+          "77c505e10da34a23d4f7915743e1119c67dc9b0671424aa2c49dd75cb9b875e4"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_general_en_quant",
+        "strict_state_sha256": "7b27b5f85cfad764cb874d1e01820c8580fdf9ffca5fc3a181df63e66612ba64",
+        "candidate_state_sha256": [
+          "590df551dfcccbf5e0e36fe3706026dc333ce09506d4d842c554e32a6e88aca9",
+          "590df551dfcccbf5e0e36fe3706026dc333ce09506d4d842c554e32a6e88aca9",
+          "590df551dfcccbf5e0e36fe3706026dc333ce09506d4d842c554e32a6e88aca9"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_general_ja_migration",
+        "strict_state_sha256": "5971f37156252027067913087962542f573538e12b460e90b0b1e556c259a56a",
+        "candidate_state_sha256": [
+          "1088e35283f36b73f1d22a70150b1a7094d79d07ca801e35c6a6f50adc94e1a4",
+          "1088e35283f36b73f1d22a70150b1a7094d79d07ca801e35c6a6f50adc94e1a4",
+          "1088e35283f36b73f1d22a70150b1a7094d79d07ca801e35c6a6f50adc94e1a4"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_general_ja_speculative",
+        "strict_state_sha256": "1ba57e7d3a61862cdc74fb920d1dd694a7036f6ff5918289e0312597e634f5ac",
+        "candidate_state_sha256": [
+          "f321dc978240e4b274ce2a33de5e345e0af63e4fc2726d90e04fe2914c55b243",
+          "f321dc978240e4b274ce2a33de5e345e0af63e4fc2726d90e04fe2914c55b243",
+          "f321dc978240e4b274ce2a33de5e345e0af63e4fc2726d90e04fe2914c55b243"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_mixed_summary",
+        "strict_state_sha256": "f3846c3df3c3ce3e756383ac7e6fa9a789a732b6010ba3cb2a5eba7a8448c01b",
+        "candidate_state_sha256": [
+          "389b7d06bbb5c55f1ddfc516af4b135674f63a8bfea7571492b234994c665a45",
+          "389b7d06bbb5c55f1ddfc516af4b135674f63a8bfea7571492b234994c665a45",
+          "389b7d06bbb5c55f1ddfc516af4b135674f63a8bfea7571492b234994c665a45"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      },
+      {
+        "prompt_id": "heldout_mixed_review",
+        "strict_state_sha256": "877e1aa3ceda2a858bf0c29b39e3c59aed4728d27388c1b89742adf786fd9ce1",
+        "candidate_state_sha256": [
+          "822881f917661e3bc0689248cebc18f3ae6e076f94223e0dfea9634f036c47a7",
+          "822881f917661e3bc0689248cebc18f3ae6e076f94223e0dfea9634f036c47a7",
+          "822881f917661e3bc0689248cebc18f3ae6e076f94223e0dfea9634f036c47a7"
+        ],
+        "strict_and_candidate_bytes_equal": false,
+        "finite": true,
+        "layout_stable": true,
+        "repeatable": true
+      }
+    ]
+  },
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 3,
+    "collected_at": "2026-11-11T19:54:38.265144+00:00",
+    "host_name": "epyc",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "62b179698433e6a06d7145211e18cab68a5ed1e3",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": false,
+    "untracked_count": 0,
+    "dirty": false,
+    "dirty_paths": [],
+    "dirty_path_count": 0,
+    "untracked_paths": [],
+    "execution_affecting_dirty": false,
+    "execution_affecting_paths": [],
+    "configured_backend": "hip_gfx1100",
+    "resolved_backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+      "size_bytes": 17106773984,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "int8_tail4_hadamard_group32_fp16_scale",
+    "command": [
+      "python3",
+      "/home/lhl/hipEngine/scripts/execution_profile_gguf_int8_direct_prefill_gate.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--kernel",
+      "sequential",
+      "--kv-layout",
+      "tail4_hadamard",
+      "--min-prompt-rows",
+      "4096",
+      "--decode-steps",
+      "24",
+      "--repeat-runs",
+      "3",
+      "--use-wmma-prefill",
+      "--use-gemv-decode",
+      "--json",
+      "/tmp/refactor-gfx1100/r0404-hadamard-full-clean.json"
+    ],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "HIPENGINE_GGUF_DECODE_REPACK": "0",
+      "strict_route_environment": "{'HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG': '1', 'HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS': 'none', 'HIPENGINE_GGUF_INT8_PREFILL_DIRECT': '0', 'HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON': '1'}",
+      "candidate_route_environment": "{'HIPENGINE_GGUF_INT8_KV_ALLOW_UNVERIFIED_LONG': '1', 'HIPENGINE_GGUF_INT8_KV_BF16_FULL_LAYERS': 'none', 'HIPENGINE_GGUF_INT8_PREFILL_DIRECT': '1', 'HIPENGINE_GGUF_INT8_PREFILL_KERNEL': 'sequential', 'HIPENGINE_GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON': '1'}"
+    },
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "build_profile": "execution_profile_gguf_int8_direct_prefill_gate",
+    "timing_protocol": "none_full_logits_and_state_only_v1",
+    "warmups": 0,
+    "repetitions": 3,
+    "profiler": {
+      "enabled": false,
+      "kind": null,
+      "command": null
+    }
+  }
+}

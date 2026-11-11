@@ -1211,7 +1211,7 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 
 Scope: `HIPENGINE_GGUF_INT8_PREFILL_DIRECT`.
 
-Done when: Per-token-head numerical choice resolved; tail-four Hadamard and task gates remain.
+Done when: Per-token-head and tail-four Hadamard numerical choices resolved; task gates remain.
 The historical rejection was a gate false-pass (both arms ran BF16), not inherent INT8 error.
 Three harness defects (env timing, `kv_capability=None`, cached lifetime plan) were fixed in the
 gate, and the full calibrated same-prefix evaluator now passes for the direct per-token-head INT8
@@ -1219,13 +1219,21 @@ route: 18 prompts × 3 repeats, 3456 direct flash-leaf launches, `kl_mean=1.76e-
 state-repeat clean. See
 [`worklog/entries/20261110T213027.483989Z-lhl-r0404-full-gate-verdict-5e70bf.md`](../worklog/entries/20261110T213027.483989Z-lhl-r0404-full-gate-verdict-5e70bf.md)
 and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-int8-direct-prefill-repaired-accepted.json`.
-Before any arithmetic-default promotion, complete the execution-profile task gates and separate
-tail-four Hadamard coverage; the per-token evaluator does not establish Hadamard or task quality.
+The tail-four Hadamard numerical coverage is now resolved on gfx1100: the gate gained a
+`--kv-layout tail4_hadamard` selector (mixed `tail4_hadamard_group32` layout, fp16 Hadamard-group32
+scales on the four INT8 tail layers), and the full calibrated same-prefix evaluator passes for the
+direct Hadamard prefill route: 18 prompts × 3 repeats, 450 teacher-forced rows, `kl_mean=2.57e-5`,
+`top1=0.9978`, state-repeat clean, `measurement_valid=True`. See
+[`worklog/entries/20261111T191727.979298Z-lhl-r0404-tail4-hadamard-direct-prefill-f63163.md`](../worklog/entries/20261111T191727.979298Z-lhl-r0404-tail4-hadamard-direct-prefill-f63163.md)
+and `benchmarks/results/2026-11-11-w7900-qwen38-27b-q4km-int8-direct-prefill-tail4-hadamard-accepted.json`.
+Before any arithmetic-default promotion, complete the execution-profile task gates; the
+numerical-envelope gates do not establish task quality.
 Clearing command (already run for per-token-head): `python
 scripts/execution_profile_gguf_int8_direct_prefill_gate.py --model "$GGUF_MODEL" --backend
 hip_gfx1100 --kernel flash --min-prompt-rows 4096 --decode-steps 24 --repeat-runs 3
 --use-wmma-prefill --use-gemv-decode --json /tmp/int8-direct-prefill-repaired.json` in the ROCm
-environment. Preserve explicit direct execution and the oracle path.
+environment. Preserve explicit direct execution and the oracle path. Hadamard clearing command
+(already run): the same gate with `--kernel sequential --kv-layout tail4_hadamard`.
 
 ### R0459 — Row-split GDN recurrence removal decision
 
