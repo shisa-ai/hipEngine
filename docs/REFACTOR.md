@@ -189,18 +189,6 @@ exercise `LLM.generate()` and `hipengine serve` on both backends, trace Q6 root 
 requests and a non-divisible packed width, and compare logits/output and cleanup with the registered
 R4 composition.
 
-### R0178 — Public grouped Q6 mixed-row validation
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `hipengine/runtime/gguf_linear.py` — Public grouped Q6 mixed-row validation.
-
-Done when: Dependency: public gfx1100 physical MTP mixed-row execution. **Clearing action:** run `hipengine
-serve` across the admitted mixed widths, trace grouped prefix/tail launches, and compare outputs and
-acceptance with the registered repeated primitives. Include a shape outside the mixed policy and
-verify cancellation and cleanup. Direct grouped-versus-repeated GPU bit parity is separate from this
-public-route requirement.
-
 ### R0179 — Public grouped Q5 R6 validation
 
 Owner: `hipengine/runtime/gguf_linear.py`.
