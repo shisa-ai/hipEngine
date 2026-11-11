@@ -1904,10 +1904,16 @@ and positions (request 1 pos 73: 6866 vs 3154; request 3 pos 17: 16 vs 15), so i
 is a general c4 packed-step race, not a fixed slot. A 30-repeat c2 burst was
 byte-clean, narrowing the race to c4. The only c2/c4 dispatch difference is the
 down residual (c2 fuses col8_residual; c4 runs the col8 down plus a standalone
-bf16_add). Inspection has ruled out the attention/split-K/GDN-state/down
-reductions as the source. See
+bf16_add). A forced-dispatch test **falsified** the down-residual attribution:
+capping Q4_K residual fusion at rows 3 (all-split, rocprof-verified) still diverged
+2/60 — both row 1 / decode pos 73 (context 512+73=585), a large token flip
+(6866 vs 3154) indicating state corruption, not rounding drift. Kernel inspection
+(col8/q4_k row-tile, bf16_add, attention/GDN reductions) found no arithmetic race;
+the suspect is graph-replay state/KV ownership for row 1. Do not re-try the Q4_K
+residual cap as the fix. See
 [`worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md`](../worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md),
-[`worklog/entries/20261110T232102.871853Z-lhl-r0523-c4-race-narrowed-4fa452.md`](../worklog/entries/20261110T232102.871853Z-lhl-r0523-c4-race-narrowed-4fa452.md)
+[`worklog/entries/20261110T232102.871853Z-lhl-r0523-c4-race-narrowed-4fa452.md`](../worklog/entries/20261110T232102.871853Z-lhl-r0523-c4-race-narrowed-4fa452.md),
+[`worklog/entries/20261111T004304.713417Z-lhl-r0523-q4-attribution-falsified-993a7a.md`](../worklog/entries/20261111T004304.713417Z-lhl-r0523-q4-attribution-falsified-993a7a.md)
 and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-r0387-packed-concurrency-summary.json`.
 
 Done when: reproduce the divergence under a targeted c4 stress with state/KV
