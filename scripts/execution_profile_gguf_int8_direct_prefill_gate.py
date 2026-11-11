@@ -89,11 +89,16 @@ class Candidate:
     environment: Mapping[str, str]
 
 
-def _candidate(kernel: str) -> Candidate:
+def _candidate(kernel: str, kv_layout: str = "per_token_head") -> Candidate:
     base = dict(PURE_INT8_ENV)
     base[DIRECT_ENV] = "1"
     base[KERNEL_ENV] = kernel
     base[SLOT_LOCAL_AOTRITON_ENV] = "1"
+    scale_desc = (
+        "Hadamard-group32 fp16 scales on the four INT8 tail layers"
+        if kv_layout == "tail4_hadamard"
+        else "per-token/head fp32 scales"
+    )
     kernel_desc = (
         "the GQA-grouped flash kernel (LDS tile staging, online softmax in registers)"
         if kernel == "flash"
@@ -104,7 +109,7 @@ def _candidate(kernel: str) -> Candidate:
         classification="T2",
         mechanism=(
             "prefill full-attention reads the retained INT8 K/V store directly "
-            f"with per-token/head scales through {kernel_desc}, removing the "
+            f"with {scale_desc} through {kernel_desc}, removing the "
             "BF16 oracle pair and the AOTriton bridge"
         ),
         strict_fallback="pure-INT8 oracle-bridge prefill (BF16 oracle + AOTriton)",
@@ -409,11 +414,23 @@ def _capture(
     prompt_manifest: list[dict[str, Any]] = []
     strict_states: list[dict[str, Any]] = []
     candidate_states: list[list[dict[str, Any]]] = []
-    policy = resolve_kv_policy(
-        "int8_per_token_head",
-        scale_dtype="fp32",
-        scale_granularity="per_token_head",
-    )
+    kv_layout = str(getattr(args, "kv_layout", "per_token_head"))
+    if kv_layout == "tail4_hadamard":
+        policy = resolve_kv_policy(
+            "tail4_hadamard_group32",
+            scale_dtype="fp16",
+            scale_granularity="hadamard_group32",
+        )
+        kv_scale_dtype_arg = "fp16"
+        kv_scale_granularity_arg = "hadamard_group32"
+    else:
+        policy = resolve_kv_policy(
+            "int8_per_token_head",
+            scale_dtype="fp32",
+            scale_granularity="per_token_head",
+        )
+        kv_scale_dtype_arg = "fp32"
+        kv_scale_granularity_arg = "per_token_head"
     # Resolve the INT8 KV capability exactly as the shipping generator does
     # (generation/qwen35_gguf.py::_resolve_int8_kv_capability). The resident
     # session admits mirror-free INT8 only when kv_capability.runtime_action is
@@ -476,8 +493,8 @@ def _capture(
         ),
         kv_policy=policy.create_policy(),
         kv_capability=kv_capability,
-        kv_scale_dtype="fp32",
-        kv_scale_granularity="per_token_head",
+        kv_scale_dtype=kv_scale_dtype_arg,
+        kv_scale_granularity=kv_scale_granularity_arg,
         # The shipping serving owner sets both selectors on every request; a
         # gate that omits them qualifies a route nobody runs (and absolute
         # rates are ~6x low, see the 2026-09-10 defect entry).
@@ -486,7 +503,24 @@ def _capture(
     ) as session:
         if session.runner is None:
             raise GateError("GGUF resident session closed during setup")
-        if (
+        if kv_layout == "tail4_hadamard":
+            # Mixed layout: the BF16 prefix layers are real storage, not a
+            # short-context mirror, so the uniform mirror-free predicate does
+            # not apply. The four INT8 Hadamard tail layers must carry the
+            # hadamard_group32 granularity for the direct Hadamard prefill leaf
+            # to engage; otherwise the gate would measure a BF16 bit-identity.
+            if (
+                str(getattr(session, "kv_storage_layout", "")) != "tail4_hadamard_group32"
+                or str(getattr(session, "kv_scale_granularity", "")) != "hadamard_group32"
+            ):
+                raise GateError(
+                    "tail4-Hadamard layout not engaged "
+                    f"(layout={getattr(session, 'kv_storage_layout', None)}, "
+                    f"granularity={getattr(session, 'kv_scale_granularity', None)}); "
+                    "the direct Hadamard prefill leaf would not run and the gate "
+                    "would measure a BF16-vs-BF16 bit-identity."
+                )
+        elif (
             getattr(session, "int8_bf16_full_attention_layer_indices", ())
             or getattr(session, "int8_bf16_prefix_full_attention_layers", 0)
             or not getattr(session, "int8_kv_no_mirror_qualified", False)
@@ -615,7 +649,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             )
         candidate = _slot_local_aotriton_candidate()
     else:
-        candidate = _candidate(str(args.kernel))
+        candidate = _candidate(
+            str(args.kernel), kv_layout=str(getattr(args, "kv_layout", "per_token_head")),
+        )
     prompt_rows = _load_suites(args.prompts)
     if args.limit is not None:
         prompt_rows = prompt_rows[: max(0, int(args.limit))]
@@ -635,7 +671,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     evaluated = build_candidate_quality(
         captures,
         candidate_mode=candidate.name,
-        scenario_id=f"gguf-{args.model.stem}-int8-direct-prefill-{args.kernel}",
+        scenario_id=f"gguf-{args.model.stem}-int8-direct-prefill-{args.kernel}-{getattr(args, 'kv_layout', 'per_token_head')}",
         thresholds=thresholds,
     )
     state_gate = build_state_repeat_gate(strict_states, candidate_states)
@@ -646,7 +682,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         target_arch=target_arch,
         model_path=args.model,
         quant="gguf_q4_k_m",
-        kv_dtype="int8_per_token_head_fp32_scale",
+        kv_dtype=(
+            "int8_tail4_hadamard_group32_fp16_scale"
+            if str(getattr(args, "kv_layout", "per_token_head")) == "tail4_hadamard"
+            else "int8_per_token_head_fp32_scale"
+        ),
         command=command,
         environment={
             "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
@@ -708,7 +748,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "teacher_forced_rows": sum(len(capture.strict) for capture in captures),
             "candidate_repeat_runs": int(args.repeat_runs),
             "thresholds": thresholds.to_dict(),
-            "kv_policy": "int8_per_token_head fp32 per-token-head scales",
+            "kv_policy": (
+                "tail4_hadamard_group32 fp16 Hadamard-group32 scales"
+                if str(getattr(args, "kv_layout", "per_token_head")) == "tail4_hadamard"
+                else "int8_per_token_head fp32 per-token-head scales"
+            ),
         },
         "prompts": prompt_manifest,
         "quality": evaluated,
@@ -722,6 +766,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=Path(DEFAULT_MODEL))
     parser.add_argument("--backend", default="auto")
     parser.add_argument("--kernel", choices=("flash", "sequential"), default="flash")
+    parser.add_argument(
+        "--kv-layout",
+        choices=("per_token_head", "tail4_hadamard"),
+        default="per_token_head",
+        help=(
+            "KV storage layout for the direct INT8 prefill candidate. "
+            "per_token_head: uniform mirror-free INT8, fp32 per-token-head scales "
+            "(default). tail4_hadamard: the mixed tail4_hadamard_group32 layout "
+            "(BF16 prefix + four Hadamard-group32 INT8 tail layers, fp16 scales); "
+            "the direct Hadamard prefill leaf reads the retained INT8 tail store."
+        ),
+    )
     parser.add_argument(
         "--candidate",
         choices=("int8_direct_prefill", "slot_local_aotriton"),
