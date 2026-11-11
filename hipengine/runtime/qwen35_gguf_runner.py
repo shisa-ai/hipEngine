@@ -21080,7 +21080,7 @@ class Qwen35GGUFResidentSession:
                             ).reshape(rows, self.runner.hidden_size)
                             if use_f32_residual
                             else _copy_bf16_rows_to_host_f32(
-                                hidden.ptr + start * row_nbytes,
+                                hidden.ptr + scratch_row_start * row_nbytes,
                                 rows,
                                 self.runner.hidden_size,
                                 runtime=runtime,
