@@ -150,19 +150,6 @@ closed as intentional reference code. See
 Done when: Validation dependency: a local Laguna checkpoint. Run the R0273 gfx1151 public command and
 confirm range-direct selection, output parity and teardown.
 
-### R0172 — Public grouped Q5 C8 validation
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `hipengine/runtime/gguf_linear.py` — Public grouped Q5 C8 validation.
-
-Done when: Dependency: gfx1100 public C8/R32 physical target execution. **Clearing action:** run `hipengine
-serve` with eight live MTP requests, trace grouped-Q5 R8 launches, and compare output/acceptance and
-teardown with the registered padded-prefix/strict-tail parent composition. The direct numerical gate
-is
-`tests/test_gpu_gguf_t16_selected_gemv_decode.py::test_q5_t16_grouped_rows8_matches_repeated_rows8_bits`;
-it does not establish public engagement.
-
 ### R0176 / R0394 — Public direct resident verifier validation
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
@@ -188,18 +175,6 @@ Done when: Dependency: defaults-only gfx1100 and gfx1151 direct/server refreshes
 exercise `LLM.generate()` and `hipengine serve` on both backends, trace Q6 root row chunks at eight
 requests and a non-divisible packed width, and compare logits/output and cleanup with the registered
 R4 composition.
-
-### R0179 — Public grouped Q5 R6 validation
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `hipengine/runtime/gguf_linear.py` — Public grouped Q5 R6 validation.
-
-Done when: Dependency: public gfx1100 physical target execution reaching grouped R6. **Clearing action:**
-run `hipengine serve` across grouped R6 and exact-prefix/tail widths, confirm selected launches, and
-compare output and acceptance with the registered repeated R6 primitive. Include ordinary decode
-outside physical scope and cancellation/cleanup. Direct GPU bit parity does not establish public
-routing.
 
 ### R0182 — Public fused packed-state transfer validation
 
