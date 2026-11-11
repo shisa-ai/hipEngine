@@ -16,6 +16,8 @@ round-trips). A dynamic tree is a speed follow-up.
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
@@ -35,7 +37,7 @@ from hipengine.kernels.hip_gfx1100.convert.gather import (
     build_gather, gather_bf16_rows_by_i32id, gather_i32_by_i32id,
 )
 from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32_rows_i32, build_lm_head
-from hipengine.speculative.dflash2_native import DFlash2NativeDrafter, _to_bf16_bits
+from hipengine.speculative.dflash2_native import DFlash2NativeDrafter, _to_bf16_bits, _quantize_q8_0_tiles
 
 
 class EAGLE4NativeDrafter(DFlash2NativeDrafter):
@@ -91,6 +93,25 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
             b = _buf(a.nbytes)
             self._staged_h2d(b.ptr, a)
             self.wdev[name] = b.ptr
+        # Q8_0 drafter-weight quantization (bandwidth-bound draft chain). Quantize
+        # the bf16 FFN/attention projections + fc; q/k and the full-V efficient
+        # head stay f32/BF16, and the small efficient-head down_proj (out=128)
+        # stays BF16 (Q8 is slower at small out_features). Rollback:
+        # HIPENGINE_EAGLE4_DRAFTER_Q8=0.
+        self._q8_tiles: dict[str, int] = {}
+        if os.environ.get("HIPENGINE_EAGLE4_DRAFTER_Q8", "1") != "0":
+            for name in ("layers.0.self_attn.v_proj.weight",
+                         "layers.0.self_attn.o_proj.weight",
+                         "layers.0.mlp.gate_proj.weight",
+                         "layers.0.mlp.up_proj.weight",
+                         "layers.0.mlp.down_proj.weight",
+                         "fc.weight"):
+                if name not in weights:
+                    continue
+                tiles = _quantize_q8_0_tiles(weights[name])
+                tb = _buf(tiles.nbytes)
+                self._staged_h2d(tb.ptr, tiles)
+                self._q8_tiles[name] = tb.ptr
         T = self.max_seq
         # Prefill runs the Q/K/V projection over the whole prompt (Tp rows); the
         # FFN + efficient head only ever run on the decode batch (T rows), so the
@@ -162,7 +183,7 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         eagle4_concat(self.norm_embed.ptr, self.norm_hidden.ptr, self.x_concat.ptr, T, H, runtime=self.runtime)
         dflash_dense_bf16_to_f32(self.x_concat.ptr, self._w(f"{L}.self_attn.q_proj.weight"), self.q_out.ptr, T, 2 * H, QF, library=self._lib1, runtime=self.runtime)
         dflash_dense_bf16_to_f32(self.x_concat.ptr, self._w(f"{L}.self_attn.k_proj.weight"), self.k_out.ptr, T, 2 * H, KVF, library=self._lib1, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.x_concat.ptr, self._w(f"{L}.self_attn.v_proj.weight"), self.v_out.ptr, T, 2 * H, KVF, library=self._lib1, runtime=self.runtime)
+        self._dense_proj(self.x_concat.ptr, f"{L}.self_attn.v_proj.weight", self.v_out.ptr, T, 2 * H, KVF)
         eagle4_rope(self.q_out.ptr, self.positions_buf.ptr, T, self.num_heads, self.head_dim, self.rope_theta, runtime=self.runtime)
         eagle4_rope(self.k_out.ptr, self.positions_buf.ptr, T, self.num_kv_heads, self.head_dim, self.rope_theta, runtime=self.runtime)
 
@@ -174,13 +195,13 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
         """o-proj + residual + SwiGLU + output norm for T rows."""
         H, QF, I = self.hidden_size, self.q_features, self.intermediate_size
         L = "layers.0"
-        dflash_dense_bf16_to_bf16(self.attn_out.ptr, self._w(f"{L}.self_attn.o_proj.weight"), self.o_proj_out.ptr, T, QF, H, library=self._lib1, runtime=self.runtime)
+        self._dense_proj(self.attn_out.ptr, f"{L}.self_attn.o_proj.weight", self.o_proj_out.ptr, T, QF, H)
         dflash_add_bf16(self.o_proj_out.ptr, self.feature_seq.ptr, self.residual.ptr, T * H, library=self._lib1, runtime=self.runtime)
         dflash_rmsnorm_bf16(self.residual.ptr, self._w(f"{L}.post_attention_layernorm.weight"), self.hn.ptr, T, H, eps=self.eps, library=self._lib1, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.hn.ptr, self._w(f"{L}.mlp.gate_proj.weight"), self.mlp_gate.ptr, T, H, I, library=self._lib1, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.hn.ptr, self._w(f"{L}.mlp.up_proj.weight"), self.mlp_up.ptr, T, H, I, library=self._lib1, runtime=self.runtime)
+        self._dense_proj(self.hn.ptr, f"{L}.mlp.gate_proj.weight", self.mlp_gate.ptr, T, H, I)
+        self._dense_proj(self.hn.ptr, f"{L}.mlp.up_proj.weight", self.mlp_up.ptr, T, H, I)
         dflash_silu_mul_bf16(self.mlp_gate.ptr, self.mlp_up.ptr, self.mlp_gate.ptr, T * I, library=self._lib1, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.mlp_gate.ptr, self._w(f"{L}.mlp.down_proj.weight"), self.mlp_out.ptr, T, I, H, library=self._lib1, runtime=self.runtime)
+        self._dense_proj(self.mlp_gate.ptr, f"{L}.mlp.down_proj.weight", self.mlp_out.ptr, T, I, H)
         dflash_add_bf16(self.mlp_out.ptr, self.residual.ptr, self.summed.ptr, T * H, library=self._lib1, runtime=self.runtime)
         dflash_rmsnorm_bf16(self.summed.ptr, self._w("norm.weight"), self.out_feature.ptr, T, H, eps=self.eps, library=self._lib1, runtime=self.runtime)
 
@@ -342,7 +363,7 @@ class EAGLE4NativeDrafter(DFlash2NativeDrafter):
             else:
                 src.append(self.fc_chunk[i].ptr)
         eagle4_concat3(src[0], src[1], src[2], self.fc_normed.ptr, m, H, runtime=self.runtime)
-        dflash_dense_bf16_to_bf16(self.fc_normed.ptr, self._w("fc.weight"), self.feature_seq.ptr, m, 3 * H, H, library=self._lib1, runtime=self.runtime)
+        self._dense_proj(self.fc_normed.ptr, "fc.weight", self.feature_seq.ptr, m, 3 * H, H)
 
     def append_committed_device(self, aux_dev, produced: int, next_tokens) -> None:
         """Device-resident variant of :meth:`append_committed`.

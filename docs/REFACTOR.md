@@ -445,6 +445,29 @@ folded into a general drafter-quantization setting.
 --reps 3 --max-new-tokens 25` with the control unset, confirm AR-exact output and
 acceptance, then remove the env read and the BF16 fallback branch.
 
+### R0525 — EAGLE-4 drafter Q8_0 quantization rollback control
+
+Owner: `hipengine/runtime/eagle4.py`.
+
+Scope: `HIPENGINE_EAGLE4_DRAFTER_Q8` (default on); the BF16 fallback branch in
+`DFlash2NativeDrafter._dense_proj` and the Q8_0 tile upload in
+`EAGLE4NativeDrafter.__init__`.
+
+Companion to R0523/R0524. Quantizing the bf16 FFN/attention projections (gate/
+up/down/o/v) + fc to Q8_0 T16 tiles cuts the device-resident draft chain (n2)
+13.23->8.46 ms (1.56x) and the matched full-mtpbench EAGLE-4 n2 decode
+16.33->17.99 tok/s (+10.2%), AR-exact, acceptance unchanged (0.650). q/k and the
+full-V efficient head stay f32/BF16; the small efficient-head down_proj (out=128)
+stays BF16. The control defaults on (production behavior) and exists only as a
+drafter-precision rollback lever.
+
+Done when: the Q8 drafter path is the validated default across admitted EAGLE-4
+configurations and a precision rollback is no longer required, or the control is
+folded into a general drafter-quantization setting.
+**Clearing action:** run `scripts/qwen38_eagle4_baseline.py --n-draft 2 --reps 3
+--max-new-tokens 25` with the control unset, confirm AR-exact output and
+acceptance, then remove the env read and the BF16 fallback branch.
+
 ### R0217 — PM4 diagnostic controls and transport rollback
 
 Owner: `scripts/pm4_graph_bench.py`.
