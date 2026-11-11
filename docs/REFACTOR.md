@@ -1211,7 +1211,7 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 
 Scope: `HIPENGINE_GGUF_INT8_PREFILL_DIRECT`.
 
-Done when: Per-token-head and tail-four Hadamard numerical choices resolved; task gates remain.
+Done when: Per-token-head and tail-four Hadamard numerical choices and task gates resolved.
 The historical rejection was a gate false-pass (both arms ran BF16), not inherent INT8 error.
 Three harness defects (env timing, `kv_capability=None`, cached lifetime plan) were fixed in the
 gate, and the full calibrated same-prefix evaluator now passes for the direct per-token-head INT8
@@ -1226,14 +1226,31 @@ direct Hadamard prefill route: 18 prompts × 3 repeats, 450 teacher-forced rows,
 `top1=0.9978`, state-repeat clean, `measurement_valid=True`. See
 [`worklog/entries/20261111T191727.979298Z-lhl-r0404-tail4-hadamard-direct-prefill-f63163.md`](../worklog/entries/20261111T191727.979298Z-lhl-r0404-tail4-hadamard-direct-prefill-f63163.md)
 and `benchmarks/results/2026-11-11-w7900-qwen38-27b-q4km-int8-direct-prefill-tail4-hadamard-accepted.json`.
-Before any arithmetic-default promotion, complete the execution-profile task gates; the
-numerical-envelope gates do not establish task quality.
+The execution-profile task gates are now resolved on gfx1100: a free-running task-quality gate
+(`scripts/execution_profile_gguf_int8_direct_prefill_task_gate.py`) runs the committed RF1
+long-context packet (6 categories, `choice_exact`) under the strict oracle-bridge and direct INT8
+prefill arms on the same mirror-free INT8 session, with EOS-stopped greedy generation for the
+reasoning model. Both layouts pass the predeclared per-category paired non-inferiority criterion
+with `measurement_valid=True`: per-token-head (flash) strict 6/6 / candidate 6/6, 0 regressions
+(2 tasks diverge but both correct); tail-four Hadamard (sequential) strict 6/6 / candidate 6/6,
+0 regressions, all outputs byte-identical. See
+[`worklog/entries/20261111T201548.732473Z-lhl-r0404-task-gate-harness-4609d2.md`](../worklog/entries/20261111T201548.732473Z-lhl-r0404-task-gate-harness-4609d2.md)
+and `benchmarks/results/2026-11-11-w7900-qwen38-27b-q4km-int8-direct-prefill-task-pertoken-accepted.json`
++ `benchmarks/results/2026-11-11-w7900-qwen38-27b-q4km-int8-direct-prefill-task-tail4-hadamard-accepted.json`.
+This is the available 6-case multi-category suite, not a large-suite production-quality claim.
+Arithmetic-default promotion remains a separate decision; the route stays opt-in via
+`HIPENGINE_GGUF_INT8_PREFILL_DIRECT`.
 Clearing command (already run for per-token-head): `python
 scripts/execution_profile_gguf_int8_direct_prefill_gate.py --model "$GGUF_MODEL" --backend
 hip_gfx1100 --kernel flash --min-prompt-rows 4096 --decode-steps 24 --repeat-runs 3
 --use-wmma-prefill --use-gemv-decode --json /tmp/int8-direct-prefill-repaired.json` in the ROCm
 environment. Preserve explicit direct execution and the oracle path. Hadamard clearing command
-(already run): the same gate with `--kernel sequential --kv-layout tail4_hadamard`.
+(already run): the same gate with `--kernel sequential --kv-layout tail4_hadamard`. Task-gate
+clearing command (already run, both layouts): `python
+scripts/execution_profile_gguf_int8_direct_prefill_task_gate.py --model "$GGUF_MODEL" --backend
+hip_gfx1100 --kernel flash --kv-layout per_token_head --max-new-tokens 1024 --use-wmma-prefill
+--use-gemv-decode --json /tmp/int8-direct-prefill-task.json` (and `--kernel sequential
+--kv-layout tail4_hadamard`).
 
 ### R0459 — Row-split GDN recurrence removal decision
 
