@@ -42,6 +42,12 @@ _PROMPTS = [
     "Summarize photosynthesis in a sentence.",
 ]
 _MAX_TOKENS = 24
+# Highly predictable continuations so the NextN draft proposes the full candidate
+# budget for every request; used to reach the exact_row_count shape (logical_rows 8).
+_PREDICTABLE_PROMPTS = [
+    "Count from 1 to 20: 1, 2, 3,",
+    "The alphabet: a, b, c,",
+]
 
 
 def _hip_available() -> bool:
@@ -152,10 +158,12 @@ def _hash_committed_state(state) -> dict:
     return hashes
 
 
-def _worker(budget: int, profile: str, num_prompts: int = 4) -> None:
+def _worker(budget: int, profile: str, num_prompts: int = 4,
+            prompt_set: str = "default") -> None:
     from hipengine import LLM, SamplingParams
 
-    prompts = _PROMPTS[:num_prompts]
+    base = _PREDICTABLE_PROMPTS if prompt_set == "predictable" else _PROMPTS
+    prompts = base[:num_prompts]
     engine = LLM(
         str(_MODEL), backend=_BACKEND, execution_profile=profile,
         speculative_candidate_budget=budget,
@@ -186,8 +194,10 @@ def _worker(budget: int, profile: str, num_prompts: int = 4) -> None:
     print("R0195_WORKER_RESULT " + json.dumps(result, default=str), flush=True)
 
 
-def _run_case(budget: int, profile: str, num_prompts: int = 4) -> dict:
-    env = dict(os.environ, R0195_WORKER=f"{budget}:{profile}:{num_prompts}",
+def _run_case(budget: int, profile: str, num_prompts: int = 4,
+              prompt_set: str = "default") -> dict:
+    env = dict(os.environ,
+               R0195_WORKER=f"{budget}:{profile}:{num_prompts}:{prompt_set}",
                R0195_TEST_MODEL=str(_MODEL))
     proc = subprocess.run([sys.executable, __file__], env=env,
                           capture_output=True, text=True, timeout=900)
@@ -265,10 +275,25 @@ def test_wider_group_realizes_eight_request_capacity() -> None:
     assert all(len(t) == _MAX_TOKENS for t in result["token_ids"]), result
 
 
+def test_exact_row_count_shape_attributed_without_padding() -> None:
+    # Predictable continuations let the draft propose the full C3 budget for both
+    # requests, so logical_rows = 2 + 2*3 = 8 lands in the exact row-count set
+    # [8,28,32] and is admitted with no padding (the exact_row_count shape).
+    result = _run_case(3, "production", num_prompts=2, prompt_set="predictable")
+    assert result["status"] == "ok", result.get("error")
+    shape = result["last_target_shape"]
+    assert shape["reason"] == "exact_row_count", shape
+    assert shape["logical_rows"] == 8, shape
+    assert shape["selected_rows"] == 8, shape
+    assert shape["pad_rows"] == 0, shape
+    assert shape["request_count"] == 2, shape
+
+
 if __name__ == "__main__":
     spec = os.environ.get("R0195_WORKER")
     if spec:
         parts = spec.split(":")
         b, p = int(parts[0]), parts[1]
         n = int(parts[2]) if len(parts) > 2 else 4
-        _worker(b, p, n)
+        ps = parts[3] if len(parts) > 3 else "default"
+        _worker(b, p, n, ps)

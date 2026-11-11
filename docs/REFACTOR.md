@@ -1707,13 +1707,15 @@ and C2 (both pad to `selected_rows=6`), so budgets C1/C2/C3/C4 are all exercised
 See
 [`device evidence`](../worklog/entries/20261111T215955.267498Z-lhl-r0195-device-3f4a30.md)
 and [`committed-state parity`](../worklog/entries/20261111T230506.463854Z-lhl-r0195-device-state-5857f5.md).
+A predictable-prompt C3 case reaches `exact_row_count` (logical_rows 8, no padding); see
+[`exact_row_count coverage`](../worklog/entries/20261111T232000.854671Z-lhl-r0195-exact-row-count-7d37e7.md).
 The packed `verify_state` is a verification scratch (full padded group + unaccepted
 candidates); the accept/commit path copies selected rows into the canonical scratch,
 which is the exactness target and matches bit-for-bit between production and strict.
-Still outstanding: the diagnostic-only shape misses (`accept_capacity_fallback` needs a
-group exceeding the sized-to-fit accept buffer and is not reachable through ordinary
-public generation; `exact_row_count` needs logical_rows in [8,28,32], reachable via
-4 prompts + C3 → logical_rows 8).
+Publicly reachable shape coverage is complete (`padded_to_row_multiple`,
+`aligned_row_multiple`, `no_padding_policy`, `exact_row_count`). Still outstanding: the
+diagnostic-only `accept_capacity_fallback`, which needs a group exceeding the
+sized-to-fit accept buffer and is not reachable through ordinary public generation.
 Reuse RF-1/RF-10 ownership rather than add a parallel selector. Retire the two rollback flags
 only with explicit coverage of their replacement policies and diagnostic controls.
 
