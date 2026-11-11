@@ -150,32 +150,6 @@ closed as intentional reference code. See
 Done when: Validation dependency: a local Laguna checkpoint. Run the R0273 gfx1151 public command and
 confirm range-direct selection, output parity and teardown.
 
-### R0168 — Public grouped Q4 active-slot validation
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `hipengine/runtime/gguf_linear.py` — Public grouped Q4 active-slot validation.
-
-Done when: Dependency: gfx1100 public physical execution with five and six active target slots. **Clearing
-action:** run `hipengine serve` with the physical MTP profile, trace grouped-R8 at R24 for C5/C6 and
-grouped-R6 on the corresponding C7/C8 scope misses, and compare outputs/acceptance/teardown with the
-strict parent. Preserve
-`tests/test_gpu_gguf_t16_selected_gemv_decode.py::test_q4_t16_dense_rowtile16_w2_grouped_rows8_matches_grouped_rows6_bits`
-as the separate numerical gate.
-
-### R0170 — Public source-Q5 MMQ validation
-
-Owner: `tests/test_gpu_gguf_q5_k_mmq_wmma_prefill.py`.
-
-Scope: `tests/test_gpu_gguf_q5_k_mmq_wmma_prefill.py` — Public source-Q5 MMQ validation.
-
-Done when: Dependency: gfx1100 public C8 physical MTP execution reaching the R32 source-Q5 owner.
-**Clearing action:** run `hipengine serve` with that configuration, trace source-Q5 selection at R32
-and raw-MMQ fallback on R24/shape misses, then compare output/acceptance and teardown with the
-retained parent. Use
-`tests/test_gpu_gguf_q5_k_mmq_wmma_prefill.py::test_c8_q5_i64_j32_source_mmq_passes_production_outer_floor`
-as the separate numerical gate, not a substitute for public engagement.
-
 ### R0171 — Public raw-Q5 sidecar and route validation
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
@@ -186,6 +160,13 @@ Done when: Dependency: gfx1100 public C8 physical MTP execution with raw-Q5 side
 run `hipengine serve` at eight active requests, confirm sidecar ownership and MMQ launches at
 admitted R24/R32 shapes, then compare output/acceptance and allocation cleanup with grouped T16.
 Include fewer-request and missing-workspace cases to verify fallback, without weakening admission.
+
+**Status (2026-11-11):** public C8/R32 raw-Q5 sidecar engagement captured on the W7900
+(rocprofv3 kernel trace, 500 ms batch window, K3/D24, production, explicit MTP):
+`gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel<5,bf16,2>` 144 dispatches alongside the source-Q5
+MMQ at R32; 10/10 token-exact, acceptance 0.65-0.84, overall teardown 0->0. See
+[`worklog/entries/20261111T011507.214968Z-lhl-r0168-r0170-r0171-physical-width-policy-e5c32f.md`](../worklog/entries/20261111T011507.214968Z-lhl-r0168-r0170-r0171-physical-width-policy-e5c32f.md).
+**Remaining:** the fewer-request and missing-workspace fallback cases.
 
 ### R0172 — Public grouped Q5 C8 validation
 

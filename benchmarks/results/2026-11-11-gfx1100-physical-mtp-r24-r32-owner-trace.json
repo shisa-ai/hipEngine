@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "kind": "physical_mtp_r24_r32_owner_trace",
+  "date": "2026-11-11",
+  "refactor_items": [
+    "R0168",
+    "R0170",
+    "R0171"
+  ],
+  "backend": "hip_gfx1100",
+  "gpu": "W7900 (gfx1100)",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "source_commit": "1289f1bde",
+  "protocol": {
+    "candidate_budget": 3,
+    "max_tokens": 24,
+    "batch_window_ms": 500,
+    "execution_profile": "production",
+    "mtp_request_mode": "explicit",
+    "correctness": "ar_exact"
+  },
+  "physical_width_depth_policy": {
+    "production": [
+      [
+        1,
+        2
+      ],
+      [
+        1,
+        3
+      ],
+      [
+        2,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        8,
+        3
+      ]
+    ],
+    "note": "C5/C6 are not physical target widths; physical_accept_max_rows 24 is the _PHYSICAL_ACCEPT_MIN_ROWS floor"
+  },
+  "c6": {
+    "cells_exact": 10,
+    "owners": {
+      "grouped_q4_rows6": {
+        "dispatches": 864,
+        "grid_y": {
+          "2": 864
+        }
+      },
+      "grouped_q4_rows8": {
+        "dispatches": 0,
+        "grid_y": {}
+      }
+    },
+    "note": "grouped-R6 at Grid_Y2 x ROW_TILE6 = 12 rows; no grouped-R8/source-MMQ at C6"
+  },
+  "c8": {
+    "cells_exact": 10,
+    "owners": {
+      "grouped_q4_rows8": {
+        "dispatches": 11520,
+        "grid_y": {
+          "4": 11200,
+          "3": 320
+        }
+      },
+      "grouped_q4_rows6": {
+        "dispatches": 2448,
+        "grid_y": {
+          "3": 1440,
+          "4": 1008
+        }
+      },
+      "source_q5_mmq_i64_j32": {
+        "dispatches": 3360,
+        "grid_y": {
+          "4": 3360
+        }
+      },
+      "raw_q5_mmq32": {
+        "dispatches": 144,
+        "grid_y": {
+          "1": 144
+        }
+      }
+    },
+    "frontier_rows": 32,
+    "padded_rows": 36,
+    "teardown_current_allocated_bytes": [
+      0,
+      0
+    ],
+    "note": "grouped-R8 Grid_Y4 x8 = R32; source-Q5 MMQ Grid_Y4 = R32; raw-Q5 MMQ fallback present"
+  },
+  "numerical_gates": {
+    "q4_grouped_rows8_eq_rows6_bits": "passed",
+    "q5_i64_j32_source_mmq_outer_floor_rows24_32": "passed"
+  },
+  "closed": [
+    "R0168",
+    "R0170"
+  ],
+  "open": [
+    "R0171 (fewer-request + missing-workspace fallback cases)"
+  ]
+}
