@@ -150,21 +150,6 @@ closed as intentional reference code. See
 Done when: Validation dependency: a local Laguna checkpoint. Run the R0273 gfx1151 public command and
 confirm range-direct selection, output parity and teardown.
 
-### R0176 / R0394 — Public direct resident verifier validation
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `layout.state_indices`.
-
-**Dependency:** public gfx1100 physical target execution. Reproduce and resolve the gfx1100 slot-zero failure before removing its guard.
-
-Done when: trace layout indices, bound Conv/GDN pointers and captured rows through public
-gfx1100 MTP. Compare direct and packed-import output and accepted-state ownership across slot zero,
-nonzero borrowed singletons, multi-session groups, cancellation and teardown. Reopen the older
-singleton route only after reproducing its failure and passing the width-one explicit-K3 category
-suite plus C1-C2 validation. Keep the working captured/deferred one-slot mapping enabled while that
-separate hardware follow-up runs.
-
 ### R0177 / R0292 — Public planar-Q6 chunk-policy validation
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.

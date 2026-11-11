@@ -200,15 +200,15 @@ def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> N
     assert session._packed_decode_positions == ()
 
 
-def test_gguf_direct_resident_verify_route_requires_multi_session(monkeypatch) -> None:
-    """The direct resident verify route is qualified for multi-lane batches only.
+def test_gguf_direct_resident_verify_route_covers_width_one(monkeypatch) -> None:
+    """The direct resident verify route covers width-1 and multi-lane batches.
 
-    The 2026-09-02 direct-resident promotion (7daa03723) was gated on C5-C8
-    multi-lane packed verification. The single-session (width-1) shape was
-    never qualified: the iter60 C1-C8 matrix recapture bisected the C1 K3
-    regression (ar_mtp_exact loss, acceptance 0.789 -> 0.166, 34.7 -> 21.5
-    tok/s) to exactly this route engaging at width 1. The single-session
-    shape must keep the exact fused resident-to-packed import.
+    The 2026-09-02 direct-resident promotion (7daa03723) originally regressed
+    C1 K3 exactness because the single-slot binding read the whole slab. The
+    R0394 ``for_slot`` binding repair resolved that root cause: a width-1
+    direct-resident verify is now token-exact and state-exact versus the strict
+    fused import (public C1 unguarded run engaged 10/10, ar_mtp_equal 10/10,
+    memory drained to zero). The width-1 guard is therefore cleared.
     """
 
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
@@ -237,8 +237,8 @@ def test_gguf_direct_resident_verify_route_requires_multi_session(monkeypatch) -
         "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE", raising=False
     )
 
-    # Single-session (width-1) verify jobs must not take the direct route.
-    assert owner._direct_resident_verify_linear_state(({"session": owner},)) is None
+    # Single-session (width-1) verify jobs now take the direct route.
+    assert owner._direct_resident_verify_linear_state(({"session": owner},)) == ((0,), slab)
     # Multi-session batches keep the qualified direct-route mapping.
     assert owner._direct_resident_verify_linear_state(
         ({"session": owner}, {"session": peer})
@@ -301,7 +301,7 @@ def test_direct_resident_verify_uses_backend_policy_without_environment(monkeypa
     monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE", "0")
     jobs = ({"session": owner}, {"session": peer})
     assert owner._direct_resident_verify_linear_state(jobs) is sentinel
-    assert owner._direct_resident_verify_linear_state(jobs[:1]) is None
+    assert owner._direct_resident_verify_linear_state(jobs[:1]) is sentinel
     owner.backend = "hip_gfx1151"
     assert owner._direct_resident_verify_linear_state(jobs) is None
 
