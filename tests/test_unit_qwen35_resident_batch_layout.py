@@ -1003,6 +1003,54 @@ def test_qwen35_resident_slot_full_spans_follow_int8_policy_metadata() -> None:
     assert append_spans.scale_metadata.k_scale.ptr == session.full_cache_scales[4][2].ptr + slot_scale_elems * DType.FP16.itemsize
 
 
+@pytest.mark.parametrize("failure", [None, "step", "instantiate"])
+def test_qwen35_graph_capture_restores_context_bound(failure) -> None:
+    events = []
+
+    def step(**kwargs):
+        assert session._decode_graph_context_limit == 144
+        if failure == "step":
+            raise RuntimeError("injected step failure")
+
+    def instantiate(graph):
+        assert session._decode_graph_context_limit == 77
+        if failure == "instantiate":
+            raise RuntimeError("injected instantiate failure")
+        return 20
+
+    session = SimpleNamespace(
+        closed=False,
+        decode_chunk_size=128,
+        _decode_graph_context_limit=77,
+        _check_position=lambda position: None,
+        _set_position=lambda *args, **kwargs: None,
+        _step_from_device_token=step,
+        runtime=SimpleNamespace(
+            stream_create=lambda: 30,
+            stream_synchronize=lambda stream: None,
+            stream_begin_capture=lambda stream: None,
+            stream_end_capture=lambda stream: 10,
+            graph_instantiate=instantiate,
+            graph_destroy=lambda graph: events.append(("graph", graph)),
+            stream_destroy=lambda stream: events.append(("stream", stream)),
+        ),
+    )
+    if failure:
+        with pytest.raises(RuntimeError, match="injected"):
+            runner_module.Qwen35ParoResidentSession.capture_decode_graph(
+                session, position=128, max_replay_steps=16,
+            )
+        assert ("stream", 30) in events
+        if failure == "instantiate":
+            assert ("graph", 10) in events
+    else:
+        graph = runner_module.Qwen35ParoResidentSession.capture_decode_graph(
+            session, position=128, max_replay_steps=16,
+        )
+        assert graph.max_replay_steps == 16
+    assert session._decode_graph_context_limit == 77
+
+
 def test_qwen35_resident_slot_full_spans_use_live_counts_for_decode_threshold() -> None:
     session, _captured = _resident_allocation_session()
     session.max_sequence_length = 1024
