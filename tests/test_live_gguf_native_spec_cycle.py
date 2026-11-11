@@ -70,7 +70,7 @@ def test_native_graph_metadata_is_independent_of_bulk_prefill_policy(monkeypatch
     assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) == position + 256
 
 
-def test_dense_ffn_capability_ignores_unfamiliar_quant_stamps_and_bounds_moe():
+def test_dense_ffn_capability_ignores_unfamiliar_quant_stamps_and_admits_moe():
     from hipengine.kernels.policy import QWEN35_MOE_H2048_E256_GEOMETRY
 
     session = _capacity_bound_session(128, 65536)
@@ -92,7 +92,7 @@ def test_dense_ffn_capability_ignores_unfamiliar_quant_stamps_and_bounds_moe():
     assert resolve() == 95
     session.kv_storage_dtype = DType.BF16
     session.runner.weights.geometry = QWEN35_MOE_H2048_E256_GEOMETRY
-    assert resolve() == 95
+    assert resolve() == 65536
     session.backend = "hip_gfx1151"
     assert resolve() == 65544
 

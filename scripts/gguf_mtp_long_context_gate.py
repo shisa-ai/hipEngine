@@ -608,9 +608,16 @@ def _run_direct_cases(
     direct_remaining_decode: int | None = None,
     progress: ProgressCallback | None = None,
     on_result: ResultCallback | None = None,
+    kv_storage: str = "bf16",
 ) -> list[dict[str, Any]]:
+    from hipengine.core.dtype import DType
+    from hipengine.kvcache import FixedPagedKVPolicy
     from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+    kv_policy = FixedPagedKVPolicy(
+        block_size=256, storage_dtype=DType.parse(kv_storage)
+    )
 
     grouped: dict[int, list[EagerMTPCase]] = defaultdict(list)
     for case in cases:
@@ -621,6 +628,7 @@ def _run_direct_cases(
         model,
         max_sequence_length=int(max_sequence_length),
         require_cached_build=bool(require_cached_build),
+        kv_policy=kv_policy,
     ) as native:
         native.select_prefill_quant("gguf_q4_k_m")
         if native.runner is None:
@@ -630,6 +638,7 @@ def _run_direct_cases(
             max_sequence_length=int(max_sequence_length),
             shared_runner=native.runner,
             require_cached_build=bool(require_cached_build),
+            kv_policy=kv_policy,
         ) as strict, Qwen35GGUFTransactionalVerifier(
             native,
             max_candidate_budget=max_budget,
@@ -1246,6 +1255,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--hash-model", action="store_true")
+    parser.add_argument(
+        "--kv-storage", default="bf16",
+        help="KV storage policy for the direct cases: bf16 or int8_per_token_head",
+    )
     parser.add_argument("--out", type=Path)
     parser.add_argument("--fail-on-fail", action="store_true")
     args = parser.parse_args(argv)
@@ -1407,6 +1420,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ),
                 progress=progress,
                 on_result=record_result,
+                kv_storage=str(args.kv_storage),
             )
             if cases
             else []
@@ -1461,7 +1475,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "profile_contract": "strict_teacher_parity",
         "profile_manifest_hash": None,
         "model_quant": "gguf_q4_k_m",
-        "kv_storage": "bf16",
+        "kv_storage": str(args.kv_storage),
         "command": [sys.executable, *sys.argv],
         "proposal_mode": (
             "host_materialized" if generation_results else "host_teacher_rows"

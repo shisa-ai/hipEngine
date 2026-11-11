@@ -1502,10 +1502,13 @@ smallest positive bound; a present nonpositive slot raises a named resource erro
 a stale layout. gfx1151 public dense/MoE checks at prompt lengths 73, 96 and 137 pass with native
 route attribution and clean teardown; they do not establish gfx1100 behavior.
 
-**Remaining consolidation:** diagnose the recorded gfx1100 MoE full-logit discrepancy before
-removing its numeric fallback. Exercise the affected route, identify its actual failure scope, and
-retain eager/serial execution where graph capability is absent. Do not restore a 256 cap merely
-because longer contexts lack measurements.
+**MoE consolidation complete (gfx1100):** the recorded MoE full-logit discrepancy is localized as
+EXECUTION-PROFILES §4.1 arithmetic — ownership/control exact on every surface (eager and graph,
+cycle ends 8/96/128, BF16 and INT8-per-token-head KV), only bounded value drift. gfx1100 now admits
+MoE by structural capability (`FFN_KINDS={"dense","moe"}`); the 95 numeric fallback no longer bounds
+MoE, which is bounded by allocated capacity. Newly admitted >95 eager cases are byte-exact; INT8
+eager KL max 0.0107, top-1 100%. Public `LLM.generate_detailed(speculative_mtp=True)` engages the
+native verify-chain at lengths 73/95/96/128/137 with zero legacy fallback.
 
 Done when: run native-context and native-cycle unit tests, then the native-context state/logit
 gates across affected geometries, KV layouts and boundary-straddling rows. Verify public generation,

@@ -115,6 +115,7 @@ def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
         )),
     )
     moe = SimpleNamespace(
+        scratch=SimpleNamespace(max_positions=16384),
         runner=SimpleNamespace(weights=SimpleNamespace(
             geometry=QWEN35_MOE_H2048_E256_GEOMETRY, file_type_name="MOSTLY_Q4_K_M",
         )),
@@ -132,12 +133,12 @@ def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
     assert _target_verify_mode_for_context(
         "native", backend="hip_gfx1100", end_position=16384, target=narrow,
     ) == "serial_exact"
-    # MoE keeps the backend's numeric fallback.
+    # MoE is admitted by capability and bounded by allocated capacity, like dense.
     assert _target_verify_mode_for_context(
-        "native", backend="hip_gfx1100", end_position=95, target=moe,
+        "native", backend="hip_gfx1100", end_position=16384, target=moe,
     ) == "native"
     assert _target_verify_mode_for_context(
-        "native", backend="hip_gfx1100", end_position=96, target=moe,
+        "native", backend="hip_gfx1100", end_position=16385, target=moe,
     ) == "serial_exact"
     assert _target_verify_mode_for_context(
         "native", backend="hip_gfx1151", end_position=96,
@@ -218,6 +219,7 @@ def test_moe_native_mode_is_not_blocked_by_cross_path_numerical_drift(
     """Generated-ID differences do not establish a state-ownership failure."""
 
     moe = SimpleNamespace(
+        scratch=SimpleNamespace(max_positions=65536),
         runner=SimpleNamespace(
             weights=SimpleNamespace(
                 config=SimpleNamespace(is_moe=True),
