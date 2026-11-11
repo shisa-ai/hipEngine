@@ -141,8 +141,9 @@ def _run_case(budget: int, profile: str, num_prompts: int = 4) -> dict:
     return json.loads(line[len("R0195_WORKER_RESULT "):])
 
 
-def test_production_pads_to_rowtile_and_matches_strict_exactly() -> None:
-    prod = _run_case(2, "production")
+@pytest.mark.parametrize("budget", [1, 2])
+def test_production_pads_to_rowtile_and_matches_strict_exactly(budget: int) -> None:
+    prod = _run_case(budget, "production")
     assert prod["status"] == "ok", prod.get("error")
     shape = prod["last_target_shape"]
     assert shape["selected_rows"] == 6, shape
@@ -150,7 +151,7 @@ def test_production_pads_to_rowtile_and_matches_strict_exactly() -> None:
     assert shape["pad_rows"] > 0, shape
     assert prod["rows_plan"]["pad_counts"] == [6], prod["rows_plan"]
 
-    strict = _run_case(2, "strict")
+    strict = _run_case(budget, "strict")
     assert strict["status"] == "ok", strict.get("error")
     sshape = strict["last_target_shape"]
     assert sshape["reason"] == "no_padding_policy", sshape
