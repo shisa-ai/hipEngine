@@ -1667,7 +1667,7 @@ arithmetic or default changes.
 Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
 
 Scope: `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS`,
-`HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES`.
+`HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES` (both retired).
 
 **Partial ownership migration:** exact rows, padding and Q4/Q5/Q6 rowtile choices
 are immutable `PhysicalTargetRowsPlan` values bound by dense gfx1100/gfx1151
@@ -1713,11 +1713,16 @@ The packed `verify_state` is a verification scratch (full padded group + unaccep
 candidates); the accept/commit path copies selected rows into the canonical scratch,
 which is the exactness target and matches bit-for-bit between production and strict.
 Publicly reachable shape coverage is complete (`padded_to_row_multiple`,
-`aligned_row_multiple`, `no_padding_policy`, `exact_row_count`). Still outstanding: the
-diagnostic-only `accept_capacity_fallback`, which needs a group exceeding the
-sized-to-fit accept buffer and is not reachable through ordinary public generation.
-Reuse RF-1/RF-10 ownership rather than add a parallel selector. Retire the two rollback flags
-only with explicit coverage of their replacement policies and diagnostic controls.
+`aligned_row_multiple`, `no_padding_policy`, `exact_row_count`). The
+`accept_capacity_fallback` branch is unreachable through public generation: the accept
+buffer is sized to `max(24, ceil(frontier/6)*6)`, a rows6 multiple at least the largest
+possible group, so `physical_group_pad_rows` never hits its capacity guard. It remains a
+defensive/diagnostic-only path. Reuse RF-1/RF-10 ownership rather than add a parallel selector.
+The two rollback flags are retired: exact rowtile rows and mixed Q6 rowtiles are always
+admitted per backend capability, with the C7/C8 policy diagnostic controls preserved. Unit
+coverage asserts the retired flags are ignored (`test_unit_physical_target_rows.py`,
+`test_unit_qwen35_gguf_mtp2_seam.py`) and the device gate above covers the replacement policies.
+See [`rollback retirement`](../worklog/entries/20261111T233125.163526Z-lhl-r0195-retire-rollback-flags-668990.md).
 
 Preserve padded rows6 decomposition, repeated-R6 and serial-row strict owners, ordinary-prefill
 behavior, scope-miss fallbacks and unfused pair ownership. Keep synchronized callers synchronized;

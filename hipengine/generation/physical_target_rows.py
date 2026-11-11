@@ -129,7 +129,7 @@ def bind_physical_target_plan(generator, backend: str, profile: str, *, arithmet
 
 
 def resolve_physical_target_rows(backend: str, profile: str) -> PhysicalTargetRowsPlan:
-    """Snapshot row capabilities and explicit diagnostic rollbacks once."""
+    """Snapshot row capabilities once; exact-rows/Q6-mixed rollbacks are retired."""
 
     if profile != "production":
         return PhysicalTargetRowsPlan()
@@ -142,19 +142,18 @@ def resolve_physical_target_rows(backend: str, profile: str) -> PhysicalTargetRo
         backend, "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS", (),
     ))
     exact: set[int] = set()
-    if enabled("HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS", True):
-        exact.update(int(value) for value in backend_package_capability(
-            backend, "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS", (),
-        ))
-        for capability in (
-            "GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY",
-            "GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY",
-        ):
-            policy = backend_package_capability(backend, capability, {})
-            env = policy.get("enabled_env")
-            default = bool(policy.get("enabled_default", False))
-            if policy and (default if env is None else enabled(str(env), default)):
-                exact.update(int(value) for value in policy.get("rows", ()))
+    exact.update(int(value) for value in backend_package_capability(
+        backend, "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS", (),
+    ))
+    for capability in (
+        "GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY",
+        "GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY",
+    ):
+        policy = backend_package_capability(backend, capability, {})
+        env = policy.get("enabled_env")
+        default = bool(policy.get("enabled_default", False))
+        if policy and (default if env is None else enabled(str(env), default)):
+            exact.update(int(value) for value in policy.get("rows", ()))
     extra_q4 = bool(backend_package_capability(
         backend, "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES", (),
     ))
@@ -169,7 +168,6 @@ def resolve_physical_target_rows(backend: str, profile: str) -> PhysicalTargetRo
         and backend_package_capability(
             backend, "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS", {},
         )
-        and enabled("HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES", True)
     )
     return PhysicalTargetRowsPlan(
         padding, tuple(sorted(exact)), mixed_q6, extra_q4, q5, q6,

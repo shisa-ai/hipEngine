@@ -1355,7 +1355,7 @@ def test_physical_extra_rowtiles_are_production_and_backend_capability_scoped() 
     strict.close()
 
 
-def test_mixed_q6_target_rowtiles_are_default_on_with_rollback_and_profile_scope(
+def test_mixed_q6_target_rowtiles_are_default_on_with_profile_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(
@@ -1402,10 +1402,11 @@ def test_mixed_q6_target_rowtiles_are_default_on_with_rollback_and_profile_scope
     strict.close()
     peer.close()
 
+    # The retired rollback flag no longer withdraws the capability.
     monkeypatch.setenv(
         "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES", "0"
     )
-    rollback = Qwen35GGUFMTP2Adapter(
+    retired = Qwen35GGUFMTP2Adapter(
         SimpleNamespace(
             generator=SimpleNamespace(
                 execution_profile="production",
@@ -1416,11 +1417,11 @@ def test_mixed_q6_target_rowtiles_are_default_on_with_rollback_and_profile_scope
         target_verify_mode="native",
         candidate_budget=3,
     )
-    assert rollback.production_physical_q6_mixed_rowtiles is False
-    rollback.close()
+    assert retired.production_physical_q6_mixed_rowtiles is True
+    retired.close()
 
 
-def test_exact_target_rows_are_production_defaults_with_rollbacks(
+def test_exact_target_rows_are_production_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     owner = SimpleNamespace(
@@ -1505,16 +1506,17 @@ def test_exact_target_rows_are_production_defaults_with_rollbacks(
     ) == 0
     c7_rollback.close()
 
+    # The retired rollback flag no longer withdraws the exact rows.
     monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS", "0")
-    rollback = Qwen35GGUFMTP2Adapter(
+    retired = Qwen35GGUFMTP2Adapter(
         owner,
         enabled=True,
         target_verify_mode="native",
         candidate_budget=3,
     )
-    assert rollback.production_exact_target_row_counts == ()
-    assert rollback._target_group_pad_rows(request_count=2, candidate_rows=6) == 4
-    rollback.close()
+    assert retired.production_exact_target_row_counts == (8, 28, 32)
+    assert retired._target_group_pad_rows(request_count=2, candidate_rows=6) == 0
+    retired.close()
 
     monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS", "1")
     strict_owner = SimpleNamespace(

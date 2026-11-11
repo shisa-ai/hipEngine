@@ -401,8 +401,8 @@ independent workload gates.
 | `HIPENGINE_C8_Q5_PLANAR_DP4A` | false | Diagnostic route | Selects the optional planar INT8 Q5 sidecar at materialization and the physical-C8 runner route. A bound `planar_dp4a=True` session with its sidecar/library/workspace is authoritative; dispatch does not re-read the environment. |
 | `HIPENGINE_C8_Q6_DP4A_GROUPED` | profile-owned | Production rollback / diagnostic | The gfx1100 dense production profile snapshots this override on its generator (`1` by default); strict binds a generator-local false choice. Binders do not write the process environment. Resident sessions inherit their generator's choice; standalone sessions with an unspecified choice still read this override. The gfx1100 backend declares automatic physical-C8 target selection; model names and aggregate GGUF quant labels do not participate. The planar-Q6 adapter checks row/input geometry and bounded q8_1 workspace. Enabled scopes use grouped integer DP4A for supported rows; unscoped calls keep BF16. |
 | `HIPENGINE_UD_REPACK_ELIGIBILITY` | unset | Rollback seam | Overrides model-wide UD repack eligibility (e.g. `model-wide`) so a synthetic geometry keeps its historical pack8/raw residents. |
-| `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS` | unset | Specdec2 route | Exact target row-count override for the specdec2 verifier rows. |
-| `HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES` | unset | Specdec2 route | Q6 mixed target rowtile admission override. |
+| `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS` | retired | No runtime reader | The exact target row-count rollback is removed; production exact rowtile rows are always admitted per backend capability. |
+| `HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES` | retired | No runtime reader | The Q6 mixed target rowtile rollback is removed; mixed Q6 rowtiles are always admitted when the backend declares the capability. |
 | `HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN` | retired | No runtime reader | The rejected one-cycle suppression experiment is removed. Normal K0 provider catchup remains; stale values do not suppress speculation. |
 | `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA` | retired | No longer read | Private-c1 weight allocation follows backend policy; programmatic opt-out, shared-runner and allocation fallbacks remain. |
 | `HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA` | retired | No longer read | Private-c1 decode scratch follows the backend policy; programmatic opt-out, shared-runner and allocation fallbacks remain. |
@@ -941,6 +941,8 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_TORCH_ABSENCE_CHILD` | unset | Internal re-execution flag set by `tests/_torch_absence.py` to the pytest node id running in a fresh interpreter; the clean child detects it and runs the real test body instead of recursing. |
 | `VIBEVOICE_REFERENCE_HF` / `VIBEVOICE_REFERENCE_AUDIO` | local defaults | VibeVoice HuggingFace reference snapshot and reference audio fixture paths for the encoder comparison tests. |
 | `HIPENGINE_CAPACITY_MODEL` / `HIPENGINE_CAPACITY_DMS_METADATA` | `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` / `/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json` | Model and DMS sidecar for the 24 GB serving-capacity gate (`tests/test_slow_qwen38_24gb_serving_capacity.py`); a missing file skips its cases. |
+| `R0195_TEST_MODEL` | `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` | Dense nextn-bearing GGUF fixture for the R0195 physical-target device gate (`tests/test_live_gguf_r0195_physical_target.py`); a missing model or HIP runtime skips the tests. |
+| `R0195_WORKER` | unset | Internal subprocess worker spec (`budget:profile:num_prompts:prompt_set`) set by the R0195 device-gate parent to run one case per fresh interpreter; not a product knob. |
 
 ## Benchmark and development harness variables
 
