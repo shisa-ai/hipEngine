@@ -1695,19 +1695,25 @@ subprocess-per-case): on the nextn-bearing Qwen3.8-27B-Q4_K_M artifact, producti
 pads physical groups to the admitted rows6 rowtile
 (`selected_rows=6`, `reason=padded_to_row_multiple`, `pad_counts=[6]`), strict uses no
 rowtiles (`no_padding_policy`, empty plan), the padded production
-`generated_token_ids` are bit-identical to the unpadded strict route, the
-offset/selector `last_partition` is attributed, and an unsupported C4 depth raises the
-named `mtp_candidate_depth_unsupported` capability miss. A wider-group case
+`generated_token_ids` are bit-identical to the unpadded strict route, the committed
+conv/recurrent device state (the canonical scratch, not the padded verification
+scratch) is bit-identical across all linear layers, the offset/selector
+`last_partition` is attributed, and an unsupported C4 depth raises the named
+`mtp_candidate_depth_unsupported` capability miss. A wider-group case
 (8 prompts, `max_active_requests=8`, C3) realizes `owner_capacity=8`,
 `physical_max_requests=8`, `resolved_max_requests=8` and a >2-request verify group
 attributing `aligned_row_multiple`. The exact-output test is parametrized over C1
 and C2 (both pad to `selected_rows=6`), so budgets C1/C2/C3/C4 are all exercised.
 See
-[`device evidence`](../worklog/entries/20261111T215955.267498Z-lhl-r0195-device-3f4a30.md).
-Still outstanding: device recurrent/KV state comparison beyond token IDs, and the
-diagnostic-only shape misses (`accept_capacity_fallback` needs a group exceeding the
-sized-to-fit accept buffer; `exact_row_count` needs logical_rows in [8,28,32], which
-depends on realized MTP proposal counts).
+[`device evidence`](../worklog/entries/20261111T215955.267498Z-lhl-r0195-device-3f4a30.md)
+and [`committed-state parity`](../worklog/entries/20261111T230506.463854Z-lhl-r0195-device-state-5857f5.md).
+The packed `verify_state` is a verification scratch (full padded group + unaccepted
+candidates); the accept/commit path copies selected rows into the canonical scratch,
+which is the exactness target and matches bit-for-bit between production and strict.
+Still outstanding: the diagnostic-only shape misses (`accept_capacity_fallback` needs a
+group exceeding the sized-to-fit accept buffer and is not reachable through ordinary
+public generation; `exact_row_count` needs logical_rows in [8,28,32], reachable via
+4 prompts + C3 → logical_rows 8).
 Reuse RF-1/RF-10 ownership rather than add a parallel selector. Retire the two rollback flags
 only with explicit coverage of their replacement policies and diagnostic controls.
 

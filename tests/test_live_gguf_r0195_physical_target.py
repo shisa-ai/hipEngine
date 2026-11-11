@@ -8,7 +8,9 @@ GGUF artifact must, on gfx1100:
   ``pad_counts`` rows plan;
 - strict: use no rowtiles (``reason == "no_padding_policy"``, empty rows plan);
 - produce bit-identical ``generated_token_ids`` between the padded production route
-  and the unpadded strict route (the padded accept/commit path is exact);
+  and the unpadded strict route (the padded accept/commit path is exact), and
+  bit-identical committed conv/recurrent device state (the canonical scratch, not
+  the padded verification scratch);
 - refuse an unsupported candidate depth with a named capability miss rather than a
   silent downgrade.
 
@@ -96,6 +98,60 @@ def _find_adapter(root):
     return None
 
 
+def _find_committed_state(engine):
+    """Return the batch owner's committed canonical scratch, or None.
+
+    The packed ``verify_state`` is a verification scratch holding the full padded
+    physical group (including unaccepted candidate rows); the accept/commit path
+    (``prepare_external_verify_state_commit``) copies only the selected rows into
+    the session's canonical scratch. That committed conv/recurrent state is the
+    exactness target, not the scratch.
+    """
+    owner = engine._text_generator._runner._resident_batch_owner
+    rss = getattr(owner, "_resident_state_storage", None)
+    if rss is None and callable(getattr(owner, "_state_storage", None)):
+        rss = owner._state_storage()
+    canon = getattr(rss, "canonical", None)
+    return getattr(canon, "scratch", None)
+
+
+def _hash_committed_state(state) -> dict:
+    """SHA-256 the raw conv/recurrent bytes of every linear-attention layer.
+
+    Raw-byte hashing is dtype-agnostic; identical committed state hashes identically
+    regardless of fp16/fp32 recurrent storage.
+    """
+    import hashlib
+
+    import numpy as np
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+
+    runtime = get_hip_runtime()
+    runtime.device_synchronize()
+    convs = state.layer_conv_states
+    recs = state.layer_recurrent_states
+    hashes: dict = {}
+    for layer_id in range(len(recs)):
+        rec = recs[layer_id]
+        conv = convs[layer_id] if layer_id < len(convs) else None
+        if rec is None:
+            continue
+        entry = {}
+        for name, buf in (("conv", conv), ("recurrent", rec)):
+            if buf is None:
+                continue
+            nbytes = int(buf.nbytes)
+            host = np.empty(nbytes, dtype=np.uint8)
+            copy_device_to_host(host_array_ptr(host),
+                                DeviceBuffer(int(buf.ptr), nbytes), nbytes,
+                                runtime=runtime)
+            entry[name] = hashlib.sha256(host.tobytes()).hexdigest()
+        hashes[str(layer_id)] = entry
+    return hashes
+
+
 def _worker(budget: int, profile: str, num_prompts: int = 4) -> None:
     from hipengine import LLM, SamplingParams
 
@@ -124,6 +180,9 @@ def _worker(budget: int, profile: str, num_prompts: int = 4) -> None:
         result["last_target_shape"] = contract.get("last_target_shape")
         result["rows_plan"] = policy.get("rows")
         result["last_partition"] = contract.get("last_partition")
+    state = _find_committed_state(engine)
+    if state is not None:
+        result["committed_state_hashes"] = _hash_committed_state(state)
     print("R0195_WORKER_RESULT " + json.dumps(result, default=str), flush=True)
 
 
@@ -162,6 +221,15 @@ def test_production_pads_to_rowtile_and_matches_strict_exactly(budget: int) -> N
     # The padded production accept/commit path must be exact vs the unpadded strict.
     assert prod["token_ids"] == strict["token_ids"], (
         "padded production output diverged from unpadded strict output"
+    )
+    # Exact device-state parity: the committed conv/recurrent state (canonical
+    # scratch) must be bit-identical, not just the emitted token IDs. The packed
+    # verify_state scratch legitimately differs (it holds the padded physical group).
+    assert prod.get("committed_state_hashes"), "no committed state hashes captured (production)"
+    assert strict.get("committed_state_hashes"), "no committed state hashes captured (strict)"
+    assert prod["committed_state_hashes"] == strict["committed_state_hashes"], (
+        "committed conv/recurrent device state diverged between padded production "
+        "and unpadded strict"
     )
     # Offset/selector partition contract is attributed on both routes.
     for case in (prod, strict):
