@@ -1211,53 +1211,6 @@ complete request-wall and per-request latency alongside aggregate throughput. Ru
 `tests/test_unit_server_f1_concurrency_bench.py`, `tests/test_unit_gguf_ar_decode_control.py` and
 execution-profile contract tests before changing the comparison interface.
 
-### R0404 — Direct INT8 prefill evaluation after dtype repair
-
-Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
-
-Scope: `HIPENGINE_GGUF_INT8_PREFILL_DIRECT`.
-
-Done when: Per-token-head and tail-four Hadamard numerical choices and task gates resolved.
-The historical rejection was a gate false-pass (both arms ran BF16), not inherent INT8 error.
-Three harness defects (env timing, `kv_capability=None`, cached lifetime plan) were fixed in the
-gate, and the full calibrated same-prefix evaluator now passes for the direct per-token-head INT8
-route: 18 prompts × 3 repeats, 3456 direct flash-leaf launches, `kl_mean=1.76e-4`, `top1=1.0`,
-state-repeat clean. See
-[`worklog/entries/20261110T213027.483989Z-lhl-r0404-full-gate-verdict-5e70bf.md`](../worklog/entries/20261110T213027.483989Z-lhl-r0404-full-gate-verdict-5e70bf.md)
-and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-int8-direct-prefill-repaired-accepted.json`.
-The tail-four Hadamard numerical coverage is now resolved on gfx1100: the gate gained a
-`--kv-layout tail4_hadamard` selector (mixed `tail4_hadamard_group32` layout, fp16 Hadamard-group32
-scales on the four INT8 tail layers), and the full calibrated same-prefix evaluator passes for the
-direct Hadamard prefill route: 18 prompts × 3 repeats, 450 teacher-forced rows, `kl_mean=2.57e-5`,
-`top1=0.9978`, state-repeat clean, `measurement_valid=True`. See
-[`worklog/entries/20261111T191727.979298Z-lhl-r0404-tail4-hadamard-direct-prefill-f63163.md`](../worklog/entries/20261111T191727.979298Z-lhl-r0404-tail4-hadamard-direct-prefill-f63163.md)
-and `benchmarks/results/2026-11-11-w7900-qwen38-27b-q4km-int8-direct-prefill-tail4-hadamard-accepted.json`.
-The execution-profile task gates are now resolved on gfx1100: a free-running task-quality gate
-(`scripts/execution_profile_gguf_int8_direct_prefill_task_gate.py`) runs the committed RF1
-long-context packet (6 categories, `choice_exact`) under the strict oracle-bridge and direct INT8
-prefill arms on the same mirror-free INT8 session, with EOS-stopped greedy generation for the
-reasoning model. Both layouts pass the predeclared per-category paired non-inferiority criterion
-with `measurement_valid=True`: per-token-head (flash) strict 6/6 / candidate 6/6, 0 regressions
-(2 tasks diverge but both correct); tail-four Hadamard (sequential) strict 6/6 / candidate 6/6,
-0 regressions, all outputs byte-identical. See
-[`worklog/entries/20261111T201548.732473Z-lhl-r0404-task-gate-harness-4609d2.md`](../worklog/entries/20261111T201548.732473Z-lhl-r0404-task-gate-harness-4609d2.md)
-and `benchmarks/results/2026-11-11-w7900-qwen38-27b-q4km-int8-direct-prefill-task-pertoken-accepted.json`
-+ `benchmarks/results/2026-11-11-w7900-qwen38-27b-q4km-int8-direct-prefill-task-tail4-hadamard-accepted.json`.
-This is the available 6-case multi-category suite, not a large-suite production-quality claim.
-Arithmetic-default promotion remains a separate decision; the route stays opt-in via
-`HIPENGINE_GGUF_INT8_PREFILL_DIRECT`.
-Clearing command (already run for per-token-head): `python
-scripts/execution_profile_gguf_int8_direct_prefill_gate.py --model "$GGUF_MODEL" --backend
-hip_gfx1100 --kernel flash --min-prompt-rows 4096 --decode-steps 24 --repeat-runs 3
---use-wmma-prefill --use-gemv-decode --json /tmp/int8-direct-prefill-repaired.json` in the ROCm
-environment. Preserve explicit direct execution and the oracle path. Hadamard clearing command
-(already run): the same gate with `--kernel sequential --kv-layout tail4_hadamard`. Task-gate
-clearing command (already run, both layouts): `python
-scripts/execution_profile_gguf_int8_direct_prefill_task_gate.py --model "$GGUF_MODEL" --backend
-hip_gfx1100 --kernel flash --kv-layout per_token_head --max-new-tokens 1024 --use-wmma-prefill
---use-gemv-decode --json /tmp/int8-direct-prefill-task.json` (and `--kernel sequential
---kv-layout tail4_hadamard`).
-
 ### R0459 — Row-split GDN recurrence removal decision
 
 Owner: `hipengine/generation/qwen4_exp_profiles.py`.
@@ -1661,79 +1614,6 @@ exact registry mappings. Explicitly account for build-cache keys, cached-only op
 lifetime and graph-held symbols after any source split. Run affected family parity/lifecycle tests
 and public generation with selected-symbol attribution; keep mechanical movement separate from
 arithmetic or default changes.
-
-### R0195 — Consolidate physical-target policy without changing admission
-
-Owner: `hipengine/generation/qwen35_gguf_mtp2.py`.
-
-Scope: `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS`,
-`HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES` (both retired).
-
-**Partial ownership migration:** exact rows, padding and Q4/Q5/Q6 rowtile choices
-are immutable `PhysicalTargetRowsPlan` values bound by dense gfx1100/gfx1151
-and MoE gfx1151 profile construction. Width/depth cells are also frozen on the
-profile owner; adapter capacity clamping remains independent. Direct callers use
-the same resolvers. See
-[`row-owner checkpoint`](../worklog/entries/20261106T094204.248065Z-lhl-r0195-row-owner-2c7013.md)
-and [`width-owner checkpoint`](../worklog/entries/20261106T095506.365433Z-lhl-r0195-width-owner-457c24.md).
-Loaded-geometry prompt policy tables are frozen on those owners; adapter
-construction selects widths with the existing file-type fallback. The adapter's
-`physical_width_contract()` exposes JSON-compatible resolved row/arithmetic,
-width/depth and prompt-width policy plus the last padding decision and its reason.
-See [`prompt-owner checkpoint`](../worklog/entries/20261106T095747.652410Z-lhl-r0195-prompt-owner-934411.md),
-[`policy contract`](../worklog/entries/20261106T095934.807046Z-lhl-r0195-policy-contract-cb3fdb.md)
-and [`padding attribution`](../worklog/entries/20261106T100045.077441Z-lhl-r0195-shape-contract-6f075c.md).
-These reports describe policy and planning, not actual kernel dispatch.
-Profile construction now combines those snapshots in one immutable
-`PhysicalTargetPlan`; adapters consume it while legacy fields remain compatibility
-views. See [`unified plan`](../worklog/entries/20261106T101816.788220Z-lhl-r0195-unified-plan-30cfe8.md).
-Public gfx1151 production and strict width 1–4 probes confirm same-width token
-repeatability, packed shape accounting and clean teardown, not exact state parity.
-The general registry manifest schema is unchanged. gfx1100 now has a public device
-gate, `tests/test_live_gguf_r0195_physical_target.py` (HIP + model guarded,
-subprocess-per-case): on the nextn-bearing Qwen3.8-27B-Q4_K_M artifact, production
-pads physical groups to the admitted rows6 rowtile
-(`selected_rows=6`, `reason=padded_to_row_multiple`, `pad_counts=[6]`), strict uses no
-rowtiles (`no_padding_policy`, empty plan), the padded production
-`generated_token_ids` are bit-identical to the unpadded strict route, the committed
-conv/recurrent device state (the canonical scratch, not the padded verification
-scratch) is bit-identical across all linear layers, the offset/selector
-`last_partition` is attributed, and an unsupported C4 depth raises the named
-`mtp_candidate_depth_unsupported` capability miss. A wider-group case
-(8 prompts, `max_active_requests=8`, C3) realizes `owner_capacity=8`,
-`physical_max_requests=8`, `resolved_max_requests=8` and a >2-request verify group
-attributing `aligned_row_multiple`. The exact-output test is parametrized over C1
-and C2 (both pad to `selected_rows=6`), so budgets C1/C2/C3/C4 are all exercised.
-See
-[`device evidence`](../worklog/entries/20261111T215955.267498Z-lhl-r0195-device-3f4a30.md)
-and [`committed-state parity`](../worklog/entries/20261111T230506.463854Z-lhl-r0195-device-state-5857f5.md).
-A predictable-prompt C3 case reaches `exact_row_count` (logical_rows 8, no padding); see
-[`exact_row_count coverage`](../worklog/entries/20261111T232000.854671Z-lhl-r0195-exact-row-count-7d37e7.md).
-The packed `verify_state` is a verification scratch (full padded group + unaccepted
-candidates); the accept/commit path copies selected rows into the canonical scratch,
-which is the exactness target and matches bit-for-bit between production and strict.
-Publicly reachable shape coverage is complete (`padded_to_row_multiple`,
-`aligned_row_multiple`, `no_padding_policy`, `exact_row_count`). The
-`accept_capacity_fallback` branch is unreachable through public generation: the accept
-buffer is sized to `max(24, ceil(frontier/6)*6)`, a rows6 multiple at least the largest
-possible group, so `physical_group_pad_rows` never hits its capacity guard. It remains a
-defensive/diagnostic-only path. Reuse RF-1/RF-10 ownership rather than add a parallel selector.
-The two rollback flags are retired: exact rowtile rows and mixed Q6 rowtiles are always
-admitted per backend capability, with the C7/C8 policy diagnostic controls preserved. Unit
-coverage asserts the retired flags are ignored (`test_unit_physical_target_rows.py`,
-`test_unit_qwen35_gguf_mtp2_seam.py`) and the device gate above covers the replacement policies.
-See [`rollback retirement`](../worklog/entries/20261111T233125.163526Z-lhl-r0195-retire-rollback-flags-668990.md).
-
-Preserve padded rows6 decomposition, repeated-R6 and serial-row strict owners, ordinary-prefill
-behavior, scope-miss fallbacks and unfused pair ownership. Keep synchronized callers synchronized;
-enqueue-only proposal and bounded blocking accept readback have separate lifetime contracts.
-Preserve independent physical-target and C1 policy fingerprints and historical evidence bounds as
-provenance, not identity-based admission rules.
-
-Done when: exact output/state and offset/selector tests across C1, C2/K3, C3/C4 and wider
-supported groups, including shape misses and strict profiles; public generation must attribute the
-selected rows and fallback reason. Compare matched full-request category/heldout performance when
-claiming a benefit.
 
 ### R0006 — Remaining Flash-Next batch capacity and scheduling decisions
 
