@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "kind": "pm4_safe_lifecycle_check",
+  "refactor_item": "R0217",
+  "date": "2026-11-11",
+  "backend": "hip_gfx1100",
+  "gpu": "W7900 (gfx1100)",
+  "rocm_hip_version": "HIP version: 7.15.0-0000000",
+  "source_commit": "5a8ee9f0acd67a322e7c2f4a5104ea9199ea981f",
+  "safe_no_submit_control": {
+    "transport": "pm4",
+    "cycles_requested": 8,
+    "status": "completed_without_issue_6529_signature",
+    "cycles_passed": 8,
+    "final_cleanup_passed": true,
+    "first_failed_cycle": null,
+    "submit": false,
+    "queue_mode": "recreate",
+    "resource_mode": "recreate",
+    "devcoredump_captured": false,
+    "manifest_status": "completed_without_issue_6529_signature"
+  },
+  "safe_submit_reuse": {
+    "hipgraph": {
+      "cycles_passed": 4,
+      "cycles_requested": 4,
+      "status": "pass",
+      "final_cleanup_passed": true,
+      "submit": true,
+      "queue_mode": "reuse",
+      "resource_mode": "reuse"
+    },
+    "aql": {
+      "cycles_passed": 4,
+      "cycles_requested": 4,
+      "status": "pass",
+      "final_cleanup_passed": true,
+      "submit": true,
+      "queue_mode": "reuse",
+      "resource_mode": "reuse"
+    },
+    "pm4": {
+      "cycles_passed": 4,
+      "cycles_requested": 4,
+      "status": "pass",
+      "final_cleanup_passed": true,
+      "submit": true,
+      "queue_mode": "reuse",
+      "resource_mode": "reuse"
+    }
+  },
+  "unit_bundle": {
+    "tests": 40,
+    "passed": true
+  },
+  "reset_risk_destructive_arms": "not run (requires separate explicit approval)",
+  "note": "Compact redacted verdict; full addresses/journals stay local in the issue-capture output dir, never committed.",
+  "source_dirty": false
+}

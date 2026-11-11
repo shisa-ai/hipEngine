@@ -337,11 +337,19 @@ unused aliases.
 
 Done when: resolve the recorded ROCm/ROCm#6529 lifecycle investigation on
 gfx1100 and validate public automatic/explicit transport, rebuild, cancellation,
-shutdown and resource cleanup. A gfx1100 runtime is now available on the W7900
-host; the device checks have not run yet. **Clearing action:** on gfx1100 run the safe public transport lifecycle
-checks and follow `docs/reference/PM4.md`'s issue-grade runbook for investigation;
-reset-risk queue-recreation stress needs its separate explicit approval.
-The local graph-bench/transport/lifecycle unit bundle passes; it does not prove
+shutdown and resource cleanup. **Safe device checks now run and pass on the W7900
+host** (HIP 7.15.0): the runbook §2 safe no-submit control ends
+`completed_without_issue_6529_signature` (8/8 cycles, clean teardown, no
+devcoredump), and the safe submit+reuse arm is clean for hipgraph/aql/pm4 (4/4
+each); see
+[`worklog/entries/20261111T004927.107320Z-lhl-r0217-pm4-safe-lifecycle-bffeed.md`](../worklog/entries/20261111T004927.107320Z-lhl-r0217-pm4-safe-lifecycle-bffeed.md)
+and `benchmarks/results/2026-11-11-gfx1100-pm4-r0217-safe-lifecycle.json`.
+**Remaining blocker:** resolving #6529 needs the destructive submit/recreate
+discriminator, which requires separate explicit operator approval (idle isolated
+GPU, card may reset). **Clearing action:** run that approved destructive arm per
+`docs/reference/PM4.md`'s issue-grade runbook; the safe public transport lifecycle
+checks are already done.
+The local graph-bench/transport/lifecycle unit bundle passes (40 tests); it does not prove
 gfx1100 device behavior. Preserve HIP graph and distinct AQL profiling, and keep
 full provenance serialization out of replay.
 
