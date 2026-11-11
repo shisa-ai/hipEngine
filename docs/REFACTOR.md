@@ -236,18 +236,23 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 
 Scope: `q6_f16_*`, `use_t16_f16_rocblas_prefill=False`.
 
-Done when: complete the remaining gfx1100 public selected-route and numerical checks, plus the
-applicable named-strict profile and task gates on each affected backend. The request-row-scoped
-packed owner and geometry-based admission are implemented. On gfx1151, the repaired bounded K16
-consumer passes the canonical/category-heldout incremental parent comparison and public
-`LLM.generate_detailed()` at non-anchor, 512/1K/4K and mixed lengths with selected-route and cleanup
-evidence; see `worklog/entries/20261031T190151.817522Z-lhl-r0219-k16-accumulation-eecd1d.md`.
-That same-production source-off comparison is not a named-strict profile certification. Run the
-same public shape matrix on gfx1100 with its Q4 row ceiling and ordered pair-only operand policy,
-then evaluate full-logit strict-teacher/category/repeat/isolation and task behavior before closing
-this item. Preserve the supported quant-neutral constructor opt-out for numerical diagnostics;
-automatic source-F16 remains enabled. Do not repeat the completed FP16/FP32/publication-order
-diagnostics or gate compatible artifacts on file identity.
+Done when: the gfx1100 public selected-route and numerical checks are complete (recorded below);
+the remaining scope is the applicable named-strict/full-profile/task certification on gfx1151,
+deferred to a gfx1151 machine. The request-row-scoped packed owner and geometry-based admission are
+implemented. On gfx1151, the repaired bounded K16 consumer passes the canonical/category-heldout
+incremental parent comparison and public `LLM.generate_detailed()` at non-anchor, 512/1K/4K and
+mixed lengths with selected-route and cleanup evidence; see
+`worklog/entries/20261031T190151.817522Z-lhl-r0219-k16-accumulation-eecd1d.md`.
+On gfx1100, the public shape matrix (17/511/512/517/1024/1031/4096 plus pairs 517+1031, 600+600,
+517+4096) with the Q4 row ceiling and ordered pair-only operand policy, the full-logit
+strict-teacher/category/repeat/isolation (288 rows, 2 repeats), rocprofv3 launch attribution, and
+the public `LLM.generate_detailed()` surface all pass byte-exact (KL 0, top-1 100%, generated IDs
+unchanged) against the same-production source-F16-disabled control; see
+`worklog/entries/20261111T171418.114531Z-lhl-r0219-source-f16-gfx1100-6c7056.md`.
+These same-production source-off comparisons are incremental parent-parity / selected-route
+evidence, not a named-strict profile certification. Preserve the supported quant-neutral
+constructor opt-out for numerical diagnostics; automatic source-F16 remains enabled. Do not repeat
+the completed FP16/FP32/publication-order diagnostics or gate compatible artifacts on file identity.
 
 ### R0231 — Maple CUDA resident fixed-batch owner
 
