@@ -1,0 +1,4036 @@
+{
+  "schema": 1,
+  "kind": "qwen38_verifier_width_attribution",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 3,
+    "collected_at": "2026-11-12T09:46:20.743292+00:00",
+    "host_name": "zbook",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "8fe2ba4ec7a2c6946e814eca23e0604dfdf9e116",
+    "git_branch": "qwen38-dspine-eagle4",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 5,
+    "dirty": true,
+    "dirty_paths": [],
+    "dirty_path_count": 0,
+    "untracked_paths": [
+      "scripts/qwen38_verifier_width_analyze.py",
+      "scripts/qwen38_verifier_width_profile.py",
+      "tests/test_unit_qwen38_verifier_width_analyze.py",
+      "tests/test_unit_qwen38_verifier_width_profile.py",
+      "worklog/entries/20261112T093754.061585Z-primary-qwen38-verifier-width-dbb8eb.md"
+    ],
+    "execution_affecting_dirty": true,
+    "execution_affecting_paths": [
+      "scripts/qwen38_verifier_width_analyze.py",
+      "scripts/qwen38_verifier_width_profile.py",
+      "tests/test_unit_qwen38_verifier_width_analyze.py",
+      "tests/test_unit_qwen38_verifier_width_profile.py"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/qwen38_verifier_width_profile.py",
+      "--contexts",
+      "64,2048",
+      "--repetitions",
+      "4",
+      "--warmups",
+      "2",
+      "--output",
+      "/tmp/qwen38-verifier-width-profiled.json"
+    ],
+    "environment": {
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/qwen38-hipcc-version.txt",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+      "ROCTX_LIB": "/home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1",
+      "HIPENGINE_HIP_ARCH": "gfx1151"
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": null,
+    "timing_protocol": "fixed-prefix sync-bounded verify; excludes restore/warmup/prefill",
+    "warmups": 2,
+    "repetitions": 4,
+    "profiler": {
+      "enabled": true
+    }
+  },
+  "profile": {
+    "resolved": "production",
+    "manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+    "manifest": {
+      "kind": "hipengine_execution_profile_manifest",
+      "schema_version": 1,
+      "execution_profile": "production",
+      "backend": "hip_gfx1151",
+      "model": "qwen3_5_gguf",
+      "quant": "gguf_q4_k_m",
+      "kv_policy": "paged_bf16",
+      "graph_policy": "specdec2_eager_c1",
+      "selections": [
+        {
+          "layer": "gdn_chain_recurrent_rmsnorm_gate",
+          "scope": "specdec2_mtp2_target_state_rows",
+          "selected_variant": "bf16_c1_exact_state_rows_tloop",
+          "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_qwen35"
+        },
+        {
+          "layer": "linear",
+          "scope": "specdec2_mtp2_c2_k3_r8_q4_single",
+          "selected_variant": "dense_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "t16_wmma_prefill_smallm_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear",
+          "scope": "specdec2_mtp2_c3_k1_r6_q4_single",
+          "selected_variant": "dense_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "t16_wmma_prefill_smallm_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear",
+          "scope": "specdec2_mtp2_c3_k2_r9_q4_single",
+          "selected_variant": "dense_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "t16_wmma_prefill_smallm_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear",
+          "scope": "specdec2_mtp2_c3_k3_r12_q4_single",
+          "selected_variant": "dense_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "t16_wmma_prefill_smallm_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear_attn_chain_conv_decode",
+          "scope": "specdec2_mtp2_c1",
+          "selected_variant": "bf16_c1_exact_state_rows_tloop",
+          "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_qwen35"
+        },
+        {
+          "layer": "linear_pair_silu",
+          "scope": "specdec2_mtp2_c2_k3_r8_q4_gate_up",
+          "selected_variant": "dense_dual_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear_pair_silu",
+          "scope": "specdec2_mtp2_c3_k1_r6_q4_gate_up",
+          "selected_variant": "dense_dual_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear_pair_silu",
+          "scope": "specdec2_mtp2_c3_k2_r9_q4_gate_up",
+          "selected_variant": "dense_dual_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear_pair_silu",
+          "scope": "specdec2_mtp2_c3_k3_r12_q4_gate_up",
+          "selected_variant": "dense_dual_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        }
+      ]
+    }
+  },
+  "session": {
+    "target_verifier_production_q4_rowtile": true,
+    "fp16_recurrent_state": false,
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "kv_storage_dtype": "DType.BF16"
+  },
+  "protocol": {
+    "contexts": [
+      64,
+      2048
+    ],
+    "widths": [
+      1,
+      2,
+      3,
+      4,
+      6,
+      8
+    ],
+    "repetitions": 4,
+    "capture_layers": [
+      3,
+      31,
+      59
+    ],
+    "order": "alternating forward/reverse widths",
+    "one_row_route": "eager verifier; native graph only supports 2..8 rows"
+  },
+  "exact_all": true,
+  "summaries": {
+    "ar_step:c2048": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 399442012,
+        "window_total_ms": 399.442,
+        "per_step_ms": 99.861,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 2372,
+        "launches_per_step": 593.0,
+        "kernel_time_sum_ns": 380671992,
+        "device_union_ns": 380671992,
+        "device_union_ms": 380.672,
+        "device_union_pct_of_window": 95.3,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 18770020,
+        "gpu_idle_ms": 18.77
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 99.182,
+        "busy_in_span_ms": 94.913,
+        "interior_gap_ms": 4.334,
+        "leading_gap_ms": 0.159,
+        "trailing_gap_ms": 0.196,
+        "duty_cycle": 0.957,
+        "interior_gap_entries": 2368,
+        "interior_gap_entries_per_step": 592.0,
+        "interior_gap_per_step_ms": 4.352,
+        "interior_gap_with_api_per_step_ms": 2.447,
+        "interior_gap_without_api_per_step_ms": 1.905,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 137837880,
+          "share_pct_of_kernel_time": 36.21
+        },
+        {
+          "family": "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_residual_kernel(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 43979901,
+          "share_pct_of_kernel_time": 11.55
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 320,
+          "duration_ns": 39894745,
+          "share_pct_of_kernel_time": 10.48
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "launches": 64,
+          "duration_ns": 39689223,
+          "share_pct_of_kernel_time": 10.43
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_single_local32_residual_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 30391720,
+          "share_pct_of_kernel_time": 7.98
+        },
+        {
+          "family": "(anonymous namespace)::q6_q4_t16_mixed_grid_pair_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 29696698,
+          "share_pct_of_kernel_time": 7.8
+        },
+        {
+          "family": "void (anonymous namespace)::q5_k_t16_dense_tile8_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 192,
+          "duration_ns": 25568051,
+          "share_pct_of_kernel_time": 6.72
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 19002166,
+          "share_pct_of_kernel_time": 4.99
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, true, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 5861756,
+          "share_pct_of_kernel_time": 1.54
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1>(unsigned short const*, float const*, float const*, unsigned short*, unsigned short*, unsigned short const*, float*, float const*, float*, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 2906154,
+          "share_pct_of_kernel_time": 0.76
+        },
+        {
+          "family": "(anonymous namespace)::q4_q6_t16_narrow_col4_planar_pair_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long)",
+          "launches": 32,
+          "duration_ns": 1597209,
+          "share_pct_of_kernel_time": 0.42
+        },
+        {
+          "family": "void gguf_norm_fixed5120_wave256_kernel<true, false>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+          "launches": 256,
+          "duration_ns": 1139029,
+          "share_pct_of_kernel_time": 0.3
+        },
+        {
+          "family": "(anonymous namespace)::q4_q4_t16_narrow_col4_pair_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long)",
+          "launches": 32,
+          "duration_ns": 1075861,
+          "share_pct_of_kernel_time": 0.28
+        },
+        {
+          "family": "void gguf_norm_fixed5120_wave256_kernel<false, false>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+          "launches": 256,
+          "duration_ns": 905189,
+          "share_pct_of_kernel_time": 0.24
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 414583,
+          "share_pct_of_kernel_time": 0.11
+        },
+        {
+          "family": "gguf_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, long const*, float*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 308383,
+          "share_pct_of_kernel_time": 0.08
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 216090,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 4,
+          "duration_ns": 60835,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "launches": 4,
+          "duration_ns": 49614,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 8,
+          "duration_ns": 28055,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 15107,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          "launches": 4,
+          "duration_ns": 13265,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
+          "launches": 4,
+          "duration_ns": 12623,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::set_i64_scalar_kernel(long*, long)",
+          "launches": 4,
+          "duration_ns": 7855,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 4740,
+        "calls_per_step": 1185.0,
+        "api_union_ns": 235343519,
+        "api_union_ms": 235.344,
+        "api_union_pct_of_window": 58.92,
+        "top_functions": [
+          {
+            "function": "hipMemcpy",
+            "calls": 8,
+            "duration_ns": 171192607
+          },
+          {
+            "function": "hipLaunchKernel",
+            "calls": 2364,
+            "duration_ns": 63461763
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 4,
+            "duration_ns": 456690
+          },
+          {
+            "function": "hipGetLastError",
+            "calls": 2364,
+            "duration_ns": 232459
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 0,
+        "copies_per_step": 0.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": []
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 399442012,
+        "device_union_ns": 380671992,
+        "hip_api_union_ns": 235343519,
+        "overlap_device_api_ns": 224894843,
+        "combined_union_ns": 391120668,
+        "residual_ns": 8321344,
+        "residual_ms": 8.321,
+        "residual_pct_of_window": 2.08,
+        "gpu_idle_ns": 18770020,
+        "api_while_gpu_idle_ns": 10448676,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "ar_step:c64": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 378457161,
+        "window_total_ms": 378.457,
+        "per_step_ms": 94.614,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 2372,
+        "launches_per_step": 593.0,
+        "kernel_time_sum_ns": 358741217,
+        "device_union_ns": 358741217,
+        "device_union_ms": 358.741,
+        "device_union_pct_of_window": 94.79,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 19715944,
+        "gpu_idle_ms": 19.716
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 93.834,
+        "busy_in_span_ms": 89.216,
+        "interior_gap_ms": 4.605,
+        "leading_gap_ms": 0.179,
+        "trailing_gap_ms": 0.108,
+        "duty_cycle": 0.9508,
+        "interior_gap_entries": 2368,
+        "interior_gap_entries_per_step": 592.0,
+        "interior_gap_per_step_ms": 4.583,
+        "interior_gap_with_api_per_step_ms": 2.476,
+        "interior_gap_without_api_per_step_ms": 2.107,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 141426092,
+          "share_pct_of_kernel_time": 39.42
+        },
+        {
+          "family": "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_residual_kernel(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 45572337,
+          "share_pct_of_kernel_time": 12.7
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 320,
+          "duration_ns": 41512673,
+          "share_pct_of_kernel_time": 11.57
+        },
+        {
+          "family": "(anonymous namespace)::q6_q4_t16_mixed_grid_pair_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 32114891,
+          "share_pct_of_kernel_time": 8.95
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_single_local32_residual_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 31524419,
+          "share_pct_of_kernel_time": 8.79
+        },
+        {
+          "family": "void (anonymous namespace)::q5_k_t16_dense_tile8_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 192,
+          "duration_ns": 28707394,
+          "share_pct_of_kernel_time": 8.0
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 20810092,
+          "share_pct_of_kernel_time": 5.8
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, true, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 6438472,
+          "share_pct_of_kernel_time": 1.79
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1>(unsigned short const*, float const*, float const*, unsigned short*, unsigned short*, unsigned short const*, float*, float const*, float*, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 3062879,
+          "share_pct_of_kernel_time": 0.85
+        },
+        {
+          "family": "(anonymous namespace)::q4_q6_t16_narrow_col4_planar_pair_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long)",
+          "launches": 32,
+          "duration_ns": 1755544,
+          "share_pct_of_kernel_time": 0.49
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false, long, 1>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+          "launches": 64,
+          "duration_ns": 1367655,
+          "share_pct_of_kernel_time": 0.38
+        },
+        {
+          "family": "void gguf_norm_fixed5120_wave256_kernel<true, false>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+          "launches": 256,
+          "duration_ns": 1301444,
+          "share_pct_of_kernel_time": 0.36
+        },
+        {
+          "family": "(anonymous namespace)::q4_q4_t16_narrow_col4_pair_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long)",
+          "launches": 32,
+          "duration_ns": 1165353,
+          "share_pct_of_kernel_time": 0.32
+        },
+        {
+          "family": "void gguf_norm_fixed5120_wave256_kernel<false, false>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+          "launches": 256,
+          "duration_ns": 1028460,
+          "share_pct_of_kernel_time": 0.29
+        },
+        {
+          "family": "gguf_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, long const*, float*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 352300,
+          "share_pct_of_kernel_time": 0.1
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 242420,
+          "share_pct_of_kernel_time": 0.07
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          "launches": 64,
+          "duration_ns": 138101,
+          "share_pct_of_kernel_time": 0.04
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 4,
+          "duration_ns": 75903,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "launches": 4,
+          "duration_ns": 58869,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 8,
+          "duration_ns": 30257,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 18714,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          "launches": 4,
+          "duration_ns": 16831,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
+          "launches": 4,
+          "duration_ns": 12582,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::set_i64_scalar_kernel(long*, long)",
+          "launches": 4,
+          "duration_ns": 7535,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 4740,
+        "calls_per_step": 1185.0,
+        "api_union_ns": 215664094,
+        "api_union_ms": 215.664,
+        "api_union_pct_of_window": 56.99,
+        "top_functions": [
+          {
+            "function": "hipMemcpy",
+            "calls": 8,
+            "duration_ns": 146348614
+          },
+          {
+            "function": "hipLaunchKernel",
+            "calls": 2364,
+            "duration_ns": 68787905
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 4,
+            "duration_ns": 293542
+          },
+          {
+            "function": "hipGetLastError",
+            "calls": 2364,
+            "duration_ns": 234033
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 0,
+        "copies_per_step": 0.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": []
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 378457161,
+        "device_union_ns": 358741217,
+        "hip_api_union_ns": 215664094,
+        "overlap_device_api_ns": 205094739,
+        "combined_union_ns": 369310572,
+        "residual_ns": 9146589,
+        "residual_ms": 9.147,
+        "residual_pct_of_window": 2.42,
+        "gpu_idle_ns": 19715944,
+        "api_while_gpu_idle_ns": 10569355,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "verify:c2048:r1": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 449573911,
+        "window_total_ms": 449.574,
+        "per_step_ms": 112.393,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 3584,
+        "launches_per_step": 896.0,
+        "kernel_time_sum_ns": 378499973,
+        "device_union_ns": 378499973,
+        "device_union_ms": 378.5,
+        "device_union_pct_of_window": 84.19,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 71073938,
+        "gpu_idle_ms": 71.074
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 111.825,
+        "busy_in_span_ms": 94.653,
+        "interior_gap_ms": 17.488,
+        "leading_gap_ms": 0.23,
+        "trailing_gap_ms": 0.051,
+        "duty_cycle": 0.8464,
+        "interior_gap_entries": 3580,
+        "interior_gap_entries_per_step": 895.0,
+        "interior_gap_per_step_ms": 17.487,
+        "interior_gap_with_api_per_step_ms": 5.443,
+        "interior_gap_without_api_per_step_ms": 12.044,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_selected_dual_q8_1x2_dp4a_silu_direct_gemv_kernel<unsigned short, true>((anonymous namespace)::gguf_q8_1_block const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+          "launches": 256,
+          "duration_ns": 135886731,
+          "share_pct_of_kernel_time": 35.9
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 512,
+          "duration_ns": 49521360,
+          "share_pct_of_kernel_time": 13.08
+        },
+        {
+          "family": "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_residual_kernel(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 43440366,
+          "share_pct_of_kernel_time": 11.48
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "launches": 64,
+          "duration_ns": 35594638,
+          "share_pct_of_kernel_time": 9.4
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_single_local32_residual_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 30032086,
+          "share_pct_of_kernel_time": 7.93
+        },
+        {
+          "family": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 26909729,
+          "share_pct_of_kernel_time": 7.11
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 21624503,
+          "share_pct_of_kernel_time": 5.71
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 18836614,
+          "share_pct_of_kernel_time": 4.98
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, true, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 5550566,
+          "share_pct_of_kernel_time": 1.47
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1>(unsigned short const*, float const*, float const*, unsigned short*, unsigned short*, unsigned short const*, float*, float const*, float*, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 2866876,
+          "share_pct_of_kernel_time": 0.76
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 540,
+          "duration_ns": 2733386,
+          "share_pct_of_kernel_time": 0.72
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 32,
+          "duration_ns": 1294956,
+          "share_pct_of_kernel_time": 0.34
+        },
+        {
+          "family": "void gguf_norm_fixed5120_wave256_kernel<true, false>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+          "launches": 256,
+          "duration_ns": 947302,
+          "share_pct_of_kernel_time": 0.25
+        },
+        {
+          "family": "void gguf_norm_fixed5120_wave256_kernel<false, false>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+          "launches": 256,
+          "duration_ns": 913204,
+          "share_pct_of_kernel_time": 0.24
+        },
+        {
+          "family": "void (anonymous namespace)::gguf_quantize_q8_1x2_kernel<unsigned short>(unsigned short const*, (anonymous namespace)::gguf_q8_1_block*, int, int, int)",
+          "launches": 256,
+          "duration_ns": 706682,
+          "share_pct_of_kernel_time": 0.19
+        },
+        {
+          "family": "(anonymous namespace)::prepare_prefill_chunk_metadata_kernel(int*, int*, int*, int*, long*, long*, long, long)",
+          "launches": 260,
+          "duration_ns": 466320,
+          "share_pct_of_kernel_time": 0.12
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 376947,
+          "share_pct_of_kernel_time": 0.1
+        },
+        {
+          "family": "gguf_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, long const*, float*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 352949,
+          "share_pct_of_kernel_time": 0.09
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 239372,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 4,
+          "duration_ns": 57628,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "launches": 4,
+          "duration_ns": 48212,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          "launches": 4,
+          "duration_ns": 40436,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 20599,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
+          "launches": 4,
+          "duration_ns": 14307,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          "launches": 4,
+          "duration_ns": 12262,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::record_i64_scalar_indexed_kernel(long const*, long*, long*, long)",
+          "launches": 4,
+          "duration_ns": 11942,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 6640,
+        "calls_per_step": 1660.0,
+        "api_union_ns": 201083901,
+        "api_union_ms": 201.084,
+        "api_union_pct_of_window": 44.73,
+        "top_functions": [
+          {
+            "function": "hipMemcpy",
+            "calls": 156,
+            "duration_ns": 90205202
+          },
+          {
+            "function": "hipLaunchKernel",
+            "calls": 3044,
+            "duration_ns": 79523806
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 8,
+            "duration_ns": 21308349
+          },
+          {
+            "function": "hipMemcpyAsync",
+            "calls": 388,
+            "duration_ns": 9745286
+          },
+          {
+            "function": "hipGetLastError",
+            "calls": 3044,
+            "duration_ns": 301258
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 4,
+        "copies_per_step": 1.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": [
+          {
+            "direction": "MEMORY_COPY_DEVICE_TO_HOST",
+            "copies": 4,
+            "duration_ns": 16231
+          }
+        ]
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 449573911,
+        "device_union_ns": 378499973,
+        "hip_api_union_ns": 201083901,
+        "overlap_device_api_ns": 178811315,
+        "combined_union_ns": 400772559,
+        "residual_ns": 48801352,
+        "residual_ms": 48.801,
+        "residual_pct_of_window": 10.86,
+        "gpu_idle_ns": 71073938,
+        "api_while_gpu_idle_ns": 22272586,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "verify:c2048:r2": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 460764489,
+        "window_total_ms": 460.764,
+        "per_step_ms": 115.191,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 3592,
+        "launches_per_step": 898.0,
+        "kernel_time_sum_ns": 429534363,
+        "device_union_ns": 429534363,
+        "device_union_ms": 429.534,
+        "device_union_pct_of_window": 93.22,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 31230126,
+        "gpu_idle_ms": 31.23
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 114.055,
+        "busy_in_span_ms": 107.283,
+        "interior_gap_ms": 6.781,
+        "leading_gap_ms": 0.89,
+        "trailing_gap_ms": 0.1,
+        "duty_cycle": 0.9406,
+        "interior_gap_entries": 3588,
+        "interior_gap_entries_per_step": 897.0,
+        "interior_gap_per_step_ms": 6.819,
+        "interior_gap_with_api_per_step_ms": 6.429,
+        "interior_gap_without_api_per_step_ms": 0.391,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 129794699,
+          "share_pct_of_kernel_time": 30.22
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "launches": 128,
+          "duration_ns": 74697072,
+          "share_pct_of_kernel_time": 17.39
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 2, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 160,
+          "duration_ns": 46404384,
+          "share_pct_of_kernel_time": 10.8
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 352,
+          "duration_ns": 37597643,
+          "share_pct_of_kernel_time": 8.75
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 30450354,
+          "share_pct_of_kernel_time": 7.09
+        },
+        {
+          "family": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 192,
+          "duration_ns": 26746498,
+          "share_pct_of_kernel_time": 6.23
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 25055679,
+          "share_pct_of_kernel_time": 5.83
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_kernel<float, 2>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 20591159,
+          "share_pct_of_kernel_time": 4.79
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 64,
+          "duration_ns": 11629609,
+          "share_pct_of_kernel_time": 2.71
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 9207619,
+          "share_pct_of_kernel_time": 2.14
+        },
+        {
+          "family": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "launches": 256,
+          "duration_ns": 4872849,
+          "share_pct_of_kernel_time": 1.13
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 260,
+          "duration_ns": 3658406,
+          "share_pct_of_kernel_time": 0.85
+        },
+        {
+          "family": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "launches": 384,
+          "duration_ns": 3325389,
+          "share_pct_of_kernel_time": 0.77
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 96,
+          "duration_ns": 1846356,
+          "share_pct_of_kernel_time": 0.43
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<unsigned short>(unsigned short const*, float const*, float*, float const*, float*, long, long, long)",
+          "launches": 192,
+          "duration_ns": 1066620,
+          "share_pct_of_kernel_time": 0.25
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
+          "launches": 128,
+          "duration_ns": 761708,
+          "share_pct_of_kernel_time": 0.18
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 128,
+          "duration_ns": 348611,
+          "share_pct_of_kernel_time": 0.08
+        },
+        {
+          "family": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "launches": 192,
+          "duration_ns": 324131,
+          "share_pct_of_kernel_time": 0.08
+        },
+        {
+          "family": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "launches": 128,
+          "duration_ns": 292948,
+          "share_pct_of_kernel_time": 0.07
+        },
+        {
+          "family": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 284976,
+          "share_pct_of_kernel_time": 0.07
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "launches": 64,
+          "duration_ns": 185233,
+          "share_pct_of_kernel_time": 0.04
+        },
+        {
+          "family": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "launches": 76,
+          "duration_ns": 134413,
+          "share_pct_of_kernel_time": 0.03
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 80232,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 16,
+          "duration_ns": 56867,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          "launches": 4,
+          "duration_ns": 40876,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel(long const*, long*, int*, long*, int*, long*, long)",
+          "launches": 4,
+          "duration_ns": 17152,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          "launches": 8,
+          "duration_ns": 17032,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 16912,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          "launches": 8,
+          "duration_ns": 14589,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "launches": 4,
+          "duration_ns": 14347,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 28,
+        "calls_per_step": 7.0,
+        "api_union_ns": 455875828,
+        "api_union_ms": 455.876,
+        "api_union_pct_of_window": 98.94,
+        "top_functions": [
+          {
+            "function": "hipStreamSynchronize",
+            "calls": 4,
+            "duration_ns": 437721997
+          },
+          {
+            "function": "hipGraphLaunch",
+            "calls": 4,
+            "duration_ns": 16631217
+          },
+          {
+            "function": "hipMemcpy",
+            "calls": 16,
+            "duration_ns": 1264659
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 4,
+            "duration_ns": 257955
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 4,
+        "copies_per_step": 1.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": [
+          {
+            "direction": "MEMORY_COPY_DEVICE_TO_HOST",
+            "copies": 4,
+            "duration_ns": 21962
+          }
+        ]
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 460764489,
+        "device_union_ns": 429534363,
+        "hip_api_union_ns": 455875828,
+        "overlap_device_api_ns": 429502713,
+        "combined_union_ns": 455907478,
+        "residual_ns": 4857011,
+        "residual_ms": 4.857,
+        "residual_pct_of_window": 1.05,
+        "gpu_idle_ns": 31230126,
+        "api_while_gpu_idle_ns": 26373115,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "verify:c2048:r3": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 516723363,
+        "window_total_ms": 516.723,
+        "per_step_ms": 129.181,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 3788,
+        "launches_per_step": 947.0,
+        "kernel_time_sum_ns": 483578112,
+        "device_union_ns": 483578112,
+        "device_union_ms": 483.578,
+        "device_union_pct_of_window": 93.59,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 33145251,
+        "gpu_idle_ms": 33.145
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 128.255,
+        "busy_in_span_ms": 120.936,
+        "interior_gap_ms": 7.263,
+        "leading_gap_ms": 0.859,
+        "trailing_gap_ms": 0.126,
+        "duty_cycle": 0.9429,
+        "interior_gap_entries": 3784,
+        "interior_gap_entries_per_step": 946.0,
+        "interior_gap_per_step_ms": 7.286,
+        "interior_gap_with_api_per_step_ms": 6.915,
+        "interior_gap_without_api_per_step_ms": 0.371,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 131235736,
+          "share_pct_of_kernel_time": 27.14
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "launches": 192,
+          "duration_ns": 112973487,
+          "share_pct_of_kernel_time": 23.36
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 160,
+          "duration_ns": 49097334,
+          "share_pct_of_kernel_time": 10.15
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 31391118,
+          "share_pct_of_kernel_time": 6.49
+        },
+        {
+          "family": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 3, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 192,
+          "duration_ns": 29880041,
+          "share_pct_of_kernel_time": 6.18
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 26831544,
+          "share_pct_of_kernel_time": 5.55
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 160,
+          "duration_ns": 26089506,
+          "share_pct_of_kernel_time": 5.4
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 23413903,
+          "share_pct_of_kernel_time": 4.84
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 3, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 21203671,
+          "share_pct_of_kernel_time": 4.38
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 12800807,
+          "share_pct_of_kernel_time": 2.65
+        },
+        {
+          "family": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "launches": 256,
+          "duration_ns": 4886602,
+          "share_pct_of_kernel_time": 1.01
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 260,
+          "duration_ns": 3694429,
+          "share_pct_of_kernel_time": 0.76
+        },
+        {
+          "family": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "launches": 384,
+          "duration_ns": 3391749,
+          "share_pct_of_kernel_time": 0.7
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 96,
+          "duration_ns": 2096461,
+          "share_pct_of_kernel_time": 0.43
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<unsigned short>(unsigned short const*, float const*, float*, float const*, float*, long, long, long)",
+          "launches": 192,
+          "duration_ns": 1337997,
+          "share_pct_of_kernel_time": 0.28
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 1148000,
+          "share_pct_of_kernel_time": 0.24
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 499955,
+          "share_pct_of_kernel_time": 0.1
+        },
+        {
+          "family": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "launches": 192,
+          "duration_ns": 376621,
+          "share_pct_of_kernel_time": 0.08
+        },
+        {
+          "family": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "launches": 128,
+          "duration_ns": 299403,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 293632,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "launches": 64,
+          "duration_ns": 196610,
+          "share_pct_of_kernel_time": 0.04
+        },
+        {
+          "family": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "launches": 76,
+          "duration_ns": 145994,
+          "share_pct_of_kernel_time": 0.03
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 103194,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 16,
+          "duration_ns": 59432,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          "launches": 4,
+          "duration_ns": 40837,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          "launches": 12,
+          "duration_ns": 21841,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          "launches": 8,
+          "duration_ns": 18635,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 18315,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel(long const*, long*, int*, long*, int*, long*, long)",
+          "launches": 4,
+          "duration_ns": 16631,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "launches": 4,
+          "duration_ns": 14627,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 28,
+        "calls_per_step": 7.0,
+        "api_union_ns": 511992540,
+        "api_union_ms": 511.993,
+        "api_union_pct_of_window": 99.08,
+        "top_functions": [
+          {
+            "function": "hipStreamSynchronize",
+            "calls": 4,
+            "duration_ns": 494292220
+          },
+          {
+            "function": "hipGraphLaunch",
+            "calls": 4,
+            "duration_ns": 16028313
+          },
+          {
+            "function": "hipMemcpy",
+            "calls": 16,
+            "duration_ns": 1392311
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 4,
+            "duration_ns": 279696
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 4,
+        "copies_per_step": 1.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": [
+          {
+            "direction": "MEMORY_COPY_DEVICE_TO_HOST",
+            "copies": 4,
+            "duration_ns": 25609
+          }
+        ]
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 516723363,
+        "device_union_ns": 483578112,
+        "hip_api_union_ns": 511992540,
+        "overlap_device_api_ns": 483552905,
+        "combined_union_ns": 512017747,
+        "residual_ns": 4705616,
+        "residual_ms": 4.706,
+        "residual_pct_of_window": 0.91,
+        "gpu_idle_ns": 33145251,
+        "api_while_gpu_idle_ns": 28439635,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "verify:c2048:r4": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 585288316,
+        "window_total_ms": 585.288,
+        "per_step_ms": 146.322,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 3984,
+        "launches_per_step": 996.0,
+        "kernel_time_sum_ns": 550668787,
+        "device_union_ns": 550668787,
+        "device_union_ms": 550.669,
+        "device_union_pct_of_window": 94.09,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 34619529,
+        "gpu_idle_ms": 34.62
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 145.224,
+        "busy_in_span_ms": 137.669,
+        "interior_gap_ms": 7.632,
+        "leading_gap_ms": 0.918,
+        "trailing_gap_ms": 0.105,
+        "duty_cycle": 0.948,
+        "interior_gap_entries": 3980,
+        "interior_gap_entries_per_step": 995.0,
+        "interior_gap_per_step_ms": 7.62,
+        "interior_gap_with_api_per_step_ms": 7.225,
+        "interior_gap_without_api_per_step_ms": 0.395,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "launches": 256,
+          "duration_ns": 149861992,
+          "share_pct_of_kernel_time": 27.21
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 135514759,
+          "share_pct_of_kernel_time": 24.61
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 4, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 160,
+          "duration_ns": 52768763,
+          "share_pct_of_kernel_time": 9.58
+        },
+        {
+          "family": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 192,
+          "duration_ns": 38120154,
+          "share_pct_of_kernel_time": 6.92
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 33617518,
+          "share_pct_of_kernel_time": 6.1
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 28690485,
+          "share_pct_of_kernel_time": 5.21
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 160,
+          "duration_ns": 27371469,
+          "share_pct_of_kernel_time": 4.97
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 24613650,
+          "share_pct_of_kernel_time": 4.47
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 23334121,
+          "share_pct_of_kernel_time": 4.24
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 16187634,
+          "share_pct_of_kernel_time": 2.94
+        },
+        {
+          "family": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "launches": 256,
+          "duration_ns": 4865999,
+          "share_pct_of_kernel_time": 0.88
+        },
+        {
+          "family": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "launches": 384,
+          "duration_ns": 4448503,
+          "share_pct_of_kernel_time": 0.81
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 260,
+          "duration_ns": 3667944,
+          "share_pct_of_kernel_time": 0.67
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 96,
+          "duration_ns": 2203625,
+          "share_pct_of_kernel_time": 0.4
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<unsigned short>(unsigned short const*, float const*, float*, float const*, float*, long, long, long)",
+          "launches": 192,
+          "duration_ns": 1565792,
+          "share_pct_of_kernel_time": 0.28
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
+          "launches": 256,
+          "duration_ns": 1513606,
+          "share_pct_of_kernel_time": 0.27
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 256,
+          "duration_ns": 637646,
+          "share_pct_of_kernel_time": 0.12
+        },
+        {
+          "family": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "launches": 192,
+          "duration_ns": 384448,
+          "share_pct_of_kernel_time": 0.07
+        },
+        {
+          "family": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "launches": 128,
+          "duration_ns": 315674,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 300684,
+          "share_pct_of_kernel_time": 0.05
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "launches": 64,
+          "duration_ns": 213401,
+          "share_pct_of_kernel_time": 0.04
+        },
+        {
+          "family": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "launches": 76,
+          "duration_ns": 142547,
+          "share_pct_of_kernel_time": 0.03
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 127399,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 16,
+          "duration_ns": 58826,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          "launches": 4,
+          "duration_ns": 43001,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          "launches": 16,
+          "duration_ns": 26931,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel(long const*, long*, int*, long*, int*, long*, long)",
+          "launches": 4,
+          "duration_ns": 20719,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          "launches": 8,
+          "duration_ns": 18555,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 17271,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "launches": 4,
+          "duration_ns": 15671,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 28,
+        "calls_per_step": 7.0,
+        "api_union_ns": 580109952,
+        "api_union_ms": 580.11,
+        "api_union_pct_of_window": 99.12,
+        "top_functions": [
+          {
+            "function": "hipStreamSynchronize",
+            "calls": 4,
+            "duration_ns": 561879365
+          },
+          {
+            "function": "hipGraphLaunch",
+            "calls": 4,
+            "duration_ns": 16826054
+          },
+          {
+            "function": "hipMemcpy",
+            "calls": 16,
+            "duration_ns": 1154253
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 4,
+            "duration_ns": 250280
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 4,
+        "copies_per_step": 1.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": [
+          {
+            "direction": "MEMORY_COPY_DEVICE_TO_HOST",
+            "copies": 4,
+            "duration_ns": 30418
+          }
+        ]
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 585288316,
+        "device_union_ns": 550668787,
+        "hip_api_union_ns": 580109952,
+        "overlap_device_api_ns": 550644473,
+        "combined_union_ns": 580134266,
+        "residual_ns": 5154050,
+        "residual_ms": 5.154,
+        "residual_pct_of_window": 0.88,
+        "gpu_idle_ns": 34619529,
+        "api_while_gpu_idle_ns": 29465479,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "verify:c2048:r6": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 711314098,
+        "window_total_ms": 711.314,
+        "per_step_ms": 177.829,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 4504,
+        "launches_per_step": 1126.0,
+        "kernel_time_sum_ns": 672972260,
+        "device_union_ns": 672972260,
+        "device_union_ms": 672.972,
+        "device_union_pct_of_window": 94.61,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 38341838,
+        "gpu_idle_ms": 38.342
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 176.751,
+        "busy_in_span_ms": 168.3,
+        "interior_gap_ms": 8.505,
+        "leading_gap_ms": 0.946,
+        "trailing_gap_ms": 0.13,
+        "duty_cycle": 0.9522,
+        "interior_gap_entries": 4500,
+        "interior_gap_entries_per_step": 1125.0,
+        "interior_gap_per_step_ms": 8.522,
+        "interior_gap_with_api_per_step_ms": 8.112,
+        "interior_gap_without_api_per_step_ms": 0.409,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "launches": 384,
+          "duration_ns": 221100588,
+          "share_pct_of_kernel_time": 32.85
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 146460557,
+          "share_pct_of_kernel_time": 21.76
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 640,
+          "duration_ns": 93435419,
+          "share_pct_of_kernel_time": 13.88
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 6, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 160,
+          "duration_ns": 64136241,
+          "share_pct_of_kernel_time": 9.53
+        },
+        {
+          "family": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 192,
+          "duration_ns": 39753747,
+          "share_pct_of_kernel_time": 5.91
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 36400725,
+          "share_pct_of_kernel_time": 5.41
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 6, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 28334132,
+          "share_pct_of_kernel_time": 4.21
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 22830172,
+          "share_pct_of_kernel_time": 3.39
+        },
+        {
+          "family": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "launches": 256,
+          "duration_ns": 4774794,
+          "share_pct_of_kernel_time": 0.71
+        },
+        {
+          "family": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "launches": 384,
+          "duration_ns": 4718596,
+          "share_pct_of_kernel_time": 0.7
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 260,
+          "duration_ns": 3588198,
+          "share_pct_of_kernel_time": 0.53
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
+          "launches": 384,
+          "duration_ns": 2231167,
+          "share_pct_of_kernel_time": 0.33
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<unsigned short>(unsigned short const*, float const*, float*, float const*, float*, long, long, long)",
+          "launches": 192,
+          "duration_ns": 2031782,
+          "share_pct_of_kernel_time": 0.3
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 384,
+          "duration_ns": 924627,
+          "share_pct_of_kernel_time": 0.14
+        },
+        {
+          "family": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "launches": 256,
+          "duration_ns": 679960,
+          "share_pct_of_kernel_time": 0.1
+        },
+        {
+          "family": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "launches": 192,
+          "duration_ns": 403843,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 393265,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "launches": 64,
+          "duration_ns": 251310,
+          "share_pct_of_kernel_time": 0.04
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 171922,
+          "share_pct_of_kernel_time": 0.03
+        },
+        {
+          "family": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "launches": 76,
+          "duration_ns": 144025,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 16,
+          "duration_ns": 59553,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          "launches": 4,
+          "duration_ns": 39594,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          "launches": 24,
+          "duration_ns": 38993,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          "launches": 8,
+          "duration_ns": 18996,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 17353,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel(long const*, long*, int*, long*, int*, long*, long)",
+          "launches": 4,
+          "duration_ns": 16831,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "launches": 4,
+          "duration_ns": 15870,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 28,
+        "calls_per_step": 7.0,
+        "api_union_ns": 705990080,
+        "api_union_ms": 705.99,
+        "api_union_pct_of_window": 99.25,
+        "top_functions": [
+          {
+            "function": "hipStreamSynchronize",
+            "calls": 4,
+            "duration_ns": 685885748
+          },
+          {
+            "function": "hipGraphLaunch",
+            "calls": 4,
+            "duration_ns": 18224154
+          },
+          {
+            "function": "hipMemcpy",
+            "calls": 16,
+            "duration_ns": 1600172
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 4,
+            "duration_ns": 280006
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 4,
+        "copies_per_step": 1.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": [
+          {
+            "direction": "MEMORY_COPY_DEVICE_TO_HOST",
+            "copies": 4,
+            "duration_ns": 33903
+          }
+        ]
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 711314098,
+        "device_union_ns": 672972260,
+        "hip_api_union_ns": 705990080,
+        "overlap_device_api_ns": 672945902,
+        "combined_union_ns": 706016438,
+        "residual_ns": 5297660,
+        "residual_ms": 5.298,
+        "residual_pct_of_window": 0.74,
+        "gpu_idle_ns": 38341838,
+        "api_while_gpu_idle_ns": 33044178,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "verify:c2048:r8": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 875232385,
+        "window_total_ms": 875.232,
+        "per_step_ms": 218.808,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 4896,
+        "launches_per_step": 1224.0,
+        "kernel_time_sum_ns": 835631132,
+        "device_union_ns": 835631132,
+        "device_union_ms": 835.631,
+        "device_union_pct_of_window": 95.48,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 39601253,
+        "gpu_idle_ms": 39.601
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 217.976,
+        "busy_in_span_ms": 209.008,
+        "interior_gap_ms": 8.896,
+        "leading_gap_ms": 0.841,
+        "trailing_gap_ms": 0.113,
+        "duty_cycle": 0.9589,
+        "interior_gap_entries": 4892,
+        "interior_gap_entries_per_step": 1223.0,
+        "interior_gap_per_step_ms": 8.932,
+        "interior_gap_with_api_per_step_ms": 8.532,
+        "interior_gap_without_api_per_step_ms": 0.399,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "launches": 512,
+          "duration_ns": 287292148,
+          "share_pct_of_kernel_time": 34.38
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 175341981,
+          "share_pct_of_kernel_time": 20.98
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 512,
+          "duration_ns": 94437558,
+          "share_pct_of_kernel_time": 11.3
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 160,
+          "duration_ns": 69373217,
+          "share_pct_of_kernel_time": 8.3
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 51664207,
+          "share_pct_of_kernel_time": 6.18
+        },
+        {
+          "family": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 192,
+          "duration_ns": 50820659,
+          "share_pct_of_kernel_time": 6.08
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 30232665,
+          "share_pct_of_kernel_time": 3.62
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 29249291,
+          "share_pct_of_kernel_time": 3.5
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 23677401,
+          "share_pct_of_kernel_time": 2.83
+        },
+        {
+          "family": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "launches": 384,
+          "duration_ns": 5701006,
+          "share_pct_of_kernel_time": 0.68
+        },
+        {
+          "family": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "launches": 256,
+          "duration_ns": 4696437,
+          "share_pct_of_kernel_time": 0.56
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 260,
+          "duration_ns": 3536860,
+          "share_pct_of_kernel_time": 0.42
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_paged_full_attn_decode_split_k_reduce_gate_kernel<hip_bfloat16>(float const*, float const*, float const*, hip_bfloat16 const*, hip_bfloat16*, long, long, long, long)",
+          "launches": 512,
+          "duration_ns": 2884473,
+          "share_pct_of_kernel_time": 0.35
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<unsigned short>(unsigned short const*, float const*, float*, float const*, float*, long, long, long)",
+          "launches": 192,
+          "duration_ns": 2533209,
+          "share_pct_of_kernel_time": 0.3
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 512,
+          "duration_ns": 1195491,
+          "share_pct_of_kernel_time": 0.14
+        },
+        {
+          "family": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "launches": 256,
+          "duration_ns": 1167325,
+          "share_pct_of_kernel_time": 0.14
+        },
+        {
+          "family": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "launches": 192,
+          "duration_ns": 472453,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 414345,
+          "share_pct_of_kernel_time": 0.05
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "launches": 64,
+          "duration_ns": 345087,
+          "share_pct_of_kernel_time": 0.04
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 204063,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "launches": 76,
+          "duration_ns": 166509,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 16,
+          "duration_ns": 57587,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          "launches": 32,
+          "duration_ns": 49816,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          "launches": 4,
+          "duration_ns": 38232,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 30178,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel(long const*, long*, int*, long*, int*, long*, long)",
+          "launches": 4,
+          "duration_ns": 16992,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          "launches": 8,
+          "duration_ns": 16473,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "launches": 4,
+          "duration_ns": 15469,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 28,
+        "calls_per_step": 7.0,
+        "api_union_ns": 870304102,
+        "api_union_ms": 870.304,
+        "api_union_pct_of_window": 99.44,
+        "top_functions": [
+          {
+            "function": "hipStreamSynchronize",
+            "calls": 4,
+            "duration_ns": 849177025
+          },
+          {
+            "function": "hipGraphLaunch",
+            "calls": 4,
+            "duration_ns": 19525383
+          },
+          {
+            "function": "hipMemcpy",
+            "calls": 16,
+            "duration_ns": 1374196
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 4,
+            "duration_ns": 227498
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 4,
+        "copies_per_step": 1.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": [
+          {
+            "direction": "MEMORY_COPY_DEVICE_TO_HOST",
+            "copies": 4,
+            "duration_ns": 36189
+          }
+        ]
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 875232385,
+        "device_union_ns": 835631132,
+        "hip_api_union_ns": 870304102,
+        "overlap_device_api_ns": 835603622,
+        "combined_union_ns": 870331612,
+        "residual_ns": 4900773,
+        "residual_ms": 4.901,
+        "residual_pct_of_window": 0.56,
+        "gpu_idle_ns": 39601253,
+        "api_while_gpu_idle_ns": 34700480,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "verify:c64:r1": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 430917333,
+        "window_total_ms": 430.917,
+        "per_step_ms": 107.729,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 3584,
+        "launches_per_step": 896.0,
+        "kernel_time_sum_ns": 346463936,
+        "device_union_ns": 346463936,
+        "device_union_ms": 346.464,
+        "device_union_pct_of_window": 80.4,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 84453397,
+        "gpu_idle_ms": 84.453
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 106.76,
+        "busy_in_span_ms": 85.791,
+        "interior_gap_ms": 20.746,
+        "leading_gap_ms": 0.279,
+        "trailing_gap_ms": 0.065,
+        "duty_cycle": 0.8036,
+        "interior_gap_entries": 3580,
+        "interior_gap_entries_per_step": 895.0,
+        "interior_gap_per_step_ms": 20.781,
+        "interior_gap_with_api_per_step_ms": 6.381,
+        "interior_gap_without_api_per_step_ms": 14.399,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_selected_dual_q8_1x2_dp4a_silu_direct_gemv_kernel<unsigned short, true>((anonymous namespace)::gguf_q8_1_block const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+          "launches": 256,
+          "duration_ns": 136815049,
+          "share_pct_of_kernel_time": 39.49
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 512,
+          "duration_ns": 49756509,
+          "share_pct_of_kernel_time": 14.36
+        },
+        {
+          "family": "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_residual_kernel(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 43693603,
+          "share_pct_of_kernel_time": 12.61
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_single_local32_residual_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 30169104,
+          "share_pct_of_kernel_time": 8.71
+        },
+        {
+          "family": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 27371513,
+          "share_pct_of_kernel_time": 7.9
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 21970595,
+          "share_pct_of_kernel_time": 6.34
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 18761556,
+          "share_pct_of_kernel_time": 5.42
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, true, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 5640461,
+          "share_pct_of_kernel_time": 1.63
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_alpha_beta_chain_conv_snapshot_bf16_f32w_kernel<1>(unsigned short const*, float const*, float const*, unsigned short*, unsigned short*, unsigned short const*, float*, float const*, float*, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 2889125,
+          "share_pct_of_kernel_time": 0.83
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 540,
+          "duration_ns": 2796126,
+          "share_pct_of_kernel_time": 0.81
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 32,
+          "duration_ns": 1311348,
+          "share_pct_of_kernel_time": 0.38
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false, long, 1>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+          "launches": 64,
+          "duration_ns": 1140868,
+          "share_pct_of_kernel_time": 0.33
+        },
+        {
+          "family": "void gguf_norm_fixed5120_wave256_kernel<false, false>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+          "launches": 256,
+          "duration_ns": 985169,
+          "share_pct_of_kernel_time": 0.28
+        },
+        {
+          "family": "void gguf_norm_fixed5120_wave256_kernel<true, false>(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float)",
+          "launches": 256,
+          "duration_ns": 969227,
+          "share_pct_of_kernel_time": 0.28
+        },
+        {
+          "family": "void (anonymous namespace)::gguf_quantize_q8_1x2_kernel<unsigned short>(unsigned short const*, (anonymous namespace)::gguf_q8_1_block*, int, int, int)",
+          "launches": 256,
+          "duration_ns": 784273,
+          "share_pct_of_kernel_time": 0.23
+        },
+        {
+          "family": "(anonymous namespace)::prepare_prefill_chunk_metadata_kernel(int*, int*, int*, int*, long*, long*, long, long)",
+          "launches": 260,
+          "duration_ns": 481783,
+          "share_pct_of_kernel_time": 0.14
+        },
+        {
+          "family": "gguf_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, long const*, float*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 362442,
+          "share_pct_of_kernel_time": 0.1
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 243057,
+          "share_pct_of_kernel_time": 0.07
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          "launches": 64,
+          "duration_ns": 117661,
+          "share_pct_of_kernel_time": 0.03
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 4,
+          "duration_ns": 57308,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          "launches": 4,
+          "duration_ns": 47449,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          "launches": 4,
+          "duration_ns": 38633,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 25048,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::record_i64_scalar_indexed_kernel(long const*, long*, long*, long)",
+          "launches": 4,
+          "duration_ns": 12222,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          "launches": 4,
+          "duration_ns": 12144,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
+          "launches": 4,
+          "duration_ns": 11663,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 6640,
+        "calls_per_step": 1660.0,
+        "api_union_ns": 190205611,
+        "api_union_ms": 190.206,
+        "api_union_pct_of_window": 44.14,
+        "top_functions": [
+          {
+            "function": "hipMemcpy",
+            "calls": 156,
+            "duration_ns": 81464654
+          },
+          {
+            "function": "hipLaunchKernel",
+            "calls": 3044,
+            "duration_ns": 79239576
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 8,
+            "duration_ns": 20055226
+          },
+          {
+            "function": "hipMemcpyAsync",
+            "calls": 388,
+            "duration_ns": 9147037
+          },
+          {
+            "function": "hipGetLastError",
+            "calls": 3044,
+            "duration_ns": 299118
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 4,
+        "copies_per_step": 1.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": [
+          {
+            "direction": "MEMORY_COPY_DEVICE_TO_HOST",
+            "copies": 4,
+            "duration_ns": 16672
+          }
+        ]
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 430917333,
+        "device_union_ns": 346463936,
+        "hip_api_union_ns": 190205611,
+        "overlap_device_api_ns": 164023686,
+        "combined_union_ns": 372645861,
+        "residual_ns": 58271472,
+        "residual_ms": 58.271,
+        "residual_pct_of_window": 13.52,
+        "gpu_idle_ns": 84453397,
+        "api_while_gpu_idle_ns": 26181925,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "verify:c64:r2": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 422917840,
+        "window_total_ms": 422.918,
+        "per_step_ms": 105.729,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 3592,
+        "launches_per_step": 898.0,
+        "kernel_time_sum_ns": 389363620,
+        "device_union_ns": 389363620,
+        "device_union_ms": 389.364,
+        "device_union_pct_of_window": 92.07,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 33554220,
+        "gpu_idle_ms": 33.554
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 101.523,
+        "busy_in_span_ms": 94.289,
+        "interior_gap_ms": 7.251,
+        "leading_gap_ms": 0.831,
+        "trailing_gap_ms": 0.072,
+        "duty_cycle": 0.9287,
+        "interior_gap_entries": 3588,
+        "interior_gap_entries_per_step": 897.0,
+        "interior_gap_per_step_ms": 7.475,
+        "interior_gap_with_api_per_step_ms": 7.09,
+        "interior_gap_without_api_per_step_ms": 0.385,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 133683355,
+          "share_pct_of_kernel_time": 34.33
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 2, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 160,
+          "duration_ns": 51750017,
+          "share_pct_of_kernel_time": 13.29
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 352,
+          "duration_ns": 39600269,
+          "share_pct_of_kernel_time": 10.17
+        },
+        {
+          "family": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 192,
+          "duration_ns": 32348828,
+          "share_pct_of_kernel_time": 8.31
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 31866341,
+          "share_pct_of_kernel_time": 8.18
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 29313339,
+          "share_pct_of_kernel_time": 7.53
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_kernel<float, 2>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 23845686,
+          "share_pct_of_kernel_time": 6.12
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 64,
+          "duration_ns": 12256387,
+          "share_pct_of_kernel_time": 3.15
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 10896581,
+          "share_pct_of_kernel_time": 2.8
+        },
+        {
+          "family": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "launches": 256,
+          "duration_ns": 5777950,
+          "share_pct_of_kernel_time": 1.48
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 260,
+          "duration_ns": 4401369,
+          "share_pct_of_kernel_time": 1.13
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "launches": 128,
+          "duration_ns": 4171421,
+          "share_pct_of_kernel_time": 1.07
+        },
+        {
+          "family": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "launches": 384,
+          "duration_ns": 3677565,
+          "share_pct_of_kernel_time": 0.94
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 96,
+          "duration_ns": 2099312,
+          "share_pct_of_kernel_time": 0.54
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<unsigned short>(unsigned short const*, float const*, float*, float const*, float*, long, long, long)",
+          "launches": 192,
+          "duration_ns": 1265404,
+          "share_pct_of_kernel_time": 0.32
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 128,
+          "duration_ns": 395584,
+          "share_pct_of_kernel_time": 0.1
+        },
+        {
+          "family": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "launches": 192,
+          "duration_ns": 391303,
+          "share_pct_of_kernel_time": 0.1
+        },
+        {
+          "family": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "launches": 128,
+          "duration_ns": 350469,
+          "share_pct_of_kernel_time": 0.09
+        },
+        {
+          "family": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 338997,
+          "share_pct_of_kernel_time": 0.09
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          "launches": 128,
+          "duration_ns": 233126,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "launches": 64,
+          "duration_ns": 220296,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "launches": 76,
+          "duration_ns": 166793,
+          "share_pct_of_kernel_time": 0.04
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 90332,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 16,
+          "duration_ns": 72134,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          "launches": 4,
+          "duration_ns": 52619,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 22201,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel(long const*, long*, int*, long*, int*, long*, long)",
+          "launches": 4,
+          "duration_ns": 21281,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          "launches": 8,
+          "duration_ns": 19956,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          "launches": 8,
+          "duration_ns": 17432,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "launches": 4,
+          "duration_ns": 17273,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 28,
+        "calls_per_step": 7.0,
+        "api_union_ns": 418236728,
+        "api_union_ms": 418.237,
+        "api_union_pct_of_window": 98.89,
+        "top_functions": [
+          {
+            "function": "hipStreamSynchronize",
+            "calls": 4,
+            "duration_ns": 401180257
+          },
+          {
+            "function": "hipGraphLaunch",
+            "calls": 4,
+            "duration_ns": 15664501
+          },
+          {
+            "function": "hipMemcpy",
+            "calls": 16,
+            "duration_ns": 1178679
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 4,
+            "duration_ns": 213291
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 4,
+        "copies_per_step": 1.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": [
+          {
+            "direction": "MEMORY_COPY_DEVICE_TO_HOST",
+            "copies": 4,
+            "duration_ns": 26969
+          }
+        ]
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 422917840,
+        "device_union_ns": 389363620,
+        "hip_api_union_ns": 418236728,
+        "overlap_device_api_ns": 389331209,
+        "combined_union_ns": 418269139,
+        "residual_ns": 4648701,
+        "residual_ms": 4.649,
+        "residual_pct_of_window": 1.1,
+        "gpu_idle_ns": 33554220,
+        "api_while_gpu_idle_ns": 28905519,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "verify:c64:r3": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 464255829,
+        "window_total_ms": 464.256,
+        "per_step_ms": 116.064,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 3788,
+        "launches_per_step": 947.0,
+        "kernel_time_sum_ns": 427668124,
+        "device_union_ns": 427668124,
+        "device_union_ms": 427.668,
+        "device_union_pct_of_window": 92.12,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 36587705,
+        "gpu_idle_ms": 36.588
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 112.409,
+        "busy_in_span_ms": 104.468,
+        "interior_gap_ms": 7.942,
+        "leading_gap_ms": 0.83,
+        "trailing_gap_ms": 0.072,
+        "duty_cycle": 0.9294,
+        "interior_gap_entries": 3784,
+        "interior_gap_entries_per_step": 946.0,
+        "interior_gap_per_step_ms": 8.126,
+        "interior_gap_with_api_per_step_ms": 7.742,
+        "interior_gap_without_api_per_step_ms": 0.383,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 139740154,
+          "share_pct_of_kernel_time": 32.67
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 160,
+          "duration_ns": 57850503,
+          "share_pct_of_kernel_time": 13.53
+        },
+        {
+          "family": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 3, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 192,
+          "duration_ns": 37760046,
+          "share_pct_of_kernel_time": 8.83
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 33918409,
+          "share_pct_of_kernel_time": 7.93
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 32788282,
+          "share_pct_of_kernel_time": 7.67
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 160,
+          "duration_ns": 29938226,
+          "share_pct_of_kernel_time": 7.0
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 3, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 26936865,
+          "share_pct_of_kernel_time": 6.3
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 24926278,
+          "share_pct_of_kernel_time": 5.83
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 15891352,
+          "share_pct_of_kernel_time": 3.72
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "launches": 192,
+          "duration_ns": 6290683,
+          "share_pct_of_kernel_time": 1.47
+        },
+        {
+          "family": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "launches": 256,
+          "duration_ns": 5934172,
+          "share_pct_of_kernel_time": 1.39
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 260,
+          "duration_ns": 4642348,
+          "share_pct_of_kernel_time": 1.09
+        },
+        {
+          "family": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "launches": 384,
+          "duration_ns": 3871078,
+          "share_pct_of_kernel_time": 0.91
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 96,
+          "duration_ns": 2549076,
+          "share_pct_of_kernel_time": 0.6
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<unsigned short>(unsigned short const*, float const*, float*, float const*, float*, long, long, long)",
+          "launches": 192,
+          "duration_ns": 1677026,
+          "share_pct_of_kernel_time": 0.39
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 603683,
+          "share_pct_of_kernel_time": 0.14
+        },
+        {
+          "family": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "launches": 192,
+          "duration_ns": 464832,
+          "share_pct_of_kernel_time": 0.11
+        },
+        {
+          "family": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "launches": 128,
+          "duration_ns": 374543,
+          "share_pct_of_kernel_time": 0.09
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          "launches": 192,
+          "duration_ns": 366529,
+          "share_pct_of_kernel_time": 0.09
+        },
+        {
+          "family": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 358439,
+          "share_pct_of_kernel_time": 0.08
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "launches": 64,
+          "duration_ns": 243136,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "launches": 76,
+          "duration_ns": 172767,
+          "share_pct_of_kernel_time": 0.04
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 129963,
+          "share_pct_of_kernel_time": 0.03
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 16,
+          "duration_ns": 74060,
+          "share_pct_of_kernel_time": 0.02
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          "launches": 4,
+          "duration_ns": 57148,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          "launches": 12,
+          "duration_ns": 26211,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 21840,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          "launches": 8,
+          "duration_ns": 21601,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel(long const*, long*, int*, long*, int*, long*, long)",
+          "launches": 4,
+          "duration_ns": 19677,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "launches": 4,
+          "duration_ns": 19197,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 28,
+        "calls_per_step": 7.0,
+        "api_union_ns": 459163069,
+        "api_union_ms": 459.163,
+        "api_union_pct_of_window": 98.9,
+        "top_functions": [
+          {
+            "function": "hipStreamSynchronize",
+            "calls": 4,
+            "duration_ns": 441695298
+          },
+          {
+            "function": "hipGraphLaunch",
+            "calls": 4,
+            "duration_ns": 16025519
+          },
+          {
+            "function": "hipMemcpy",
+            "calls": 16,
+            "duration_ns": 1235192
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 4,
+            "duration_ns": 207060
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 4,
+        "copies_per_step": 1.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": [
+          {
+            "direction": "MEMORY_COPY_DEVICE_TO_HOST",
+            "copies": 4,
+            "duration_ns": 34104
+          }
+        ]
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 464255829,
+        "device_union_ns": 427668124,
+        "hip_api_union_ns": 459163069,
+        "overlap_device_api_ns": 427644528,
+        "combined_union_ns": 459186665,
+        "residual_ns": 5069164,
+        "residual_ms": 5.069,
+        "residual_pct_of_window": 1.09,
+        "gpu_idle_ns": 36587705,
+        "api_while_gpu_idle_ns": 31518541,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "verify:c64:r4": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 516413922,
+        "window_total_ms": 516.414,
+        "per_step_ms": 129.103,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 3984,
+        "launches_per_step": 996.0,
+        "kernel_time_sum_ns": 479131416,
+        "device_union_ns": 479131416,
+        "device_union_ms": 479.131,
+        "device_union_pct_of_window": 92.78,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 37282506,
+        "gpu_idle_ms": 37.283
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 125.517,
+        "busy_in_span_ms": 117.244,
+        "interior_gap_ms": 8.296,
+        "leading_gap_ms": 0.827,
+        "trailing_gap_ms": 0.077,
+        "duty_cycle": 0.9341,
+        "interior_gap_entries": 3980,
+        "interior_gap_entries_per_step": 995.0,
+        "interior_gap_per_step_ms": 8.416,
+        "interior_gap_with_api_per_step_ms": 8.083,
+        "interior_gap_without_api_per_step_ms": 0.332,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 149308893,
+          "share_pct_of_kernel_time": 31.16
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 4, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 160,
+          "duration_ns": 64204382,
+          "share_pct_of_kernel_time": 13.4
+        },
+        {
+          "family": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 192,
+          "duration_ns": 48428729,
+          "share_pct_of_kernel_time": 10.11
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 36917173,
+          "share_pct_of_kernel_time": 7.71
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 35751569,
+          "share_pct_of_kernel_time": 7.46
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 160,
+          "duration_ns": 34681524,
+          "share_pct_of_kernel_time": 7.24
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 30330574,
+          "share_pct_of_kernel_time": 6.33
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 27106109,
+          "share_pct_of_kernel_time": 5.66
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 20406689,
+          "share_pct_of_kernel_time": 4.26
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "launches": 256,
+          "duration_ns": 8203682,
+          "share_pct_of_kernel_time": 1.71
+        },
+        {
+          "family": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "launches": 256,
+          "duration_ns": 5947322,
+          "share_pct_of_kernel_time": 1.24
+        },
+        {
+          "family": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "launches": 384,
+          "duration_ns": 5230899,
+          "share_pct_of_kernel_time": 1.09
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 260,
+          "duration_ns": 4674168,
+          "share_pct_of_kernel_time": 0.98
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 96,
+          "duration_ns": 2636560,
+          "share_pct_of_kernel_time": 0.55
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<unsigned short>(unsigned short const*, float const*, float*, float const*, float*, long, long, long)",
+          "launches": 192,
+          "duration_ns": 1977649,
+          "share_pct_of_kernel_time": 0.41
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 256,
+          "duration_ns": 748094,
+          "share_pct_of_kernel_time": 0.16
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          "launches": 256,
+          "duration_ns": 489434,
+          "share_pct_of_kernel_time": 0.1
+        },
+        {
+          "family": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "launches": 192,
+          "duration_ns": 481264,
+          "share_pct_of_kernel_time": 0.1
+        },
+        {
+          "family": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "launches": 128,
+          "duration_ns": 391574,
+          "share_pct_of_kernel_time": 0.08
+        },
+        {
+          "family": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 366774,
+          "share_pct_of_kernel_time": 0.08
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "launches": 64,
+          "duration_ns": 274236,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "launches": 76,
+          "duration_ns": 175368,
+          "share_pct_of_kernel_time": 0.04
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 147518,
+          "share_pct_of_kernel_time": 0.03
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 16,
+          "duration_ns": 70453,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          "launches": 4,
+          "duration_ns": 58149,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          "launches": 16,
+          "duration_ns": 33822,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          "launches": 8,
+          "duration_ns": 23965,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel(long const*, long*, int*, long*, int*, long*, long)",
+          "launches": 4,
+          "duration_ns": 23084,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 21842,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "launches": 4,
+          "duration_ns": 19917,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 28,
+        "calls_per_step": 7.0,
+        "api_union_ns": 511952963,
+        "api_union_ms": 511.953,
+        "api_union_pct_of_window": 99.14,
+        "top_functions": [
+          {
+            "function": "hipStreamSynchronize",
+            "calls": 4,
+            "duration_ns": 494936150
+          },
+          {
+            "function": "hipGraphLaunch",
+            "calls": 4,
+            "duration_ns": 15376949
+          },
+          {
+            "function": "hipMemcpy",
+            "calls": 16,
+            "duration_ns": 1475385
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 4,
+            "duration_ns": 164479
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 4,
+        "copies_per_step": 1.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": [
+          {
+            "direction": "MEMORY_COPY_DEVICE_TO_HOST",
+            "copies": 4,
+            "duration_ns": 38914
+          }
+        ]
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 516413922,
+        "device_union_ns": 479131416,
+        "hip_api_union_ns": 511952963,
+        "overlap_device_api_ns": 479103764,
+        "combined_union_ns": 511980615,
+        "residual_ns": 4433307,
+        "residual_ms": 4.433,
+        "residual_pct_of_window": 0.86,
+        "gpu_idle_ns": 37282506,
+        "api_while_gpu_idle_ns": 32849199,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "verify:c64:r6": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 606856196,
+        "window_total_ms": 606.856,
+        "per_step_ms": 151.714,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 4504,
+        "launches_per_step": 1126.0,
+        "kernel_time_sum_ns": 566974963,
+        "device_union_ns": 566974963,
+        "device_union_ms": 566.975,
+        "device_union_pct_of_window": 93.43,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 39881233,
+        "gpu_idle_ms": 39.881
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 147.389,
+        "busy_in_span_ms": 138.659,
+        "interior_gap_ms": 8.938,
+        "leading_gap_ms": 0.804,
+        "trailing_gap_ms": 0.147,
+        "duty_cycle": 0.9408,
+        "interior_gap_entries": 4500,
+        "interior_gap_entries_per_step": 1125.0,
+        "interior_gap_per_step_ms": 9.029,
+        "interior_gap_with_api_per_step_ms": 8.676,
+        "interior_gap_without_api_per_step_ms": 0.354,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 177320872,
+          "share_pct_of_kernel_time": 31.27
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 640,
+          "duration_ns": 118074891,
+          "share_pct_of_kernel_time": 20.83
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 6, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 160,
+          "duration_ns": 78450103,
+          "share_pct_of_kernel_time": 13.84
+        },
+        {
+          "family": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 192,
+          "duration_ns": 50164972,
+          "share_pct_of_kernel_time": 8.85
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 44716851,
+          "share_pct_of_kernel_time": 7.89
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 6, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 35383083,
+          "share_pct_of_kernel_time": 6.24
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 28538319,
+          "share_pct_of_kernel_time": 5.03
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "launches": 384,
+          "duration_ns": 11633104,
+          "share_pct_of_kernel_time": 2.05
+        },
+        {
+          "family": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "launches": 256,
+          "duration_ns": 5756034,
+          "share_pct_of_kernel_time": 1.02
+        },
+        {
+          "family": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "launches": 384,
+          "duration_ns": 5520592,
+          "share_pct_of_kernel_time": 0.97
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 260,
+          "duration_ns": 4397405,
+          "share_pct_of_kernel_time": 0.78
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<unsigned short>(unsigned short const*, float const*, float*, float const*, float*, long, long, long)",
+          "launches": 192,
+          "duration_ns": 2506397,
+          "share_pct_of_kernel_time": 0.44
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 384,
+          "duration_ns": 1057627,
+          "share_pct_of_kernel_time": 0.19
+        },
+        {
+          "family": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "launches": 256,
+          "duration_ns": 848440,
+          "share_pct_of_kernel_time": 0.15
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          "launches": 384,
+          "duration_ns": 704558,
+          "share_pct_of_kernel_time": 0.12
+        },
+        {
+          "family": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "launches": 192,
+          "duration_ns": 503403,
+          "share_pct_of_kernel_time": 0.09
+        },
+        {
+          "family": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 475699,
+          "share_pct_of_kernel_time": 0.08
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "launches": 64,
+          "duration_ns": 304774,
+          "share_pct_of_kernel_time": 0.05
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 198093,
+          "share_pct_of_kernel_time": 0.03
+        },
+        {
+          "family": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "launches": 76,
+          "duration_ns": 170802,
+          "share_pct_of_kernel_time": 0.03
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 16,
+          "duration_ns": 67006,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          "launches": 4,
+          "duration_ns": 53460,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          "launches": 24,
+          "duration_ns": 48848,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 21280,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          "launches": 8,
+          "duration_ns": 20077,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "launches": 4,
+          "duration_ns": 19517,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel(long const*, long*, int*, long*, int*, long*, long)",
+          "launches": 4,
+          "duration_ns": 18756,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 28,
+        "calls_per_step": 7.0,
+        "api_union_ns": 602294502,
+        "api_union_ms": 602.295,
+        "api_union_pct_of_window": 99.25,
+        "top_functions": [
+          {
+            "function": "hipStreamSynchronize",
+            "calls": 4,
+            "duration_ns": 583279084
+          },
+          {
+            "function": "hipGraphLaunch",
+            "calls": 4,
+            "duration_ns": 17220139
+          },
+          {
+            "function": "hipMemcpy",
+            "calls": 16,
+            "duration_ns": 1455460
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 4,
+            "duration_ns": 339819
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 4,
+        "copies_per_step": 1.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": [
+          {
+            "direction": "MEMORY_COPY_DEVICE_TO_HOST",
+            "copies": 4,
+            "duration_ns": 42479
+          }
+        ]
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 606856196,
+        "device_union_ns": 566974963,
+        "hip_api_union_ns": 602294502,
+        "overlap_device_api_ns": 566950710,
+        "combined_union_ns": 602318755,
+        "residual_ns": 4537441,
+        "residual_ms": 4.537,
+        "residual_pct_of_window": 0.75,
+        "gpu_idle_ns": 39881233,
+        "api_while_gpu_idle_ns": 35343792,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    },
+    "verify:c64:r8": {
+      "windows": {
+        "measured_steps": 4,
+        "window_total_ns": 714656049,
+        "window_total_ms": 714.656,
+        "per_step_ms": 178.664,
+        "child_step_wall_median_ms": null
+      },
+      "device": {
+        "kernel_launches": 4896,
+        "launches_per_step": 1224.0,
+        "kernel_time_sum_ns": 674352949,
+        "device_union_ns": 674352949,
+        "device_union_ms": 674.353,
+        "device_union_pct_of_window": 94.36,
+        "dispatch_overlap_ratio": 1.0,
+        "dispatch_overlap_note": "sum of dispatch durations divided by their union; a value above 1 means the trace's dispatch intervals overlap, so per-family shares are reported against kernel time and not against the union",
+        "gpu_idle_ns": 40303100,
+        "gpu_idle_ms": 40.303
+      },
+      "gpu_span": {
+        "steps": 4,
+        "span_ms": 176.409,
+        "busy_in_span_ms": 167.706,
+        "interior_gap_ms": 9.159,
+        "leading_gap_ms": 0.848,
+        "trailing_gap_ms": 0.137,
+        "duty_cycle": 0.9507,
+        "interior_gap_entries": 4892,
+        "interior_gap_entries_per_step": 1223.0,
+        "interior_gap_per_step_ms": 9.102,
+        "interior_gap_with_api_per_step_ms": 8.717,
+        "interior_gap_without_api_per_step_ms": 0.386,
+        "interior_gap_split_note": "with_api is gap time covered by a HIP API interval (host inside the runtime: launch latency and call overhead); without_api is gap time with no API call in flight (host Python between launches). Fusion reduces launch points and the Python between them; a graph replay removes the per-launch host cost entirely",
+        "note": "span is first kernel start to last kernel end within each step window; busy is the device union inside that span; leading is host time before the first launch and trailing is host time after the last kernel ends (which is where the blocking readback waits). Interior gap is the part fusion or a graph replay could remove; leading and trailing gap are not"
+      },
+      "kernel_families": [
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 256,
+          "duration_ns": 212187252,
+          "share_pct_of_kernel_time": 31.47
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 512,
+          "duration_ns": 116261313,
+          "share_pct_of_kernel_time": 17.24
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 160,
+          "duration_ns": 83607660,
+          "share_pct_of_kernel_time": 12.4
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "launches": 96,
+          "duration_ns": 61736085,
+          "share_pct_of_kernel_time": 9.15
+        },
+        {
+          "family": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 192,
+          "duration_ns": 61119291,
+          "share_pct_of_kernel_time": 9.06
+        },
+        {
+          "family": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 35820948,
+          "share_pct_of_kernel_time": 5.31
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+          "launches": 192,
+          "duration_ns": 35473541,
+          "share_pct_of_kernel_time": 5.26
+        },
+        {
+          "family": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "launches": 128,
+          "duration_ns": 28548777,
+          "share_pct_of_kernel_time": 4.23
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, float)",
+          "launches": 512,
+          "duration_ns": 14519571,
+          "share_pct_of_kernel_time": 2.15
+        },
+        {
+          "family": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "launches": 384,
+          "duration_ns": 6614562,
+          "share_pct_of_kernel_time": 0.98
+        },
+        {
+          "family": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          "launches": 256,
+          "duration_ns": 5531170,
+          "share_pct_of_kernel_time": 0.82
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          "launches": 260,
+          "duration_ns": 4213780,
+          "share_pct_of_kernel_time": 0.62
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<unsigned short>(unsigned short const*, float const*, float*, float const*, float*, long, long, long)",
+          "launches": 192,
+          "duration_ns": 3017396,
+          "share_pct_of_kernel_time": 0.45
+        },
+        {
+          "family": "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          "launches": 256,
+          "duration_ns": 1400599,
+          "share_pct_of_kernel_time": 0.21
+        },
+        {
+          "family": "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          "launches": 512,
+          "duration_ns": 1270751,
+          "share_pct_of_kernel_time": 0.19
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          "launches": 512,
+          "duration_ns": 885826,
+          "share_pct_of_kernel_time": 0.13
+        },
+        {
+          "family": "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          "launches": 192,
+          "duration_ns": 569348,
+          "share_pct_of_kernel_time": 0.08
+        },
+        {
+          "family": "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          "launches": 64,
+          "duration_ns": 483109,
+          "share_pct_of_kernel_time": 0.07
+        },
+        {
+          "family": "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          "launches": 64,
+          "duration_ns": 410528,
+          "share_pct_of_kernel_time": 0.06
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          "launches": 4,
+          "duration_ns": 228430,
+          "share_pct_of_kernel_time": 0.03
+        },
+        {
+          "family": "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          "launches": 76,
+          "duration_ns": 197731,
+          "share_pct_of_kernel_time": 0.03
+        },
+        {
+          "family": "__amd_rocclr_copyBuffer",
+          "launches": 16,
+          "duration_ns": 63681,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          "launches": 32,
+          "duration_ns": 57306,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          "launches": 4,
+          "duration_ns": 46327,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "launches": 4,
+          "duration_ns": 34786,
+          "share_pct_of_kernel_time": 0.01
+        },
+        {
+          "family": "(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel(long const*, long*, int*, long*, int*, long*, long)",
+          "launches": 4,
+          "duration_ns": 18596,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          "launches": 8,
+          "duration_ns": 17793,
+          "share_pct_of_kernel_time": 0.0
+        },
+        {
+          "family": "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          "launches": 4,
+          "duration_ns": 16792,
+          "share_pct_of_kernel_time": 0.0
+        }
+      ],
+      "hip_api": {
+        "calls": 28,
+        "calls_per_step": 7.0,
+        "api_union_ns": 709803135,
+        "api_union_ms": 709.803,
+        "api_union_pct_of_window": 99.32,
+        "top_functions": [
+          {
+            "function": "hipStreamSynchronize",
+            "calls": 4,
+            "duration_ns": 691015958
+          },
+          {
+            "function": "hipGraphLaunch",
+            "calls": 4,
+            "duration_ns": 17030883
+          },
+          {
+            "function": "hipMemcpy",
+            "calls": 16,
+            "duration_ns": 1491496
+          },
+          {
+            "function": "hipDeviceSynchronize",
+            "calls": 4,
+            "duration_ns": 264798
+          }
+        ]
+      },
+      "memory_copies": {
+        "copies": 4,
+        "copies_per_step": 1.0,
+        "bytes_available": false,
+        "bytes_note": "rocprofv3's memory-copy and HIP API traces record direction and duration but no transfer size, so no byte figure is reported here",
+        "by_direction": [
+          {
+            "direction": "MEMORY_COPY_DEVICE_TO_HOST",
+            "copies": 4,
+            "duration_ns": 41118
+          }
+        ]
+      },
+      "sync_memcpy_stall": {
+        "callsites": [],
+        "calls": 0,
+        "total_ns": 0,
+        "per_step_calls": 0.0,
+        "per_step_ms": 0.0,
+        "meaning": "synchronous hipMemcpy calls made inside a measured step, timed in the child and attributed to their Python call site"
+      },
+      "decomposition": {
+        "identity": "window = union(device, api) + residual",
+        "window_ns": 714656049,
+        "device_union_ns": 674352949,
+        "hip_api_union_ns": 709803135,
+        "overlap_device_api_ns": 674328892,
+        "combined_union_ns": 709827192,
+        "residual_ns": 4828857,
+        "residual_ms": 4.829,
+        "residual_pct_of_window": 0.68,
+        "gpu_idle_ns": 40303100,
+        "api_while_gpu_idle_ns": 35474243,
+        "gpu_idle_split": "gpu_idle = api_while_gpu_idle + residual",
+        "residual_meaning": "time inside the measured window that is neither device-busy nor inside a traced HIP runtime call: Python, telemetry, scheduling, and any queue gap not covered by an API call",
+        "balances": true
+      }
+    }
+  },
+  "inputs": {
+    "/tmp/qwen38-verifier-width-profiled.json": "93a0c49e2b5efec5a9072e36f0243e6d587e511df80e48d4d247f2e5ad8fd5c6",
+    "/tmp/qwen38-verifier-width-trace/run_kernel_trace.csv": "1ab3cb27324a66ab7ea0a9ffc5c61a2982e798c5dd03996f6b98b3e68e87dc52",
+    "/tmp/qwen38-verifier-width-trace/run_marker_api_trace.csv": "d22360f2eaef2e70c127723e1f0e21acc3438913526124c9c570fa585af853b3",
+    "/tmp/qwen38-verifier-width-trace/run_hip_api_trace.csv": "62c779cc37f7b79feb03129159e8b1d51c6c03592fe9304980a2515da65665a8",
+    "/tmp/qwen38-verifier-width-trace/run_memory_copy_trace.csv": "cae6d71f07f40fb9a390a3412896dc44ba066a9bf3a81e707a735afc7118bf8b"
+  },
+  "command": [
+    "/home/lhl/hipEngine-main/.venv/bin/python",
+    "scripts/qwen38_verifier_width_analyze.py",
+    "/tmp/qwen38-verifier-width-trace",
+    "--run-json",
+    "/tmp/qwen38-verifier-width-profiled.json",
+    "--output",
+    "/tmp/qwen38-verifier-width-attribution.json"
+  ]
+}

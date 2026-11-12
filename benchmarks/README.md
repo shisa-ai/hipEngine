@@ -14,6 +14,15 @@ harness-only measurements do not establish public serving performance or an
 EAGLE-versus-MTP ranking. The MTP suite also uses a different token denominator.
 [Reproducible correction, commands, source hashes, and evidence limitations](results/2026-11-12-qwen38-specdec-reaggregation.json).
 
+A fixed-prefix verifier diagnostic on the same host, using the public production
+owner, measures increasing cost from two through eight rows. At a 64-token
+prefix, four/six/eight rows take 122.14/149.37/167.83 ms; at 2048 tokens they take
+144.13/177.25/213.28 ms (unprofiled medians, six repetitions). All measured IDs
+match the greedy teacher and public AR. Kernel tracing attributes the short-prefix
+cost mainly to quantized projections; longer-prefix attention also grows per row.
+These are verifier-only timings, not end-to-end method rankings.
+[Protocol, selected variants, samples and kernel attribution](results/2026-11-12-qwen38-verifier-width/summary.json).
+
 ## Muse Glimmer 30B DFlash — Radeon 8060S (gfx1151)
 
 Muse Glimmer 30B GGUF `Q4_K_M`, host **zbook / Radeon 8060S** (`gfx1151`),
