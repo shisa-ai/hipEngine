@@ -20170,7 +20170,21 @@ def test_qwen35_batch_correctness_omits_blank_visible_device_env(monkeypatch) ->
     }
 
 
-def test_qwen35_retained_hardware_context_uses_visible_hip_device(monkeypatch) -> None:
+@pytest.fixture
+def fake_gpu_telemetry(monkeypatch):
+    from scripts import gpu_smi
+
+    tool = gpu_smi.GpuTool(
+        name="rocm-smi", path=Path("/test-rocm/bin/rocm-smi"), root=Path("/test-rocm")
+    )
+    monkeypatch.setattr(gpu_smi, "resolve_gpu_tool", lambda *args, **kwargs: tool)
+    monkeypatch.setattr(
+        gpu_smi, "_invoke",
+        lambda *args, **kwargs: (0, "GPU[0] VRAM Total Memory"),
+    )
+
+
+def test_qwen35_retained_hardware_context_uses_visible_hip_device(monkeypatch, fake_gpu_telemetry) -> None:
     class FakeHipFunc:
         def __init__(self, func):
             self.func = func
@@ -20222,7 +20236,7 @@ def test_qwen35_retained_hardware_context_uses_visible_hip_device(monkeypatch) -
     assert hardware["visible_device"]["device_name"] == "AMD Radeon RX 7900 XTX"
 
 
-def test_qwen35_c1_baseline_hardware_context_uses_visible_hip_device(monkeypatch) -> None:
+def test_qwen35_c1_baseline_hardware_context_uses_visible_hip_device(monkeypatch, fake_gpu_telemetry) -> None:
     class FakeHipFunc:
         def __init__(self, func):
             self.func = func
@@ -20358,7 +20372,7 @@ def test_qwen35_c1_baseline_artifact_path_self_binding_is_scaling_reference_comp
     assert reference["decode_tok_s_per_request"] == 5.0
 
 
-def test_qwen35_serial_bridge_hardware_context_uses_visible_hip_device(monkeypatch) -> None:
+def test_qwen35_serial_bridge_hardware_context_uses_visible_hip_device(monkeypatch, fake_gpu_telemetry) -> None:
     class FakeHipFunc:
         def __init__(self, func):
             self.func = func
@@ -20411,7 +20425,7 @@ def test_qwen35_serial_bridge_hardware_context_uses_visible_hip_device(monkeypat
 
 
 def test_qwen35_retained_hardware_context_separates_detected_and_target_arch(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, fake_gpu_telemetry,
 ) -> None:
     monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1100")
     monkeypatch.setattr(retained_bench, "detect_hip_target_arches", lambda: ("gfx1151",))
@@ -21049,7 +21063,7 @@ def test_qwen35_retained_profiler_reference_synthesizes_durations_from_trace_csv
     }
 
 
-def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatch) -> None:
+def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatch, fake_gpu_telemetry) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
     monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
     args = argparse.Namespace(
@@ -21123,7 +21137,7 @@ def test_qwen35_retained_payload_mirrors_fallback_native_decode_label(monkeypatc
     assert "--rows 2" in payload["commands"]["correctness_reference"]
 
 
-def test_qwen35_retained_payload_orders_latency_samples_by_admission_row(monkeypatch) -> None:
+def test_qwen35_retained_payload_orders_latency_samples_by_admission_row(monkeypatch, fake_gpu_telemetry) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
     monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
     args = argparse.Namespace(
@@ -23469,7 +23483,7 @@ def test_qwen35_retained_graph_replay_profiler_evidence_blockers_require_graph_d
     assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns bucket counts must cover profiler.kernel_durations_ns" in bucket_blockers
 
 
-def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evidence(monkeypatch) -> None:
+def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evidence(monkeypatch, fake_gpu_telemetry) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
     monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
     monkeypatch.setattr(
@@ -23581,7 +23595,7 @@ def test_qwen35_retained_payload_blocks_acceptance_without_graph_histogram_evide
     assert "execution.scheduler_metadata.graph_bucket_stats.kernel_time_histogram_ns has no observations" in payload["decision"]["reason"]
 
 
-def test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence(monkeypatch) -> None:
+def test_qwen35_retained_payload_blocks_acceptance_without_memory_evidence(monkeypatch, fake_gpu_telemetry) -> None:
     monkeypatch.setattr(retained_bench, "_hardware_context", lambda: {"gpu": "test"})
     monkeypatch.setattr(retained_bench, "_software_context", lambda: {"python": "test"})
     monkeypatch.setattr(
