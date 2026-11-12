@@ -1,0 +1,67 @@
+{
+  "status": "passed",
+  "host": {
+    "hostname": "gfx1151",
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "os": "Linux 7.3.1-1-cachyos"
+  },
+  "compiler": {
+    "hip": "7.15.26333",
+    "clang": "23.0.0git",
+    "llvm_revision": "8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "f343914a95e38d8f9f56886d10de4248738ad94aabb0fa0af8fd1b00c4e82f97",
+      "size_bytes": 16464440224,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8231695824,
+        16463391648
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "source_commit": "3d228fecc36a7fc83a559e8d5cef6c2416dbd6fe",
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1151/policy_gguf.py": "ad524c67e9652bef79185c0c7e4e636f3ab131a6ed010c55d947913e34162e38",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip": "7a11e11219e830e6223f13b2250ff1bc8aafeb3e9a332064cef4a970e34e62ca"
+  },
+  "manifest": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+  "profile": "production",
+  "suite_wall_s": {
+    "loop": 63.45330447133165,
+    "batch": 62.69950823177351
+  },
+  "reduction_percent": 1.1879542694245515,
+  "categories": {
+    "code": {
+      "loop": 21.067470393318217,
+      "batch": 20.81456517346669,
+      "reduction_percent": 1.2004536621147421
+    },
+    "general_en": {
+      "loop": 14.159349718538579,
+      "batch": 13.979778980428819,
+      "reduction_percent": 1.2682131713623201
+    },
+    "general_ja": {
+      "loop": 14.476355586084537,
+      "batch": 14.297294629446696,
+      "reduction_percent": 1.2369201320943213
+    },
+    "mixed_ja_en": {
+      "loop": 13.750128773390315,
+      "batch": 13.607869448431302,
+      "reduction_percent": 1.0346035830174793
+    }
+  },
+  "public_passed": true
+}

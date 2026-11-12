@@ -2,6 +2,22 @@
 
 Last updated: **2026-11-12 UTC**
 
+## Qwen3.8 Q5 verifier tiles — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
+profile, BF16 KV, MTP budget 3, prefix cache off, one request and 64 greedy
+outputs. Public-library category/heldout comparison with fresh sessions and
+parent/candidate/candidate/parent ordering after a warmup each:
+
+| Q5 wide-shape selection | Mean whole-request suite wall |
+| --- | ---: |
+| Previous selection | 63.453 s |
+| Eight-column tiles at both added wide shapes | 62.700 s |
+
+Wall is **1.19% lower**, every category improves, and output IDs and speculative
+controls match across arms/repeats. The baseline already includes the IQ4 change
+below. [Commands, shape screen and validation](results/2026-11-12-gfx1151-q5-col8/NOTES.md).
+
 ## Qwen3.8 IQ4 verifier tile — Radeon 8060S
 
 Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
