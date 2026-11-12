@@ -1,6 +1,27 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-11-10 UTC**
+Last updated: **2026-11-12 UTC**
+
+## Qwen3.8 dense MTP mixed-pair batching — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**
+(Ryzen AI MAX+ 395), default production profile, BF16 KV, prefix cache off,
+MTP budget 3, one request and 64 greedy outputs. Public-library diagnostic:
+ten category prompts plus eight held-outs, one discarded warmup per fresh
+session, loop/batch/batch/loop order.
+
+| Mixed-pair execution | Mean suite wall | Whole-call throughput |
+| --- | ---: | ---: |
+| Previous per-row loop | 63.339 s | 18.188 tok/s |
+| Single batched launch | 62.701 s | 18.373 tok/s |
+
+Batching reduces whole-request wall by **1.01%**; every category improves.
+All batch/loop outputs, acceptance counts and fallback reasons match, including
+repeats. These rates include prompt processing, not just decode. The baseline
+already differs from true AR on `general_en_explain`; this is an optimization
+comparison against the previous MTP path, not an AR-exactness or quality claim.
+[Commands, samples, numerical checks and public trace](results/2026-11-12-gfx1151-qwen38-mixed-pair-batch/NOTES.md).
+
 
 ## Muse Glimmer 30B DFlash — Radeon 8060S (gfx1151)
 

@@ -1,4 +1,4 @@
-"""E6b-1: exact rows==1 (IQ4_XS gate, Q4_K up) pair + SiLU owner.
+"""Exact (IQ4_XS gate, Q4_K up) pair + SiLU owner with independent rows.
 
 The ordered mixed-quant family (IQ4_XS gate, Q4_K up) - 7 gate/up layers
 in the UD artifact - with the fused owner bit-identical to the production
@@ -104,15 +104,15 @@ def gguf_iq4_q4_pair_silu_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the rows==1 (IQ4_XS, Q4_K) pair + SiLU decode owner.
+    """Launch independent (IQ4_XS, Q4_K) pair + SiLU rows.
 
     Bit-exact with single/single/silu_mul: side A carries the local32
     dual's split-K wave contract (the shared ``_local32_waves`` rule), side
     B the dense Q4T16 single's single-wave chain, and both accumulators
     bf16-round exactly where the elementwise kernel would read them.
     """
-    if rows != 1:
-        raise ValueError("IQ4_XS/Q4_K pair + SiLU decode requires rows == 1")
+    if not 1 <= rows <= 65535:
+        raise ValueError("IQ4_XS/Q4_K pair + SiLU requires 1 <= rows <= 65535")
     if in_features <= 0 or in_features % 256:
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % 8:
@@ -158,7 +158,7 @@ def gguf_q4_iq4_pair_silu_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the rows==1 (Q4_K gate, IQ4_XS up) mirror pair + SiLU owner.
+    """Launch independent (Q4_K gate, IQ4_XS up) mirror pair + SiLU rows.
 
     E6b-2's mirror of :func:`gguf_iq4_q4_pair_silu_bf16_bf16_out`: the
     route passes gate-first (Q4_K tiles, IQ4_XS raw), and this wrapper
@@ -166,8 +166,8 @@ def gguf_q4_iq4_pair_silu_bf16_bf16_out(
     epilogue differs on device, taking the gate from the Q4 chain.
     Bit-exact with q4 single + iq4 single + silu_mul for the same reason.
     """
-    if rows != 1:
-        raise ValueError("Q4_K/IQ4_XS pair + SiLU decode requires rows == 1")
+    if not 1 <= rows <= 65535:
+        raise ValueError("Q4_K/IQ4_XS pair + SiLU requires 1 <= rows <= 65535")
     if in_features <= 0 or in_features % 256:
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % 8:

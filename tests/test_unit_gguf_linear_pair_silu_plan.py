@@ -200,7 +200,7 @@ def _execute(
 
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("rows", [2, 4, 8])
-def test_native_mixed_pair_reuses_scalar_silu_plan(monkeypatch, reverse, rows):
+def test_native_mixed_pair_batches_scalar_silu_arithmetic(monkeypatch, reverse, rows):
     keys = (IQ4_XS_DECODE, Q4_T16_DECODE)
     if reverse:
         keys = keys[::-1]
@@ -210,14 +210,14 @@ def test_native_mixed_pair_reuses_scalar_silu_plan(monkeypatch, reverse, rows):
            dispatch_b=_dispatch(keys[1]))
     with gguf_linear_module.native_batch_decode_session(True):
         plan = _resolve(weight_a, weight_b, rows=rows)
-    assert plan.operation == "scalar_pair_rows"
+    assert plan.operation == "registered_pair"
+    assert plan.rows == rows
     events = []
     assert _execute(plan, weight_a, weight_b, events=events, monkeypatch=monkeypatch)
     calls = [event for event in events if event[0] == "call"]
-    assert len(calls) == rows
-    for row, call in enumerate(calls):
-        assert call[2][0] == 100 + row * 5120 * 2
-        assert call[2][3] == 200 + row * 17408 * 2
+    assert len(calls) == 1
+    assert calls[0][2][0] == 100
+    assert calls[0][2][3:7] == (200, rows, 5120, 17408)
     assert _resolve(weight_a, weight_b, rows=rows).operation is None
 
 
