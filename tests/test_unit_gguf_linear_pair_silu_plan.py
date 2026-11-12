@@ -198,6 +198,29 @@ def _execute(
     )
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("rows", [2, 4, 8])
+def test_native_mixed_pair_reuses_scalar_silu_plan(monkeypatch, reverse, rows):
+    keys = (IQ4_XS_DECODE, Q4_T16_DECODE)
+    if reverse:
+        keys = keys[::-1]
+    weight_a = _Weight("a", keys[0].quant)
+    weight_b = _Weight("b", keys[1].quant)
+    _patch(monkeypatch, dispatch_a=_dispatch(keys[0]),
+           dispatch_b=_dispatch(keys[1]))
+    with gguf_linear_module.native_batch_decode_session(True):
+        plan = _resolve(weight_a, weight_b, rows=rows)
+    assert plan.operation == "scalar_pair_rows"
+    events = []
+    assert _execute(plan, weight_a, weight_b, events=events, monkeypatch=monkeypatch)
+    calls = [event for event in events if event[0] == "call"]
+    assert len(calls) == rows
+    for row, call in enumerate(calls):
+        assert call[2][0] == 100 + row * 5120 * 2
+        assert call[2][3] == 200 + row * 17408 * 2
+    assert _resolve(weight_a, weight_b, rows=rows).operation is None
+
+
 def test_pair_silu_plan_q8x2_workspace_boundary(monkeypatch):
     weight_a = _Weight("a", "gguf_q4_k_t16_v1")
     weight_b = _Weight("b", "gguf_q4_k_t16_v1")

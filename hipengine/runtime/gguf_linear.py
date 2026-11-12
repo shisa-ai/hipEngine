@@ -8200,6 +8200,28 @@ def _resolve_gguf_linear_pair_silu_plan(
         rows=rows,
     )
     if rows != 1:
+        if (
+            _native_batch_decode_session_enabled
+            and {dispatch_a.key.quant, dispatch_b.key.quant}
+            == {"gguf_iq4_xs", "gguf_q4_k_t16_v1"}
+        ):
+            # Mixed gate/up verifier rows must use the scalar decode chain,
+            # including its projection rounding before SiLU.
+            with native_batch_decode_session(False):
+                scalar_plan = _resolve_gguf_linear_pair_silu_plan(
+                    weight_a, weight_b, rows=1,
+                    in_features=in_features, out_features=out_features,
+                    backend=resolved_backend, use_gemv_decode=True,
+                    use_q4_t16_sidecar=use_q4_t16_sidecar,
+                    use_q4_t16_dual_interleaved=use_q4_t16_dual_interleaved,
+                    registered_decode_variant=None, layer_id=layer_id,
+                    q8_1_workspace_ptr=q8_1_workspace_ptr,
+                    pair_workspace_ptr=pair_workspace_ptr,
+                    pair_workspace_nbytes=pair_workspace_nbytes,
+                    r28_enabled=r28_enabled,
+                )
+            if scalar_plan.operation == "registered_pair":
+                return replace(scalar_plan, rows=rows, operation="scalar_pair_rows")
         dense_pair_quant = (
             dispatch_a.key.quant
             if dispatch_a.key.quant == dispatch_b.key.quant
@@ -9026,6 +9048,17 @@ def _execute_gguf_linear_pair_silu_plan(
     rows = plan.rows
     in_features = plan.in_features
     out_features = plan.out_features
+
+    if operation == "scalar_pair_rows":
+        scalar_plan = replace(plan, rows=1, operation="registered_pair")
+        for row in range(rows):
+            _execute_gguf_linear_pair_silu_plan(
+                scalar_plan, weight_a, weight_b,
+                int(x_ptr) + row * in_features * DType.BF16.itemsize,
+                int(out_ptr) + row * out_features * DType.BF16.itemsize,
+                stream=stream, libraries=libraries, runtime=runtime,
+            )
+        return True
 
     if operation == "production_q4_chunk_groups":
         token = _target_verifier_rowtile_chunk_child_enabled.set(True)

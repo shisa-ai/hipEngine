@@ -1336,25 +1336,19 @@ Owner: `hipengine/runtime/qwen35_gguf_mtp.py`.
 Scope: `test_dense_q4_k_m_mtp_crosses_1024_via_prelaunch_eager_fallback`,
 `tests/test_live_qwen35_gguf_mtp_e2e.py`, `target_graph_proposal_handoff_boundary_miss`.
 
-**Remaining repair:** reproduce the original crossing in an isolated process on a compatible, idle
-device; trace proposal payload publication, stream order, Conv/GDN scratch and target/journal
-ownership. Because the recorded failure can corrupt later GPU work, do not unskip it in a shared
-broad-suite process. A failing reproduction must retire before any following health check or reset;
-coordinate recovery if the device remains unhealthy.
+**Resolved (2026-11-12):** the lead directed closure using the available
+same-architecture Qwen3.8 artifact rather than retaining a guard pending the
+missing Qwen3.6 file. The historical handoff guard is removed. The live crossing
+exposed a separate mixed IQ4_XS/Q4_K gate/up verifier arithmetic mismatch; native
+verification now reuses the scalar mixed-pair SiLU operation. The isolated
+crossing, reset and fresh-process health request pass, as does public MTP/AR
+output parity with MTP engagement confirmed. See
+`worklog/entries/20261112T082343.471432Z-lhl-mtp-boundary-mixed-pair-408f5e.md`.
 
-Done when: run the isolated regression at
-`tests/test_live_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_mtp_crosses_1024_via_prelaunch_eager_fallback`
-against the original local model and both sides of 1024, plus unrelated contexts and
-B1–B7, before removing the handoff guard. The parent process runs the original guarded body in a
-bounded child and starts a fresh-process health request only after that child exits successfully;
-failure or timeout exits the test session before any following GPU case. Compare host/device proposals, every acceptance
-prefix, payload validity, Conv/GDN/KV/cursors, next-cycle continuity, reset, cancellation and
-teardown; follow it with a fresh-process health request. Then run the complete MTP E2E,
-long-context, lifecycle/API/load packet and an actual `LLM.generate()` request confirming the
-intended path. The long-context harness's host-proposal mode alone cannot certify device handoff.
-Keep `tests/test_unit_qwen35_gguf_mtp_session.py` boundary/submission checks,
-`tests/test_live_gguf_native_spec_cycle.py` launch/binding checks and the delayed metadata-upload
-test in `tests/test_live_qwen35_gguf_nextn_provider.py`.
+Keep the isolated crossing regression and graph capacity/binding checks. Reopen
+only for a new observed failure; the absent original artifact is not a blocker.
+The exact mixed-pair row loop can be replaced by a batched implementation when
+it preserves scalar arithmetic and passes these regressions.
 
 ### R0387 — Dense gfx1100 packed-step profiling follow-up
 

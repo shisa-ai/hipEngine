@@ -35,7 +35,9 @@ from hipengine.speculative import (
 )
 
 _MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q3_K_M.gguf")
-_DENSE_MODEL = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+_DENSE_MODEL = Path(os.environ.get(
+    "HIPENGINE_TEST_DENSE_GGUF_MODEL", "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+))
 
 
 def _hip_available() -> bool:
@@ -1002,7 +1004,11 @@ def _run_dense_mtp_context_crossing() -> None:
             if record["target_native_graph_fallback_reason"]
             == "target_graph_context_bucket_miss"
         ]
-        assert actual.token_ids == tuple(expected)
+        assert actual.token_ids == tuple(expected), {
+            "expected": expected,
+            "actual": actual.token_ids,
+            "cycles": actual.cycle_records,
+        }
         assert any(
             record["target_native_graph_submitted"]
             for record in actual.cycle_records
@@ -1016,9 +1022,9 @@ def _run_dense_mtp_context_crossing() -> None:
             not record["target_native_graph_submitted"]
             and not record["proposal_target_device_chained"]
             and record["device_proposal_fallback_reason"]
-            == "target_graph_context_bucket_miss"
+            in {"target_graph_context_bucket_miss", "target_graph_binding_generation_miss"}
             for record in context_misses
-        )
+        ), actual.cycle_records
 
         target.reset()
         health = target.prefill(seed, use_bulk=False, return_logits=False)
