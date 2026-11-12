@@ -1410,10 +1410,11 @@ def test_rf2_target_graph_cache_separates_short_and_split_k_context_buckets(
     assert launches == [(1023, 1019), (1280, 1024), (1280, 1100)]
     # The cache key carries the sampled-accept bit beside the row count, the
     # device accept/commit bit and the context bucket, so a sampled graph can
-    # never be handed to a greedy row; these are the greedy entries.
+    # never be handed to a greedy row; these are the greedy entries. The final
+    # tuple identifies auxiliary capture layers (empty for these requests).
     assert sorted(session._native_spec_target_graphs) == [
-        (3, False, 1023, False),
-        (3, False, 1280, False),
+        (3, False, 1023, False, ()),
+        (3, False, 1280, False, ()),
     ]
     assert session.last_native_spec_target_fallback_reason is None
     assert session.calls == [
