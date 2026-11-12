@@ -46,31 +46,124 @@ cost mainly to quantized projections; longer-prefix attention also grows per row
 These are verifier-only timings, not end-to-end method rankings.
 [Protocol, selected variants, samples and kernel attribution](results/2026-11-12-qwen38-verifier-width/summary.json).
 
+## Qwen3.8 long-context NextN graphs — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
+profile, BF16 KV, MTP budget 3, one request and 48 greedy outputs. Same-owner
+public-library comparison over ten category prompts plus eight held-outs,
+padded to 970–4082 prompt tokens, in eager/graph/graph/eager order after warmups:
+
+| Proposal execution | Mean whole-request suite wall |
+| --- | ---: |
+| Eager | 210.789 s |
+| Context-scheduled graph | 207.329 s |
+
+Wall is **1.64% lower**, every category improves, and output IDs and speculative
+controls match across arms/repeats. This is a same-owner diagnostic, not a
+fresh-session or MTP-versus-AR claim.
+[Protocol, commands and validation](results/2026-11-12-gfx1151-nextn-long-graphs/NOTES.md).
+
+## Qwen3.8 Q5 verifier tiles — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
+profile, BF16 KV, MTP budget 3, prefix cache off, one request and 64 greedy
+outputs. Public-library category/heldout comparison with fresh sessions and
+parent/candidate/candidate/parent ordering after a warmup each:
+
+| Q5 wide-shape selection | Mean whole-request suite wall |
+| --- | ---: |
+| Previous selection | 63.453 s |
+| Eight-column tiles at both added wide shapes | 62.700 s |
+
+Wall is **1.19% lower**, every category improves, and output IDs and speculative
+controls match across arms/repeats. The baseline already includes the IQ4 change
+below. [Commands, shape screen and validation](results/2026-11-12-gfx1151-q5-col8/NOTES.md).
+
+## Qwen3.8 IQ4 verifier tile — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
+profile, BF16 KV, MTP budget 3, prefix cache off, one request and 64 greedy
+outputs. Public-library ten-category-prompt plus eight-heldout comparison,
+fresh parent/candidate/candidate/parent sessions after a warmup each:
+
+| IQ4 output columns per block | Mean whole-request suite wall |
+| --- | ---: |
+| Eight | 64.804 s |
+| Four | 63.483 s |
+
+Wall is **2.04% lower**, with every category improving and identical output IDs,
+acceptance counts and fallback reasons across arms/repeats. Scalar decode is
+unchanged. [Commands, numerical checks and hardware counters](results/2026-11-12-gfx1151-iq4-col4/NOTES.md).
+
+## Qwen3.8 rollback snapshot batching — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
+profile, BF16 KV, MTP budget 3, prefix cache off, one request and 64 greedy
+outputs. Same-resident-session public-library diagnostic over ten category
+prompts plus eight held-outs, loop/batch/batch/loop order after warmup:
+
+| Snapshot execution | Mean suite wall |
+| --- | ---: |
+| Per-state copy loop | 63.790 s |
+| Pointer-table copy | 62.838 s |
+
+Whole-request wall is **1.49% lower**, with matching output IDs and checked
+speculative controls across arms/repeats. Fresh-session comparisons exposed
+acceptance-count variation in both paths and failed control repeatability;
+this result does not establish a fresh-session speedup or resolve that issue.
+[Protocol, failed comparisons, byte checks and commands](results/2026-11-12-gfx1151-snapshot-copy/NOTES.md).
+
+## Qwen3.8 dense MTP mixed-pair batching — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**
+(Ryzen AI MAX+ 395), default production profile, BF16 KV, prefix cache off,
+MTP budget 3, one request and 64 greedy outputs. Public-library diagnostic:
+ten category prompts plus eight held-outs, one discarded warmup per fresh
+session, loop/batch/batch/loop order.
+
+| Mixed-pair execution | Mean suite wall | Whole-call throughput |
+| --- | ---: | ---: |
+| Previous per-row loop | 63.339 s | 18.188 tok/s |
+| Single batched launch | 62.701 s | 18.373 tok/s |
+
+Batching reduces whole-request wall by **1.01%**; every category improves.
+All batch/loop outputs, acceptance counts and fallback reasons match, including
+repeats. These rates include prompt processing, not just decode. The baseline
+already differs from true AR on `general_en_explain`; this is an optimization
+comparison against the previous MTP path, not an AR-exactness or quality claim.
+[Commands, samples, numerical checks and public trace](results/2026-11-12-gfx1151-qwen38-mixed-pair-batch/NOTES.md).
+The clean-source ten-prompt server confirmation measures MTP complete-request
+wall **35.478 → 35.156 s (−0.91%)**, with unchanged per-arm IDs and acceptance.
+Both runs still fail the same AR-exact comparison on `general_en_explain`.
+[Server confirmation and remaining dense costs](results/2026-11-12-gfx1151-qwen38-dense-followup/NOTES.md).
+
+
 ## Muse Glimmer 30B DFlash — Radeon 8060S (gfx1151)
 
-Muse Glimmer 30B GGUF `Q4_K_M`, host **zbook / Radeon 8060S** (`gfx1151`),
-DFlash block-diffusion speculative decode (draft budget 4), greedy, one
-request. Ten natural mtpbench prompts (code / general / Japanese), 512
-outputs, three measured repetitions after warmup. Decode uses the
-cross-engine transition boundary: output tokens minus the prompt-produced
-first token, divided by the post-prefill decode wall.
+Muse Glimmer 30B GGUF `Q4_K_M` (KQuant-17GB), host **Desktop / Radeon 8060S**
+(`gfx1151`, Ryzen AI MAX+ PRO 395, 128 GiB unified), greedy, one request.
+Ten natural mtpbench prompts (code / general / Japanese), 512 outputs.
+hipEngine runs acceptance-triggered adaptive draft depth; llama.cpp is
+upstream HEAD `3b4d6ab3f` (HIP, flash attention, f16 KV) with
+`draft-dflash`. Decode uses the shared cross-engine transition boundary:
+output tokens minus the prompt-produced first token, divided by the
+post-prefill decode wall.
 
-| Engine | Decode tok/s |
-| --- | ---: |
-| hipEngine DFlash | **21.6** |
-| llama.cpp `draft-dflash` | 21.3 |
-| hipEngine AR (no draft) | 10.9 |
+| Engine | AR decode tok/s | DFlash decode tok/s | DFlash/AR | Draft acceptance |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine | 12.61 | 27.38 | 2.17x | 0.549 |
+| llama.cpp `draft-dflash` | 12.83 | 27.20 | 2.12x | 0.557 |
 
-hipEngine DFlash decode exceeds the llama.cpp `draft-dflash` server on the
-same suite and is **1.98x** its own no-draft AR. Every generated ID equals
-true greedy AR token-for-token: the block verify is bit-identical to AR
-(row-independent weight-amortized projections plus decode-equivalent
-attention), so speculation changes only how many tokens commit per forward,
-never the output. Draft acceptance is 0.49. The rate comes from verifying a
-whole draft block in one target forward and folding the corrected boundary
-token into the next verify rather than running a separate forward for it.
-[hipEngine artifact](results/2026-11-06-gfx1151-muse-glimmer-hipengine-dflash-mtpbench.json) ·
-[llama.cpp baseline](results/2026-11-06-gfx1151-muse-glimmer-llamacpp-dflash-mtpbench-baseline.json).
+DFlash decode is at parity between the two engines (0.7% apart); each is
+about 2.1x its own no-draft AR. hipEngine's generated IDs equal true greedy
+AR token-for-token on every prompt: the block verify is bit-identical to AR,
+so speculation changes only how many tokens commit per forward, never the
+output. hipEngine leads prefill at every measured shape, 1.10-1.20x over
+llama.cpp from 512 to 131K context (371.6 vs 338.4 tok/s at 131K); at short
+prompts both engines are overhead-dominated.
+[hipEngine artifact](results/2026-11-09-gfx1151-muse-glimmer-depth-adaptive-ab.json) ·
+[llama.cpp baseline](results/2026-11-10-gfx1151-muse-glimmer-llamacpp-head-mtpbench.json) ·
+[prefill pairing](results/2026-11-10-gfx1151-muse-prefill-padding-ab-diagnostic.json).
 
 ## 16K INT8/MTP with and without DMS — RX 7900 XTX
 

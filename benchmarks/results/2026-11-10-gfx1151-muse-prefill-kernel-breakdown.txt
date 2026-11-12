@@ -1,0 +1,28 @@
+
+== prefill131072  calls=1  wall/call=457174.41 ms  kernels/call=455592.29 ms  launches/call=213888  gap/call=1582.12 ms
+   muse_glimmer_flash_prefill_wmma_mt_kernel                238185.16 ms   52.3%
+   gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel      163305.91 ms   35.8%
+   Cijk_Alik_Bljk_HSS_BH_Bias_HA_S_SAV_UserArgs_MT96x96x32_MI16x16x1_SN_LDSB0_AFC1_AG0_AGGSUA0_AGNTAB0_AFEM1_AFEM1_ASEM1_BL1_BS1_CD1_1_CLR1_CLS0_CADS0_DTLA0_DTLB0_DTLM0_DTVA0_DTVB0_DTVMXSA0_DTVMXSB0_DTVSM0_DPLB0_EPS0_ELFLR0_EMLLn1_FDSI0_GRPM1_GRVWA8_GRVWB8_GSUAMB_GLS0_HPLR0_ISA1151_ICIW0_IU1_K1_LDSTI0_LBSPPA128_LBSPPB128_LBSPPMXSA0_LBSPPMXSB0_LBSPPM0_LPA16_LPB16_LPMXSA0_LPMXSB0_LPM0_LRVW16_LWPMn1_MIAV1_MIWT3_3_MXLIBL_MXSFNS_MO40_MGRIPM1_NTn1_NTA0_NTB0_NTC0_NTD0_NTE0_NTMXSA0_NTMXSB0_NTM0_NTWS0_NVn1_NVA0_NVB0_NVC0_NVD0_NVE0_NVMXSA0_NVMXSB0_NVM0_NVWS0_NEPBS0_NLCA1_NLCB1_ONLL1_PAP0_PGL0_PGR2_PLR1_PKA0_SGROB0_SIA3_SS1_SPO0_SRVW0_SSO0_SVW1_SK0_SKFTR0_SKFDPO0_SKWS0_SKXCCM0_SNLL0_SIP1_SGRO0_TDMI0_TDMIM0_TDMS0_TIN0_THn1_THA0_THB0_THC0_THD0_THE0_THMXSA0_THMXSB0_THM0_THWS0_TLDS1_TLDSM1_ULSGRO0_USL1_USLMX0_UDFMAC0_UIOFGRO0_UPLRP0_USFGROn1_USI0_VSn1_VWA1_VWB1_WSGRA0_WSGRB0_WS32_WG32_4_1_WGMXCC1  27909.40 ms    6.1%
+   gguf_cast_bf16_to_f16_kernel                               8075.74 ms    1.8%
+   gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct_kernel   5605.13 ms    1.2%
+   silu_mul_separate_out_kernel                               3351.61 ms    0.7%
+   gemma4_add_rmsnorm_scale_kernel                            2804.87 ms    0.6%
+   gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel   1812.63 ms    0.4%
+   gemma4_rmsnorm_kernel                                      1669.58 ms    0.4%
+   f32_to_bf16_kernel                                         1018.78 ms    0.2%
+   gguf_gate_mul_bf16_kernel                                   664.21 ms    0.1%
+   qk_t16_selected_direct_gemv_kernel                          565.83 ms    0.1%
+
+== prefill32768  calls=1  wall/call=72606.56 ms  kernels/call=72214.72 ms  launches/call=53472  gap/call=391.85 ms
+   gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel       40775.91 ms   56.5%
+   muse_glimmer_flash_prefill_wmma_mt_kernel                 17914.99 ms   24.8%
+   Cijk_Alik_Bljk_HSS_BH_Bias_HA_S_SAV_UserArgs_MT96x96x32_MI16x16x1_SN_LDSB0_AFC1_AG0_AGGSUA0_AGNTAB0_AFEM1_AFEM1_ASEM1_BL1_BS1_CD1_1_CLR1_CLS0_CADS0_DTLA0_DTLB0_DTLM0_DTVA0_DTVB0_DTVMXSA0_DTVMXSB0_DTVSM0_DPLB0_EPS0_ELFLR0_EMLLn1_FDSI0_GRPM1_GRVWA8_GRVWB8_GSUAMB_GLS0_HPLR0_ISA1151_ICIW0_IU1_K1_LDSTI0_LBSPPA128_LBSPPB128_LBSPPMXSA0_LBSPPMXSB0_LBSPPM0_LPA16_LPB16_LPMXSA0_LPMXSB0_LPM0_LRVW16_LWPMn1_MIAV1_MIWT3_3_MXLIBL_MXSFNS_MO40_MGRIPM1_NTn1_NTA0_NTB0_NTC0_NTD0_NTE0_NTMXSA0_NTMXSB0_NTM0_NTWS0_NVn1_NVA0_NVB0_NVC0_NVD0_NVE0_NVMXSA0_NVMXSB0_NVM0_NVWS0_NEPBS0_NLCA1_NLCB1_ONLL1_PAP0_PGL0_PGR2_PLR1_PKA0_SGROB0_SIA3_SS1_SPO0_SRVW0_SSO0_SVW1_SK0_SKFTR0_SKFDPO0_SKWS0_SKXCCM0_SNLL0_SIP1_SGRO0_TDMI0_TDMIM0_TDMS0_TIN0_THn1_THA0_THB0_THC0_THD0_THE0_THMXSA0_THMXSB0_THM0_THWS0_TLDS1_TLDSM1_ULSGRO0_USL1_USLMX0_UDFMAC0_UIOFGRO0_UPLRP0_USFGROn1_USI0_VSn1_VWA1_VWB1_WSGRA0_WSGRB0_WS32_WG32_4_1_WGMXCC1   6974.59 ms    9.7%
+   gguf_cast_bf16_to_f16_kernel                               2017.83 ms    2.8%
+   gguf_q6_k_t16_qmicro_planar_dequantize_f16_tile_direct_kernel   1401.45 ms    1.9%
+   silu_mul_separate_out_kernel                                838.08 ms    1.2%
+   gemma4_add_rmsnorm_scale_kernel                             701.85 ms    1.0%
+   gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel    452.83 ms    0.6%
+   gemma4_rmsnorm_kernel                                       417.14 ms    0.6%
+   f32_to_bf16_kernel                                          254.52 ms    0.4%
+   gguf_gate_mul_bf16_kernel                                   167.70 ms    0.2%
+   qk_t16_selected_direct_gemv_kernel                          141.49 ms    0.2%

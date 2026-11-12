@@ -1,0 +1,62 @@
+{
+ "schema": 1,
+ "kind": "decode_optimization_ab",
+ "status": "diagnostic_retained",
+ "date": "2026-11-10",
+ "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified, Desktop)",
+ "hipengine_commit_base": "be3550ba6c2ac45aa98d0d1ba5e8c89f4a68e5d7",
+ "model_path": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+ "changes": [
+  "combine live-scan: skip the -INF block suffix using the device live key end (bit-exact, 160/160 fixtures)",
+  "norm kernel: 256 -> 1024 threads + warp-shuffle block reduction (2 syncs vs 16-20 LDS rounds); production reassociation, see drift evidence",
+  "adaptive split blocks: sticky per-session n_blocks = clamp(ceil(capture_len/64), 16, 64), shared by decode/verify graphs + eager; threshold crossing at 2048 keys re-captures both graph families together"
+ ],
+ "gate_a_llama_bench_shapes": {
+  "protocol": "muse_glimmer_ar_bench.py 3 reps median vs llama.cpp HEAD 3b4d6ab3f same-day 5-rep rows",
+  "rows": [
+   {
+    "workload": "512/128",
+    "before": 12.639,
+    "after": 12.835,
+    "llamacpp": 12.844,
+    "ratio_after": 0.999
+   },
+   {
+    "workload": "1024/128",
+    "before": 12.624,
+    "after": 12.71,
+    "llamacpp": 12.822,
+    "ratio_after": 0.991
+   },
+   {
+    "workload": "4096/128",
+    "before": 12.521,
+    "after": 12.623,
+    "llamacpp": 12.748,
+    "ratio_after": 0.99
+   }
+  ],
+  "caveat": "The 4096 shape crosses the 2048-key threshold inside the 128-token window: the one-time graph re-capture (~150 ms) amortizes to ~1.2 ms/step there. Production generations amortize it over the full output; the 512-output mtpbench pairing below shows the steady state."
+ },
+ "mtpbench_512_outputs": {
+  "hipengine_ar_tok_s": 12.865,
+  "hipengine_dflash_tok_s": 27.539,
+  "llamacpp_ar_tok_s": 12.83,
+  "llamacpp_dflash_tok_s": 27.2,
+  "exactness": "10/10 DFlash == true AR",
+  "note": "hipEngine leads both AR and DFlash on the 512-output suite"
+ },
+ "correctness_evidence": {
+  "combine_scan": "bit-exact 160/160 dual-library fixtures (both split configs, tokens 1/5, 37-131K, windowed, gated, device/null key_end)",
+  "norm_drift": "bf16 outputs bit-identical on 56K fixture elements (5 hidden sizes); f32 reduction reassociation absorbs into bf16 except rare boundary values",
+  "cross_build_greedy_ids": "3 prompts x 64 tokens: 2/3 identical; 1 flips at token 53 (ulp accumulation) \u2014 version-to-version drift per the established production-reassociation contract (same-build determinism + bounded drift), not a same-build nondeterminism",
+  "same_build_determinism": "IDS EQUAL on repeat runs",
+  "adaptive_config_ids": "IDS EQUAL vs forced 64-block on all 3 prompts",
+  "gpu_tests": "2 new short-mode tests (config choice, crossing re-capture, row bit-identity both modes) + 10 live runner/DFlash/exactness tests + 35 GPU suite tests pass"
+ },
+ "verdict": "Decode gap vs llama.cpp narrowed from -1.6% to parity at 512 (128-token window) and a lead on the 512-output mtpbench suite (AR 12.865 vs 12.83, DFlash 27.54 vs 27.20). Gate A llama-bench 1K/4K still ~0.9% behind (partly re-capture amortization in the short window). Remaining lever: cooperative multi-warp short-context attention kernel (llama.cpp flash_attn_tile runs 4.2 us/layer at 512 vs our ~17 us isolated).",
+ "source_artifacts": [
+  "results/2026-11-10-gfx1151-muse-gate-a-decode-opt.json",
+  "results/2026-11-10-gfx1151-muse-decode-opt-exactness.json"
+ ]
+}

@@ -1,0 +1,74 @@
+{
+ "schema": 1,
+ "kind": "prefill_padding_ab",
+ "status": "diagnostic_retained",
+ "date": "2026-11-10",
+ "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified, Desktop)",
+ "hipengine_commit_base": "9036e239fab5584930b536087b6208783dc65d48",
+ "model_path": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+ "change": "muse_glimmer_flash_prefill_wmma_mt_kernel LDS row stride 128 -> 130 halves (260 B): kills the 16-way k_frag bank conflict and spreads staging writes over all 32 banks. Layout only; per-key arithmetic and tile order unchanged.",
+ "protocol": "muse_glimmer_ar_bench.py, 2 reps median, same host/day as the before rows (2026-11-10 Gate A + longctx pairings); llama.cpp comparator = upstream HEAD 3b4d6ab3f same-day rows.",
+ "rows": [
+  {
+   "context": 512,
+   "prefill_before_tok_s": 553.2,
+   "prefill_after_tok_s": 557.9,
+   "prefill_speedup": 1.009,
+   "prefill_wall_after_s": 0.9,
+   "vs_llamacpp_head_before": 1.11,
+   "vs_llamacpp_head_after": 1.119,
+   "decode_before_tok_s": 12.639,
+   "decode_after_tok_s": 12.635
+  },
+  {
+   "context": 1024,
+   "prefill_before_tok_s": 581.6,
+   "prefill_after_tok_s": 591.5,
+   "prefill_speedup": 1.017,
+   "prefill_wall_after_s": 1.7,
+   "vs_llamacpp_head_before": 1.175,
+   "vs_llamacpp_head_after": 1.195,
+   "decode_before_tok_s": 12.624,
+   "decode_after_tok_s": 12.62
+  },
+  {
+   "context": 4096,
+   "prefill_before_tok_s": 544.7,
+   "prefill_after_tok_s": 570.8,
+   "prefill_speedup": 1.048,
+   "prefill_wall_after_s": 7.2,
+   "vs_llamacpp_head_before": 1.136,
+   "vs_llamacpp_head_after": 1.191,
+   "decode_before_tok_s": 12.521,
+   "decode_after_tok_s": 12.517
+  },
+  {
+   "context": 32768,
+   "prefill_before_tok_s": 452.2,
+   "prefill_after_tok_s": 507.2,
+   "prefill_speedup": 1.122,
+   "prefill_wall_after_s": 64.6,
+   "vs_llamacpp_head_before": 1.061,
+   "vs_llamacpp_head_after": 1.19,
+   "decode_before_tok_s": 12.237,
+   "decode_after_tok_s": 12.225
+  },
+  {
+   "context": 131072,
+   "prefill_before_tok_s": 286.4,
+   "prefill_after_tok_s": 371.6,
+   "prefill_speedup": 1.297,
+   "prefill_wall_after_s": 347.4,
+   "vs_llamacpp_head_before": 0.846,
+   "vs_llamacpp_head_after": 1.098,
+   "decode_before_tok_s": 11.303,
+   "decode_after_tok_s": 11.279
+  }
+ ],
+ "kernel_evidence": {
+  "bit_parity": "EXACT on all 12 fixtures (uint16 output sha256 equal): 37/37/0, 64/64/2048, 1024/3000/{0,2048}, 13/2061/2048, 300/300/0, 1024/32768/{0,2048}, 1024/131072/0, 512/131072/2048, 8/131072/0, 1/4096/0",
+  "isolated_speedup": "1.47-2.04x; 1024x131072 full-attention 264.112 -> 139.842 ms (1.89x); 1024x32768 62.533 -> 33.431 ms (1.87x)",
+  "gpu_tests": "tests/test_gpu_muse_glimmer_flash_prefill.py 6/6; decode glue + shared decode suites pass"
+ },
+ "verdict": "131K prefill inversion fixed: 286.4 -> 371.6 tok/s (+29.8%), wall 456.5 -> 347.4 s; vs llama.cpp HEAD 0.846x -> 1.098x. 32K 1.061x -> 1.190x. Gate A shapes +0.9-4.8%. Decode unchanged (path untouched). hipEngine now leads prefill at every measured shape (1.10-1.20x)."
+}

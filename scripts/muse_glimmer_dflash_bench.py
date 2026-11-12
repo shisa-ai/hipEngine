@@ -49,6 +49,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--max-prompts", type=int, default=0, help="0 = all")
     parser.add_argument("--candidate-budget", type=int, default=4)
+    parser.add_argument("--no-adaptive-depth", action="store_true",
+                        help="disable acceptance-triggered depth adaptation (static budget arm)")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -72,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         target_generator=gen,
         config=SpeculativeProviderConfig(
             provider="dflash", draft_model=args.draft, candidate_budget=args.candidate_budget,
+            adaptive_depth=not args.no_adaptive_depth,
         ),
     )
     gen.attach_speculative_provider(provider)
@@ -122,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
                     "target_forwards": c.target_forwards,
                     "draft_forwards": c.draft_forwards,
                     "acceptance": (c.accepted / c.proposed) if c.proposed else None,
+                    "depth_summary": getattr(provider, "last_depth_summary", None),
                 })
                 print(f"[rep {rep}] {prompt['id']}: exact={exact} "
                       f"AR {len(ar_ids)/ar_decode:.2f} tok/s, "
@@ -173,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
         "suite": str(args.suite),
         "max_tokens": args.max_tokens,
         "candidate_budget": args.candidate_budget,
+        "adaptive_depth": not args.no_adaptive_depth,
         "repeats": args.repeats,
         "provenance": prov,
         "gate_b_target_tok_s": 21.300,

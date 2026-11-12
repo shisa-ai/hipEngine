@@ -31,6 +31,7 @@ from hipengine.generation.registry import (
     GenerationRequest,
     GenerationStreamChunk,
 )
+from hipengine.speculative.adaptive_depth import AdaptiveDepthController
 from hipengine.speculative.registry import (
     SpeculativeProviderConfig,
     SpeculativeProviderKey,
@@ -61,6 +62,8 @@ class MuseGlimmerDFlashTextProvider:
         self.config = config
         self.draft_model = Path(config.draft_model).expanduser().resolve()
         self.candidate_budget = int(config.candidate_budget)
+        self.adaptive_depth = bool(getattr(config, "adaptive_depth", True))
+        self.last_depth_summary: dict[str, Any] | None = None
         self._drafter: Any = None
         self._dcfg: Any = None
         # Token ids behind the drafter's KV rows: the drafter keeps a prefix
@@ -147,6 +150,7 @@ class MuseGlimmerDFlashTextProvider:
             "policy": "explicit_attach",
             "streaming_compatible": True,
             "candidate_budget": self.candidate_budget,
+            "adaptive_depth": self.adaptive_depth,
             "exactness_mode": "target_corrected_greedy",
             "execution_path": MUSE_GLIMMER_DFLASH_EXECUTION_PATH,
             "sampling": "greedy_only",
@@ -195,7 +199,11 @@ class MuseGlimmerDFlashTextProvider:
         drafter = self._ensure_drafter()
         dcfg = self._dcfg
         tap_layers = dcfg.target_layers
-        n_draft = min(self.candidate_budget, dcfg.block_size - 1)
+        depth_controller = AdaptiveDepthController(
+            enabled=self.adaptive_depth,
+            initial_budget=min(self.candidate_budget, dcfg.block_size - 1),
+            max_budget_cap=dcfg.block_size - 1,
+        )
         stop_ids = set(request.stop_token_ids) | set(self.target.tokenizer.stop_token_ids)
         configured_eos = (
             self.target.tokenizer.eos_token_id if request.eos_token_id is None
@@ -237,6 +245,8 @@ class MuseGlimmerDFlashTextProvider:
         self.last_prefill_seconds = decode_started - started
         while len(generated) < request.max_tokens:
             raise_if_generation_deadline_expired(request)
+            cycle_start = time.perf_counter()
+            n_draft = depth_controller.begin_cycle()
             root_rows = 1 if pending_root is not None else 0
             if length + root_rows + n_draft + 1 > session.max_context:
                 finish_reason = "length"
@@ -292,6 +302,13 @@ class MuseGlimmerDFlashTextProvider:
                 pending_root = bonus
                 last_committed = bonus
 
+            depth_controller.record_cycle(
+                budget=n_draft,
+                visible_tokens=len(commit),
+                cycle_wall_ms=(time.perf_counter() - cycle_start) * 1000.0,
+                accepted_tokens=accepted,
+                proposed_tokens=n_draft,
+            )
             for token in commit:
                 if len(generated) >= request.max_tokens:
                     break
@@ -307,6 +324,7 @@ class MuseGlimmerDFlashTextProvider:
         self._drafter_tokens = session.history[:rows].copy()
         text = self.target.tokenizer.decode(generated, skip_special=False)
         self.last_decode_seconds = time.perf_counter() - decode_started
+        self.last_depth_summary = depth_controller.summary()
         self.target.last_generation_seconds = time.perf_counter() - started
         return GenerationOutput(
             text=text,

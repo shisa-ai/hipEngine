@@ -6254,19 +6254,11 @@ class Qwen35GGUFFullStackRunner:
                         runtime=runtime,
                     )
                 else:
-                    # Below the split threshold the scalar owner picks its
-                    # short-context batch leaf from this row's own ``position + 1``
-                    # cap. That leaf takes the cap as a scalar argument, so it is
-                    # only the scalar owner's arithmetic when the caller can
-                    # vouch for the row's position: the eager verifier stages the
-                    # metadata it reads back, while the captured target graph
-                    # updates positions on device and the host mirror is a
-                    # capture-time guess. Using a guessed cap launches the batch
-                    # leaf with the wrong live count and breaks AR identity on the
-                    # retained 3-prompt ladder (shared prefix 7/16). Without that
-                    # guarantee the plain span leaf is the correct choice: its
-                    # loop is bounded by the row's own live count, so the
-                    # span-wide limit stays inert.
+                    # The batch leaf reads live counts on device. Eager rows
+                    # use their exact cap; graph rows use the immutable bucket
+                    # bound, never the capture-time host position. Select the
+                    # scalar owner's variant only when that whole bound lies
+                    # within its short-context range.
                     row_active_context = int(row_scratch.position_host[0]) + 1
                     row_short_batch_max_context = max(
                         0,
@@ -6278,10 +6270,12 @@ class Qwen35GGUFFullStackRunner:
                             )
                         ),
                     )
-                    if (
-                        row_views_have_scalar_caps
-                        and 0 < row_active_context <= row_short_batch_max_context
-                    ):
+                    batch_context_limit = (
+                        row_active_context
+                        if row_views_have_scalar_caps
+                        else attention_context_limit
+                    )
+                    if 0 < batch_context_limit <= row_short_batch_max_context:
                         self._full_attn_decode_short_batch_fn(
                             row_scratch.decode_spans
                         )(
@@ -6291,7 +6285,7 @@ class Qwen35GGUFFullStackRunner:
                             context_ptr,
                             row_scratch.decode_spans,
                             1,
-                            row_active_context,
+                            batch_context_limit,
                             row_scratch.block_size,
                             cfg.head_count,
                             cfg.head_count_kv,
@@ -13403,6 +13397,7 @@ class Qwen35GGUFResidentSession:
     _bulk_prefill_full_prompt_capacity_rows: int = field(default=0, init=False)
     _bulk_prefill_hidden_planes: int = field(default=0, init=False)
     _prefill_f16_staging_buf: object | None = field(default=None, init=False)
+    _prefill_fullgemm_workspace: object | None = field(default=None, init=False)
     _iq_dense_mmq_buf: object | None = field(default=None, init=False)
     _q6_integer_mmq_library: object | None = field(default=None, init=False)
     _iq_dense_mmq_library: object | None = field(default=None, init=False)
@@ -15177,6 +15172,7 @@ class Qwen35GGUFResidentSession:
                 f"resident slot view {index} outside [1, {int(owner.slot_count)})"
             )
         view = copy(self)
+        view._prefill_fullgemm_workspace = None
         view.__dict__["_resident_state_storage"] = ResidentStateStorage()
         view.__dict__["_graph_lifetime_state"] = Qwen35GGUFGraphLifetime()
         view._state_storage().canonical.owns_scratch = False
@@ -18617,10 +18613,16 @@ class Qwen35GGUFResidentSession:
         if not bool(self.use_prefill_f16_staging):
             return prefill_f16_staging_session(False)
         buffer = self._ensure_prefill_f16_staging_buffer()
+        if self._prefill_fullgemm_workspace is None:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import (
+                Q6FullGemmWorkspace,
+            )
+            self._prefill_fullgemm_workspace = Q6FullGemmWorkspace()
         return prefill_f16_staging_session(
             True,
             workspace_ptr=int(buffer.ptr),
             workspace_nbytes=int(buffer.nbytes),
+            workspace_owner=self._prefill_fullgemm_workspace,
         )
 
     def _wide_f16_activation_context(self):
@@ -21016,8 +21018,8 @@ class Qwen35GGUFResidentSession:
                 # device FP32 buffer (D2D), so the generic drafter can consume
                 # them without a per-cycle D2H. The rows sit at scratch_row_start
                 # (0 for a reusable/prebuilt graph scratch), matching the
-                # pre-output-norm graph capture. Host capture keeps the legacy
-                # eager offset.
+                # pre-output-norm graph capture. Host capture reads the same
+                # physical scratch rows rather than logical token positions.
                 if _enqueue_only:
                     dest = (
                         None
@@ -21053,7 +21055,7 @@ class Qwen35GGUFResidentSession:
                         runtime=runtime,
                     ).reshape(rows, self.runner.hidden_size)
                 return _copy_bf16_rows_to_host_f32(
-                    hidden.ptr + start * row_nbytes,
+                    hidden.ptr + scratch_row_start * row_nbytes,
                     rows,
                     self.runner.hidden_size,
                     runtime=runtime,
@@ -29933,12 +29935,19 @@ class Qwen35GGUFResidentSession:
         self._verify_logits_buf = None
         self._verify_lm_rows_capacity = 0
 
+    def _close_prefill_fullgemm_workspace(self) -> None:
+        owner = self._prefill_fullgemm_workspace
+        if owner is not None:
+            owner.close()
+            self._prefill_fullgemm_workspace = None
+
     def _close_resident_slot_view_buffers(self, *, runtime: HipRuntime) -> None:
         """Release allocations grown by one lightweight resident slot view."""
 
         if getattr(self, "_resident_batch_owner", None) is None:
             raise RuntimeError("resident slot-view cleanup requires a batch owner")
         self._check_state_capture_released()
+        self._close_prefill_fullgemm_workspace()
         self._close_prefix_snapshot_pool()
         native_sampler = self._native_sampler_workspace
         if native_sampler is not None:
@@ -30003,6 +30012,7 @@ class Qwen35GGUFResidentSession:
             self.__dict__["_construction_rollback_errors"] = ()
             return ()
 
+        attempt("prefill-fullgemm-workspace", self._close_prefill_fullgemm_workspace)
         recorder = self.__dict__.get("_prefill_flight_recorder")
         if recorder is not None:
             synchronized = True
@@ -30211,6 +30221,7 @@ class Qwen35GGUFResidentSession:
         views = tuple(self.__dict__.get("_resident_slot_views", ()))
         for view in views:
             view._check_state_capture_released()
+        self._close_prefill_fullgemm_workspace()
         self._close_prefix_snapshot_pool()
         for view in reversed(views):
             view._close_resident_slot_view_buffers(runtime=runtime)

@@ -37,6 +37,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.runtime import MemcpyKind
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import Q6FullGemmWorkspace
 from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_bf16_add,
@@ -133,6 +134,7 @@ class MuseGlimmerResidentSession:
         self._history_valid = 0
         self._image_overrides: dict[int, np.ndarray] | None = None
         self._scratch: _SessionScratch | None = None
+        self._prefill_fullgemm_workspace = Q6FullGemmWorkspace()
         self._kv: list[tuple[DeviceBuffer, DeviceBuffer]] = []
         self._buffers: list[DeviceBuffer] = []
         self._allocate()
@@ -311,6 +313,7 @@ class MuseGlimmerResidentSession:
     def close(self) -> None:
         if self._closed:
             return
+        self._prefill_fullgemm_workspace.close()
         self._closed = True
         if self._scratch is not None:
             self._scratch.close(self.runtime)
@@ -347,6 +350,7 @@ class MuseGlimmerResidentSession:
             True,
             workspace_ptr=int(self._f16_staging.ptr),
             workspace_nbytes=int(self._f16_staging.nbytes),
+            workspace_owner=self._prefill_fullgemm_workspace,
         ):
             for begin, end in self._prefill_chunks(ids.size, int(start)):
                 logits = self._forward_block(ids[begin:end], position_offset=begin)
@@ -359,6 +363,7 @@ class MuseGlimmerResidentSession:
         self._require_open()
         if self._length >= self.max_context:
             raise ValueError("the KV cache is full; reset or raise max_context")
+        self._cross_attn_split_threshold()
         if self._image_overrides is None:
             graph = self._ensure_decode_graph()
             if graph is not None:
@@ -368,6 +373,52 @@ class MuseGlimmerResidentSession:
         )
 
     # -- HIP graph decode --------------------------------------------------
+    def _attn_split_config(self):
+        """Sticky (split_keys, n_blocks) shared by every decode/verify path.
+
+        Memoized at first use so the decode graph, the verify graphs, and the
+        eager fallback all run the same split config (the row bit-identity
+        contract). Short live ranges use fewer blocks (min 16, one per
+        64-key split at capture, capped at 64); the threshold crossing flips
+        the session to the full 64-block config.
+        """
+        cfg = getattr(self, "_attn_split_cfg", None)
+        if cfg is None:
+            if self._length <= self._ATTN_SHORT_THRESHOLD:
+                n_blocks = max(self._ATTN_SHORT_MIN_BLOCKS,
+                               (self._length + self._DECODE_ATTN_SPLIT_KEYS - 1)
+                               // self._DECODE_ATTN_SPLIT_KEYS)
+                n_blocks = min(n_blocks, self._DECODE_ATTN_BLOCKS)
+            else:
+                n_blocks = self._DECODE_ATTN_BLOCKS
+            cfg = (self._DECODE_ATTN_SPLIT_KEYS, n_blocks)
+            self._attn_split_cfg = cfg
+        return cfg
+
+    def _cross_attn_split_threshold(self):
+        """Invalidate both graph families when the live range crosses the
+        short-mode threshold, so decode and verify re-capture together with
+        the same split config. No-op before the first config memoization."""
+        cfg = getattr(self, "_attn_split_cfg", None)
+        if cfg is None:
+            return
+        want = (self._DECODE_ATTN_BLOCKS if self._length > self._ATTN_SHORT_THRESHOLD
+                else cfg[1])
+        if cfg[1] == self._DECODE_ATTN_BLOCKS or want == cfg[1]:
+            return
+        self._attn_split_cfg = (self._DECODE_ATTN_SPLIT_KEYS, self._DECODE_ATTN_BLOCKS)
+        rt = self.runtime
+        if getattr(self, "_graph_exec", 0):
+            rt.graph_exec_destroy(self._graph_exec)
+            self._graph_exec = 0
+        self._graph_failed = False
+        cache = getattr(self, "_verify_graph_exec", None)
+        if cache:
+            for g in cache.values():
+                rt.graph_exec_destroy(g)
+            cache.clear()
+        self._verify_graph_failed = False
+
     def _ensure_decode_graph(self):
         """Capture the decode step once; replay eliminates the per-step host
         dispatch bubble (~17 ms at 1068 launches). Returns the exec handle or
@@ -384,10 +435,12 @@ class MuseGlimmerResidentSession:
                 muse_glimmer_decode_attention_shared, muse_glimmer_kv_append,
             )
 
-            stream = rt.stream_create()
+            stream = getattr(self, "_graph_stream", 0) or rt.stream_create()
             # One staging allocation [token, pos, key_end] (int64) so each
             # replay uploads its position-dependent inputs in a single copy.
-            self._g_staging = malloc(24, runtime=rt)
+            # Reused across threshold-crossing re-captures.
+            if getattr(self, "_g_staging", None) is None:
+                self._g_staging = malloc(24, runtime=rt)
             base = self._g_staging.ptr
             self._g_token = DeviceBuffer(ptr=base, nbytes=8)
             self._g_pos = DeviceBuffer(ptr=base + 8, nbytes=8)
@@ -492,7 +545,7 @@ class MuseGlimmerResidentSession:
                 self.attn_partials.ptr,
                 n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
                 key_begin=0, key_end=self.max_context,
-                split_keys=self._DECODE_ATTN_SPLIT_KEYS, n_blocks=self._DECODE_ATTN_BLOCKS,
+                split_keys=self._attn_split_config()[0], n_blocks=self._attn_split_config()[1],
                 tokens=1, window=cfg.sliding_window if is_swa else 0,
                 key_end_dev=self._g_key_end.ptr, gate_ptr=self.gate_bf16.ptr,
                 scale=float(d) ** -0.5, **kw,
@@ -697,7 +750,7 @@ class MuseGlimmerResidentSession:
                 self.attn_partials.ptr,
                 n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
                 key_begin=0, key_end=self.max_context,
-                split_keys=self._DECODE_ATTN_SPLIT_KEYS, n_blocks=self._DECODE_ATTN_BLOCKS,
+                split_keys=self._attn_split_config()[0], n_blocks=self._attn_split_config()[1],
                 tokens=tokens, window=cfg.sliding_window if is_swa else 0,
                 key_end_dev=self._vg_key_end.ptr, gate_ptr=self.gate_bf16.ptr,
                 scale=float(d) ** -0.5, **kw)
@@ -799,6 +852,7 @@ class MuseGlimmerResidentSession:
             True,
             workspace_ptr=int(self._f16_staging.ptr),
             workspace_nbytes=int(self._f16_staging.nbytes),
+            workspace_owner=self._prefill_fullgemm_workspace,
         ):
             for begin, end in self._prefill_chunks(ids.size, int(start)):
                 logits, taps = self._forward_block(
@@ -840,6 +894,7 @@ class MuseGlimmerResidentSession:
         """
 
         self._require_open()
+        self._cross_attn_split_threshold()
         ids = np.asarray(token_ids, dtype=np.int64)
         if ids.ndim != 1 or ids.size == 0:
             raise ValueError("verify needs a non-empty block")
@@ -1083,8 +1138,8 @@ class MuseGlimmerResidentSession:
                     self.attn_partials.ptr,
                     n_q_heads=cfg.n_heads, n_kv_heads=cfg.n_kv_heads,
                     key_begin=0, key_end=keys,
-                    split_keys=self._DECODE_ATTN_SPLIT_KEYS,
-                    n_blocks=self._DECODE_ATTN_BLOCKS,
+                    split_keys=self._attn_split_config()[0],
+                    n_blocks=self._attn_split_config()[1],
                     tokens=tokens, window=cfg.sliding_window if is_swa else 0,
                     gate_ptr=self.gate_bf16.ptr if self._exact_multirow else 0,
                     scale=float(d) ** -0.5, runtime=rt,
@@ -1242,6 +1297,15 @@ class MuseGlimmerResidentSession:
     # largest verify block the partial scratch holds.
     _DECODE_ATTN_SPLIT_KEYS = 64
     _DECODE_ATTN_BLOCKS = 64
+    # Short live ranges run fewer split blocks: empty blocks still launch and
+    # the combine still scans, so a 512-key range on 64 blocks costs ~24 us
+    # vs ~17 us on 16. The block count is chosen once per session (sticky,
+    # shared by the decode graph, verify graphs, and eager fallback because
+    # row bit-identity requires the same split config on both sides) and
+    # crosses to the full 64 blocks once the live range outgrows the
+    # threshold; both graph families re-capture together at the crossing.
+    _ATTN_SHORT_THRESHOLD = 2048
+    _ATTN_SHORT_MIN_BLOCKS = 16
     _MAX_VERIFY_ROWS = 32
     _ATTN_GROUP_WAVES = 2
     _ATTN_OUTPUT_WAVES = 4

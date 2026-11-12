@@ -1397,33 +1397,6 @@ role-policy and dense-metadata contracts; then GPU global/SWA parity across part
 and verifier cases plus public `LLM.generate()` at short, boundary-neighbor and unrelated lengths.
 Confirm selected variants, append ordering, state/output equality and cleanup.
 
-### R0385 — Observed target/proposal sentinel crossing repair
-
-Owner: `hipengine/runtime/qwen35_gguf_mtp.py`.
-
-Scope: `test_dense_q4_k_m_mtp_crosses_1024_via_prelaunch_eager_fallback`,
-`tests/test_live_qwen35_gguf_mtp_e2e.py`, `target_graph_proposal_handoff_boundary_miss`.
-
-**Remaining repair:** reproduce the original crossing in an isolated process on a compatible, idle
-device; trace proposal payload publication, stream order, Conv/GDN scratch and target/journal
-ownership. Because the recorded failure can corrupt later GPU work, do not unskip it in a shared
-broad-suite process. A failing reproduction must retire before any following health check or reset;
-coordinate recovery if the device remains unhealthy.
-
-Done when: run the isolated regression at
-`tests/test_live_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_mtp_crosses_1024_via_prelaunch_eager_fallback`
-against the original local model and both sides of 1024, plus unrelated contexts and
-B1–B7, before removing the handoff guard. The parent process runs the original guarded body in a
-bounded child and starts a fresh-process health request only after that child exits successfully;
-failure or timeout exits the test session before any following GPU case. Compare host/device proposals, every acceptance
-prefix, payload validity, Conv/GDN/KV/cursors, next-cycle continuity, reset, cancellation and
-teardown; follow it with a fresh-process health request. Then run the complete MTP E2E,
-long-context, lifecycle/API/load packet and an actual `LLM.generate()` request confirming the
-intended path. The long-context harness's host-proposal mode alone cannot certify device handoff.
-Keep `tests/test_unit_qwen35_gguf_mtp_session.py` boundary/submission checks,
-`tests/test_live_gguf_native_spec_cycle.py` launch/binding checks and the delayed metadata-upload
-test in `tests/test_live_qwen35_gguf_nextn_provider.py`.
-
 ### R0387 — Dense gfx1100 packed-step profiling follow-up
 
 Owner: `hipengine/runtime/gguf_linear.py`.
@@ -1765,21 +1738,6 @@ discussion is historical evidence, not permission to weaken the current gate or 
 defaults. Preserve exact comparison modes, independently useful kernels and current automatic
 dispatch. If retiring candidate modes, inventory their harness callers and remove only
 candidate-specific wiring/tests after preserving the required comparisons.
-
-### R0522 — Retire the scalar Muse Glimmer split decode-attention kernel
-
-Owner: `hipengine/kernels/hip_gfx1100/attention/muse_glimmer_decode_attention.hip`.
-
-Scope: `muse_glimmer_decode_attn_split_kernel`, `hipengine_muse_glimmer_decode_attn`,
-`hipengine_muse_glimmer_decode_attn_gated`, the `muse_glimmer` attention_decode registry key,
-`tests/test_unit_muse_glimmer_decode_attention.py`, the gated case in
-`tests/test_gpu_muse_glimmer_decode_glue.py`, and the `--kernel split` mode of
-`scripts/muse_glimmer_decode_attn_scale.py`.
-
-Done when: AR decode and the DFlash verify both run `muse_glimmer_decode_attention_shared`, so the
-scalar split kernel is reachable only from its tests and the comparison probe. Remove it, its
-launchers, registry key and tests together once no caller needs the before/after comparison; the
-combine kernels stay because the shared kernel uses them.
 
 ### R0521 — Revisit backend-specific decode graph engagement separately from telemetry
 

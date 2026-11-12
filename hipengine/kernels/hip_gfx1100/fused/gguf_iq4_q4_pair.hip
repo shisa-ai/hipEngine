@@ -146,6 +146,8 @@ void iq4_q4_pair_silu_kernel(
     uint16_t* __restrict__ out,
     int64_t K,
     int64_t N) {
+  x += int64_t(blockIdx.y) * K;
+  out += int64_t(blockIdx.y) * N;
   const int tid = threadIdx.x;
   const int wave = tid >> 5;
   const int lane = tid & 31;
@@ -543,9 +545,9 @@ void iq4_q4_pair_silu_kernel(
 extern "C" int hipengine_gguf_iq4_q4_pair_silu(const void* x, const void* wa,
     const void* wb, void* out, int64_t rows, int64_t K, int64_t N, int waves,
     void* stream) {
-    if (!x || !wa || !wb || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
+    if (!x || !wa || !wb || !out || rows <= 0 || rows > 65535 || K <= 0 || K % 256 || N <= 0 || N % 8)
         return int(hipErrorInvalidValue);
-    const dim3 grid(unsigned((N + COLS - 1) / COLS));
+    const dim3 grid(unsigned((N + COLS - 1) / COLS), unsigned(rows));
     const hipStream_t s = (hipStream_t)stream;
     int err;
     switch (waves) {
@@ -577,9 +579,9 @@ extern "C" int hipengine_gguf_iq4_q4_pair_silu(const void* x, const void* wa,
 extern "C" int hipengine_gguf_q4_iq4_pair_silu(const void* x, const void* wa,
     const void* wb, void* out, int64_t rows, int64_t K, int64_t N, int waves,
     void* stream) {
-    if (!x || !wa || !wb || !out || rows != 1 || K <= 0 || K % 256 || N <= 0 || N % 8)
+    if (!x || !wa || !wb || !out || rows <= 0 || rows > 65535 || K <= 0 || K % 256 || N <= 0 || N % 8)
         return int(hipErrorInvalidValue);
-    const dim3 grid(unsigned((N + COLS - 1) / COLS));
+    const dim3 grid(unsigned((N + COLS - 1) / COLS), unsigned(rows));
     const hipStream_t s = (hipStream_t)stream;
     int err;
     switch (waves) {

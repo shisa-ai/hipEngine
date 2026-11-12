@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 """Mixed-length serving ITL measurement for the empty-split elimination A/B.
 
-Protocol: one ~128K-token request streams 64 decode tokens. After 16 decode
-chunks (alone phase), three ~520-token requests with 32 outputs are admitted
+Protocol: one ~64K-token request streams 128 decode tokens. After 24 decode
+chunks (alone phase), three ~520-token requests with 64 outputs are admitted
 concurrently (mixed phase). Per-token arrival timestamps give ITL in each
 phase; short-request wall times are recorded separately. Run identically
 against the pre-fix and post-fix builds on the same host.
+
+Protocol requirements (learned the hard way):
+- Server must run with --prefix-cache off so every run pays the same cold
+  prefill, HIPENGINE_SPECULATIVE_MTP_SERVING=off, and the retained decode
+  profile (HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1).
+- Requests use ignore_eos=true AND a seeded counting continuation tail;
+  otherwise the model finishes its answer and emits invisible special tokens
+  (the server streams only non-empty text deltas, so event counts silently
+  undercount tokens and phases collapse).
+- Primary metric is the window-average decode rate (burstiness-invariant);
+  median inter-chunk interval is NOT valid because SSE delivery is bursty.
 """
 from __future__ import annotations
 
@@ -24,7 +35,7 @@ PARA = ("The quick brown fox jumps over the lazy dog while the inventory system 
 def post_completion(base, model, prompt, max_tokens, stream):
     body = json.dumps({
         "model": model, "prompt": prompt, "max_tokens": max_tokens,
-        "temperature": 0.0, "stream": stream,
+        "temperature": 0.0, "stream": stream, "ignore_eos": True,
     }).encode()
     return urllib.request.Request(
         base + "/v1/completions", data=body,
@@ -102,10 +113,12 @@ def main():
     ap.add_argument("--label", required=True)
     args = ap.parse_args()
 
-    long_prompt = ("Summarize the following log in one sentence.\n"
-                   + PARA * args.long_paras + "\nSummary:")
-    short_prompt = ("Answer briefly.\n" + PARA * 20
-                    + "\nQuestion: what animal jumps over the dog?")
+    long_prompt = (PARA * args.long_paras
+                   + "\nIgnore the log above. Count from one to five hundred as words, "
+                     "comma separated. Begin: one, two, three,")
+    short_prompt = (PARA * 20
+                    + "\nIgnore the log above. Count from one to five hundred as words, "
+                      "comma separated. Begin: one, two, three,")
 
     state = {"times": [], "done": False}
     cond = threading.Condition()
@@ -164,6 +177,12 @@ def main():
         "long_decode_mixed_avg_ms": (
             (mixed_with_boundary[-1] - mixed_with_boundary[0]) * 1000
             / (len(mixed_with_boundary) - 1)) if len(mixed_with_boundary) > 1 else None,
+        "phase_window_avg_ms": {
+            "alone": ((alone[-1] - alone[0]) * 1000 / (len(alone) - 1)) if len(alone) > 1 else None,
+            "mixed": ((t_mixed_end - t_mixed_start) * 1000 / len(mixed)) if mixed else None,
+            "post": ((post[-1] - post[0]) * 1000 / (len(post) - 1)) if len(post) > 1 else None,
+        },
+        "phase_chunk_counts": {"alone": len(alone), "mixed": len(mixed), "post": len(post)},
         "itl_alone": itl_stats(alone),
         "itl_mixed": itl_stats(mixed_with_boundary),
         "itl_post": itl_stats(post),

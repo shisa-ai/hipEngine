@@ -1,0 +1,53 @@
+{
+ "schema": 1,
+ "kind": "gate_a_same_day_pairing",
+ "status": "diagnostic_retained",
+ "date": "2026-11-10",
+ "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified, Desktop)",
+ "hipengine_commit": "d6068cd082d086ca6bb4ea7547b01a0eb1125d3e",
+ "llama_cpp_commit": "3b4d6ab3f79651935fba1dd93732f29022a7f5f5",
+ "model_path": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+ "protocol": "P0 llama-bench shapes 512/128, 1024/128, 4096/128; -ngl 99 -fa 1 -ctk f16 -ctv f16. hipEngine: scripts/muse_glimmer_ar_bench.py, 3 reps median, model-step decode boundary matched to llama-bench tg; llama.cpp: scripts/llamacpp_bench_with_peak.py, 5 reps. Same host, same day, serial runs.",
+ "rows": [
+  {
+   "workload": "512/128",
+   "hipengine_prefill_tok_s": 553.2,
+   "llamacpp_prefill_tok_s": 498.5,
+   "prefill_ratio": 1.11,
+   "hipengine_decode_tok_s": 12.639,
+   "llamacpp_decode_tok_s": 12.844,
+   "decode_ratio": 0.984
+  },
+  {
+   "workload": "1024/128",
+   "hipengine_prefill_tok_s": 581.6,
+   "llamacpp_prefill_tok_s": 494.8,
+   "prefill_ratio": 1.176,
+   "hipengine_decode_tok_s": 12.624,
+   "llamacpp_decode_tok_s": 12.822,
+   "decode_ratio": 0.985
+  },
+  {
+   "workload": "4096/128",
+   "hipengine_prefill_tok_s": 544.7,
+   "llamacpp_prefill_tok_s": 479.4,
+   "prefill_ratio": 1.136,
+   "hipengine_decode_tok_s": 12.521,
+   "llamacpp_decode_tok_s": 12.748,
+   "decode_ratio": 0.982
+  }
+ ],
+ "verdict": {
+  "prefill": "hipEngine leads at all three shapes: 1.11x / 1.18x / 1.14x. Gate A prefill win condition MET vs upstream HEAD (Nov-6 checkpoint was behind: 333/333/300 vs 394/386/376; campaign landing lifted it ~66-81%).",
+  "decode": "hipEngine trails by ~1.6-1.8% at all three shapes (0.984x / 0.985x / 0.982x). Gate A decode win condition NOT met vs HEAD; the same ~2% AR gap appears in the mtpbench pairing (12.61 vs 12.83).",
+  "gate_a_overall": "OPEN on decode only. Both engines improved substantially over the Nov-6 P0 baseline (llama.cpp prefill 394->498, decode 12.24->12.84 at 512)."
+ },
+ "caveats": [
+  "llama-bench peak-VRAM sampling read the wrong card on this unified-memory host (0.145 GiB deltas); memory figures not comparable to the P0 GTT-sampled baseline and not used.",
+  "Diagnostic pairing; retained Gate A rollup still requires the campaign correctness gate attachment."
+ ],
+ "source_artifacts": [
+  "results/2026-11-10-gfx1151-muse-gate-a-hipengine-current.json",
+  "results/2026-11-10-gfx1151-muse-gate-a-llamacpp-head.json"
+ ]
+}

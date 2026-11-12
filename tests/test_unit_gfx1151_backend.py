@@ -1643,7 +1643,12 @@ def test_gfx1151_backend_overrides_q5_rowtile_with_scoped_col8_wrapper(
     wrapper = gfx1151_backend._gguf_q5_k_t16_gemv_rowtile_gfx1151_bf16_bf16_out
     wrapper(1, 2, 3, 8, 6_144, 5_120)
     wrapper(1, 2, 3, 4, 2_048, 1_024)
-    assert calls == ["col8", "col4"]
+    for rows in (2, 3, 4, 8):
+        wrapper(1, 2, 3, rows, 5_120, 17_408)
+        wrapper(1, 2, 3, rows, 5_120, 12_288)
+    wrapper(1, 2, 3, 4, 5_120, 1_024)
+    wrapper(1, 2, 3, 4, 5_120, 6_144)
+    assert calls == ["col8", "col4"] + ["col8"] * 8 + ["col4", "col4"]
 
 
 def test_gfx1151_backend_declares_generation2_physical_widths() -> None:

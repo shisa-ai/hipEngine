@@ -3389,6 +3389,8 @@ class Qwen35ParoResidentSession:
             self._set_position(position, stream=stream)
             self.runtime.stream_synchronize(stream)
             self.runtime.stream_begin_capture(stream)
+            previous_context_limit = getattr(self, "_decode_graph_context_limit", None)
+            self._decode_graph_context_limit = position + replay_span
             try:
                 for offset in range(steps_per_replay):
                     self._step_from_device_token(
@@ -3408,6 +3410,8 @@ class Qwen35ParoResidentSession:
                 except Exception:
                     pass
                 raise
+            finally:
+                self._decode_graph_context_limit = previous_context_limit
             graph_exec = self.runtime.graph_instantiate(graph)
         except Exception:
             if graph:
@@ -3627,7 +3631,12 @@ class Qwen35ParoResidentSession:
         decode_max_live_count = self.max_sequence_length
         position_arr = getattr(self, "position_arr", None)
         context_arr = getattr(self, "context_arr", None)
-        if position_arr is not None and context_arr is not None and int(slot) < len(position_arr):
+        graph_context_limit = getattr(self, "_decode_graph_context_limit", None)
+        if graph_context_limit is not None:
+            # Device counts advance on replay; host mirrors describe capture only.
+            append_max_live_count = int(graph_context_limit) - 1
+            decode_max_live_count = int(graph_context_limit)
+        elif position_arr is not None and context_arr is not None and int(slot) < len(position_arr):
             append_max_live_count = max(0, int(position_arr[int(slot)]))
             decode_max_live_count = max(1, int(context_arr[int(slot)]))
         append_spans = KVLiveSpans.paged_uniform(

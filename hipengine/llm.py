@@ -381,6 +381,7 @@ class LLM:
         speculative_provider: str | None = None,
         draft_model: str | None = None,
         speculative_candidate_budget: int | None = None,
+        speculative_adaptive_depth: bool | None = None,
         mtp_hot_vocab: str | None = _MTP_HOT_VOCAB_UNSET,
         kv_storage: str | None = None,
         kv_scale_dtype: str | None = None,
@@ -484,6 +485,7 @@ class LLM:
         self.draft_model = drafter
         self.mtp_hot_vocab = mtp_hot_vocab
         self.speculative_candidate_budget = candidate_budget
+        self.speculative_adaptive_depth = speculative_adaptive_depth
         # An omitted budget resolves from capability data when the resident
         # generator loads; ``requested`` keeps the caller's intent for reporting.
         self.speculative_candidate_budget_requested = candidate_budget
@@ -1721,6 +1723,10 @@ class LLM:
                         provider=effective_provider,
                         draft_model=effective_draft_model or "",
                         candidate_budget=provider_budget,
+                        adaptive_depth=(
+                            True if self.speculative_adaptive_depth is None
+                            else bool(self.speculative_adaptive_depth)
+                        ),
                     ),
                 ))
                 attach = getattr(generator, "attach_speculative_provider", None)

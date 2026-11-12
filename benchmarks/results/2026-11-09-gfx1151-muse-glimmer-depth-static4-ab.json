@@ -1,0 +1,501 @@
+{
+  "schema": 1,
+  "kind": "muse_glimmer_hipengine_dflash_mtpbench",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "date": "2026-11-09",
+  "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified)",
+  "model_path": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+  "draft_path": "/models/gguf/Muse-Glimmer-30B-GGUF/dflash-Muse-Glimmer-30B-Q4_K_M.gguf",
+  "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "max_tokens": 512,
+  "candidate_budget": 4,
+  "adaptive_depth": false,
+  "repeats": 1,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 3,
+    "collected_at": "2026-11-09T05:07:58.082605+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "fd6bce91847658eeed4ae5e0441430f9ea5d42c7",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 2,
+    "dirty": true,
+    "dirty_paths": [
+      "hipengine/generation/muse_glimmer_dflash.py",
+      "hipengine/speculative/__init__.py",
+      "hipengine/speculative/registry.py",
+      "scripts/muse_glimmer_dflash_bench.py"
+    ],
+    "dirty_path_count": 4,
+    "untracked_paths": [
+      "hipengine/speculative/adaptive_depth.py",
+      "tests/test_unit_adaptive_depth.py"
+    ],
+    "execution_affecting_dirty": true,
+    "execution_affecting_paths": [
+      "hipengine/generation/muse_glimmer_dflash.py",
+      "hipengine/speculative/__init__.py",
+      "hipengine/speculative/adaptive_depth.py",
+      "hipengine/speculative/registry.py",
+      "scripts/muse_glimmer_dflash_bench.py",
+      "tests/test_unit_adaptive_depth.py"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "0c34990e9926ceab29c14f6f253b5b90d7c48c204d1aa88d866c785220ce189e",
+      "size_bytes": 16756683904,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8377817664,
+        16755635328
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "f16/f16",
+    "command": [
+      "scripts/muse_glimmer_dflash_bench.py",
+      "--no-adaptive-depth",
+      "--output",
+      "/tmp/depth-ab-static.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": "post-prefill decode wall; output transitions; per-cycle logits readback sync",
+    "warmups": null,
+    "repetitions": 1,
+    "profiler": null
+  },
+  "gate_b_target_tok_s": 21.3,
+  "exactness_all": true,
+  "ar_summary": {
+    "generated_tokens": 3393,
+    "decode_wall_s": 268.3681482040556,
+    "decode_tok_s": 12.643080122236073,
+    "transition_normalized_tok_s": 12.605817876075637,
+    "per_request_decode_tok_s_median": 12.630905810756246
+  },
+  "dflash_summary": {
+    "generated_tokens": 3393,
+    "decode_wall_s": 127.32851125800516,
+    "decode_tok_s": 26.647605995524287,
+    "transition_normalized_tok_s": 26.569068989937712,
+    "per_request_decode_tok_s_median": 22.993878196454766
+  },
+  "speedup_vs_ar": 2.107683075476022,
+  "beats_gate_b": true,
+  "economics": {
+    "proposed": 4620,
+    "accepted": 2245,
+    "acceptance": 0.48593073593073594,
+    "committed": 3393,
+    "target_forwards": 1165,
+    "tokens_per_target_forward": 2.9124463519313304
+  },
+  "rows": [
+    {
+      "repeat": 0,
+      "id": "code_merge_intervals",
+      "category": "code",
+      "prompt_tokens": 30,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.4272274130489677,
+      "ar_decode_s": 40.53602439397946,
+      "spec_prefill_s": 0.4309585739974864,
+      "spec_decode_s": 14.483789947989862,
+      "exact": true,
+      "proposed": 516,
+      "accepted": 384,
+      "committed": 512,
+      "target_forwards": 130,
+      "draft_forwards": 129,
+      "acceptance": 0.7441860465116279,
+      "depth_summary": {
+        "enabled": false,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 129,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 129,
+            "tokens_per_ms": 0.036773086521867275,
+            "acceptance_ewma": 0.8012879940625093
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "code_topological_sort",
+      "category": "code",
+      "prompt_tokens": 39,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.5177523079910316,
+      "ar_decode_s": 40.54111823101994,
+      "spec_prefill_s": 0.44963622698560357,
+      "spec_decode_s": 13.982638046029024,
+      "exact": true,
+      "proposed": 496,
+      "accepted": 388,
+      "committed": 512,
+      "target_forwards": 125,
+      "draft_forwards": 124,
+      "acceptance": 0.782258064516129,
+      "depth_summary": {
+        "enabled": false,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 124,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 124,
+            "tokens_per_ms": 0.023930547679068995,
+            "acceptance_ewma": 0.4158683666041778
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "code_lru_cache",
+      "category": "code",
+      "prompt_tokens": 36,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.5153387939790264,
+      "ar_decode_s": 40.53899834502954,
+      "spec_prefill_s": 0.4421034759725444,
+      "spec_decode_s": 14.611453720019199,
+      "exact": true,
+      "proposed": 520,
+      "accepted": 386,
+      "committed": 512,
+      "target_forwards": 131,
+      "draft_forwards": 130,
+      "acceptance": 0.7423076923076923,
+      "depth_summary": {
+        "enabled": false,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 130,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 130,
+            "tokens_per_ms": 0.04161470147737566,
+            "acceptance_ewma": 0.9394769125582395
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "code_markdown_table",
+      "category": "code",
+      "prompt_tokens": 42,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.520993854966946,
+      "ar_decode_s": 40.54133890499361,
+      "spec_prefill_s": 0.4469649569946341,
+      "spec_decode_s": 15.673938688996714,
+      "exact": true,
+      "proposed": 560,
+      "accepted": 372,
+      "committed": 512,
+      "target_forwards": 141,
+      "draft_forwards": 140,
+      "acceptance": 0.6642857142857143,
+      "depth_summary": {
+        "enabled": false,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 140,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 140,
+            "tokens_per_ms": 0.030908846706838605,
+            "acceptance_ewma": 0.61392193484514
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "general_en_plan",
+      "category": "general_en",
+      "prompt_tokens": 29,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.4885548669844866,
+      "ar_decode_s": 40.53496255801292,
+      "spec_prefill_s": 0.4374476919765584,
+      "spec_decode_s": 26.79078056901926,
+      "exact": true,
+      "proposed": 988,
+      "accepted": 266,
+      "committed": 512,
+      "target_forwards": 248,
+      "draft_forwards": 247,
+      "acceptance": 0.2692307692307692,
+      "depth_summary": {
+        "enabled": false,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 247,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 247,
+            "tokens_per_ms": 0.016549309486175574,
+            "acceptance_ewma": 0.19283430455791373
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "general_en_explain",
+      "category": "general_en",
+      "prompt_tokens": 28,
+      "ar_generated": 102,
+      "spec_generated": 102,
+      "ar_prefill_s": 0.4864954290096648,
+      "ar_decode_s": 8.00451883795904,
+      "spec_prefill_s": 0.4373199309920892,
+      "spec_decode_s": 6.310297497024294,
+      "exact": true,
+      "proposed": 236,
+      "accepted": 43,
+      "committed": 102,
+      "target_forwards": 60,
+      "draft_forwards": 59,
+      "acceptance": 0.18220338983050846,
+      "depth_summary": {
+        "enabled": false,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 59,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 59,
+            "tokens_per_ms": 0.013848576161202268,
+            "acceptance_ewma": 0.1169116527770986
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "prompt_tokens": 36,
+      "ar_generated": 2,
+      "spec_generated": 2,
+      "ar_prefill_s": 0.42666000296594575,
+      "ar_decode_s": 0.07975153502775356,
+      "spec_prefill_s": 0.4344986960059032,
+      "spec_decode_s": 0.20891289599239826,
+      "exact": true,
+      "proposed": 8,
+      "accepted": 0,
+      "committed": 2,
+      "target_forwards": 3,
+      "draft_forwards": 2,
+      "acceptance": 0.0,
+      "depth_summary": {
+        "enabled": false,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 2,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 2,
+            "tokens_per_ms": 0.00962587184123045,
+            "acceptance_ewma": 0.0
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "prompt_tokens": 34,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.5109216529526748,
+      "ar_decode_s": 40.54003164503956,
+      "spec_prefill_s": 0.44011039700126275,
+      "spec_decode_s": 24.929774843971245,
+      "exact": true,
+      "proposed": 916,
+      "accepted": 283,
+      "committed": 512,
+      "target_forwards": 230,
+      "draft_forwards": 229,
+      "acceptance": 0.3089519650655022,
+      "depth_summary": {
+        "enabled": false,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 229,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 229,
+            "tokens_per_ms": 0.02055881992990629,
+            "acceptance_ewma": 0.31249336796687893
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 53,
+      "ar_generated": 164,
+      "spec_generated": 164,
+      "ar_prefill_s": 0.5323328669765033,
+      "ar_decode_s": 12.927189521025866,
+      "spec_prefill_s": 0.45309898303821683,
+      "spec_decode_s": 8.25441570597468,
+      "exact": true,
+      "proposed": 304,
+      "accepted": 89,
+      "committed": 164,
+      "target_forwards": 77,
+      "draft_forwards": 76,
+      "acceptance": 0.29276315789473684,
+      "depth_summary": {
+        "enabled": false,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 76,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 76,
+            "tokens_per_ms": 0.017478977260319297,
+            "acceptance_ewma": 0.22683768327435627
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 62,
+      "ar_generated": 53,
+      "spec_generated": 53,
+      "ar_prefill_s": 0.5302243490004912,
+      "ar_decode_s": 4.124214231967926,
+      "spec_prefill_s": 0.45412363699870184,
+      "spec_decode_s": 2.0825093429884873,
+      "exact": true,
+      "proposed": 76,
+      "accepted": 34,
+      "committed": 53,
+      "target_forwards": 20,
+      "draft_forwards": 19,
+      "acceptance": 0.4473684210526316,
+      "depth_summary": {
+        "enabled": false,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 19,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 19,
+            "tokens_per_ms": 0.02726069389852866,
+            "acceptance_ewma": 0.5022032489650883
+          }
+        }
+      }
+    }
+  ],
+  "timing_boundary": {
+    "decode_tok_s": "sum(generated tokens) / sum(post-prefill decode wall)",
+    "transition_normalized_tok_s": "(sum(generated) - requests) / sum(decode wall); mirrors llama.cpp (predicted_n-1)/predicted_ms",
+    "sync": "each verify/decode cycle ends in a device-to-host logits readback"
+  },
+  "notes": [
+    "Gate B: hipEngine DFlash must beat llama.cpp draft-dflash 21.300 tok/s (transition-normalized) with exact greedy ID equality vs true AR.",
+    "Diagnostic until a retained rollup attaches the correctness gate + provenance."
+  ]
+}

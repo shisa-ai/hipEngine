@@ -204,6 +204,12 @@ void muse_glimmer_flash_prefill_wmma_kernel(
 // own causal/SWA range, so a tile with no visible key for a wave leaves that
 // wave's state unchanged. Per-wave arithmetic is the single-token kernel's.
 constexpr int TOKENS_PER_BLOCK = 8;
+// LDS row stride padded by 2 halves (260 B): the 256 B unpadded stride put
+// all 16 lanes of a k_frag read on one bank group (16-way conflict) and the
+// staging writes on 8 banks (32-way). 260 B % 128 B bank window = 4 B shifts
+// each row by one bank word: k_frag reads conflict-free, staging spreads
+// over all 32 banks. Layout only; per-key arithmetic and tile order unchanged.
+constexpr int MT_KV_STRIDE = HEAD_DIM + 2;
 constexpr int MT_THREADS = TOKENS_PER_BLOCK * 32;
 
 __global__ __launch_bounds__(MT_THREADS)
@@ -249,8 +255,8 @@ void muse_glimmer_flash_prefill_wmma_mt_kernel(
 #pragma unroll
   for (int dt = 0; dt < HEAD_DIM / 16; ++dt) out_acc[dt] = zero8();
 
-  __shared__ __align__(1024) half_t k_tile[K_TILE * HEAD_DIM];
-  __shared__ __align__(1024) half_t v_tile[K_TILE * HEAD_DIM];
+  __shared__ __align__(1024) half_t k_tile[K_TILE * MT_KV_STRIDE];
+  __shared__ __align__(1024) half_t v_tile[K_TILE * MT_KV_STRIDE];
 
   const int64_t kv_stride = n_kv_heads * HEAD_DIM;
   for (int64_t k_base = union_begin; k_base < union_end; k_base += K_TILE) {
@@ -270,8 +276,8 @@ void muse_glimmer_flash_prefill_wmma_mt_kernel(
       const uint16_t* vb = reinterpret_cast<const uint16_t*>(&vraw);
 #pragma unroll
       for (int e = 0; e < 8; ++e) {
-        k_tile[key_local * HEAD_DIM + dim + e] = static_cast<half_t>(bf16_to_f32(kb[e]));
-        v_tile[key_local * HEAD_DIM + dim + e] = static_cast<half_t>(bf16_to_f32(vb[e]));
+        k_tile[key_local * MT_KV_STRIDE + dim + e] = static_cast<half_t>(bf16_to_f32(kb[e]));
+        v_tile[key_local * MT_KV_STRIDE + dim + e] = static_cast<half_t>(bf16_to_f32(vb[e]));
       }
     }
     __syncthreads();
@@ -281,7 +287,7 @@ void muse_glimmer_flash_prefill_wmma_mt_kernel(
     for (int dt = 0; dt < HEAD_DIM / 16; ++dt) {
       half16_t k_frag;
 #pragma unroll
-      for (int k = 0; k < 16; ++k) k_frag[k] = k_tile[lane16 * HEAD_DIM + dt * 16 + k];
+      for (int k = 0; k < 16; ++k) k_frag[k] = k_tile[lane16 * MT_KV_STRIDE + dt * 16 + k];
       scores = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(k_frag, q_frag[dt], scores);
     }
 
@@ -329,7 +335,7 @@ void muse_glimmer_flash_prefill_wmma_mt_kernel(
     for (int dt = 0; dt < HEAD_DIM / 16; ++dt) {
       half16_t v_frag;
 #pragma unroll
-      for (int k = 0; k < 16; ++k) v_frag[k] = v_tile[k * HEAD_DIM + dt * 16 + lane16];
+      for (int k = 0; k < 16; ++k) v_frag[k] = v_tile[k * MT_KV_STRIDE + dt * 16 + lane16];
       out_acc[dt] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(v_frag, p_frag, out_acc[dt]);
     }
     __syncthreads();

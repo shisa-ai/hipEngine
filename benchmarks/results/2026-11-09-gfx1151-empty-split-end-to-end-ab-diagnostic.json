@@ -1,0 +1,243 @@
+{
+  "endpoint": "mixed-phase window-average ITL of the long request",
+  "controls": [
+    "alone",
+    "post"
+  ],
+  "before": {
+    "alone": {
+      "per_rep_ms": [
+        106.86597248043299,
+        112.65063817541966
+      ],
+      "median_ms": 109.75830532792632
+    },
+    "mixed": {
+      "per_rep_ms": [
+        289.3231162718231,
+        297.7018089406877
+      ],
+      "median_ms": 293.51246260625544
+    },
+    "post": {
+      "per_rep_ms": [
+        108.32582800084668,
+        105.60816222735282
+      ],
+      "median_ms": 106.96699511409975
+    },
+    "short_walls_s": [
+      [
+        20.143821934994776,
+        20.251789594010916,
+        20.14290285098832
+      ],
+      [
+        20.13444106798852,
+        20.133910471980926,
+        20.24217788799433
+      ]
+    ],
+    "labels": [
+      "before-c62d367a3-rep1",
+      "before-c62d367a3-rep2"
+    ]
+  },
+  "after": {
+    "alone": {
+      "per_rep_ms": [
+        110.55936978158095,
+        112.5631843055801
+      ],
+      "median_ms": 111.56127704358053
+    },
+    "mixed": {
+      "per_rep_ms": [
+        291.78809608565643,
+        296.27602388192076
+      ],
+      "median_ms": 294.0320599837886
+    },
+    "post": {
+      "per_rep_ms": [
+        108.3331073627271,
+        105.30626280066956
+      ],
+      "median_ms": 106.81968508169834
+    },
+    "short_walls_s": [
+      [
+        20.314869301975705,
+        20.314157746033743,
+        20.42354912002338
+      ],
+      [
+        20.037590558989905,
+        19.928018537990283,
+        20.14539214799879
+      ]
+    ],
+    "labels": [
+      "after-6a17cbbd1-rep1",
+      "after-6a17cbbd1-rep2"
+    ]
+  },
+  "deltas": {
+    "alone": {
+      "before_median_ms": 109.75830532792632,
+      "after_median_ms": 111.56127704358053,
+      "delta_pct": 1.64
+    },
+    "mixed": {
+      "before_median_ms": 293.51246260625544,
+      "after_median_ms": 294.0320599837886,
+      "delta_pct": 0.18
+    },
+    "post": {
+      "before_median_ms": 106.96699511409975,
+      "after_median_ms": 106.81968508169834,
+      "delta_pct": -0.14
+    }
+  },
+  "option": "B (64K)",
+  "date": "2026-11-09",
+  "status": "diagnostic",
+  "identity": {
+    "hostname": "gfx1151 (Framework Desktop)",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "rocm_sdk_package": "10.0.0"
+  },
+  "arms": {
+    "before": "c62d367a3 (pre-fix)",
+    "after": "6a17cbbd1 (unified-kv-multiseq; runtime diff = empty-split kernel commit only)"
+  },
+  "protocol": {
+    "server": "hipengine serve Qwen3.8-27B-UD-Q4_K_M.gguf --backend hip_gfx1151 --max-context-tokens 73728 --max-active-requests 4 --prefix-cache off",
+    "env": "HIPENGINE_SPECULATIVE_MTP_SERVING=off HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_GGUF_GEMV_DECODE=1",
+    "workload": "1 long 64K-token request (128 outputs, seeded counting tail, ignore_eos) + 3 short ~545-token requests (64 outputs) admitted after 24 alone chunks",
+    "metric": "window-average decode rate per phase (burstiness-invariant); 2 reps per arm"
+  },
+  "verdict_B": "Mixed-phase delta +0.18% with controls at +1.64%/-0.14%: the expected ~1-2% effect at 64K is below run-to-run noise; option B does not resolve it. Proceeding to option A (128K, 3 reps/arm).",
+  "option_A_128K": {
+    "protocol": {
+      "workload": "1 long ~128K-token request (4900 paras, 128 outputs, seeded counting tail, ignore_eos) + 3 short ~545-token requests (64 outputs) admitted after 24 alone chunks",
+      "server": "same as option B but --max-context-tokens 135168",
+      "reps": "3 per arm, alternating before/after to cancel drift"
+    },
+    "before": {
+      "alone": {
+        "per_rep_ms": [
+          131.76678774028045,
+          131.6909663045131,
+          131.68669669413129
+        ],
+        "median_ms": 131.6909663045131
+      },
+      "mixed": {
+        "per_rep_ms": [
+          347.85669179366187,
+          347.46317494136747,
+          337.6596941138684
+        ],
+        "median_ms": 347.46317494136747
+      },
+      "post": {
+        "per_rep_ms": [
+          126.68083057173395,
+          126.58727357130763,
+          130.41013875750428
+        ],
+        "median_ms": 126.68083057173395
+      },
+      "short_walls_s": [
+        [
+          23.523748214996886,
+          23.653267228975892,
+          23.391421151987743
+        ],
+        [
+          23.496925845975056,
+          23.496155389992055,
+          23.62611765996553
+        ],
+        [
+          23.635704597982112,
+          23.372537410003133,
+          23.633936320024077
+        ]
+      ],
+      "labels": [
+        "before-c62d367a3-128K-rep1",
+        "before-c62d367a3-128K-rep2",
+        "before-c62d367a3-128K-rep3"
+      ]
+    },
+    "after": {
+      "alone": {
+        "per_rep_ms": [
+          131.69610217395845,
+          131.6047405631727,
+          131.79049895489183
+        ],
+        "median_ms": 131.69610217395845
+      },
+      "mixed": {
+        "per_rep_ms": [
+          333.9644776856793,
+          343.8650316914872,
+          343.86639280915807
+        ],
+        "median_ms": 343.8650316914872
+      },
+      "post": {
+        "per_rep_ms": [
+          130.3776395771737,
+          126.51497237051704,
+          126.63635251478159
+        ],
+        "median_ms": 126.63635251478159
+      },
+      "short_walls_s": [
+        [
+          23.377000836015213,
+          23.113582194026094,
+          23.375576313002966
+        ],
+        [
+          23.119610125024337,
+          23.251289578038268,
+          23.381505734985694
+        ],
+        [
+          23.252655745018274,
+          23.251953678030986,
+          23.381187659979332
+        ]
+      ],
+      "labels": [
+        "after-6a17cbbd1-128K-rep1",
+        "after-6a17cbbd1-128K-rep2",
+        "after-6a17cbbd1-128K-rep3"
+      ]
+    },
+    "deltas": {
+      "alone": {
+        "before_median_ms": 131.6909663045131,
+        "after_median_ms": 131.69610217395845,
+        "delta_pct": 0.0
+      },
+      "mixed": {
+        "before_median_ms": 347.46317494136747,
+        "after_median_ms": 343.8650316914872,
+        "delta_pct": -1.04
+      },
+      "post": {
+        "before_median_ms": 126.68083057173395,
+        "after_median_ms": 126.63635251478159,
+        "delta_pct": -0.04
+      }
+    }
+  },
+  "verdict": "Option B (64K, 2 reps/arm): mixed delta +0.18% with controls +1.64%/-0.14% \u2014 effect below noise. Option A (128K, 3 reps/arm): mixed-phase ITL 347.46 -> 343.87 ms (-1.04%, -3.6 ms/token) with alone/post controls at 0.00%/-0.04%. Realized end-to-end effect is ~1% of long-request ITL during co-residency with short requests at 128K; not noticeable at <=64K. The mixed step is dominated by non-attention work (dense FFN at batch width, short-prefill interleaving); the removed attention waste is a small slice. Kernel-level probe remains the primary rigorous quantification (-79.8% worst-case empty-split attention waste). Optimization retained: removes demonstrated waste with zero control regression."
+}

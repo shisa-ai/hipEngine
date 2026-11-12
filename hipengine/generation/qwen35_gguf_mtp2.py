@@ -3497,7 +3497,9 @@ class Qwen35GGUFMTP2Adapter:
                         context,
                         candidate_budget=budgets[0],
                         return_logits=False,
-                        allow_graph=target_device_ready and not sampled_route,
+                        # Proposal capture is independent of target capture:
+                        # the host-result path synchronizes before eager verify.
+                        allow_graph=not sampled_route,
                     )
                 else:
                     draft = None

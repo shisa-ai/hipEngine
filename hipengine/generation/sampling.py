@@ -1229,6 +1229,84 @@ def _process_row(
     )
 
 
+def _partial_top_p_support(
+    scaled: np.ndarray,
+    *,
+    top_p: float,
+    min_p: float,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Top-p support without a full-vocabulary sort, or ``None`` to fall back.
+
+    Adaptive top-K partitioning selects a superset of the retained prefix,
+    which is then sorted exactly (score descending, lower-ID on ties). The
+    softmax normalization sums exp in canonical token-ID order instead of the
+    legacy score-sorted order: per-token probabilities differ only at ulp
+    level, which can shift a top-p boundary or a seeded draw in rare boundary
+    cases. The production contract is bounded drift plus same-build
+    determinism (EXECUTION-PROFILES), not cross-version bit stability.
+
+    A mass probe bails out to the legacy full-sort path when the retained
+    support is a large fraction of the vocabulary (flat distributions), where
+    repeated partitioning costs more than one sort.
+    """
+
+    finite_ids = np.flatnonzero(np.isfinite(scaled)).astype(np.int64, copy=False)
+    if finite_ids.size == 0:
+        raise ValueError("sampling filters removed all finite logits")
+    scores = scaled[finite_ids]
+    max_value = float(np.max(scores))
+    exp_all = np.exp(scores - max_value, dtype=np.float64)
+    total = float(exp_all.sum())
+    if not math.isfinite(total) or total <= 0.0:
+        raise ValueError("softmax probabilities are not normalizable")
+    n = scores.size
+    k = min(n, 1024)
+    part = None
+    if k < n:
+        part = np.argpartition(-scores, k - 1)[:k]
+        mass = float(exp_all[part].sum()) / total
+        while mass < top_p:
+            if mass < 0.5 * top_p or k >= n // 4:
+                # Large support: one full sort beats repeated partitioning.
+                return None
+            k = min(n, k * 4)
+            if k >= n:
+                break
+            part = np.argpartition(-scores, k - 1)[:k]
+            mass = float(exp_all[part].sum()) / total
+    if k >= n:
+        sel_probs_all = exp_all / total
+        order = np.lexsort((finite_ids, -sel_probs_all))
+        sel_ids = finite_ids[order]
+        sel_probs = sel_probs_all[order]
+    else:
+        threshold = float(np.min(scores[part]))
+        # Include the complete tie group at the partition boundary so the
+        # selected set is a true prefix-superset of the full sort.
+        sel = np.flatnonzero(scores >= threshold)
+        sel_probs_raw = exp_all[sel] / total
+        # Order by probability (not logit) so float32 shift-rounding
+        # probability ties fall back to lower-ID order, matching the legacy
+        # filter semantics and its RNG map.
+        order = np.lexsort((finite_ids[sel], -sel_probs_raw))
+        sel_ids = finite_ids[sel][order]
+        sel_probs = sel_probs_raw[order]
+    cum = np.cumsum(sel_probs)
+    keep = max(1, min(int(np.searchsorted(cum, top_p, side="left")) + 1, sel_ids.size))
+    retained_ids = sel_ids[:keep]
+    retained_probs = sel_probs[:keep]
+    if min_p > 0.0:
+        threshold_p = float(sel_probs[0]) * min_p
+        mask = retained_probs >= threshold_p
+        if np.any(mask):
+            retained_ids = retained_ids[mask]
+            retained_probs = retained_probs[mask]
+        else:
+            retained_ids = retained_ids[:1]
+            retained_probs = retained_probs[:1]
+    return retained_ids.astype(np.int64, copy=False), retained_probs.astype(np.float64, copy=False)
+
+
 def processed_support(
     processed: np.ndarray,
     params: Any,
@@ -1238,14 +1316,27 @@ def processed_support(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return ``(retained_ids, normalized_probs)`` for a processed logits row.
 
-    This is the exact support ``select_token`` samples from: temperature scaling,
-    top-k, softmax, top-p/min-p filtering, and renormalization.
+    This is the support ``select_token`` samples from: temperature scaling,
+    top-k, softmax, top-p/min-p filtering, and renormalization. The top-p-only
+    path uses partial selection with canonical-ID-order softmax normalization
+    (ulp-level drift vs the legacy full-sort order, same-build deterministic);
+    all other paths retain the legacy full-sort arithmetic.
     """
 
     if not float(temperature) > 0.0:
         raise ValueError("processed_support requires a positive temperature")
     scaled = processed / float(temperature)
     top_k = int(getattr(params, "top_k", 0))
+    top_p = float(getattr(params, "top_p", 1.0))
+    min_p = float(getattr(params, "min_p", 0.0))
+    if token_allowed is None and top_k == 0 and 0.0 < top_p < 1.0:
+        partial = _partial_top_p_support(scaled, top_p=top_p, min_p=min_p)
+        if partial is not None:
+            retained_ids, retained_probs = partial
+            probs_sum = float(retained_probs.sum())
+            if not math.isfinite(probs_sum) or probs_sum <= 0.0:
+                raise ValueError("sampling probabilities are not normalizable")
+            return retained_ids, retained_probs / probs_sum
     candidate_ids = (
         _constraint_candidate_ids(scaled, token_allowed, limit=top_k)
         if token_allowed is not None
@@ -1258,8 +1349,8 @@ def processed_support(
     retained_ids, retained_probs = _apply_probability_filters(
         candidate_ids,
         candidate_probs,
-        top_p=float(getattr(params, "top_p", 1.0)),
-        min_p=float(getattr(params, "min_p", 0.0)),
+        top_p=top_p,
+        min_p=min_p,
     )
     probs_sum = float(retained_probs.sum())
     if not math.isfinite(probs_sum) or probs_sum <= 0.0:
@@ -1791,10 +1882,38 @@ def _apply_probability_filters(
         # Preserve the sort's independent output ownership as well as values.
         sorted_ids = token_ids.copy()
         sorted_probs = probs.copy()
-    else:
+    elif np.any(probs[:-1] < probs[1:]) or int(token_ids.max()) > np.iinfo(np.uint32).max:
+        # Non-monotonic input, or IDs too wide for the packed tie keys: keep
+        # the full general sort.
         order = np.lexsort((token_ids, -probs))
         sorted_ids = token_ids[order]
         sorted_probs = probs[order]
+    else:
+        # Softmax is monotonic, so a broken order here is only new
+        # equal-probability groups (float32 shift rounding in _softmax) whose
+        # IDs are not ascending. Repair just those groups to lower-ID order:
+        # bit-identical to the full lexsort without re-sorting the vocabulary.
+        sorted_ids = token_ids.copy()
+        sorted_probs = probs.copy()
+        ties = sorted_probs[:-1] == sorted_probs[1:]
+        if np.any(ties):
+            members = np.empty(sorted_ids.size, dtype=np.bool_)
+            members[0] = False
+            members[1:] = ties
+            members[:-1] |= ties
+            positions = np.flatnonzero(members)
+            groups = np.cumsum(np.r_[True, ~ties], dtype=np.uint64)
+            keys = (groups[positions] << np.uint64(32)) | sorted_ids[positions].astype(np.uint64)
+            sorted_ids[positions] = sorted_ids[positions][np.argsort(keys)]
+        if not np.all(
+            (sorted_probs[:-1] > sorted_probs[1:])
+            | ((sorted_probs[:-1] == sorted_probs[1:]) & (sorted_ids[:-1] <= sorted_ids[1:]))
+        ):
+            # Safety net for inputs the monotonic assumption does not cover
+            # (e.g. NaN probabilities): fall back to the general sort.
+            order = np.lexsort((token_ids, -probs))
+            sorted_ids = token_ids[order]
+            sorted_probs = probs[order]
     if sorted_ids.size == 0:
         return sorted_ids, sorted_probs
 

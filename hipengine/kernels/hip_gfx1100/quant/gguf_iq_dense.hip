@@ -415,13 +415,13 @@ template<int Q> void run(const void* x, const void* w, void* out,
 // bounds relax to one resident block for ROWS > 1 because the row accumulators
 // and activations need the registers that the rows == 1 variant spends on
 // occupancy.
-template<int WAVES, int ROWS = 1>
+template<int WAVES, int ROWS = 1, int TILE_COLS = GGUF_IQ_LOCAL32_COLS>
 __global__ __launch_bounds__(32 * WAVES,
     ROWS > 1 ? 1 : (16 / WAVES > 0 ? 16 / WAVES : 1))
 void gguf_iq4_xs_local32_gemv_kernel(
     const uint16_t* __restrict__ x, const uint8_t* __restrict__ w,
     uint16_t* __restrict__ out, int64_t K, int64_t N) {
-    constexpr int COLS = GGUF_IQ_LOCAL32_COLS;
+    constexpr int COLS = TILE_COLS;
     const int tid = threadIdx.x;
     const int wave = tid >> 5;
     const int lane = tid & 31;
@@ -1055,16 +1055,19 @@ extern "C" int hipengine_gguf_iq4_xs_local32_gemv(const void* x,
 template<int ROWS>
 int launch_iq4_xs_local32_rows(const void* x, const void* w, void* out,
     int64_t K, int64_t N, int waves, hipStream_t s) {
-    const dim3 grid(unsigned((N + GGUF_IQ_LOCAL32_COLS - 1) / GGUF_IQ_LOCAL32_COLS));
+    // Four columns reduce verifier accumulator pressure without changing
+    // any column's K partition, shuffle tree or ordered cross-wave sum.
+    constexpr int tile_cols = 4;
+    const dim3 grid(unsigned((N + tile_cols - 1) / tile_cols));
     const uint16_t* xp = (const uint16_t*)x;
     const uint8_t* wp = (const uint8_t*)w;
     uint16_t* op = (uint16_t*)out;
     switch (waves) {
-        case 1: gguf_iq4_xs_local32_gemv_kernel<1, ROWS>
+        case 1: gguf_iq4_xs_local32_gemv_kernel<1, ROWS, tile_cols>
             <<<grid, 32, 0, s>>>(xp, wp, op, K, N); break;
-        case 2: gguf_iq4_xs_local32_gemv_kernel<2, ROWS>
+        case 2: gguf_iq4_xs_local32_gemv_kernel<2, ROWS, tile_cols>
             <<<grid, 64, 0, s>>>(xp, wp, op, K, N); break;
-        case 4: gguf_iq4_xs_local32_gemv_kernel<4, ROWS>
+        case 4: gguf_iq4_xs_local32_gemv_kernel<4, ROWS, tile_cols>
             <<<grid, 128, 0, s>>>(xp, wp, op, K, N); break;
         default: return int(hipErrorInvalidValue);
     }

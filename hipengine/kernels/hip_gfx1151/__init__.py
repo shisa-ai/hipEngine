@@ -974,14 +974,8 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_q5_k_t16_v1",
             "bf16_c1_exact_state_rows_tloop_f32_bf16_out",
         ),
-        # GGUF rollback snapshot collapse and producer-folded capture are
-        # W7900-only until gfx1151 receives independent transaction and
-        # launch-overhead gates.
-        (
-            "linear_state_pair_copy",
-            "f32",
-            "chunked_i32",
-        ),
+        # Producer-folded capture remains separate from the registered
+        # pointer-table rollback copy.
         (
             "linear_attn_chain_conv_decode+snapshot",
             "gguf_qwen35",

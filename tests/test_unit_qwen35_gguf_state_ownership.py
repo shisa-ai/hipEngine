@@ -655,6 +655,9 @@ def test_resident_slot_view_does_not_inherit_or_close_owner_prefix_arena_pool(
 
     owner = _minimal_session()
     owner._gguf_prefix_snapshot_arena_pool = pool
+    fullgemm_closes = []
+    fullgemm = SimpleNamespace(close=lambda: fullgemm_closes.append("owner"))
+    owner._prefill_fullgemm_workspace = fullgemm
     owner._target_scratch_owner = _FakeSlotScratchOwner(slot_count=3)
     owner.scratch = owner._target_scratch_owner.for_slot(0)
     owner._ensure_verify_block_buffers(2, runtime=runtime)
@@ -664,6 +667,10 @@ def test_resident_slot_view_does_not_inherit_or_close_owner_prefix_arena_pool(
     )
 
     view = owner.resident_slot_view(1)
+    assert view._prefill_fullgemm_workspace is None
+    view._prefill_fullgemm_workspace = SimpleNamespace(
+        close=lambda: fullgemm_closes.append("view")
+    )
     sampler_closes = []
     owner_sampler = SimpleNamespace(close=lambda: sampler_closes.append("owner"))
     view._native_sampler_workspace = SimpleNamespace(
@@ -711,6 +718,8 @@ def test_resident_slot_view_does_not_inherit_or_close_owner_prefix_arena_pool(
         "repeating slot-view cleanup released buffers a second time"
     )
     assert sampler_closes == ["view"]
+    assert fullgemm_closes == ["view"]
+    assert owner._prefill_fullgemm_workspace is fullgemm
     assert view._native_sampler_workspace is None
     assert owner._native_sampler_workspace is owner_sampler
     assert pool.close_calls == 0

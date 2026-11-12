@@ -1904,7 +1904,9 @@ def test_physical_adapter_returns_device_candidate_graph_before_target(
     )
 
 
-def test_c1_adapter_warms_budget_graph_before_device_handoff() -> None:
+@pytest.mark.parametrize("target_ready", [False, True])
+def test_c1_adapter_warms_proposal_graph_independent_of_target(target_ready, monkeypatch) -> None:
+    monkeypatch.setattr(Qwen35GGUFMTP2Adapter, "_target_graph_supported", lambda *args: target_ready)
     calls: list[tuple[object, ...]] = []
     target = SimpleNamespace(
         position=5,

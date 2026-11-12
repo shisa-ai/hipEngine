@@ -380,6 +380,7 @@ class PrefillF16StagingWorkspace:
 
     ptr: int
     nbytes: int
+    workspace_owner: object | None = None
 
     def __post_init__(self) -> None:
         if int(self.ptr) <= 0 or int(self.nbytes) <= 0:
@@ -397,6 +398,7 @@ def prefill_f16_staging_session(
     *,
     workspace_ptr: int = 0,
     workspace_nbytes: int = 0,
+    workspace_owner: object | None = None,
 ) -> Iterator[None]:
     """Enable F16 staging with one caller-owned bounded device workspace."""
 
@@ -405,6 +407,7 @@ def prefill_f16_staging_session(
         workspace = PrefillF16StagingWorkspace(
             ptr=int(workspace_ptr),
             nbytes=int(workspace_nbytes),
+            workspace_owner=workspace_owner,
         )
     enabled_token = _prefill_f16_staging_session_enabled.set(bool(enabled))
     workspace_token = _prefill_f16_staging_workspace.set(workspace)
@@ -498,6 +501,14 @@ def _launch_prefill_f16_staged(
     )
     stage_kwargs = dict(kwargs)
     stage_kwargs.pop("library", None)
+    workspace = prefill_f16_staging_workspace()
+    owner_type = getattr(sibling, "workspace_owner_type", None)
+    if (
+        workspace is not None
+        and owner_type is not None
+        and isinstance(workspace.workspace_owner, owner_type)
+    ):
+        stage_kwargs["workspace_owner"] = workspace.workspace_owner
     _LAUNCH_ABI["t16"](
         sibling,
         weight,
@@ -8200,6 +8211,28 @@ def _resolve_gguf_linear_pair_silu_plan(
         rows=rows,
     )
     if rows != 1:
+        if (
+            _native_batch_decode_session_enabled
+            and {dispatch_a.key.quant, dispatch_b.key.quant}
+            == {"gguf_iq4_xs", "gguf_q4_k_t16_v1"}
+        ):
+            # Mixed verifier rows share one launch but retain scalar projection
+            # reductions and BF16 rounding before SiLU.
+            with native_batch_decode_session(False):
+                scalar_plan = _resolve_gguf_linear_pair_silu_plan(
+                    weight_a, weight_b, rows=1,
+                    in_features=in_features, out_features=out_features,
+                    backend=resolved_backend, use_gemv_decode=True,
+                    use_q4_t16_sidecar=use_q4_t16_sidecar,
+                    use_q4_t16_dual_interleaved=use_q4_t16_dual_interleaved,
+                    registered_decode_variant=None, layer_id=layer_id,
+                    q8_1_workspace_ptr=q8_1_workspace_ptr,
+                    pair_workspace_ptr=pair_workspace_ptr,
+                    pair_workspace_nbytes=pair_workspace_nbytes,
+                    r28_enabled=r28_enabled,
+                )
+            if scalar_plan.operation == "registered_pair":
+                return replace(scalar_plan, rows=rows)
         dense_pair_quant = (
             dispatch_a.key.quant
             if dispatch_a.key.quant == dispatch_b.key.quant

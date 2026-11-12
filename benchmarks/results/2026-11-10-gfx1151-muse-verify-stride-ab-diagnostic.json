@@ -1,0 +1,105 @@
+{
+ "schema": 1,
+ "kind": "verify_attention_stride_ab",
+ "status": "diagnostic_retained",
+ "date": "2026-11-10",
+ "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified, Desktop)",
+ "hipengine_commit_base": "4930c76172f16d004f156dc68004810e3f251e4e",
+ "change": "Shared-row decode/verify attention LDS row stride 128 -> 130 halves (KV_STRIDE): same 16-way k_frag bank conflict + 8-bank staging concentration as the prefill mt kernel. Layout only; per-key arithmetic and absolute-split order unchanged.",
+ "protocol": "scripts/muse_glimmer_decode_attn_scale.py, split_keys=64 n_blocks=64 (production config), 30 iters, synthetic BF16 K/V, one NoPE-layer geometry (32Q/2KV/head-128).",
+ "rows": [
+  {
+   "context": 32768,
+   "verify_rows": 1,
+   "before_ms": 0.174,
+   "after_ms": 0.17,
+   "speedup": 1.024
+  },
+  {
+   "context": 32768,
+   "verify_rows": 4,
+   "before_ms": 0.293,
+   "after_ms": 0.248,
+   "speedup": 1.181
+  },
+  {
+   "context": 32768,
+   "verify_rows": 5,
+   "before_ms": 0.335,
+   "after_ms": 0.319,
+   "speedup": 1.05
+  },
+  {
+   "context": 32768,
+   "verify_rows": 8,
+   "before_ms": 0.536,
+   "after_ms": 0.429,
+   "speedup": 1.249
+  },
+  {
+   "context": 131072,
+   "verify_rows": 1,
+   "before_ms": 0.727,
+   "after_ms": 0.72,
+   "speedup": 1.01
+  },
+  {
+   "context": 131072,
+   "verify_rows": 4,
+   "before_ms": 1.006,
+   "after_ms": 0.912,
+   "speedup": 1.103
+  },
+  {
+   "context": 131072,
+   "verify_rows": 5,
+   "before_ms": 1.231,
+   "after_ms": 1.212,
+   "speedup": 1.016
+  },
+  {
+   "context": 131072,
+   "verify_rows": 8,
+   "before_ms": 1.994,
+   "after_ms": 1.575,
+   "speedup": 1.266
+  },
+  {
+   "context": 262144,
+   "verify_rows": 1,
+   "before_ms": 1.409,
+   "after_ms": 1.405,
+   "speedup": 1.003
+  },
+  {
+   "context": 262144,
+   "verify_rows": 4,
+   "before_ms": 1.957,
+   "after_ms": 1.766,
+   "speedup": 1.108
+  },
+  {
+   "context": 262144,
+   "verify_rows": 5,
+   "before_ms": 2.379,
+   "after_ms": 2.336,
+   "speedup": 1.018
+  },
+  {
+   "context": 262144,
+   "verify_rows": 8,
+   "before_ms": 3.894,
+   "after_ms": 3.028,
+   "speedup": 1.286
+  }
+ ],
+ "correctness": {
+  "bit_parity": "160/160 dual-library fixtures EXACT (tokens 1/5, 37-131K, windowed, gated, both split configs, device/null key_end)",
+  "gpu_tests": "41/41: shared decode + glue + short-mode + live runner/DFlash/exactness suites",
+  "mtpbench": "exactness_all True (10/10 DFlash==AR); AR 12.858, DFlash 27.562 tok/s \u2014 unchanged within noise on the short-context suite"
+ },
+ "verdict": "Multi-row verify attention 5-22% faster (tok8 -21/-22% at 131K/260K; tok4 -9/-10%; tok5 -2/-5%); single-row decode unchanged (memory-bound). The remaining tok5 residual (~1.9-2.1x the single-row floor) is WMMA-issue throughput at 5 active waves, not LDS \u2014 no further arithmetic-neutral lever identified. Per-model upper bound at 260K: 13 NoPE layers x 0.043 ms = ~0.6 ms/verify (tok5); deeper budgets benefit more.",
+ "source_artifacts": [
+  "results/2026-11-10-gfx1151-muse-verify-stride-exactness.json"
+ ]
+}
