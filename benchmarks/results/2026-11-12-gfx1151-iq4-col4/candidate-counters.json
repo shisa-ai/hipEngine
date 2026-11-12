@@ -1,0 +1,146 @@
+[
+  {
+    "kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 163840,
+    "calls": 144,
+    "vgpr": 80,
+    "scratch": 0,
+    "occupancy_percent": 79.62188681944444,
+    "mean_ns": 198360.63888888888
+  },
+  {
+    "kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 196608,
+    "calls": 144,
+    "vgpr": 48,
+    "scratch": 0,
+    "occupancy_percent": 91.28892792361111,
+    "mean_ns": 140918.125
+  },
+  {
+    "kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 81920,
+    "calls": 792,
+    "vgpr": 80,
+    "scratch": 0,
+    "occupancy_percent": 76.13469518813132,
+    "mean_ns": 209181.33080808082
+  },
+  {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 278528,
+    "calls": 576,
+    "vgpr": 120,
+    "scratch": 0,
+    "occupancy_percent": 70.86060100173611,
+    "mean_ns": 274899.55902777775
+  },
+  {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 163840,
+    "calls": 360,
+    "vgpr": 120,
+    "scratch": 0,
+    "occupancy_percent": 65.58753772777777,
+    "mean_ns": 230839.05277777778
+  },
+  {
+    "kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 393216,
+    "calls": 24,
+    "vgpr": 48,
+    "scratch": 0,
+    "occupancy_percent": 93.72123704166667,
+    "mean_ns": 277237
+  },
+  {
+    "kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 32768,
+    "calls": 72,
+    "vgpr": 48,
+    "scratch": 0,
+    "occupancy_percent": 64.86571348611112,
+    "mean_ns": 27800.555555555555
+  },
+  {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 196608,
+    "calls": 144,
+    "vgpr": 120,
+    "scratch": 0,
+    "occupancy_percent": 64.26020797222222,
+    "mean_ns": 100991.22222222222
+  },
+  {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 196608,
+    "calls": 96,
+    "vgpr": 120,
+    "scratch": 0,
+    "occupancy_percent": 68.41994111458334,
+    "mean_ns": 187842.91666666666
+  },
+  {
+    "kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 557056,
+    "calls": 336,
+    "vgpr": 48,
+    "scratch": 0,
+    "occupancy_percent": 95.33407974107143,
+    "mean_ns": 394190.51785714284
+  },
+  {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 163840,
+    "calls": 72,
+    "vgpr": 120,
+    "scratch": 0,
+    "occupancy_percent": 67.25667872222222,
+    "mean_ns": 158704.54166666666
+  },
+  {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 1, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 139264,
+    "calls": 5,
+    "vgpr": 48,
+    "scratch": 0,
+    "occupancy_percent": 86.9553616,
+    "mean_ns": 240932.2
+  },
+  {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 1, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 98304,
+    "calls": 12,
+    "vgpr": 48,
+    "scratch": 0,
+    "occupancy_percent": 79.68220341666667,
+    "mean_ns": 88131.91666666667
+  },
+  {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 1, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 98304,
+    "calls": 8,
+    "vgpr": 48,
+    "scratch": 0,
+    "occupancy_percent": 81.63630325,
+    "mean_ns": 171782.5
+  },
+  {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 1, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 81920,
+    "calls": 6,
+    "vgpr": 48,
+    "scratch": 0,
+    "occupancy_percent": 92.48588050000001,
+    "mean_ns": 82535
+  },
+  {
+    "kernel": "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 1, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+    "grid": 81920,
+    "calls": 6,
+    "vgpr": 48,
+    "scratch": 0,
+    "occupancy_percent": 94.28628816666667,
+    "mean_ns": 131426.66666666666
+  }
+]

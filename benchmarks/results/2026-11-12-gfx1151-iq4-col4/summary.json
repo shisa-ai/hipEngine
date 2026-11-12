@@ -1,0 +1,68 @@
+{
+  "status": "passed",
+  "host": {
+    "hostname": "gfx1151",
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "os": "Linux 7.3.1-1-cachyos"
+  },
+  "compiler": {
+    "hip": "7.15.26333",
+    "clang": "23.0.0git",
+    "llvm_revision": "8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "f343914a95e38d8f9f56886d10de4248738ad94aabb0fa0af8fd1b00c4e82f97",
+      "size_bytes": 16464440224,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8231695824,
+        16463391648
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "source_commit": "793f4b2815b669b7e1c9eebc26cd70407284ffd6",
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.hip": "1d738d24afe4ef776942b6e8923a9769bad3ad7c2fc1913e02203dfd60b4fc20",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_iq_dense.py": "611845a68e672eed7b65ff487dd05ffc93b30fcfb287fe0b7b3084aba615cc1e"
+  },
+  "parent_source_sha256": "66da13d8ea8e4ac5cdfe9b3b7d336b139aa565cd5315a6cdc221dab91461ed78",
+  "manifest": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+  "profile": "production",
+  "suite_wall_s": {
+    "loop": 64.80383894458646,
+    "batch": 63.48279595084023
+  },
+  "reduction_percent": 2.0385258269588813,
+  "categories": {
+    "code": {
+      "loop": 21.50454159756191,
+      "batch": 21.056437009363435,
+      "reduction_percent": 2.083767218033983
+    },
+    "general_en": {
+      "loop": 14.47625371243339,
+      "batch": 14.216317526006605,
+      "reduction_percent": 1.7956039704079663
+    },
+    "general_ja": {
+      "loop": 14.819178134493995,
+      "batch": 14.46875929745147,
+      "reduction_percent": 2.364630709356752
+    },
+    "mixed_ja_en": {
+      "loop": 14.003865500097163,
+      "batch": 13.741282118018717,
+      "reduction_percent": 1.8750778638699783
+    }
+  },
+  "public_passed": true
+}

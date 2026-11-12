@@ -238,7 +238,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `quant/gguf_q8_0_t16_gemv.hip` | T16 Q8_0 decode projections. |
 | `quant/gguf_q8_0_t16_prefill.hip` | T16 Q8_0 prefill projections with FP32 repair of non-finite WMMA accumulators. The two-wave and four-wave launches also have an `f16w` form that loads a pre-converted half weight operand instead of decoding it, bit-identical to the decoding form; `q8_0_t16_tiles_to_f16w_kernel` writes that operand from the T16 tiles. |
 | `quant/gguf_q8_0_raw_to_t16.hip` | Repack raw Q8_0 weights into T16 storage. |
-| `quant/gguf_iq_dense.hip` | Raw IQ/Q3 dense projections and Q3_K embedding lookup. |
+| `quant/gguf_iq_dense.hip` | Raw IQ/Q3 dense projections and Q3_K embedding lookup. IQ4_XS local32 uses four output columns per block for rows 2–4 and eight for scalar decode, preserving each column's accumulation and reduction order. |
 | `quant/gguf_iq_gemv.hip` | Raw IQ selected-expert projections. |
 | `quant/gguf_iq_selected_prefill.hip` | IQ selected-expert prefill projections. |
 | `quant/gguf_iq_wmma_prefill.hip` | Matrix-tiled raw IQ dense prefill projections. |

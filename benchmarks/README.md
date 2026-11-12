@@ -2,6 +2,22 @@
 
 Last updated: **2026-11-12 UTC**
 
+## Qwen3.8 IQ4 verifier tile — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
+profile, BF16 KV, MTP budget 3, prefix cache off, one request and 64 greedy
+outputs. Public-library ten-category-prompt plus eight-heldout comparison,
+fresh parent/candidate/candidate/parent sessions after a warmup each:
+
+| IQ4 output columns per block | Mean whole-request suite wall |
+| --- | ---: |
+| Eight | 64.804 s |
+| Four | 63.483 s |
+
+Wall is **2.04% lower**, with every category improving and identical output IDs,
+acceptance counts and fallback reasons across arms/repeats. Scalar decode is
+unchanged. [Commands, numerical checks and hardware counters](results/2026-11-12-gfx1151-iq4-col4/NOTES.md).
+
 ## Qwen3.8 rollback snapshot batching — Radeon 8060S
 
 Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
