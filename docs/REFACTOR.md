@@ -1329,27 +1329,6 @@ role-policy and dense-metadata contracts; then GPU global/SWA parity across part
 and verifier cases plus public `LLM.generate()` at short, boundary-neighbor and unrelated lengths.
 Confirm selected variants, append ordering, state/output equality and cleanup.
 
-### R0385 — Observed target/proposal sentinel crossing repair
-
-Owner: `hipengine/runtime/qwen35_gguf_mtp.py`.
-
-Scope: `test_dense_q4_k_m_mtp_crosses_1024_via_prelaunch_eager_fallback`,
-`tests/test_live_qwen35_gguf_mtp_e2e.py`, `target_graph_proposal_handoff_boundary_miss`.
-
-**Resolved (2026-11-12):** the lead directed closure using the available
-same-architecture Qwen3.8 artifact rather than retaining a guard pending the
-missing Qwen3.6 file. The historical handoff guard is removed. The live crossing
-exposed a separate mixed IQ4_XS/Q4_K gate/up verifier arithmetic mismatch; native
-verification now reuses the scalar mixed-pair SiLU operation. The isolated
-crossing, reset and fresh-process health request pass, as does public MTP/AR
-output parity with MTP engagement confirmed. See
-`worklog/entries/20261112T082343.471432Z-lhl-mtp-boundary-mixed-pair-408f5e.md`.
-
-Keep the isolated crossing regression and graph capacity/binding checks. Reopen
-only for a new observed failure; the absent original artifact is not a blocker.
-The exact mixed-pair row loop can be replaced by a batched implementation when
-it preserves scalar arithmetic and passes these regressions.
-
 ### R0387 — Dense gfx1100 packed-step profiling follow-up
 
 Owner: `hipengine/runtime/gguf_linear.py`.

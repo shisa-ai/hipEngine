@@ -922,6 +922,7 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_GEMMA4_MMPROJ` | unset | Gemma 4 vision-sidecar GGUF path for the live encoder-parity and public image-generation tests. |
 | `HIPENGINE_DMS_CAPTURE_TEST_MODEL` | unset | Compatible GGUF override for live offline DMS capture and public collector lifecycle tests. Each test keeps its own default fixture when unset. |
 | `HIPENGINE_TEST_GGUF_MODEL` | `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` | Dense Qwen hybrid GGUF fixture for `tests/test_live_gguf_singleton_verify_roots.py`. Set it to a locally installed compatible model; missing model or HIP runtime skips the tests. |
+| `HIPENGINE_TEST_DENSE_GGUF_MODEL` | `/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf` | Compatible dense Qwen GGUF fixture for `tests/test_live_qwen35_gguf_mtp_e2e.py`. Overrides only the live-test model path, not runtime admission or dispatch. |
 | `HIPENGINE_TEST_PARO_MODEL` | unset | PARO model directory override for the live PARO tokenizer/EOS tests; falls back to the standard `/models/hipengine/...` candidates. |
 | `HIPENGINE_TEST_PARO_MTP_MODEL` | `/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16` | Packed PARO model directory with BF16 MTP weights for `tests/test_live_paro_mtp_prompt_priming.py`. The test skips when the model or HIP runtime is unavailable. |
 | `HIPENGINE_TEST_QWEN4EXP_GGUF` | `/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL` | Model fixture for the live constrained-chunk admission test; skips when the model or HIP runtime is unavailable. |
