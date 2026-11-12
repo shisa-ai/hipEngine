@@ -21,6 +21,10 @@ repeats. These rates include prompt processing, not just decode. The baseline
 already differs from true AR on `general_en_explain`; this is an optimization
 comparison against the previous MTP path, not an AR-exactness or quality claim.
 [Commands, samples, numerical checks and public trace](results/2026-11-12-gfx1151-qwen38-mixed-pair-batch/NOTES.md).
+The clean-source ten-prompt server confirmation measures MTP complete-request
+wall **35.478 → 35.156 s (−0.91%)**, with unchanged per-arm IDs and acceptance.
+Both runs still fail the same AR-exact comparison on `general_en_explain`.
+[Server confirmation and remaining dense costs](results/2026-11-12-gfx1151-qwen38-dense-followup/NOTES.md).
 
 
 ## Muse Glimmer 30B DFlash — Radeon 8060S (gfx1151)

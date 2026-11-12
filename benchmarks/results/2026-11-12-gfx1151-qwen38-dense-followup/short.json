@@ -1,0 +1,2955 @@
+{
+  "schema": 1,
+  "kind": "instrumented_public_request_attribution",
+  "provenance": {
+    "host": {
+      "hostname": "gfx1151",
+      "cpu": "AMD RYZEN AI MAX+ 395",
+      "gpu": "AMD Radeon 8060S Graphics",
+      "backend": "hip_gfx1151",
+      "os": "Linux 7.3.1-1-cachyos"
+    },
+    "compiler": {
+      "hip": "7.15.26333",
+      "clang": "23.0.0git",
+      "llvm_revision": "8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+    },
+    "model": {
+      "path": "/home/lhl/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "revision": null,
+      "fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "value": "f343914a95e38d8f9f56886d10de4248738ad94aabb0fa0af8fd1b00c4e82f97",
+        "size_bytes": 16464440224,
+        "sampled_bytes": 3145728,
+        "sample_offsets": [
+          0,
+          8231695824,
+          16463391648
+        ],
+        "exists": true,
+        "path_type": "file"
+      }
+    },
+    "runtime_profile": {
+      "requested": null,
+      "resolved": "production",
+      "manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+      "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+    },
+    "source": {
+      "commit": "2db009da3b1ad236fd713671b4d4a1ddebfeef45",
+      "dirty": false
+    },
+    "source_state_note": "Harness reports clean tracked source. Attribution ran at the same commit with only an untracked worklog entry."
+  },
+  "graph_launch_columns": [
+    "graph_id",
+    "calls",
+    "min_kernel_dispatches",
+    "max_kernel_dispatches"
+  ],
+  "kernel_columns": [
+    "name",
+    "calls",
+    "sum_ms",
+    "min_grid_x",
+    "max_grid_x",
+    "min_grid_y",
+    "max_grid_y",
+    "max_private_bytes",
+    "max_arch_vgpr_count"
+  ],
+  "graph_launches": [
+    [
+      2,
+      11,
+      70,
+      70
+    ],
+    [
+      3,
+      12,
+      1107,
+      1107
+    ]
+  ],
+  "groups": [
+    {
+      "graph_id": 0,
+      "sum_kernel_ms": 708.072002,
+      "kernels": [
+        [
+          "void (anonymous namespace)::gguf_iq_prefill_wmma_kernel<0, unsigned short, unsigned short, 16, 128>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          117,
+          193.264928,
+          10240,
+          34816,
+          1,
+          1,
+          0,
+          144
+        ],
+        [
+          "__amd_rocclr_copyBuffer",
+          1645,
+          180.002949,
+          512,
+          10240,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          131,
+          107.772501,
+          1024,
+          17408,
+          1,
+          1,
+          0,
+          200
+        ],
+        [
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          92,
+          27.789964,
+          10240,
+          34816,
+          1,
+          1,
+          0,
+          80
+        ],
+        [
+          "void (anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          23,
+          17.586533,
+          704,
+          11616,
+          1,
+          1,
+          0,
+          184
+        ],
+        [
+          "void (anonymous namespace)::gguf_iq_prefill_wmma_kernel<3, unsigned short, unsigned short, 16, 128>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          6,
+          16.679268,
+          10240,
+          34816,
+          1,
+          1,
+          0,
+          184
+        ],
+        [
+          "void (anonymous namespace)::q5_k_t16_dense_tile8_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          89,
+          14.128323,
+          81920,
+          278528,
+          1,
+          1,
+          0,
+          56
+        ],
+        [
+          "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_top1_stage1_kernel(unsigned short const*, unsigned char const*, float*, float*, int*, long, long)",
+          3,
+          13.939166,
+          1986560,
+          1986560,
+          1,
+          1,
+          0,
+          80
+        ],
+        [
+          "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          34,
+          9.99332,
+          81920,
+          278528,
+          1,
+          1,
+          0,
+          72
+        ],
+        [
+          "void (anonymous namespace)::gguf_iq_prefill_wmma_kernel<1, unsigned short, unsigned short, 16, 128>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          7,
+          9.964142,
+          10240,
+          34816,
+          1,
+          1,
+          0,
+          144
+        ],
+        [
+          "void gguf_iq4_xs_local32_dual_silu_kernel<2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          20,
+          9.5458,
+          139264,
+          139264,
+          1,
+          1,
+          0,
+          72
+        ],
+        [
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 4, unsigned short, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          10,
+          9.514696,
+          10240,
+          10240,
+          1,
+          1,
+          0,
+          224
+        ],
+        [
+          "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          2,
+          9.151057,
+          1986560,
+          1986560,
+          1,
+          1,
+          0,
+          80
+        ],
+        [
+          "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)",
+          48,
+          8.132346,
+          6144,
+          6144,
+          32,
+          32,
+          0,
+          40
+        ],
+        [
+          "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          64,
+          7.409632,
+          20480,
+          49152,
+          1,
+          1,
+          0,
+          96
+        ],
+        [
+          "void (anonymous namespace)::gguf_iq_prefill_wmma_kernel<2, unsigned short, unsigned short, 16, 128>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          4,
+          7.183724,
+          10240,
+          34816,
+          1,
+          1,
+          0,
+          152
+        ],
+        [
+          "void (anonymous namespace)::q5_k_t16_dense_tile8_residual_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          22,
+          6.439769,
+          81920,
+          81920,
+          1,
+          1,
+          0,
+          56
+        ],
+        [
+          "void (anonymous namespace)::gguf_q8_0_t16_prefill_wmma_kernel<unsigned short, unsigned short, 16, 16>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          96,
+          5.871619,
+          96,
+          96,
+          1,
+          1,
+          0,
+          80
+        ],
+        [
+          "void gguf_iq4_xs_local32_residual_gemv_kernel<4>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          24,
+          5.247529,
+          81920,
+          81920,
+          1,
+          1,
+          0,
+          48
+        ],
+        [
+          "void (anonymous namespace)::iq4_q4_pair_silu_kernel<2, false, 0, 0>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          7,
+          3.377419,
+          139264,
+          139264,
+          1,
+          1,
+          0,
+          120
+        ],
+        [
+          "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          19,
+          3.376537,
+          81920,
+          139264,
+          1,
+          1,
+          0,
+          48
+        ],
+        [
+          "void (anonymous namespace)::gguf_q6_k_pack8_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          15,
+          3.183336,
+          81920,
+          81920,
+          1,
+          1,
+          0,
+          72
+        ],
+        [
+          "void (anonymous namespace)::iq4_q4_pair_silu_kernel<2, true, 0, 0>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          6,
+          2.929258,
+          139264,
+          139264,
+          1,
+          1,
+          0,
+          120
+        ],
+        [
+          "void (anonymous namespace)::gguf_iq_dense_strict_kernel<3, true, 8, 1>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+          6,
+          2.599801,
+          278528,
+          278528,
+          1,
+          1,
+          0,
+          40
+        ],
+        [
+          "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          5,
+          2.52614,
+          69632,
+          69632,
+          1,
+          1,
+          0,
+          176
+        ],
+        [
+          "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          34,
+          2.478374,
+          131072,
+          131072,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          236,
+          2.368845,
+          256,
+          3840,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "void (anonymous namespace)::gguf_iq_dense_strict_kernel<3, true, 8, 8>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+          1,
+          2.340153,
+          278528,
+          278528,
+          2,
+          2,
+          0,
+          136
+        ],
+        [
+          "void (anonymous namespace)::q4_k_t16_dense_single_local32_residual_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          10,
+          2.283807,
+          20480,
+          20480,
+          1,
+          1,
+          0,
+          96
+        ],
+        [
+          "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          22,
+          1.752128,
+          8192,
+          139264,
+          1,
+          1,
+          0,
+          80
+        ],
+        [
+          "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          131,
+          1.733295,
+          256,
+          3840,
+          1,
+          1,
+          0,
+          24
+        ],
+        [
+          "void (anonymous namespace)::iq4_q4_pair_silu_kernel<2, false, 1, 0>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          3,
+          1.63531,
+          139264,
+          139264,
+          1,
+          1,
+          0,
+          104
+        ],
+        [
+          "void (anonymous namespace)::iq4_q4_pair_silu_kernel<2, false, 1, 1>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          3,
+          1.626494,
+          139264,
+          139264,
+          1,
+          1,
+          0,
+          104
+        ],
+        [
+          "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          18,
+          1.573354,
+          81920,
+          98304,
+          1,
+          1,
+          0,
+          48
+        ],
+        [
+          "void gguf_iq_dense_strict_residual_kernel<2>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long, long)",
+          3,
+          1.226943,
+          81920,
+          81920,
+          1,
+          1,
+          0,
+          32
+        ],
+        [
+          "void (anonymous namespace)::iq4_q4_pair_silu_kernel<2, true, 1, 1>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          2,
+          1.079708,
+          139264,
+          139264,
+          1,
+          1,
+          0,
+          104
+        ],
+        [
+          "void (anonymous namespace)::q8_0_t16_rowtile_gemv_kernel<unsigned short, unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          8,
+          0.963767,
+          8192,
+          8192,
+          4,
+          4,
+          0,
+          136
+        ],
+        [
+          "void (anonymous namespace)::q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short, true>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)",
+          49,
+          0.86418,
+          768,
+          16384,
+          1,
+          1,
+          0,
+          56
+        ],
+        [
+          "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, true, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
+          33,
+          0.770483,
+          6144,
+          6144,
+          1,
+          1,
+          0,
+          56
+        ],
+        [
+          "void gguf_iq4_nl_local32_residual_gemv_kernel<4>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          3,
+          0.702678,
+          81920,
+          81920,
+          1,
+          1,
+          0,
+          40
+        ],
+        [
+          "void (anonymous namespace)::iq4_q4_pair_silu_kernel<2, false, 1, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          1,
+          0.561294,
+          139264,
+          139264,
+          1,
+          1,
+          0,
+          104
+        ],
+        [
+          "void (anonymous namespace)::iq4_q4_pair_silu_kernel<2, false, 4, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          1,
+          0.506911,
+          139264,
+          139264,
+          1,
+          1,
+          0,
+          48
+        ],
+        [
+          "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float, float*, long)",
+          16,
+          0.439104,
+          768,
+          768,
+          15,
+          15,
+          0,
+          32
+        ],
+        [
+          "void gguf_iq_dense_strict_residual_kernel<3>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long, long)",
+          1,
+          0.436379,
+          81920,
+          81920,
+          1,
+          1,
+          0,
+          40
+        ],
+        [
+          "__amd_rocclr_fillBufferUnAligned",
+          99,
+          0.409694,
+          256,
+          5120,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "void (anonymous namespace)::gguf_iq_dense_strict_kernel<2, true, 8, 1>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+          1,
+          0.401113,
+          278528,
+          278528,
+          1,
+          1,
+          0,
+          32
+        ],
+        [
+          "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          83,
+          0.39213,
+          17408,
+          261120,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, false, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)",
+          15,
+          0.349895,
+          6144,
+          6144,
+          1,
+          1,
+          0,
+          56
+        ],
+        [
+          "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          11,
+          0.343925,
+          8192,
+          8192,
+          1,
+          1,
+          0,
+          128
+        ],
+        [
+          "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_residual_kernel(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          1,
+          0.326773,
+          40960,
+          40960,
+          1,
+          1,
+          0,
+          88
+        ],
+        [
+          "(anonymous namespace)::qwen35_linear_attn_conv_prefill_tile32x128_kernel(float const*, float const*, float const*, float*, long, long)",
+          48,
+          0.275396,
+          10240,
+          10240,
+          1,
+          1,
+          0,
+          224
+        ],
+        [
+          "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_compact_peer_normalized_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+          48,
+          0.238528,
+          1920,
+          1920,
+          48,
+          48,
+          0,
+          16
+        ],
+        [
+          "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)",
+          48,
+          0.23099,
+          1920,
+          1920,
+          48,
+          48,
+          0,
+          24
+        ],
+        [
+          "void (anonymous namespace)::q8_0_t16_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          6,
+          0.226105,
+          8192,
+          8192,
+          1,
+          1,
+          0,
+          56
+        ],
+        [
+          "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false, long, 1>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+          19,
+          0.201577,
+          24576,
+          24576,
+          1,
+          1,
+          0,
+          32
+        ],
+        [
+          "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          67,
+          0.195443,
+          5120,
+          76800,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "void (anonymous namespace)::qwen35_linear_attn_conv_decode_lowp_kernel<unsigned short>(unsigned short const*, float*, float const*, float*, long, long)",
+          48,
+          0.175048,
+          10240,
+          10240,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "gguf_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, long const*, float*, float*, unsigned short*, float, long, long, long, long, long)",
+          50,
+          0.16603,
+          7168,
+          7168,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4, unsigned short, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          1,
+          0.157455,
+          2816,
+          2816,
+          1,
+          1,
+          0,
+          248
+        ],
+        [
+          "void gguf_iq4_nl_local32_gemv_kernel<2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          1,
+          0.148038,
+          81920,
+          81920,
+          1,
+          1,
+          0,
+          40
+        ],
+        [
+          "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          64,
+          0.145749,
+          15360,
+          153600,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)",
+          48,
+          0.145594,
+          40960,
+          40960,
+          1,
+          1,
+          0,
+          24
+        ],
+        [
+          "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          50,
+          0.105321,
+          1024,
+          1024,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          36,
+          0.090014,
+          5120,
+          5120,
+          1,
+          15,
+          0,
+          16
+        ],
+        [
+          "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          16,
+          0.086442,
+          7168,
+          7168,
+          15,
+          15,
+          0,
+          16
+        ],
+        [
+          "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          16,
+          0.067045,
+          92160,
+          92160,
+          1,
+          1,
+          0,
+          24
+        ],
+        [
+          "void (anonymous namespace)::top1_stage2_gather_kernel<false>(float const*, int const*, int const*, int*, float*, float const*, float*, long, long, long, long)",
+          3,
+          0.063278,
+          256,
+          256,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long, long)",
+          16,
+          0.039554,
+          1024,
+          1024,
+          15,
+          15,
+          0,
+          8
+        ],
+        [
+          "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
+          29,
+          0.037192,
+          1,
+          1,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          19,
+          0.02256,
+          6144,
+          6144,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          15,
+          0.016512,
+          6144,
+          6144,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          1,
+          0.01583,
+          8192,
+          8192,
+          1,
+          1,
+          0,
+          64
+        ],
+        [
+          "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          8,
+          0.015511,
+          256,
+          256,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          1,
+          0.011942,
+          62080,
+          62080,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "(anonymous namespace)::argmax_stage1_kernel(float const*, float*, long*, long)",
+          1,
+          0.011261,
+          62080,
+          62080,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "(anonymous namespace)::set_i64_scalar_kernel(long*, long)",
+          2,
+          0.003205,
+          1,
+          1,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          1,
+          0.002164,
+          128,
+          128,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "(anonymous namespace)::argmax_stage2_kernel(float const*, long const*, long, long*, float*)",
+          1,
+          0.001724,
+          128,
+          128,
+          1,
+          1,
+          0,
+          16
+        ]
+      ]
+    },
+    {
+      "graph_id": 3,
+      "sum_kernel_ms": 1450.969951,
+      "kernels": [
+        [
+          "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<2, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          744,
+          212.596491,
+          81920,
+          139264,
+          1,
+          1,
+          0,
+          168
+        ],
+        [
+          "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          936,
+          194.965647,
+          81920,
+          163840,
+          1,
+          1,
+          0,
+          80
+        ],
+        [
+          "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          576,
+          161.600742,
+          32768,
+          557056,
+          1,
+          1,
+          0,
+          48
+        ],
+        [
+          "void (anonymous namespace)::iq4_q4_pair_silu_kernel<2, false, 0, 0>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          84,
+          152.092122,
+          139264,
+          139264,
+          4,
+          4,
+          0,
+          120
+        ],
+        [
+          "void (anonymous namespace)::iq4_q4_pair_silu_kernel<2, true, 0, 0>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          72,
+          131.153497,
+          139264,
+          139264,
+          4,
+          4,
+          0,
+          120
+        ],
+        [
+          "void (anonymous namespace)::gguf_iq4_xs_local32_gemv_kernel<4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          504,
+          118.127774,
+          81920,
+          98304,
+          1,
+          1,
+          0,
+          168
+        ],
+        [
+          "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          420,
+          62.075306,
+          40960,
+          49152,
+          1,
+          1,
+          0,
+          144
+        ],
+        [
+          "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          12,
+          55.408445,
+          3973120,
+          3973120,
+          1,
+          1,
+          0,
+          72
+        ],
+        [
+          "void (anonymous namespace)::gguf_iq_dense_strict_kernel<3, true, 8, 4>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+          84,
+          54.830911,
+          81920,
+          278528,
+          1,
+          1,
+          0,
+          80
+        ],
+        [
+          "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          408,
+          47.260508,
+          20480,
+          69632,
+          1,
+          1,
+          0,
+          144
+        ],
+        [
+          "void (anonymous namespace)::gguf_iq_dense_strict_kernel<2, true, 8, 4>(unsigned short const*, unsigned char const*, void*, long, long, long)",
+          48,
+          35.980985,
+          81920,
+          278528,
+          1,
+          1,
+          0,
+          80
+        ],
+        [
+          "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+          576,
+          35.744235,
+          6144,
+          6144,
+          1,
+          1,
+          0,
+          88
+        ],
+        [
+          "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          60,
+          29.732252,
+          139264,
+          139264,
+          1,
+          1,
+          0,
+          144
+        ],
+        [
+          "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          120,
+          28.577597,
+          20480,
+          20480,
+          1,
+          1,
+          0,
+          144
+        ],
+        [
+          "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 4, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          168,
+          23.868348,
+          16384,
+          278528,
+          1,
+          1,
+          0,
+          72
+        ],
+        [
+          "(anonymous namespace)::linear_state_pair_commit_chunked_i32_kernel(unsigned long const*, unsigned long const*, long, unsigned long const*, unsigned long const*, long, int const*, long, long)",
+          12,
+          17.350927,
+          12288,
+          12288,
+          2,
+          2,
+          0,
+          16
+        ],
+        [
+          "void gguf_iq4_nl_local32_gemv_kernel<2, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          48,
+          13.334753,
+          81920,
+          139264,
+          1,
+          1,
+          0,
+          168
+        ],
+        [
+          "void gguf_iq4_nl_local32_gemv_kernel<4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          36,
+          11.590318,
+          81920,
+          81920,
+          1,
+          1,
+          0,
+          168
+        ],
+        [
+          "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          768,
+          10.160586,
+          1024,
+          1024,
+          1,
+          1,
+          0,
+          24
+        ],
+        [
+          "void (anonymous namespace)::q8_0_t16_dual_split_gemv_kernel<unsigned short, unsigned short, true>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, long, long, long, long)",
+          576,
+          9.671281,
+          768,
+          768,
+          4,
+          4,
+          0,
+          56
+        ],
+        [
+          "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          432,
+          9.260145,
+          8192,
+          8192,
+          1,
+          1,
+          0,
+          80
+        ],
+        [
+          "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          780,
+          7.221731,
+          1024,
+          1024,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "void (anonymous namespace)::q8_0_t16_rowtile_gemv_kernel<unsigned short, unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          84,
+          5.640388,
+          8192,
+          8192,
+          1,
+          1,
+          0,
+          136
+        ],
+        [
+          "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          240,
+          5.582481,
+          8192,
+          8192,
+          1,
+          1,
+          0,
+          128
+        ],
+        [
+          "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false, long, 1>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+          768,
+          5.055702,
+          24576,
+          24576,
+          1,
+          1,
+          0,
+          32
+        ],
+        [
+          "void (anonymous namespace)::qwen35_linear_attn_chain_conv_decode_lowp_tloop_kernel<unsigned short>(unsigned short const*, float const*, float*, float const*, float*, long, long, long)",
+          576,
+          3.194254,
+          10240,
+          10240,
+          1,
+          1,
+          0,
+          32
+        ],
+        [
+          "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          552,
+          1.445272,
+          69632,
+          69632,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          648,
+          1.172163,
+          20480,
+          20480,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          768,
+          1.119695,
+          1024,
+          1024,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "void (anonymous namespace)::q8_0_t16_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          48,
+          1.116937,
+          8192,
+          8192,
+          1,
+          1,
+          0,
+          56
+        ],
+        [
+          "(anonymous namespace)::f32_to_bf16_kernel(float const*, unsigned short*, long)",
+          588,
+          0.780162,
+          20480,
+          24576,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          768,
+          0.749363,
+          6144,
+          6144,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>(float const*, float const*, float const*, float const*, float const*, float const*, long const*, float*, float*, float, long, long, long, long, long, long, long, long)",
+          192,
+          0.564428,
+          7168,
+          7168,
+          4,
+          4,
+          0,
+          16
+        ],
+        [
+          "(anonymous namespace)::dflash_commit_chain_i32_kernel(int const*, int const*, int const*, int const*, unsigned char const*, unsigned char*, long, unsigned char const*, unsigned char*, long, long, unsigned char const*, unsigned char*, long, long, long, long, long, int const*, int const*, int const*, int*, int*, long, long, long, long, int*, int*, long, long)",
+          24,
+          0.444757,
+          256,
+          256,
+          1,
+          1,
+          0,
+          24
+        ],
+        [
+          "(anonymous namespace)::qwen35_split_qgate_bf16_kernel(unsigned short const*, float*, unsigned short*, long, long, long)",
+          192,
+          0.396183,
+          24576,
+          24576,
+          1,
+          1,
+          0,
+          24
+        ],
+        [
+          "(anonymous namespace)::argmax_rows_stage1_i32_kernel(float const*, float*, int*, long, long, long)",
+          12,
+          0.307139,
+          62080,
+          62080,
+          4,
+          4,
+          0,
+          8
+        ],
+        [
+          "(anonymous namespace)::bf16_to_f32_kernel(unsigned short const*, float*, long)",
+          204,
+          0.250605,
+          4096,
+          20480,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          12,
+          0.200936,
+          8192,
+          8192,
+          1,
+          1,
+          0,
+          88
+        ],
+        [
+          "gguf_rmsnorm_bf16_f32_weight_out_f32_kernel(unsigned short const*, float const*, float*, float, long)",
+          12,
+          0.073539,
+          1024,
+          1024,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "(anonymous namespace)::dflash_accept_chain_i32_kernel(int const*, int const*, int const*, int const*, unsigned char const*, int const*, int const*, int*, int*, int*, int*, int*, unsigned char*, int*, int*, int*, long*, long*, int*, int*, int, long, long, long)",
+          12,
+          0.060394,
+          128,
+          128,
+          1,
+          1,
+          0,
+          24
+        ],
+        [
+          "(anonymous namespace)::unpack_verify_chain_dynamic_metadata_i64_kernel(long const*, long*, int*, long*, int*, long*, long)",
+          12,
+          0.046769,
+          256,
+          256,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          48,
+          0.045525,
+          1,
+          1,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          12,
+          0.0414,
+          5120,
+          5120,
+          4,
+          4,
+          0,
+          16
+        ],
+        [
+          "__amd_rocclr_copyBuffer",
+          24,
+          0.033298,
+          512,
+          1536,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "(anonymous namespace)::argmax_rows_stage2_i32_kernel(float const*, int const*, int*, float*, long, long)",
+          12,
+          0.025369,
+          512,
+          512,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          12,
+          0.018591,
+          256,
+          256,
+          1,
+          1,
+          0,
+          8
+        ]
+      ]
+    },
+    {
+      "graph_id": 2,
+      "sum_kernel_ms": 215.982736,
+      "kernels": [
+        [
+          "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_top1_stage1_kernel(unsigned short const*, unsigned char const*, float*, float*, int*, long, long)",
+          33,
+          152.289459,
+          1986560,
+          1986560,
+          1,
+          1,
+          0,
+          80
+        ],
+        [
+          "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          198,
+          57.814877,
+          81920,
+          278528,
+          1,
+          1,
+          0,
+          72
+        ],
+        [
+          "void (anonymous namespace)::gguf_k_dual_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, unsigned short*, int, int, int)",
+          33,
+          2.376338,
+          131072,
+          131072,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+          132,
+          1.283532,
+          256,
+          256,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "void (anonymous namespace)::top1_stage2_gather_kernel<false>(float const*, int const*, int const*, int*, float*, float const*, float*, long, long, long, long)",
+          33,
+          0.995951,
+          256,
+          256,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+          33,
+          0.454934,
+          256,
+          256,
+          1,
+          1,
+          0,
+          24
+        ],
+        [
+          "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false, long, 1>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+          33,
+          0.266338,
+          24576,
+          24576,
+          1,
+          1,
+          0,
+          32
+        ],
+        [
+          "gguf_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, long const*, float*, float*, unsigned short*, float, long, long, long, long, long)",
+          33,
+          0.115857,
+          7168,
+          7168,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          33,
+          0.086843,
+          5120,
+          5120,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "void (anonymous namespace)::qwen35_write_paged_kv_mixed_value_position_tensor_kernel<unsigned short>(float const*, unsigned short const*, unsigned short*, unsigned short*, int const*, long const*, long, long, long, long)",
+          33,
+          0.058952,
+          1024,
+          1024,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "gguf_bf16_add_kernel(unsigned short const*, unsigned short const*, unsigned short*, long)",
+          33,
+          0.056663,
+          5120,
+          5120,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+          33,
+          0.049411,
+          17408,
+          17408,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "__amd_rocclr_copyBuffer",
+          33,
+          0.042162,
+          1024,
+          1024,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "(anonymous namespace)::qwen35_full_attn_gate_mul_bf16_kernel(float const*, unsigned short const*, unsigned short*, long)",
+          33,
+          0.033947,
+          6144,
+          6144,
+          1,
+          1,
+          0,
+          16
+        ],
+        [
+          "(anonymous namespace)::copy_i32_to_i64_kernel(int const*, long*, long)",
+          22,
+          0.029538,
+          256,
+          256,
+          1,
+          1,
+          0,
+          8
+        ],
+        [
+          "(anonymous namespace)::advance_decode_position_i64_kernel(long*, long*)",
+          22,
+          0.027934,
+          1,
+          1,
+          1,
+          1,
+          0,
+          8
+        ]
+      ]
+    }
+  ],
+  "attribution": {
+    "prompt_tokens": 15,
+    "result": {
+      "ids": [
+        271,
+        1206,
+        10033,
+        3069,
+        41163,
+        42903,
+        369,
+        5802,
+        2972,
+        16759,
+        65393,
+        2998,
+        6973,
+        332,
+        318,
+        18092,
+        3750,
+        430,
+        328,
+        16759,
+        48184,
+        871,
+        383,
+        2136,
+        68022,
+        11,
+        567,
+        1144,
+        310,
+        1353,
+        506,
+        279
+      ],
+      "telemetry": {
+        "decode_state": {
+          "row_index": 0,
+          "step_index": 32,
+          "prompt_tokens": 15,
+          "generated_tokens": 32,
+          "phase": "done",
+          "continuation_eligible": false,
+          "request_id": "1",
+          "sampler_mode": "greedy_fast",
+          "execution_path": "gguf_specdec2_mtp2",
+          "native_compact_prefill": true,
+          "native_caware_decode": true,
+          "serial_decode_fallback": false,
+          "native_sampler_rows": false
+        },
+        "timing": {
+          "tokenize_ms": 0.0,
+          "prompt_encode_ms": 0.0,
+          "render_ms": 0.0,
+          "admission_prepare_ms": 0.0,
+          "prefill_ms": 548.383,
+          "prefill_chunk_count": 1.0,
+          "request_total_ms": 2810.526,
+          "specdec2_mtp2_prompt_streaming": 1.0,
+          "specdec2_mtp2_prompt_prime_rows": 15.0,
+          "specdec2_mtp2_prompt_reused_rows": 0.0,
+          "specdec2_mtp2_prompt_carried_bytes": 10240.0,
+          "specdec2_mtp2_cycles": 12.0,
+          "specdec2_mtp2_proposal_ms": 45.060450793243945,
+          "specdec2_mtp2_target_ms": 2041.42605,
+          "specdec2_mtp2_provider_update_ms": 33.751751645468175,
+          "specdec2_mtp2_accept_ms": 0.0,
+          "specdec2_mtp2_target_readback_ms": 0.0,
+          "specdec2_mtp2_accept_upload_ms": 0.0,
+          "specdec2_mtp2_accept_tail_ms": 0.0,
+          "specdec2_mtp2_accept_enqueue_ms": 0.0,
+          "specdec2_mtp2_selected_commit_ms": 0.0,
+          "specdec2_mtp2_candidate_readback_ms": 0.0,
+          "specdec2_mtp2_k0_catchups": 1.0,
+          "specdec2_mtp2_ngram_lookup_calls": 0.0,
+          "specdec2_mtp2_ngram_lookup_hits": 0.0,
+          "specdec2_mtp2_ngram_cycles": 0.0,
+          "specdec2_mtp2_ngram_probed_tokens": 0.0,
+          "specdec2_mtp2_ngram_accepted_tokens": 0.0,
+          "specdec2_mtp2_recoverable_failures": 0.0
+        },
+        "timing_scope": "choice",
+        "group_rows": 1,
+        "timing_owner": true,
+        "diagnostics": {
+          "prefix_cache": {
+            "mode": "off",
+            "block_size_tokens": 256,
+            "eligible": false,
+            "lookup": false,
+            "hit": false,
+            "source": null,
+            "matched_tokens": 0,
+            "reused_tokens": 0,
+            "avoided_prefill_tokens": 0,
+            "executed_prefill_tokens": 15,
+            "reused_pages": 0,
+            "reused_page_bytes": 0,
+            "state_clone_bytes": 0,
+            "snapshot_hit": false,
+            "admission_fallback": false,
+            "fallback_reason": "cache_off",
+            "cache_resident_entries": 0,
+            "cache_resident_pages": 0,
+            "cache_resident_bytes": 0
+          },
+          "specdec2_mtp2": {
+            "requested_budget": 3,
+            "candidate_budget": 3,
+            "prompt_streaming": true,
+            "prompt_fallback_reason": null,
+            "activation_reason": null,
+            "provider_readiness": "ready",
+            "provider_decline_reason": null,
+            "provider_state_present": true,
+            "plan_group_rows": 1,
+            "plan_ar_only": true,
+            "plan_reason": "target_graph_output_room_miss",
+            "cycles": 12,
+            "generated_draft_tokens": 36,
+            "accepted_draft_tokens": 18,
+            "selected_depth_histogram": {
+              "3": 12
+            },
+            "mtp_output_tokens": 30,
+            "ar_output_tokens_in_cycles": 2,
+            "first_fallback_position": 31,
+            "ar_step_reason_counts": {
+              "no_provider": 1,
+              "target_graph_output_room_miss": 1
+            },
+            "recoverable_failures": 0,
+            "failure_reason_counts": {},
+            "failure_reasons": [],
+            "k0_catchups": 1,
+            "cycle_timing_ms": {
+              "proposal": 45.060450793243945,
+              "target": 2041.42605,
+              "provider_update": 33.751751645468175,
+              "accept": 0.0,
+              "candidate_readback": 0.0,
+              "target_readback": 0.0,
+              "accept_upload": 0.0,
+              "accept_tail": 0.0,
+              "accept_enqueue": 0.0,
+              "selected_commit": 0.0
+            },
+            "physical_execution": {
+              "proposal_batch_calls": 0,
+              "proposal_rows_histogram": {},
+              "target_pass_count": 12,
+              "target_batch_calls": 0,
+              "target_rows_histogram": {}
+            }
+          },
+          "kv_layout": {
+            "pool_contract": "global_generation2",
+            "pool_storage_layout": "global-arbitrary-pages:g1",
+            "storage_dtype": "bf16",
+            "storage_layout": "uniform",
+            "scale_dtype": "fp16",
+            "scale_granularity": "per_token_head",
+            "kv_attention_source": "bf16",
+            "request_pages": 1,
+            "request_capacity_tokens": 256,
+            "request_block_ids": [
+              16
+            ],
+            "one_backing_chunk": true,
+            "contiguous_in_backing": true,
+            "persistent_int8_payload_bytes": 0,
+            "persistent_bf16_payload_bytes": 16777216,
+            "persistent_scale_bytes": 0,
+            "persistent_bf16_mirror_bytes": 0,
+            "persistent_total_bytes": 16777216
+          }
+        }
+      },
+      "profile": "production",
+      "manifest": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc"
+    },
+    "copies": [
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 163840,
+        "stack": [
+          "qwen35_gguf_mtp.py:_copy_d2d:1083",
+          "qwen35_gguf_mtp.py:_capture_state_index:1053",
+          "qwen35_gguf_mtp.py:capture_initial:923",
+          "qwen35_gguf_mtp.py:prepare:1571",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3782",
+          "delegation.py:execute_target_frontier:139",
+          "engine_loop.py:_run_staged_speculative_cycle:3940"
+        ],
+        "calls": 576,
+        "total_bytes": 94371840
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 3145728,
+        "stack": [
+          "qwen35_gguf_mtp.py:_copy_d2d:1083",
+          "qwen35_gguf_mtp.py:_capture_state_index:1053",
+          "qwen35_gguf_mtp.py:capture_initial:923",
+          "qwen35_gguf_mtp.py:prepare:1571",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3782",
+          "delegation.py:execute_target_frontier:139",
+          "engine_loop.py:_run_staged_speculative_cycle:3940"
+        ],
+        "calls": 576,
+        "total_bytes": 1811939328
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 4,
+        "stack": [
+          "gguf_native_spec_cycle.py:_enqueue_device_proposal_handoff:818",
+          "gguf_native_spec_cycle.py:launch:1486",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_target_from_device_proposal:3057",
+          "qwen35_gguf_runner.py:verify_target_from_device_proposal:29572",
+          "qwen35_gguf_mtp.py:prepare:1623",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3782",
+          "delegation.py:execute_target_frontier:139"
+        ],
+        "calls": 66,
+        "total_bytes": 264
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 163840,
+        "stack": [
+          "qwen35_gguf_runner.py:_sync_packed_decode_initial_state:27051",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24018",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927",
+          "qwen35_gguf.py:prefill_batch:10070",
+          "engine_loop.py:_run_prefill:3126"
+        ],
+        "calls": 48,
+        "total_bytes": 7864320
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 3145728,
+        "stack": [
+          "qwen35_gguf_runner.py:_sync_packed_decode_initial_state:27058",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24018",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927",
+          "qwen35_gguf.py:prefill_batch:10070",
+          "engine_loop.py:_run_prefill:3126"
+        ],
+        "calls": 48,
+        "total_bytes": 150994944
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 163840,
+        "stack": [
+          "qwen35_gguf_runner.py:_scatter_packed_decode_state:27342",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24381",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927",
+          "qwen35_gguf.py:prefill_batch:10070",
+          "engine_loop.py:_run_prefill:3126"
+        ],
+        "calls": 48,
+        "total_bytes": 7864320
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 3145728,
+        "stack": [
+          "qwen35_gguf_runner.py:_scatter_packed_decode_state:27349",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24381",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927",
+          "qwen35_gguf.py:prefill_batch:10070",
+          "engine_loop.py:_run_prefill:3126"
+        ],
+        "calls": 48,
+        "total_bytes": 150994944
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 30720,
+        "stack": [
+          "qwen35_gguf_runner.py:_copy_packed_kv_rows:26537",
+          "qwen35_gguf_runner.py:_copy_session_packed_kv_segments:26580",
+          "qwen35_gguf_runner.py:_scatter_packed_decode_state:27303",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24381",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927"
+        ],
+        "calls": 32,
+        "total_bytes": 983040
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "qwen35_gguf_nextn.py:enqueue_prompt_rows:2778",
+          "qwen35_gguf_mtp.py:_consume_slice:372",
+          "qwen35_gguf_mtp.py:consume:332",
+          "qwen35_gguf_runner.py:_consume_packed_target_hidden_sinks:1175",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24265",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458"
+        ],
+        "calls": 14,
+        "total_bytes": 112
+      },
+      {
+        "api": "memcpy",
+        "kind": 3,
+        "nbytes": 10240,
+        "stack": [
+          "qwen35_gguf_mtp2.py:propose_batch:3410",
+          "delegation.py:propose_speculative_batch:125",
+          "engine_loop.py:_run_staged_speculative_cycle:3894",
+          "engine_loop.py:_maybe_run_speculative_cycle:3727",
+          "engine_loop.py:_run_decode:3183",
+          "engine_loop.py:_tick_once:2800",
+          "engine_loop.py:tick:2738"
+        ],
+        "calls": 12,
+        "total_bytes": 122880
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 10240,
+        "stack": [
+          "qwen35_gguf_mtp.py:_copy_d2d:1083",
+          "qwen35_gguf_mtp.py:capture_initial:919",
+          "qwen35_gguf_mtp.py:prepare:1571",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3782",
+          "delegation.py:execute_target_frontier:139",
+          "engine_loop.py:_run_staged_speculative_cycle:3940",
+          "engine_loop.py:_maybe_run_speculative_cycle:3727"
+        ],
+        "calls": 12,
+        "total_bytes": 122880
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 10240,
+        "stack": [
+          "qwen35_gguf_nextn.py:_launch_graph_chain_device:2309",
+          "qwen35_gguf_nextn.py:launch_cached_graph_chain_device:2396",
+          "qwen35_gguf_nextn.py:launch_device_proposal:3944",
+          "qwen35_gguf_mtp2.py:propose_batch:3491",
+          "delegation.py:propose_speculative_batch:125",
+          "engine_loop.py:_run_staged_speculative_cycle:3894",
+          "engine_loop.py:_maybe_run_speculative_cycle:3727"
+        ],
+        "calls": 11,
+        "total_bytes": 112640
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "qwen35_gguf_nextn.py:_launch_graph_chain_device:2316",
+          "qwen35_gguf_nextn.py:launch_cached_graph_chain_device:2396",
+          "qwen35_gguf_nextn.py:launch_device_proposal:3944",
+          "qwen35_gguf_mtp2.py:propose_batch:3491",
+          "delegation.py:propose_speculative_batch:125",
+          "engine_loop.py:_run_staged_speculative_cycle:3894",
+          "engine_loop.py:_maybe_run_speculative_cycle:3727"
+        ],
+        "calls": 11,
+        "total_bytes": 88
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 160,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "gguf_native_spec_cycle.py:_copy_array_to_tensor:297",
+          "gguf_native_spec_cycle.py:_stage_dynamic_metadata:789",
+          "gguf_native_spec_cycle.py:launch:1458",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_target_from_device_proposal:3057",
+          "qwen35_gguf_runner.py:verify_target_from_device_proposal:29572"
+        ],
+        "calls": 11,
+        "total_bytes": 1760
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 4,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "gguf_native_spec_cycle.py:_copy_array_to_tensor:297",
+          "gguf_native_spec_cycle.py:launch:1466",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_target_from_device_proposal:3057",
+          "qwen35_gguf_runner.py:verify_target_from_device_proposal:29572",
+          "qwen35_gguf_mtp.py:prepare:1623"
+        ],
+        "calls": 11,
+        "total_bytes": 44
+      },
+      {
+        "api": "memcpy",
+        "kind": 2,
+        "nbytes": 48,
+        "stack": [
+          "memory.py:copy_device_to_host:216",
+          "gguf_native_spec_cycle.py:launch:1555",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_target_from_device_proposal:3057",
+          "qwen35_gguf_runner.py:verify_target_from_device_proposal:29572",
+          "qwen35_gguf_mtp.py:prepare:1623",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3782",
+          "delegation.py:execute_target_frontier:139"
+        ],
+        "calls": 11,
+        "total_bytes": 528
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:set_full_attention_position:32189",
+          "qwen35_gguf_nextn.py:_run_block:1130",
+          "qwen35_gguf_nextn.py:advance_state_only_device:2883",
+          "qwen35_gguf_mtp2.py:_repair_provider_state_device:6108",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3930"
+        ],
+        "calls": 8,
+        "total_bytes": 64
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:set_full_attention_position:32190",
+          "qwen35_gguf_nextn.py:_run_block:1130",
+          "qwen35_gguf_nextn.py:advance_state_only_device:2883",
+          "qwen35_gguf_mtp2.py:_repair_provider_state_device:6108",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3930"
+        ],
+        "calls": 8,
+        "total_bytes": 64
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_nextn.py:restore_request_checkpoint:3053",
+          "qwen35_gguf_mtp2.py:_repair_provider_state_device:6095",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3930",
+          "delegation.py:execute_target_frontier:139",
+          "engine_loop.py:_run_staged_speculative_cycle:3940"
+        ],
+        "calls": 6,
+        "total_bytes": 48
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_nextn.py:restore_request_checkpoint:3059",
+          "qwen35_gguf_mtp2.py:_repair_provider_state_device:6095",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3930",
+          "delegation.py:execute_target_frontier:139",
+          "engine_loop.py:_run_staged_speculative_cycle:3940"
+        ],
+        "calls": 6,
+        "total_bytes": 48
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:set_full_attention_position:32189",
+          "qwen35_gguf_nextn.py:_run_block:1130",
+          "qwen35_gguf_nextn.py:advance_state_only:2842",
+          "qwen35_gguf_mtp2.py:_repair_provider_state_device:6096",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3930"
+        ],
+        "calls": 6,
+        "total_bytes": 48
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:set_full_attention_position:32190",
+          "qwen35_gguf_nextn.py:_run_block:1130",
+          "qwen35_gguf_nextn.py:advance_state_only:2842",
+          "qwen35_gguf_mtp2.py:_repair_provider_state_device:6096",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3930"
+        ],
+        "calls": 6,
+        "total_bytes": 48
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_nextn.py:_run_block:1141",
+          "qwen35_gguf_nextn.py:advance_state_only:2842",
+          "qwen35_gguf_mtp2.py:_repair_provider_state_device:6096",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3930",
+          "delegation.py:execute_target_frontier:139"
+        ],
+        "calls": 6,
+        "total_bytes": 48
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 32,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "gguf_native_spec_cycle.py:_copy_array_to_tensor:297",
+          "gguf_native_spec_cycle.py:_stage_target_batch:362",
+          "gguf_native_spec_cycle.py:capture_qwen35_gguf_native_b2_target_graph:1959",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2904",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520"
+        ],
+        "calls": 5,
+        "total_bytes": 160
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 16,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "gguf_native_spec_cycle.py:_copy_array_to_tensor:297",
+          "gguf_native_spec_cycle.py:_stage_target_batch:362",
+          "gguf_native_spec_cycle.py:capture_qwen35_gguf_native_b2_target_graph:2121",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2904",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520"
+        ],
+        "calls": 5,
+        "total_bytes": 80
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 384,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "gguf_native_spec_cycle.py:_copy_array_to_tensor:297",
+          "gguf_native_spec_cycle.py:_allocate_native_linear_state_tables:338",
+          "gguf_native_spec_cycle.py:capture_qwen35_gguf_native_b2_target_graph:2066",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2904",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520"
+        ],
+        "calls": 4,
+        "total_bytes": 1536
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:set_full_attention_position:32189",
+          "qwen35_gguf_nextn.py:_run_block:1130",
+          "qwen35_gguf_nextn.py:run_step:1208",
+          "qwen35_gguf_nextn.py:run_chain:2529",
+          "qwen35_gguf_nextn.py:propose:3672"
+        ],
+        "calls": 3,
+        "total_bytes": 24
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:set_full_attention_position:32190",
+          "qwen35_gguf_nextn.py:_run_block:1130",
+          "qwen35_gguf_nextn.py:run_step:1208",
+          "qwen35_gguf_nextn.py:run_chain:2529",
+          "qwen35_gguf_nextn.py:propose:3672"
+        ],
+        "calls": 3,
+        "total_bytes": 24
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_nextn.py:_run_block:1141",
+          "qwen35_gguf_nextn.py:run_step:1208",
+          "qwen35_gguf_nextn.py:run_chain:2529",
+          "qwen35_gguf_nextn.py:propose:3672",
+          "qwen35_gguf_mtp2.py:propose_batch:3496"
+        ],
+        "calls": 3,
+        "total_bytes": 24
+      },
+      {
+        "api": "memcpy",
+        "kind": 2,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_device_to_host:216",
+          "qwen35_gguf_nextn.py:_run_exact_lm_head_top1:957",
+          "qwen35_gguf_nextn.py:_sample_lm_head:973",
+          "qwen35_gguf_nextn.py:run_step:1227",
+          "qwen35_gguf_nextn.py:run_chain:2529",
+          "qwen35_gguf_nextn.py:propose:3672",
+          "qwen35_gguf_mtp2.py:propose_batch:3496"
+        ],
+        "calls": 3,
+        "total_bytes": 24
+      },
+      {
+        "api": "memcpy",
+        "kind": 3,
+        "nbytes": 10240,
+        "stack": [
+          "qwen35_gguf_nextn.py:_preserve_proposal_hidden:2569",
+          "qwen35_gguf_nextn.py:run_chain:2536",
+          "qwen35_gguf_nextn.py:propose:3672",
+          "qwen35_gguf_mtp2.py:propose_batch:3496",
+          "delegation.py:propose_speculative_batch:125",
+          "engine_loop.py:_run_staged_speculative_cycle:3894",
+          "engine_loop.py:_maybe_run_speculative_cycle:3727"
+        ],
+        "calls": 3,
+        "total_bytes": 30720
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 64,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:bind_device_kv_allocation:15472",
+          "qwen35_gguf.py:reserve_admission:8114",
+          "batch_scheduler.py:admit_pending:1185",
+          "engine_loop.py:_tick_once:2773",
+          "engine_loop.py:tick:2738"
+        ],
+        "calls": 1,
+        "total_bytes": 64
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 240,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:for_packed_verify_layout:31316",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24030",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927"
+        ],
+        "calls": 1,
+        "total_bytes": 240
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 120,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:for_packed_verify_layout:31317",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24030",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927"
+        ],
+        "calls": 1,
+        "total_bytes": 120
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 120,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:for_packed_verify_layout:31318",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24030",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927"
+        ],
+        "calls": 1,
+        "total_bytes": 120
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:for_packed_verify_layout:31319",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24030",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:for_packed_verify_layout:31320",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24030",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 4,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:for_packed_verify_layout:31321",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24030",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927"
+        ],
+        "calls": 1,
+        "total_bytes": 4
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:for_packed_verify_layout:31322",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24030",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:for_packed_verify_layout:31328",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24030",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 120,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24038",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927",
+          "qwen35_gguf.py:prefill_batch:10070"
+        ],
+        "calls": 1,
+        "total_bytes": 120
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "qwen35_gguf_nextn.py:enqueue_prompt_rows:2778",
+          "qwen35_gguf_mtp.py:_consume_slice:363",
+          "qwen35_gguf_mtp.py:consume:332",
+          "qwen35_gguf_runner.py:_consume_packed_target_hidden_sinks:1175",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24265",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 10240,
+        "stack": [
+          "qwen35_gguf_mtp.py:_consume_slice:380",
+          "qwen35_gguf_mtp.py:consume:332",
+          "qwen35_gguf_runner.py:_consume_packed_target_hidden_sinks:1175",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24265",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927"
+        ],
+        "calls": 1,
+        "total_bytes": 10240
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 10240,
+        "stack": [
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24302",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927",
+          "qwen35_gguf.py:prefill_batch:10070",
+          "engine_loop.py:_run_prefill:3126",
+          "engine_loop.py:_tick_once:2848"
+        ],
+        "calls": 1,
+        "total_bytes": 10240
+      },
+      {
+        "api": "memcpy",
+        "kind": 2,
+        "nbytes": 4,
+        "stack": [
+          "memory.py:copy_device_to_host:216",
+          "qwen35_gguf_runner.py:_read_target_block_row_tokens:29131",
+          "qwen35_gguf_runner.py:_prefill_batch_native_single_slab:24351",
+          "qwen35_gguf_runner.py:_prefill_batch_native_impl:22851",
+          "qwen35_gguf_runner.py:prefill_batch_native:22458",
+          "qwen35_gguf.py:_prefill_native_row:10927",
+          "qwen35_gguf.py:prefill_batch:10070"
+        ],
+        "calls": 1,
+        "total_bytes": 4
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 4,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "gguf_native_spec_cycle.py:_copy_array_to_tensor:297",
+          "gguf_native_spec_cycle.py:_stage_target_batch:363",
+          "gguf_native_spec_cycle.py:capture_qwen35_gguf_native_b2_target_graph:1959",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2904",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520"
+        ],
+        "calls": 1,
+        "total_bytes": 4
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 4,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "gguf_native_spec_cycle.py:_copy_array_to_tensor:297",
+          "gguf_native_spec_cycle.py:_stage_target_batch:363",
+          "gguf_native_spec_cycle.py:capture_qwen35_gguf_native_b2_target_graph:2121",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2904",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520"
+        ],
+        "calls": 1,
+        "total_bytes": 4
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 4,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "gguf_native_spec_cycle.py:_copy_array_to_tensor:297",
+          "gguf_native_spec_cycle.py:capture_qwen35_gguf_native_b2_target_graph:2132",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2904",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520",
+          "qwen35_gguf_mtp.py:prepare:1612"
+        ],
+        "calls": 1,
+        "total_bytes": 4
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 4,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "gguf_native_spec_cycle.py:_copy_array_to_tensor:297",
+          "gguf_native_spec_cycle.py:capture_qwen35_gguf_native_b2_target_graph:2137",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2904",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520",
+          "qwen35_gguf_mtp.py:prepare:1612"
+        ],
+        "calls": 1,
+        "total_bytes": 4
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 160,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "gguf_native_spec_cycle.py:_copy_array_to_tensor:297",
+          "gguf_native_spec_cycle.py:_stage_dynamic_metadata:789",
+          "gguf_native_spec_cycle.py:capture_qwen35_gguf_native_b2_target_graph:2205",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2904",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520"
+        ],
+        "calls": 1,
+        "total_bytes": 160
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 20480,
+        "stack": [
+          "qwen35_gguf_runner.py:verify_target_block:21194",
+          "gguf_native_spec_cycle.py:capture_qwen35_gguf_native_b2_target_graph:2270",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2904",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520",
+          "qwen35_gguf_mtp.py:prepare:1612",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3782",
+          "delegation.py:execute_target_frontier:139"
+        ],
+        "calls": 1,
+        "total_bytes": 20480
+      },
+      {
+        "api": "memcpy_async",
+        "kind": 3,
+        "nbytes": 16,
+        "stack": [
+          "gguf_native_spec_cycle.py:capture_qwen35_gguf_native_b2_target_graph:2403",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2904",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520",
+          "qwen35_gguf_mtp.py:prepare:1612",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3782",
+          "delegation.py:execute_target_frontier:139",
+          "engine_loop.py:_run_staged_speculative_cycle:3940"
+        ],
+        "calls": 1,
+        "total_bytes": 16
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 160,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "gguf_native_spec_cycle.py:_copy_array_to_tensor:297",
+          "gguf_native_spec_cycle.py:_stage_dynamic_metadata:789",
+          "gguf_native_spec_cycle.py:launch:1458",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2949",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520"
+        ],
+        "calls": 1,
+        "total_bytes": 160
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 4,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "gguf_native_spec_cycle.py:_copy_array_to_tensor:297",
+          "gguf_native_spec_cycle.py:launch:1466",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2949",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520",
+          "qwen35_gguf_mtp.py:prepare:1612"
+        ],
+        "calls": 1,
+        "total_bytes": 4
+      },
+      {
+        "api": "memcpy",
+        "kind": 2,
+        "nbytes": 88,
+        "stack": [
+          "memory.py:copy_device_to_host:216",
+          "gguf_native_spec_cycle.py:launch:1555",
+          "gguf_native_spec_cycle.py:verify_qwen35_gguf_native_b2_target:2949",
+          "qwen35_gguf_runner.py:verify_target_block_native_cycle:29520",
+          "qwen35_gguf_mtp.py:prepare:1612",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3782",
+          "delegation.py:execute_target_frontier:139"
+        ],
+        "calls": 1,
+        "total_bytes": 88
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_nextn.py:restore_request_checkpoint:3053",
+          "qwen35_gguf_mtp2.py:_repair_provider_state:6150",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3924",
+          "delegation.py:execute_target_frontier:139",
+          "engine_loop.py:_run_staged_speculative_cycle:3940"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_nextn.py:restore_request_checkpoint:3059",
+          "qwen35_gguf_mtp2.py:_repair_provider_state:6150",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3924",
+          "delegation.py:execute_target_frontier:139",
+          "engine_loop.py:_run_staged_speculative_cycle:3940"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:set_full_attention_position:32189",
+          "qwen35_gguf_nextn.py:_run_block:1130",
+          "qwen35_gguf_nextn.py:advance_state_only:2842",
+          "qwen35_gguf_mtp2.py:_repair_provider_state:6151",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3924"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:set_full_attention_position:32190",
+          "qwen35_gguf_nextn.py:_run_block:1130",
+          "qwen35_gguf_nextn.py:advance_state_only:2842",
+          "qwen35_gguf_mtp2.py:_repair_provider_state:6151",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3924"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_nextn.py:_run_block:1141",
+          "qwen35_gguf_nextn.py:advance_state_only:2842",
+          "qwen35_gguf_mtp2.py:_repair_provider_state:6151",
+          "qwen35_gguf_mtp2.py:execute_target_frontier:3924",
+          "delegation.py:execute_target_frontier:139"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:set_full_attention_position:32189",
+          "qwen35_gguf_nextn.py:_run_block:1130",
+          "qwen35_gguf_nextn.py:advance_state_only:2842",
+          "qwen35_gguf_mtp2.py:prepare_k0:3064",
+          "delegation.py:prepare_speculative_k0:156"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:set_full_attention_position:32190",
+          "qwen35_gguf_nextn.py:_run_block:1130",
+          "qwen35_gguf_nextn.py:advance_state_only:2842",
+          "qwen35_gguf_mtp2.py:prepare_k0:3064",
+          "delegation.py:prepare_speculative_k0:156"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_nextn.py:_run_block:1141",
+          "qwen35_gguf_nextn.py:advance_state_only:2842",
+          "qwen35_gguf_mtp2.py:prepare_k0:3064",
+          "delegation.py:prepare_speculative_k0:156",
+          "engine_loop.py:_maybe_run_speculative_cycle:3709"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:_copy_token_embeddings_to_device:17911",
+          "qwen35_gguf_runner.py:_set_token_id_device:25883",
+          "qwen35_gguf_runner.py:_run_token_to_final_hidden:25348",
+          "qwen35_gguf_runner.py:step:22268",
+          "qwen35_gguf.py:_step_native_c1_graph:12517"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 2,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_device_to_host:216",
+          "qwen35_gguf_runner.py:_read_sample:29344",
+          "qwen35_gguf_runner.py:_sample_from_hidden:29335",
+          "qwen35_gguf_runner.py:step:22278",
+          "qwen35_gguf.py:_step_native_c1_graph:12517",
+          "qwen35_gguf.py:_step_native_serial:12445",
+          "qwen35_gguf.py:_step_native_rows:12041"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:set_full_attention_position:32189",
+          "qwen35_gguf_runner.py:zero_states:32227",
+          "qwen35_gguf_nextn.py:reset_request:3534",
+          "qwen35_gguf_nextn.py:release_request:3539",
+          "qwen35_gguf_nextn.py:release_request:4057"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 8,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:set_full_attention_position:32190",
+          "qwen35_gguf_runner.py:zero_states:32227",
+          "qwen35_gguf_nextn.py:reset_request:3534",
+          "qwen35_gguf_nextn.py:release_request:3539",
+          "qwen35_gguf_nextn.py:release_request:4057"
+        ],
+        "calls": 1,
+        "total_bytes": 8
+      },
+      {
+        "api": "memcpy",
+        "kind": 1,
+        "nbytes": 64,
+        "stack": [
+          "memory.py:copy_host_to_device:148",
+          "memory.py:copy_host_array_to_device:203",
+          "qwen35_gguf_runner.py:unbind_device_kv_allocation:16015",
+          "qwen35_gguf.py:_retire_request_session:10550",
+          "qwen35_gguf.py:_release_row_resources:10500",
+          "qwen35_gguf.py:reclaim:10257",
+          "engine_loop.py:_reclaim_runner_state:4007"
+        ],
+        "calls": 1,
+        "total_bytes": 64
+      }
+    ],
+    "graphs": [
+      {
+        "handle": 139940013991888,
+        "stack": [
+          "qwen35_gguf_nextn.py:_launch_graph_chain_device:2331",
+          "qwen35_gguf_nextn.py:launch_cached_graph_chain_device:2396",
+          "qwen35_gguf_nextn.py:launch_device_proposal:3944",
+          "qwen35_gguf_mtp2.py:propose_batch:3491",
+          "delegation.py:propose_speculative_batch:125",
+          "engine_loop.py:_run_staged_speculative_cycle:3894",
+          "engine_loop.py:_maybe_run_speculative_cycle:3727"
+        ],
+        "calls": 11
+      }
+    ],
+    "post_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 25510219151,
+      "total_allocated_bytes": 25669818082,
+      "total_freed_bytes": 25669818082,
+      "active_allocations": 0,
+      "peak_allocations": 1822
+    },
+    "post_gc": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 25510219151,
+      "total_allocated_bytes": 25669818082,
+      "total_freed_bytes": 25669818082,
+      "active_allocations": 0,
+      "peak_allocations": 1822
+    },
+    "residual_allocations": []
+  },
+  "profile_ids_equal_warm": true,
+  "profile_control_equal_warm": true,
+  "control_comparison_excludes": [
+    "specdec2_mtp2.cycle_timing_ms"
+  ],
+  "raw_sha256": {
+    "/tmp/qwen38-attribution-short-profile/gfx1151/4014028_results.db": "ca709071ab9a33c45ef249b51bc6f9734b1d78ea689043aa8d2a8fca32644e02",
+    "/tmp/qwen38-attribution-short.json": "371adad102e06e0b84180f41ec4b026d2026ecf0ed18c0f72cdfa3458ee64478",
+    "/tmp/qwen38-attribution-short-warm.json": "a1ccc5d5bf6df689dc4b09ba92f5012ef4000e97ede81f6d23d35f899e6a8c73"
+  },
+  "warning": "Python stack inspection and profiling perturb wall time; these are attribution diagnostics, not throughput or short-versus-long speed comparisons."
+}
