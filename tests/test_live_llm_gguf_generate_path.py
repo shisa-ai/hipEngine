@@ -34,6 +34,7 @@ def _fake_session_type(calls, *, include_step: bool):
     class FakeSession:
         def __init__(self, model_path, **kwargs):
             self.closed = False
+            self.runner = kwargs.get("shared_runner")
             self.position = 0
             self._graph_lifetime = Qwen35GGUFGraphLifetime()
             calls.append(("init", str(model_path), dict(kwargs)))
@@ -73,10 +74,10 @@ def _fake_session_type(calls, *, include_step: bool):
     return FakeSession
 
 
-def _assert_generation2_session_contract(calls, model: Path) -> None:
+def _assert_generation2_session_contract(calls, model: Path, backend: str) -> None:
     init = calls[0]
     assert init[0:2] == ("init", str(model.resolve()))
-    assert init[2]["backend"] == "hip_gfx1100"
+    assert init[2]["backend"] == backend
     assert init[2]["use_wmma_prefill"] is True
     assert init[2]["use_gemv_decode"] is True
     assert init[2]["defer_kv_allocation"] is True
@@ -89,7 +90,9 @@ def _assert_generation2_session_contract(calls, model: Path) -> None:
     assert calls[-1] == ("close",)
 
 
-def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
+def test_llm_generate_gguf_path_uses_resident_session(monkeypatch, hip_test_target_arch) -> None:
+    from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND
+    backend = HIP_TARGET_ARCH_BACKEND[hip_test_target_arch]
     calls = []
     monkeypatch.setattr(
         qwen35_gguf,
@@ -97,18 +100,20 @@ def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
         _fake_session_type(calls, include_step=True),
     )
 
-    llm = LLM(str(MODEL), backend="hip_gfx1100", quant="gguf_q4_k_m")
+    llm = LLM(str(MODEL), backend=backend, quant="gguf_q4_k_m")
     try:
         assert llm.generate("The answer is", SamplingParams(max_tokens=2)) == [" 1"]
     finally:
         llm.close()
 
-    _assert_generation2_session_contract(calls, MODEL)
+    _assert_generation2_session_contract(calls, MODEL, backend)
     assert ("prefill", (760, 4087, 369), False) in calls
     assert ("step", 220, False) in calls
 
 
-def test_llm_generate_qwen35moe_gguf_path_uses_resident_session(monkeypatch) -> None:
+def test_llm_generate_qwen35moe_gguf_path_uses_resident_session(monkeypatch, hip_test_target_arch) -> None:
+    from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND
+    backend = HIP_TARGET_ARCH_BACKEND[hip_test_target_arch]
     if not MOE_MODEL.exists():
         pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
 
@@ -119,11 +124,11 @@ def test_llm_generate_qwen35moe_gguf_path_uses_resident_session(monkeypatch) -> 
         _fake_session_type(calls, include_step=False),
     )
 
-    llm = LLM(str(MOE_MODEL), backend="hip_gfx1100", quant="gguf_q4_k_m")
+    llm = LLM(str(MOE_MODEL), backend=backend, quant="gguf_q4_k_m")
     try:
         assert llm.generate("The answer is", SamplingParams(max_tokens=1)) == [" "]
     finally:
         llm.close()
 
-    _assert_generation2_session_contract(calls, MOE_MODEL)
+    _assert_generation2_session_contract(calls, MOE_MODEL, backend)
     assert ("prefill", (760, 4087, 369), False) in calls
