@@ -46,9 +46,9 @@ def provider_case(request, monkeypatch):
     def cycle(*args, **kwargs):
         assert args[0] is session
         calls.append(("cycle", kwargs))
-        return dict(output_ids=[7, 8], elapsed_s=1.0, draft_forwards=1,
-                    mean_acceptance=0.5, graph_verify_cycles=1, finish_reason="length", eos_token_id=None)
-    monkeypatch.setattr(f"hipengine.speculative.{method}_cycle.run_{method}_cycle", cycle)
+        yield dict(output_ids=[7, 8], elapsed_s=1.0, draft_forwards=1, finished=True,
+                   mean_acceptance=0.5, graph_verify_cycles=1, finish_reason="length", eos_token_id=None)
+    monkeypatch.setattr(f"hipengine.speculative.{method}_cycle.iter_{method}_cycle", cycle)
 
     def forbidden(*args, **kwargs):
         raise AssertionError("provider constructed an unowned target session")

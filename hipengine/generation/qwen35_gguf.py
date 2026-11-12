@@ -1430,30 +1430,6 @@ def declared_int8_scale_dtype(
     return declared[0]
 
 
-class _IndependentSpeculativeChild:
-    """Bounded generic child for an attached independent provider (e.g. DSpine).
-
-    Admission stores the request only; ``advance`` runs the provider's
-    whole-request cycle on the service driver thread and returns terminal output
-    on the first call. Bring-up scope: one cycle per request.
-    """
-
-    def __init__(self, provider: Any, request: GenerationRequest) -> None:
-        self._provider = provider
-        self._request = request
-        self._output: GenerationOutput | None = None
-        self._done = False
-
-    def advance(self) -> GenerationOutput | None:
-        if not self._done:
-            self._output = self._provider.generate_detailed(self._request)[0]
-            self._done = True
-        return self._output
-
-    def close(self, *, reason: str) -> None:
-        self._output = None
-
-
 @dataclass
 class Qwen35GGUFBringupGenerator:
     """Public API GGUF greedy generator over a persistent resident session."""
@@ -4021,7 +3997,10 @@ class Qwen35GGUFBringupGenerator:
         provider = getattr(self, "_speculative_provider", None)
         if provider is None:
             raise NotImplementedError("no independent speculative provider is configured")
-        return _IndependentSpeculativeChild(provider, request)
+        factory = getattr(provider, "create_child", None)
+        if not callable(factory):
+            raise NotImplementedError("independent provider has no bounded request lifecycle")
+        return factory(request)
 
     def speculative_provider_capabilities(self):
         """Declare the model-attached NextN provider without engine branching."""

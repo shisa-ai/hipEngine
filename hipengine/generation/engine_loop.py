@@ -494,6 +494,10 @@ class BoundedGenericSpeculativeChild(Protocol):
     Admission must not execute model work. Each advance performs at most one
     prefill chunk or speculative cycle and returns None until terminal output.
     close releases request-owned resources on completion, failure or cancellation.
+    A streaming child may also expose drain_token_chunks(), returning committed
+    (token_id, GenerationStreamChunk) pairs since its last advance. That child
+    owns stop-safe text and incremental decoding; terminal IDs must match the
+    complete published token history.
     """
 
     def advance(self) -> GenerationOutput | None: ...
@@ -1241,6 +1245,13 @@ class SubmitPollTextGenerator:
                     output = child.advance()
                     if output is not None and not isinstance(output, GenerationOutput):
                         raise TypeError("generic child advance must return GenerationOutput or None")
+                    drain = getattr(child, "drain_token_chunks", None)
+                    if callable(drain):
+                        for token_id, chunk in drain():
+                            generic_events.append(EngineLoopEvent(
+                                kind="speculative_token", request_id=request_id,
+                                request_ids=(request_id,), token_id=int(token_id), stream_chunk=chunk,
+                            ))
                 except Exception as exc:
                     try:
                         child.close(reason="error")
@@ -1264,6 +1275,8 @@ class SubmitPollTextGenerator:
                         else:
                             self._speculative_outputs_by_request[request_id] = output
             for event in generic_events:
+                if event.kind != "failed":
+                    continue
                 submission = self._submissions_by_request.get(event.request_id)
                 if submission is not None:
                     self._unregister_submission_cancellation_locked(submission)

@@ -42,5 +42,21 @@ def test_public_feature_provider_reuses_target_and_matches_ar(method):
             diag = output.telemetry.diagnostics
             assert diag["target_session_reused"] is (i > 0)
             assert diag["graph_verify_cycles"] == diag["draft_forwards"] > 0
+            chunks = list(llm.stream_speculative_detailed(prompt, params))
+            assert len(chunks) > 2
+            assert chunks[0].finish_details is None
+            assert "".join(chunk.text for chunk in chunks) == output.text
+            assert chunks[-1].generated_token_ids == ar.generated_token_ids
+            assert chunks[-1].telemetry.diagnostics["target_session_reused"] is True
+            assert sum(chunk.finish_details is not None for chunk in chunks) == 1
+        # Closing the public iterator must retire its service child, even though
+        # the target and draft caches remain available for subsequent requests.
+        stream = llm.stream_speculative_detailed("Write a detailed story about a cat.",
+                                                 SamplingParams(temperature=0, max_tokens=65, ignore_eos=True))
+        next(stream)
+        stream.close()
+        assert llm.live_loop_snapshot()["engine_service"]["active_children"] == 0
+        recovered = llm.generate_speculative_detailed([prompt], params)[0]
+        assert recovered.generated_token_ids == ar.generated_token_ids
     finally:
         llm.close()

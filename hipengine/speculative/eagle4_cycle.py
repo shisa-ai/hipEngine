@@ -40,28 +40,42 @@ def load_eagle4_weights(drafter_path: str | Path) -> tuple[dict, dict]:
 def _capture_prompt_aux(session, prompt_ids, aux_layers, hidden_size, runtime):
     row_nbytes = hidden_size * DType.BF16.itemsize
     tap_depths = [l + 1 for l in aux_layers]
-    buffers = {d: DeviceBuffer(ptr=runtime.malloc(len(prompt_ids) * row_nbytes),
-                               nbytes=len(prompt_ids) * row_nbytes) for d in tap_depths}
-    targets = DFlash2HiddenCaptureTargets(hidden_size=hidden_size, rows=len(prompt_ids), buffers=buffers)
-    probe = session.prefill(prompt_ids, use_bulk=True, dflash2_capture=targets, return_logits=False)
-    runtime.device_synchronize()
-    taps = []
-    for d in tap_depths:
-        raw = np.empty(len(prompt_ids) * hidden_size, dtype=np.uint16)
-        copy_device_to_host(host_array_ptr(raw), buffers[d], runtime=runtime)
-        taps.append((raw.astype(np.uint32) << np.uint32(16)).view(np.float32).reshape(len(prompt_ids), hidden_size))
-    for b in buffers.values():
-        free(b, runtime=runtime)
-    return np.concatenate(taps, axis=-1), int(probe.token_id)
+    buffers = {}
+    try:
+        for d in tap_depths:
+            buffers[d] = DeviceBuffer(ptr=runtime.malloc(len(prompt_ids) * row_nbytes),
+                                      nbytes=len(prompt_ids) * row_nbytes)
+        targets = DFlash2HiddenCaptureTargets(hidden_size=hidden_size, rows=len(prompt_ids), buffers=buffers)
+        probe = session.prefill(prompt_ids, use_bulk=True, dflash2_capture=targets, return_logits=False)
+        runtime.device_synchronize()
+        taps = []
+        for d in tap_depths:
+            raw = np.empty(len(prompt_ids) * hidden_size, dtype=np.uint16)
+            copy_device_to_host(host_array_ptr(raw), buffers[d], runtime=runtime)
+            taps.append((raw.astype(np.uint32) << np.uint32(16)).view(np.float32).reshape(len(prompt_ids), hidden_size))
+        return np.concatenate(taps, axis=-1), int(probe.token_id)
+    finally:
+        for b in buffers.values():
+            free(b, runtime=runtime)
 
 
-def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime,
-                     n_draft=6, stop_ids=(), eos_token_id=None, ignore_eos=False) -> dict:
+def run_eagle4_cycle(*args, **kwargs) -> dict:
+    """Consume the same bounded steps used by serving."""
+    result = None
+    for update in iter_eagle4_cycle(*args, **kwargs):
+        if update is not None:
+            result = update
+    return result
+
+
+def iter_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime,
+                      n_draft=6, stop_ids=(), eos_token_id=None, ignore_eos=False):
     aux_layers = nd.aux_layers
     hidden_size = int(session.runner.hidden_size)
     session.reset()
     ctx_aux, bonus = _capture_prompt_aux(session, prompt_ids, aux_layers, hidden_size, runtime)
     native.prefill_context(ctx_aux, prompt_ids, bonus)
+    yield None  # Let the service handle cancellation after prefill.
     output_ids: list[int] = []
     produced_total = 0
     accepted_sum = 0
@@ -69,8 +83,9 @@ def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime
     graph_verify_cycles = 0
     finish_reason = "length"
     stopped_eos = None
-    t0 = time.perf_counter()
+    elapsed = 0.0
     while produced_total < max_new_tokens:
+        t0 = time.perf_counter()
         root_bonus = bonus
         drafts, _ = native.draft_greedy_chain_cached(n_draft)
         drafts = [int(t) for t in drafts]
@@ -116,14 +131,23 @@ def run_eagle4_cycle(session, native, nd, *, prompt_ids, max_new_tokens, runtime
                 break
         accepted_sum += k
         draft_count += 1
-        if finish_reason == "stop" or produced_total >= max_new_tokens:
+        finished = finish_reason == "stop" or produced_total >= max_new_tokens
+        if not finished:
+            if aux_dev is not None:
+                native.append_committed_device(aux_dev, produced, accept[1:] + [bonus])
+            else:
+                native.append_committed(new_aux, accept[1:] + [bonus])
+        elapsed += time.perf_counter() - t0
+        if finished:
             break
-        if aux_dev is not None:
-            native.append_committed_device(aux_dev, produced, accept[1:] + [bonus])
-        else:
-            native.append_committed(new_aux, accept[1:] + [bonus])
-    elapsed = time.perf_counter() - t0
-    return {
+        yield {
+            "output_ids": list(output_ids), "elapsed_s": elapsed,
+            "draft_forwards": draft_count, "graph_verify_cycles": graph_verify_cycles,
+            "mean_acceptance": accepted_sum / (draft_count * n_draft),
+            "finished": False,
+        }
+    yield {
+        "finished": True,
         "output_ids": output_ids,
         "tokens_per_s": len(output_ids) / elapsed if elapsed else 0.0,
         "elapsed_s": elapsed,

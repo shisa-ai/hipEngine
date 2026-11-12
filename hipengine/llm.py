@@ -1222,8 +1222,14 @@ class LLM:
             (normalize_prompt_input(prompt),),
             sampling_params or SamplingParams(),
         )
-        for chunk in streamer(request):
-            yield GenerationStreamChunk.from_value(chunk)
+        stream = iter(streamer(request))
+        try:
+            for chunk in stream:
+                yield GenerationStreamChunk.from_value(chunk)
+        finally:
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
 
     @property
     def supports_speculative(self) -> bool:

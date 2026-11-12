@@ -58,25 +58,38 @@ def load_target_arrays(model: str | Path):
 def _capture_prompt_taps(session, prompt_ids, tap_layers, hidden_size, runtime):
     row_nbytes = hidden_size * DType.BF16.itemsize
     tap_depths = [l + 1 for l in tap_layers]
-    buffers = {d: DeviceBuffer(ptr=runtime.malloc(len(prompt_ids) * row_nbytes),
-                               nbytes=len(prompt_ids) * row_nbytes) for d in tap_depths}
-    targets = DFlash2HiddenCaptureTargets(hidden_size=hidden_size, rows=len(prompt_ids), buffers=buffers)
-    probe = session.prefill(prompt_ids, use_bulk=True, dflash2_capture=targets, return_logits=False)
-    runtime.device_synchronize()
-    ctx_taps = np.zeros((len(prompt_ids), len(tap_layers) * hidden_size), dtype=np.float32)
-    for i, d in enumerate(tap_depths):
-        raw = np.empty(len(prompt_ids) * hidden_size, dtype=np.uint16)
-        copy_device_to_host(host_array_ptr(raw), buffers[d], runtime=runtime)
-        ctx_taps[:, i * hidden_size:(i + 1) * hidden_size] = (
-            (raw.astype(np.uint32) << np.uint32(16)).view(np.float32).reshape(len(prompt_ids), hidden_size))
-    for b in buffers.values():
-        free(b, runtime=runtime)
-    return ctx_taps, int(probe.token_id)
+    buffers = {}
+    try:
+        for d in tap_depths:
+            buffers[d] = DeviceBuffer(ptr=runtime.malloc(len(prompt_ids) * row_nbytes),
+                                      nbytes=len(prompt_ids) * row_nbytes)
+        targets = DFlash2HiddenCaptureTargets(hidden_size=hidden_size, rows=len(prompt_ids), buffers=buffers)
+        probe = session.prefill(prompt_ids, use_bulk=True, dflash2_capture=targets, return_logits=False)
+        runtime.device_synchronize()
+        ctx_taps = np.zeros((len(prompt_ids), len(tap_layers) * hidden_size), dtype=np.float32)
+        for i, d in enumerate(tap_depths):
+            raw = np.empty(len(prompt_ids) * hidden_size, dtype=np.uint16)
+            copy_device_to_host(host_array_ptr(raw), buffers[d], runtime=runtime)
+            ctx_taps[:, i * hidden_size:(i + 1) * hidden_size] = (
+                (raw.astype(np.uint32) << np.uint32(16)).view(np.float32).reshape(len(prompt_ids), hidden_size))
+        return ctx_taps, int(probe.token_id)
+    finally:
+        for b in buffers.values():
+            free(b, runtime=runtime)
 
 
-def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
-                     max_new_tokens, runtime, stop_ids=(), eos_token_id=None,
-                     ignore_eos=False, candidate_budget=None, use_gpu_refine=False) -> dict:
+def run_dspine_cycle(*args, **kwargs) -> dict:
+    """Consume the same bounded steps used by serving."""
+    result = None
+    for update in iter_dspine_cycle(*args, **kwargs):
+        if update is not None:
+            result = update
+    return result
+
+
+def iter_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
+                      max_new_tokens, runtime, stop_ids=(), eos_token_id=None,
+                      ignore_eos=False, candidate_budget=None, use_gpu_refine=False):
     tap_layers = list(nd.config["dflash_config"]["target_layer_ids"])
     block_size = int(nd.config["block_size"])
     mask = nd.mask_token_id
@@ -90,6 +103,7 @@ def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
     session.reset()
     ctx_taps, bonus = _capture_prompt_taps(session, prompt_ids, tap_layers, hidden_size, runtime)
     native.reset_projected_context(_to_bf16_bits(nd.project_target_hidden(ctx_taps)))
+    yield None  # Let the service handle cancellation after prefill.
     output_ids: list[int] = []
     produced_total = 0
     accepted_sum = 0
@@ -97,8 +111,9 @@ def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
     finish_reason = "length"
     stopped_eos = None
     graph_verify_cycles = 0
-    t0 = time.perf_counter()
+    elapsed = 0.0
     while produced_total < max_new_tokens:
+        t0 = time.perf_counter()
         ctx_len = native.ctx_len
         block_input = np.asarray([bonus] + [mask] * n_drafts, dtype=np.int64)
         noise = token_embd[block_input].astype(np.float32)
@@ -154,10 +169,17 @@ def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
                 break
         accepted_sum += k
         draft_count += 1
-        if finish_reason == "stop":
+        elapsed += time.perf_counter() - t0
+        if finish_reason == "stop" or produced_total >= max_new_tokens:
             break
-    elapsed = time.perf_counter() - t0
-    return {
+        yield {
+            "output_ids": list(output_ids), "elapsed_s": elapsed,
+            "draft_forwards": draft_count, "graph_verify_cycles": graph_verify_cycles,
+            "mean_acceptance": accepted_sum / (draft_count * n_verify),
+            "finished": False,
+        }
+    yield {
+        "finished": True,
         "output_ids": output_ids,
         "tokens_per_s": len(output_ids) / elapsed if elapsed else 0.0,
         "elapsed_s": elapsed,

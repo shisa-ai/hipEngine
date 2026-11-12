@@ -1269,8 +1269,8 @@ class EngineService:
                     )
                 continue
             if (
-                not self._canonical_token_events
-                or event.kind != "token"
+                (not self._canonical_token_events and event.kind != "speculative_token")
+                or event.kind not in {"token", "speculative_token"}
                 or event.request_id is None
                 or event.token_id is None
                 or event.stream_chunk is None
@@ -1295,12 +1295,17 @@ class EngineService:
                 self._cancel_state(state, reason="client_backpressure")
                 continue
             state.token_ids.append(token_id)
-            if getattr(self, "_buffer_speculative_stream", False) and state.execution_mode in {"verify_chain", "verify_tree"}:
+            if (event.kind != "speculative_token"
+                    and getattr(self, "_buffer_speculative_stream", False)
+                    and state.execution_mode in {"verify_chain", "verify_tree"}):
                 # A buffered provider's scheduler can emit token events without
                 # complete text deltas. Publish its authoritative output only at
                 # terminal; a lone frontier delta must not suppress that text.
                 continue
-            chunks = _stop_safe_chunks(state, token_id=token_id, chunk=event.stream_chunk)
+            # Generic children own stop suppression and incremental UTF-8 state.
+            # Applying token-based suppression again could discard a final byte flush.
+            chunks = ((event.stream_chunk,) if event.kind == "speculative_token" else
+                      _stop_safe_chunks(state, token_id=token_id, chunk=event.stream_chunk))
             for chunk in chunks:
                 if state.execution_mode in {"verify_chain", "verify_tree"} and (
                     chunk.finish_details is not None
