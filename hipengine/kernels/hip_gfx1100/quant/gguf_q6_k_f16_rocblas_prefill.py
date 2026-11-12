@@ -837,7 +837,6 @@ def _launch_q6_fullgemm(
     owner, binding, x_ptr, tiles_ptr, out_ptr, rows, in_features, out_features,
     *, stream, library, runtime,
 ) -> None:
-    import time
     from hipengine.core.hipblaslt import (
         HipblasLt, HipblasLtProblem, HIP_R_16F, HIP_R_32F,
     )
@@ -894,26 +893,23 @@ def _launch_q6_fullgemm(
             )
             dequant_weight()
             runtime.stream_synchronize(stream)
+            # A timing winner can change reduction order across fresh owners.
+            # Keep the library's heuristic order and select the first executable
+            # candidate, rather than making arithmetic depend on wall time.
             best = None
-            best_t = float("inf")
-            for algo in prob.algorithms(16)[:12]:
+            last_error = None
+            for algo in prob.algorithms(16):
                 try:
                     prob.launch(algo, x_ptr, int(weight_f16.ptr), int(out_f32.ptr),
                                 int(workspace.ptr), stream=stream)
                     runtime.stream_synchronize(stream)
-                    t0 = time.perf_counter()
-                    for _ in range(3):
-                        prob.launch(algo, x_ptr, int(weight_f16.ptr), int(out_f32.ptr),
-                                    int(workspace.ptr), stream=stream)
-                    runtime.stream_synchronize(stream)
-                    dt = (time.perf_counter() - t0) / 3
-                    if dt < best_t:
-                        best_t = dt
-                        best = algo
-                except Exception:
+                except Exception as error:
+                    last_error = error
                     continue
+                best = algo
+                break
             if best is None:
-                best = prob.algorithms(1)[0]
+                raise RuntimeError("no executable Q6 full-GEMM algorithm") from last_error
         except BaseException as error:
             try:
                 runtime.stream_synchronize(stream)

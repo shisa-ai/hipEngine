@@ -68,6 +68,46 @@ def launch(rig, owner=None, stream=0, runtime=None):
     )
 
 
+def test_algorithm_choice_does_not_depend_on_wall_clock(rig, monkeypatch):
+    import time
+
+    algorithms = [object(), object()]
+    selected = []
+    monkeypatch.setattr(
+        hipblaslt.HipblasLtProblem, 'algorithms', lambda self, maximum: algorithms,
+    )
+    monkeypatch.setattr(
+        hipblaslt.HipblasLtProblem, 'launch',
+        lambda self, algo, *args, **kwargs: selected.append(algo),
+    )
+    def no_timing():
+        raise AssertionError('algorithm selection must not benchmark wall time')
+    monkeypatch.setattr(time, 'perf_counter', no_timing)
+    for _ in range(2):
+        owner = q6.Q6FullGemmWorkspace()
+        launch(rig, owner)
+        owner.close()
+    assert selected and all(algo is algorithms[0] for algo in selected)
+
+
+def test_algorithm_choice_skips_rejected_candidates_in_order(rig, monkeypatch):
+    algorithms = [object(), object()]
+    selected = []
+    monkeypatch.setattr(
+        hipblaslt.HipblasLtProblem, 'algorithms', lambda self, maximum: algorithms,
+    )
+    def run(self, algo, *args, **kwargs):
+        selected.append(algo)
+        if algo is algorithms[0]:
+            raise RuntimeError('unsupported algorithm')
+    monkeypatch.setattr(hipblaslt.HipblasLtProblem, 'launch', run)
+    owner = q6.Q6FullGemmWorkspace()
+    launch(rig, owner)
+    launch(rig, owner)
+    owner.close()
+    assert selected == [algorithms[0], algorithms[1], algorithms[1], algorithms[1]]
+
+
 def test_direct_launch_releases_all_temporary_allocations(rig):
     launch(rig)
     assert not rig.live
