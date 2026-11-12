@@ -5532,7 +5532,6 @@ def _launch_gate_reduce_batch_strided(
         ctypes.c_int64,
         ctypes.c_int64,
         ctypes.c_int64,
-        ctypes.c_int64,
         ctypes.c_void_p,
         ctypes.c_int64,
         ctypes.c_void_p,
