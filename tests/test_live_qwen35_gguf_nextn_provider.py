@@ -667,7 +667,7 @@ def test_nextn_executor_chain_falls_back_to_eager_steps(
     assert tuple(row.token_id for row in rows) == (10, 11, 12)
 
 
-def test_nextn_proposal_graph_keeps_split_attention_context_on_eager_path() -> None:
+def test_nextn_proposal_graph_rejects_context_beyond_capacity() -> None:
     executor = object.__new__(Qwen35GGUFNextNExecutor)
     executor.scratch = SimpleNamespace(max_positions=2048)
     executor._proposal_target_hidden = object()
@@ -679,13 +679,13 @@ def test_nextn_proposal_graph_keeps_split_attention_context_on_eager_path() -> N
     rows = executor._run_exact_graph_chain(
         41,
         9,
-        1021,
+        2046,
         hidden,
         candidate_budget=3,
     )
 
     assert rows is None
-    assert executor._proposal_graph_last_status == "eager_long_context"
+    assert executor._proposal_graph_last_status == "eager_capacity"
 
 
 def test_nextn_graph_launch_metadata_survives_delayed_host_upload(monkeypatch) -> None:
@@ -704,6 +704,7 @@ def test_nextn_graph_launch_metadata_survives_delayed_host_upload(monkeypatch) -
     executor._proposal_graph_replays = 0
     binding = nextn_mod.SpecGraphBinding(bucket=(0, 3))
     executor._proposal_graph_binding = lambda **_kw: binding
+    executor._proposal_attention_schedule = lambda position, budget: ()
     executor._proposal_graphs = nextn_mod.SpecGraphStageCache(max_entries=1)
     executor._proposal_graphs.capture(
         (0, 3), binding,

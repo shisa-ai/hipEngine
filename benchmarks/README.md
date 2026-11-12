@@ -2,6 +2,23 @@
 
 Last updated: **2026-11-12 UTC**
 
+## Qwen3.8 long-context NextN graphs — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
+profile, BF16 KV, MTP budget 3, one request and 48 greedy outputs. Same-owner
+public-library comparison over ten category prompts plus eight held-outs,
+padded to 970–4082 prompt tokens, in eager/graph/graph/eager order after warmups:
+
+| Proposal execution | Mean whole-request suite wall |
+| --- | ---: |
+| Eager | 210.789 s |
+| Context-scheduled graph | 207.329 s |
+
+Wall is **1.64% lower**, every category improves, and output IDs and speculative
+controls match across arms/repeats. This is a same-owner diagnostic, not a
+fresh-session or MTP-versus-AR claim.
+[Protocol, commands and validation](results/2026-11-12-gfx1151-nextn-long-graphs/NOTES.md).
+
 ## Qwen3.8 Q5 verifier tiles — Radeon 8060S
 
 Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production

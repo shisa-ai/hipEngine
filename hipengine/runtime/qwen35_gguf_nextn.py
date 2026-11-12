@@ -22,7 +22,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.tensor import Tensor
-from hipengine.kernels.backends import resolve_backend
+from hipengine.kernels.backends import backend_package_capability, resolve_backend
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_rmsnorm_bf16_f32_weight,
 )
@@ -49,6 +49,7 @@ from hipengine.loading.qwen35_gguf_nextn_materialize import (
 )
 from hipengine.runtime.gguf_embedding import launch_gguf_embedding
 from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
+from hipengine.runtime import qwen35_gguf_runner as _runner_policy
 from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
@@ -367,16 +368,13 @@ def _collect_device_pointers(prefix: str, value: object, out: dict[str, int]) ->
             _collect_device_pointers(name, getattr(value, field.name), out)
 
 
-# The fixed graph topology is proven for the production B1-B3 ladder through
-# scalar full-attention context 1,023. Larger cache allocations may still use it
-# while the live chain fits; requests crossing into split-K retain the exact
-# eager chain until that separate topology is gated.
+# Each chain depth captures an eager-equivalent attention schedule. The binding
+# changes at split-count and kernel-policy transitions within resident capacity.
 # The exact-chain graph ladder is the draft runtime's implementation-depth
 # limit. Extending a budget here grows every capacity-derived buffer
 # (``_NEXTN_TOP1_RESULT_CAPACITY`` consumers) coherently; qualified serving
 # maxima remain gated separately by the adapter's width-depth policy.
 _NEXTN_EXACT_CHAIN_GRAPH_BUDGETS = (1, 2, 3, 4, 5, 6, 7)
-_NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023
 # The proposal-graph working set is one graph per (slot, budget) cell, so the
 # bound below is the exact working set rather than a heuristic. Eviction exists
 # so the cache cannot grow past it if a caller widens either axis without
@@ -1932,13 +1930,67 @@ class Qwen35GGUFNextNExecutor:
         self._proposal_graph_partials = remaining
         return unresolved
 
+    def _proposal_attention_signature(self, context: int) -> tuple:
+        """The BF16 private draft cache uses the ordinary c1 attention policy."""
+
+        cfg = self.runner.weights.config
+        block_size = int(self.scratch.block_size)
+        policy = _runner_policy._layer_attention_policy()
+        if policy.use_full_attention_split_decode(context) or policy.use_short_full_attention_split_decode(
+            cfg, backend=self.backend, block_size=block_size, active_context=context
+        ):
+            splits = min(int(self.scratch.full_attn_split_count),
+                         (context + block_size - 1) // block_size)
+            fn = policy.full_attention_split_gate_fn(
+                cfg, backend=self.backend, block_size=block_size,
+                num_splits=splits, active_context=context,
+            )
+            return ("split", splits, fn)
+        short_max = int(backend_package_capability(
+            self.backend, "GGUF_SHORT_C1_BATCH_ATTN_MAX_CONTEXT", 0
+        ))
+        return ("short_batch" if 0 < context <= short_max else "context",)
+
+    def _proposal_attention_schedule(self, position: int, budget: int) -> tuple:
+        """Bound each depth to a page-local interval with unchanged eager topology.
+
+        Scan the small page interval rather than assuming every policy threshold
+        is page-aligned. Device live counts still select the actual KV prefix.
+        """
+
+        capacity = int(self.scratch.max_positions)
+        if position < 0 or position + budget > capacity:
+            raise ValueError("NextN proposal exceeds resident cache capacity")
+        block_size = int(self.scratch.block_size)
+        schedule = []
+        intervals = {}
+        for depth in range(budget):
+            context = position + depth + 1
+            if context in intervals:
+                schedule.append(intervals[context])
+                continue
+            signature = self._proposal_attention_signature(context)
+            cap = context
+            page_end = min(capacity, ((context + block_size - 1) // block_size) * block_size)
+            for candidate in range(context + 1, page_end + 1):
+                if self._proposal_attention_signature(candidate) != signature:
+                    break
+                cap = candidate
+            entry = (cap, signature)
+            for covered in range(context, cap + 1):
+                intervals[covered] = entry
+            schedule.append(entry)
+        return tuple(schedule)
+
     def _capture_exact_chain_graph(
         self,
         request_id: int,
         slot: int,
         budget: int,
+        *,
+        schedule: tuple | None = None,
     ) -> _Qwen35GGUFNextNProposalGraph:
-        """Capture one short-context greedy proposal chain on a private stream."""
+        """Capture a greedy chain with an eager-equivalent attention schedule."""
 
         if self.weights is None or self._proposal_target_hidden is None or self._proposal_results is None:
             raise RuntimeError("GGUF NextN proposal graph storage is unavailable")
@@ -1950,14 +2002,16 @@ class Qwen35GGUFNextNExecutor:
             )
         runtime_library = self._proposal_graph_runtime_library
         runtime = self.runtime
+        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+        prior_position = int(slot_scratch.position_host[0])
+        prior_context = int(slot_scratch.context_host[0])
+        if schedule is None:
+            schedule = self._proposal_attention_schedule(prior_position, budget)
         stream = runtime.stream_create()
         graph = 0
         graph_exec = 0
         completion_event = 0
         capturing = False
-        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
-        prior_position = int(slot_scratch.position_host[0])
-        prior_context = int(slot_scratch.context_host[0])
         hidden_nbytes = self.hidden_size * DType.BF16.itemsize
         target_hidden_ptr = self._proposal_target_hidden.ptr + slot * hidden_nbytes
         token_ptr = self._token_buf.ptr + slot * DType.INT64.itemsize
@@ -1984,10 +2038,7 @@ class Qwen35GGUFNextNExecutor:
                     stream=stream,
                     token_ready=True,
                     position_ready=True,
-                    attention_context_cap=min(
-                        int(self.scratch.max_positions),
-                        _NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT,
-                    ),
+                    attention_context_cap=schedule[depth][0],
                 )
                 gguf_rmsnorm_bf16_f32_weight(
                     layer_out_ptr,
@@ -2068,7 +2119,7 @@ class Qwen35GGUFNextNExecutor:
             slot_scratch.position_host[0] = prior_position
             slot_scratch.context_host[0] = prior_context
 
-    def _proposal_graph_binding(self, *, slot: int, budget: int) -> SpecGraphBinding:
+    def _proposal_graph_binding(self, *, slot: int, budget: int, schedule: tuple = ()) -> SpecGraphBinding:
         """Fingerprint every allocation the captured chain dereferences.
 
         The capture records kernels, so a pointer it reads is baked into the
@@ -2140,7 +2191,7 @@ class Qwen35GGUFNextNExecutor:
                 int(getattr(scratch, "blocks_per_slot", 0) or 0),
                 str(getattr(scratch, "kv_storage_dtype", "")),
                 int(getattr(scratch, "full_attn_split_count", 0) or 0),
-                int(_NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT),
+                schedule,
                 # Weight objects are assigned once in ``__init__`` and freed only
                 # by ``close`` after graphs retire, so identity is a sound guard
                 # against a wholesale replacement.
@@ -2214,11 +2265,13 @@ class Qwen35GGUFNextNExecutor:
         request_id: int,
         slot: int,
         budget: int,
+        *,
+        schedule: tuple | None = None,
     ) -> _Qwen35GGUFNextNProposalGraph | None:
         """Return the cached chain for this binding, capturing when it drifted."""
 
         key = (int(slot), int(budget))
-        binding = self._proposal_graph_binding(slot=slot, budget=budget)
+        binding = self._proposal_graph_binding(slot=slot, budget=budget, schedule=schedule or ())
         graph, reason = self._proposal_graphs.acquire(key, binding)
         if graph is not None:
             return graph
@@ -2237,7 +2290,9 @@ class Qwen35GGUFNextNExecutor:
         graph, reason = self._proposal_graphs.capture(
             key,
             binding,
-            lambda: self._capture_exact_chain_graph(request_id, slot, budget),
+            lambda: self._capture_exact_chain_graph(request_id, slot, budget, **(
+                {"schedule": schedule} if schedule is not None else {}
+            )),
             self._close_proposal_graph,
         )
         if graph is None:
@@ -2271,23 +2326,20 @@ class Qwen35GGUFNextNExecutor:
         ):
             self._proposal_graph_last_status = "eager_ineligible"
             return None
-        graph_context_cap = min(
-            int(self.scratch.max_positions),
-            _NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT,
-        )
-        if int(position) + budget > graph_context_cap:
-            self._proposal_graph_last_status = "eager_long_context"
+        if int(position) + budget > int(self.scratch.max_positions):
+            self._proposal_graph_last_status = "eager_capacity"
             return None
+        schedule = self._proposal_attention_schedule(int(position), budget)
         slot = self._slot(request_id)
         if cached_only:
             # A cached-only launch must still reject a drifted binding; the
             # capture path is deliberately not entered on this route.
             graph, _reason = self._proposal_graphs.acquire(
                 (int(slot), budget),
-                self._proposal_graph_binding(slot=slot, budget=budget),
+                self._proposal_graph_binding(slot=slot, budget=budget, schedule=schedule),
             )
         else:
-            graph = self._proposal_graph(request_id, slot, budget)
+            graph = self._proposal_graph(request_id, slot, budget, schedule=schedule)
         if graph is None:
             self._proposal_graph_last_status = "device_handoff_cache_miss"
             return None
@@ -2380,7 +2432,11 @@ class Qwen35GGUFNextNExecutor:
         if budget not in _NEXTN_EXACT_CHAIN_GRAPH_BUDGETS:
             return False
         slot = self._slot(int(request_id))
-        return self._proposal_graph(int(request_id), slot, budget) is not None
+        position = int(self.scratch.for_slot(slot, span_role="decode").position_host[0])
+        if position + budget > int(self.scratch.max_positions):
+            return False
+        schedule = self._proposal_attention_schedule(position, budget)
+        return self._proposal_graph(int(request_id), slot, budget, schedule=schedule) is not None
 
     def launch_cached_graph_chain_device(
         self,
@@ -2585,7 +2641,7 @@ class Qwen35GGUFNextNExecutor:
         return {
             "eligible": self._proposal_target_hidden is not None,
             "budgets": list(_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS),
-            "max_context": _NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT,
+            "max_context": int(self.scratch.max_positions),
             "graphs": len(self._proposal_graphs),
             "captures": int(self._proposal_graph_captures),
             "replays": int(self._proposal_graph_replays),

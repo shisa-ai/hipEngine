@@ -1,0 +1,589 @@
+{
+  "host": {
+    "hostname": "gfx1151",
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "os": "Linux 7.3.1-1-cachyos"
+  },
+  "compiler": {
+    "hip": "7.15.26333",
+    "clang": "23.0.0git",
+    "llvm_revision": "8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "f343914a95e38d8f9f56886d10de4248738ad94aabb0fa0af8fd1b00c4e82f97",
+      "size_bytes": 16464440224,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8231695824,
+        16463391648
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "status": "passed",
+  "source_commit": "92d785a4b77bbbdc523c068453feede40fa42fe8",
+  "profile": "production",
+  "manifest": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+  "prompt_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+  "source_sha256": {
+    "hipengine/runtime/qwen35_gguf_nextn.py": "a2ec76e3306e165da52edbf861aed0ee6f99c5df0630cd3407d78e2d62a3f32e",
+    "hipengine/generation/qwen35_gguf_mtp2.py": "7ed9fe194b25527f3b81fc2054f342ad568da83426d640ed1a732ec7c9ba480e"
+  },
+  "wall_s": {
+    "eager": 210.78902496630326,
+    "graph": 207.3294767831103,
+    "reduction_percent": 1.6412373384933177
+  },
+  "proposal_ms": {
+    "eager": 5472.313495760318,
+    "graph": 4929.836037161294,
+    "reduction_percent": 9.913128314364828
+  },
+  "categories": {
+    "code": {
+      "eager": 70.60741157806478,
+      "graph": 69.14513795258244
+    },
+    "general_en": {
+      "eager": 51.0070303560351,
+      "graph": 50.40310880006291
+    },
+    "general_ja": {
+      "eager": 35.83423429017421,
+      "graph": 35.02828049752861
+    },
+    "mixed_ja_en": {
+      "eager": 53.340348742029164,
+      "graph": 52.75294953293633
+    }
+  },
+  "prompt_lengths": [
+    970,
+    1020,
+    1037,
+    1272,
+    1399,
+    4080,
+    973,
+    1013,
+    1044,
+    1271,
+    1405,
+    4082,
+    975,
+    1016,
+    1043,
+    1265,
+    1402,
+    4076
+  ],
+  "validation": {
+    "public_passed": true,
+    "oracle": {
+      "checks": [
+        {
+          "position": 993,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1021,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1022,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1024,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1027,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1029,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1031,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1034,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1038,
+          "budget": 1,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1013,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1021,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1025,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1029,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1033,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1035,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1039,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1041,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1042,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1045,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1046,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1049,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1052,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1055,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1058,
+          "budget": 1,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1263,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1265,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1268,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1269,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1271,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1275,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1279,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1283,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1285,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1289,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1291,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1292,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1295,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1296,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1299,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1302,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1305,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1308,
+          "budget": 1,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1393,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1395,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1398,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1401,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1405,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1409,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1412,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1413,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1414,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1418,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1420,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1422,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1423,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1424,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1425,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1426,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1430,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1432,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 1435,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4073,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4075,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4077,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4079,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4081,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4085,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4089,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4092,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4093,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4094,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4096,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4098,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4099,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4100,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4101,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4103,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4106,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4110,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4112,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        },
+        {
+          "position": 4116,
+          "budget": 3,
+          "hidden_bytes_equal": true,
+          "top1_equal": true
+        }
+      ],
+      "memory": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 27267532693,
+        "total_allocated_bytes": 76602800492,
+        "total_freed_bytes": 76602800492,
+        "active_allocations": 0,
+        "peak_allocations": 1922
+      }
+    }
+  }
+}
