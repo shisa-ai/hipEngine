@@ -33,11 +33,11 @@ PROMPT_TOKENS = 512
 DECODE_TOKENS = 24
 
 
-def _prompt_ids() -> list[int]:
+def _prompt_ids(count: int = PROMPT_TOKENS) -> list[int]:
     # Any well-formed id range serves the exactness contract; a low fixed range
     # avoids depending on metadata accessors just to build the prompt.
     rng = np.random.default_rng(20261006)
-    return [int(token) for token in rng.integers(0, 2000, size=PROMPT_TOKENS)]
+    return [int(token) for token in rng.integers(0, 2000, size=count)]
 
 
 def _decode(runner: Gemma4Runner, first_token: int, count: int) -> list[int]:
@@ -49,11 +49,12 @@ def _decode(runner: Gemma4Runner, first_token: int, count: int) -> list[int]:
 
 
 @_needs
-def test_restored_decode_matches_fresh_decode_bitwise(tmp_path: Path) -> None:
+@pytest.mark.parametrize("prompt_tokens", [512, 2305])
+def test_restored_decode_matches_fresh_decode_bitwise(tmp_path: Path, prompt_tokens: int) -> None:
     reader = GGUFReader(str(ARTIFACT))
     weights = load_gemma4_device_weights(reader)
     try:
-        prompt = _prompt_ids()
+        prompt = _prompt_ids(prompt_tokens)
         identity = {"prompt_tokens_sha256": "cafe", "artifact": "the-campaign-gguf"}
 
         fresh = Gemma4Runner(weights=weights, capacity=4096)
@@ -63,6 +64,9 @@ def test_restored_decode_matches_fresh_decode_bitwise(tmp_path: Path) -> None:
 
             state = tmp_path / "kv_state.bin"
             fresh.save_kv_state(state, identity=identity, logits=logits)
+            saved_bases = list(fresh._kv_base)
+            if prompt_tokens == 2305:
+                assert any(base > 0 for base in saved_bases)
 
             fresh_ids = _decode(fresh, first, DECODE_TOKENS)
 
@@ -77,6 +81,7 @@ def test_restored_decode_matches_fresh_decode_bitwise(tmp_path: Path) -> None:
                 ).tobytes()
                 assert int(np.argmax(saved_logits)) == first
                 assert restored.position == len(prompt)
+                assert restored._kv_base == saved_bases
                 restored_ids = _decode(restored, first, DECODE_TOKENS)
                 assert restored_ids == fresh_ids
                 assert restored.position == len(prompt) + DECODE_TOKENS - 1
