@@ -3238,6 +3238,8 @@ class Qwen35GGUFFullStackRunner:
     # Profile-owned recurrent-state allocation decision. ``None`` keeps the
     # unbound/direct diagnostic environment and backend-package default.
     target_fp16_recurrent_state: bool | None = None
+    # Bound short-context attention variant; None keeps direct diagnostic controls.
+    target_short_c1_attn_variant: str | None = None
     # Profile-owned verifier capture mode. ``None`` keeps the unbound/direct
     # diagnostic environment input, resolved once at construction.
     target_verifier_prefill_gdn_capture: bool | None = None
@@ -3883,17 +3885,22 @@ class Qwen35GGUFFullStackRunner:
     def _full_attn_decode_short_batch_fn(self, spans: KVLiveSpans):
         """Return the short-context batch attention leaf.
 
-        Defaults to the exact 256-thread fixed256 leaf. A production
-        thread-geometry override (GGUF_SHORT_C1_BATCH_ATTN_THREADS capability
-        or HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS env) selects the same body at a
-        wider block width (non-exact; execution-profile gated).
+        A profile-owned registry variant wins over diagnostic controls. Unbound
+        runners resolve the package default or thread-geometry environment override.
+        The registered 256-thread reference remains the strict leaf.
         """
 
         missing = object()
         fn = getattr(self, "_gguf_full_attn_decode_short_batch_fn_cache", missing)
         if fn is missing:
-            threads = _gguf_short_c1_attn_threads(self.backend)
-            if threads == 256:
+            variant = getattr(self, "target_short_c1_attn_variant", None)
+            threads = _gguf_short_c1_attn_threads(self.backend) if variant is None else None
+            if variant is not None:
+                fn = resolve(
+                    backend=self.backend, layer="paged_attn_decode",
+                    quant="w4_paro", variant=variant,
+                )
+            elif threads == 256:
                 fn = resolve_paged_attn_decode(
                     backend=self.backend,
                     spans=spans,
@@ -13196,6 +13203,7 @@ class Qwen35GGUFResidentSession:
     # Profile-owned recurrent-state allocation decision. ``None`` keeps the
     # unbound/direct diagnostic environment and backend-package default.
     target_fp16_recurrent_state: bool | None = None
+    target_short_c1_attn_variant: str | None = None
     # Profile-owned verifier capture mode. ``None`` inherits the runner's frozen
     # decision, or resolves the unbound/direct environment once.
     target_verifier_prefill_gdn_capture: bool | None = None
@@ -13699,6 +13707,7 @@ class Qwen35GGUFResidentSession:
                     self.small_weight_arena_max_allocation_bytes
                 ),
                 target_fp16_recurrent_state=self.target_fp16_recurrent_state,
+                target_short_c1_attn_variant=self.target_short_c1_attn_variant,
                 target_verifier_prefill_gdn_capture=(
                     self.target_verifier_prefill_gdn_capture
                 ),
@@ -13722,6 +13731,11 @@ class Qwen35GGUFResidentSession:
         # The full-stack runner has already resolved it against the detected
         # device, so keep the resident session on that concrete identity too.
         self.backend = self.runner.backend
+        requested_short_attn = self.target_short_c1_attn_variant
+        if requested_short_attn is not None and getattr(
+            self.runner, "target_short_c1_attn_variant", None
+        ) != requested_short_attn:
+            raise RuntimeError("shared runner short attention variant does not match the owner request")
         requested_fp16 = self.target_fp16_recurrent_state
         if requested_fp16 is not None:
             live_fp16 = getattr(self.runner, "fp16_recurrent_state", None)

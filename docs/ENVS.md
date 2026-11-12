@@ -406,7 +406,7 @@ independent workload gates.
 | `HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN` | retired | No runtime reader | The rejected one-cycle suppression experiment is removed. Normal K0 provider catchup remains; stale values do not suppress speculation. |
 | `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA` | retired | No longer read | Private-c1 weight allocation follows backend policy; programmatic opt-out, shared-runner and allocation fallbacks remain. |
 | `HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA` | retired | No longer read | Private-c1 decode scratch follows the backend policy; programmatic opt-out, shared-runner and allocation fallbacks remain. |
-| `HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS` | gfx1151: `1024` | Rollback seam | Overrides the short-prompt c1 batch-attention workgroup; the calibrated 1024-thread variant passed the execution-profile c1 threads gate and the exact 256-thread leaf stays the strict fallback. |
+| `HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS` | unbound gfx1151: `1024` | Diagnostic override | Overrides the short-context c1 workgroup on unbound runners. Dense gfx1151 profile owners bind the registered 256-thread leaf for strict and the existing 1024-thread leaf for production; neither reads this override. |
 | `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL` | unset | Diagnostic | Session-acquire-time WMMA-prefill selector shared by resident pools, direct streaming and fallback AR. Unset keeps the shipping WMMA route; empty or unrecognised values raise. An explicit per-call route still wins. |
 
 ### Resident MTP draft dense-Q8 diagnostic controls

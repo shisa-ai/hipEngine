@@ -1459,6 +1459,8 @@ class Qwen35GGUFBringupGenerator:
     # Profile-owned recurrent-state allocation decision. ``None`` keeps the
     # unbound/direct diagnostic environment and backend-package default.
     target_fp16_recurrent_state: bool | None = None
+    # Profile-owned short attention leaf; None keeps unbound diagnostic controls.
+    target_short_c1_attn_variant: str | None = None
     # Profile-owned verifier capture mode. ``None`` keeps the unbound/direct
     # diagnostic environment input, resolved once at session construction.
     target_verifier_prefill_gdn_capture: bool | None = None
@@ -1813,6 +1815,10 @@ class Qwen35GGUFBringupGenerator:
         if requested is None:
             return {}
         return {"target_fp16_recurrent_state": bool(requested)}
+
+    def _target_short_attention_session_kwargs(self) -> dict[str, Any]:
+        requested = getattr(self, "target_short_c1_attn_variant", None)
+        return {} if requested is None else {"target_short_c1_attn_variant": requested}
 
     def _target_verifier_prefill_gdn_capture_session_kwargs(self) -> dict[str, Any]:
         """Carry the owner-bound verifier capture mode into every session."""
@@ -2275,6 +2281,7 @@ class Qwen35GGUFBringupGenerator:
                         getattr(self, "_serving_capacity_bound", None)
                     ),
                     token_embedding_placement="auto",
+                    **self._target_short_attention_session_kwargs(),
                     target_fp16_recurrent_state=getattr(
                         self,
                         "target_fp16_recurrent_state",
@@ -3367,6 +3374,7 @@ class Qwen35GGUFBringupGenerator:
                     defer_kv_allocation=bool(defer_kv_allocation),
                     max_batch_size=int(max_batch_size),
                     **self._prepared_session_kv_kwargs(),
+                    **self._target_short_attention_session_kwargs(),
                     **self._target_verifier_rowtile_session_kwargs(),
                     **self._target_fp16_recurrent_state_session_kwargs(),
                     **self._target_verifier_prefill_gdn_capture_session_kwargs(),
@@ -3571,6 +3579,7 @@ class Qwen35GGUFBringupGenerator:
             session_kwargs: dict[str, Any] = {
                 "backend": self.backend,
                 **self._prepared_session_kv_kwargs(),
+                **self._target_short_attention_session_kwargs(),
                 **self._target_verifier_rowtile_session_kwargs(),
                 **self._target_fp16_recurrent_state_session_kwargs(),
                 **self._target_verifier_prefill_gdn_capture_session_kwargs(),
@@ -4276,6 +4285,7 @@ class Qwen35GGUFBringupGenerator:
             "use_wmma_prefill": _resident_session_wmma_prefill_default(),
             "use_gemv_decode": _GGUF_PUBLIC_USE_GEMV_DECODE,
             **self._prepared_session_kv_kwargs(),
+            **self._target_short_attention_session_kwargs(),
             **self._target_verifier_rowtile_session_kwargs(),
             **self._target_fp16_recurrent_state_session_kwargs(),
             **self._target_verifier_prefill_gdn_capture_session_kwargs(),
@@ -4387,6 +4397,7 @@ class Qwen35GGUFBringupGenerator:
                 max_batch_size=native_capacity,
                 backend=self.backend,
                 execution_routes=("eager", "native_rows", "native_graph"),
+                **self._target_short_attention_session_kwargs(),
                 **self._target_verifier_rowtile_session_kwargs(),
                 **self._target_fp16_recurrent_state_session_kwargs(),
                 **self._target_verifier_prefill_gdn_capture_session_kwargs(),
@@ -4907,6 +4918,7 @@ class Qwen35GGUFBringupGenerator:
                 if shared_runner is None:
                     with Qwen35GGUFFullStackRunner(
                         self.model_path,
+                        **self._target_short_attention_session_kwargs(),
                         target_fp16_recurrent_state=getattr(
                             self,
                             "target_fp16_recurrent_state",
@@ -5231,6 +5243,7 @@ class Qwen35GGUFBringupGenerator:
                         shared_runner=shared_runner,
                         use_wmma_prefill=_resident_session_wmma_prefill_default(),
                         use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
+                        **self._target_short_attention_session_kwargs(),
                         **self._target_verifier_rowtile_session_kwargs(),
                         **self._target_fp16_recurrent_state_session_kwargs(),
                         **self._target_verifier_prefill_gdn_capture_session_kwargs(),
@@ -5446,6 +5459,7 @@ class Qwen35GGUFBringupGenerator:
                     shared_runner=shared_runner,
                     use_wmma_prefill=_resident_session_wmma_prefill_default(),
                     use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
+                    **self._target_short_attention_session_kwargs(),
                     **self._target_verifier_rowtile_session_kwargs(),
                     **self._target_fp16_recurrent_state_session_kwargs(),
                     **self._target_verifier_prefill_gdn_capture_session_kwargs(),

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sys
 
+from functools import partial
 from importlib import import_module
 
 from hipengine.kernels.backends import (
@@ -28,6 +29,7 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
 )
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
+    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_threads_spans,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16,
@@ -1956,6 +1958,17 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         register(
             target_key,
             _GFX1151_OVERRIDES.get((key.layer, key.quant, key.variant), source_fn),
+            replace=replace,
+        )
+    short_attention_key = KernelKey(
+        _capability("BACKEND"), "paged_attn_decode", "w4_paro",
+        "bf16_context_batch_threads1024_spans",
+    )
+    if replace or not is_registered(short_attention_key):
+        register(
+            short_attention_key,
+            partial(qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_threads_spans,
+                    threads=1024),
             replace=replace,
         )
     q6_integer_mmq_key = KernelKey(

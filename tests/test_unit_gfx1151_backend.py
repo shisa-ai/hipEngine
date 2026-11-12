@@ -370,6 +370,10 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "f32_f16_publish",
         ),
         KernelKey(
+            "hip_gfx1151", "paged_attn_decode", "w4_paro",
+            "bf16_context_batch_threads1024_spans",
+        ),
+        KernelKey(
             "hip_gfx1151", "linear", "gguf_q6_k_t16_qmicro_planar_v1",
             "t16_q8_1_planar_integer_mmq64x64_bf16_bf16_out",
         ),

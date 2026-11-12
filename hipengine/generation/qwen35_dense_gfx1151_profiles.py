@@ -32,6 +32,8 @@ PRODUCTION_Q4_VERIFIER_ROWTILE_ENV = (
 _GDN_REGISTRY_QUANT = "gguf_qwen35"
 _Q4_REGISTRY_QUANT = "gguf_q4_k_t16_v1"
 _STRICT_CHAIN_VARIANT = "bf16_c1_exact_state_rows_tloop"
+_STRICT_SHORT_ATTN = "bf16_context_batch_c1_exact_spans"
+_PRODUCTION_SHORT_ATTN = "bf16_context_batch_threads1024_spans"
 _Q4_ROWTILE_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json"
@@ -48,6 +50,7 @@ def _binder(
     *,
     fp16_state: bool,
     q4_verifier_rowtile: bool,
+    short_attn_variant: str,
 ) -> None:
     from hipengine.runtime.gguf_launch_policy import LaunchDecisionOwner
     from hipengine.generation.physical_target_rows import bind_physical_target_plan
@@ -64,6 +67,7 @@ def _binder(
     generator.target_verifier_production_q4_rowtile = bool(q4_verifier_rowtile)
     generator.target_fp16_recurrent_state = bool(fp16_state)
     generator.target_verifier_prefill_gdn_capture = True
+    generator.target_short_c1_attn_variant = short_attn_variant
 
 
 def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
@@ -72,6 +76,7 @@ def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
         resolved,
         fp16_state=False,
         q4_verifier_rowtile=False,
+        short_attn_variant=_STRICT_SHORT_ATTN,
     )
 
 
@@ -81,6 +86,7 @@ def _production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None
         resolved,
         fp16_state=False,
         q4_verifier_rowtile=True,
+        short_attn_variant=_PRODUCTION_SHORT_ATTN,
     )
 
 
@@ -153,6 +159,11 @@ def _c3_q4_selections(*, production: bool) -> tuple[VariantSelection, ...]:
 def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
         _selection(
+            layer="paged_attn_decode", scope="short_c1_attention",
+            selected=_STRICT_SHORT_ATTN, fallback=_STRICT_SHORT_ATTN,
+            quant="w4_paro",
+        ),
+        _selection(
             layer="linear",
             scope="specdec2_mtp2_c2_k3_r8_q4_single",
             selected="t16_wmma_prefill_smallm_bf16_bf16_out",
@@ -186,6 +197,12 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
 
 def _production_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            layer="paged_attn_decode", scope="short_c1_attention",
+            selected=_PRODUCTION_SHORT_ATTN, fallback=_STRICT_SHORT_ATTN,
+            quant="w4_paro",
+            evidence="benchmarks/results/2026-08-20-gfx1151-qwen36-35b-c1-short_c1_attn_1024_threads.json",
+        ),
         _selection(
             layer="linear",
             scope="specdec2_mtp2_c2_k3_r8_q4_single",
