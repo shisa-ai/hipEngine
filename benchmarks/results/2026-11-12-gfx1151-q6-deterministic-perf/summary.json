@@ -1,0 +1,418 @@
+{
+  "public_ab.json": {
+    "metrics": {
+      "first:all:wall_s": {
+        "parent": 63.071765602217056,
+        "fixed": 61.189737779903226,
+        "delta_percent": -2.9839466270588644
+      },
+      "first:all:prefill_ms": {
+        "parent": 10352.6485,
+        "fixed": 8590.6695,
+        "delta_percent": -17.019596482967614
+      },
+      "first:all:specdec2_mtp2_target_ms": {
+        "parent": 50570.716385499996,
+        "fixed": 50418.4562585,
+        "delta_percent": -0.30108358726682605
+      },
+      "first:code:wall_s": {
+        "parent": 20.979009176546242,
+        "fixed": 20.279180741519667,
+        "delta_percent": -3.335850750325031
+      },
+      "first:code:prefill_ms": {
+        "parent": 3592.1975,
+        "fixed": 2831.87,
+        "delta_percent": -21.16608287823819
+      },
+      "first:code:specdec2_mtp2_target_ms": {
+        "parent": 16683.472511,
+        "fixed": 16686.164946,
+        "delta_percent": 0.016138336897353334
+      },
+      "first:general_en:wall_s": {
+        "parent": 14.048572621599305,
+        "fixed": 13.635636990424246,
+        "delta_percent": -2.939342254174504
+      },
+      "first:general_en:prefill_ms": {
+        "parent": 2277.9939999999997,
+        "fixed": 1863.379,
+        "delta_percent": -18.200882004079023
+      },
+      "first:general_en:specdec2_mtp2_target_ms": {
+        "parent": 11274.8012005,
+        "fixed": 11271.917065500002,
+        "delta_percent": -0.025580362338184504
+      },
+      "first:general_ja:wall_s": {
+        "parent": 14.395440549531486,
+        "fixed": 13.973067025479395,
+        "delta_percent": -2.9340784854676616
+      },
+      "first:general_ja:prefill_ms": {
+        "parent": 2130.9385,
+        "fixed": 1860.2485000000001,
+        "delta_percent": -12.702853695683846
+      },
+      "first:general_ja:specdec2_mtp2_target_ms": {
+        "parent": 11733.6277055,
+        "fixed": 11616.131784500001,
+        "delta_percent": -1.0013605676693071
+      },
+      "first:mixed_ja_en:wall_s": {
+        "parent": 13.648743254540022,
+        "fixed": 13.301853022479918,
+        "delta_percent": -2.541554380435118
+      },
+      "first:mixed_ja_en:prefill_ms": {
+        "parent": 2351.5185,
+        "fixed": 2035.172,
+        "delta_percent": -13.452860353852202
+      },
+      "first:mixed_ja_en:specdec2_mtp2_target_ms": {
+        "parent": 10878.814968499999,
+        "fixed": 10844.2424625,
+        "delta_percent": -0.3177966175553548
+      },
+      "warm:all:wall_s": {
+        "parent": 61.27676642121514,
+        "fixed": 61.46875216625631,
+        "delta_percent": 0.31330919735785834
+      },
+      "warm:all:prefill_ms": {
+        "parent": 8346.4655,
+        "fixed": 8459.3235,
+        "delta_percent": 1.3521651769841991
+      },
+      "warm:all:specdec2_mtp2_target_ms": {
+        "parent": 50605.6033575,
+        "fixed": 50566.133490500004,
+        "delta_percent": -0.07799505268449858
+      },
+      "warm:code:wall_s": {
+        "parent": 20.178263400681317,
+        "fixed": 20.354406634054612,
+        "delta_percent": 0.8729355439346165
+      },
+      "warm:code:prefill_ms": {
+        "parent": 2746.076,
+        "fixed": 2778.6130000000003,
+        "delta_percent": 1.1848543157582103
+      },
+      "warm:code:specdec2_mtp2_target_ms": {
+        "parent": 16692.898172,
+        "fixed": 16745.4724135,
+        "delta_percent": 0.3149497526330425
+      },
+      "warm:general_en:wall_s": {
+        "parent": 13.63098647852894,
+        "fixed": 13.668120957096107,
+        "delta_percent": 0.272426934218295
+      },
+      "warm:general_en:prefill_ms": {
+        "parent": 1807.0895,
+        "fixed": 1832.469,
+        "delta_percent": 1.4044406765685968
+      },
+      "warm:general_en:specdec2_mtp2_target_ms": {
+        "parent": 11284.2673345,
+        "fixed": 11285.1502155,
+        "delta_percent": 0.007823999324263475
+      },
+      "warm:general_ja:wall_s": {
+        "parent": 14.176935147959739,
+        "fixed": 14.094434802536853,
+        "delta_percent": -0.5819335742306753
+      },
+      "warm:general_ja:prefill_ms": {
+        "parent": 1814.854,
+        "fixed": 1839.226,
+        "delta_percent": 1.342917942710553
+      },
+      "warm:general_ja:specdec2_mtp2_target_ms": {
+        "parent": 11774.434884499999,
+        "fixed": 11668.1608725,
+        "delta_percent": -0.9025826975347928
+      },
+      "warm:mixed_ja_en:wall_s": {
+        "parent": 13.290581394045148,
+        "fixed": 13.351789772568736,
+        "delta_percent": 0.4605395107170507
+      },
+      "warm:mixed_ja_en:prefill_ms": {
+        "parent": 1978.4460000000001,
+        "fixed": 2009.0155,
+        "delta_percent": 1.5451268318670275
+      },
+      "warm:mixed_ja_en:specdec2_mtp2_target_ms": {
+        "parent": 10854.0029665,
+        "fixed": 10867.349989,
+        "delta_percent": 0.12296866456729116
+      }
+    },
+    "control_differences": [
+      {
+        "owner": 1,
+        "arm": "fixed",
+        "repeat": 0,
+        "id": "heldout_general_ja_speculative",
+        "accepted": 45,
+        "baseline_accepted": 44
+      },
+      {
+        "owner": 1,
+        "arm": "fixed",
+        "repeat": 1,
+        "id": "heldout_general_ja_speculative",
+        "accepted": 45,
+        "baseline_accepted": 44
+      },
+      {
+        "owner": 2,
+        "arm": "fixed",
+        "repeat": 0,
+        "id": "heldout_general_ja_speculative",
+        "accepted": 45,
+        "baseline_accepted": 44
+      },
+      {
+        "owner": 2,
+        "arm": "fixed",
+        "repeat": 1,
+        "id": "heldout_general_ja_speculative",
+        "accepted": 45,
+        "baseline_accepted": 44
+      }
+    ],
+    "all_ids_equal": true,
+    "no_recoverable_failures": true,
+    "allocations_retired": true,
+    "requests": 144
+  },
+  "confirm_ab.json": {
+    "metrics": {
+      "first:all:wall_s": {
+        "parent": 63.06575438298751,
+        "fixed": 61.13652565510711,
+        "delta_percent": -3.0590750031538883
+      },
+      "first:all:prefill_ms": {
+        "parent": 10404.904,
+        "fixed": 8589.2125,
+        "delta_percent": -17.450343607206765
+      },
+      "first:all:specdec2_mtp2_target_ms": {
+        "parent": 50515.6346285,
+        "fixed": 50374.829400500006,
+        "delta_percent": -0.2787359379635701
+      },
+      "first:code:wall_s": {
+        "parent": 21.030747348442674,
+        "fixed": 20.248819609521888,
+        "delta_percent": -3.7180216469039906
+      },
+      "first:code:prefill_ms": {
+        "parent": 3648.3154999999997,
+        "fixed": 2831.383,
+        "delta_percent": -22.392046411556233
+      },
+      "first:code:specdec2_mtp2_target_ms": {
+        "parent": 16680.0861115,
+        "fixed": 16680.6758575,
+        "delta_percent": 0.0035356292291011115
+      },
+      "first:general_en:wall_s": {
+        "parent": 14.044334361504298,
+        "fixed": 13.630160640110262,
+        "delta_percent": -2.9490448655885904
+      },
+      "first:general_en:prefill_ms": {
+        "parent": 2277.224,
+        "fixed": 1863.2624999999998,
+        "delta_percent": -18.17833906545866
+      },
+      "first:general_en:specdec2_mtp2_target_ms": {
+        "parent": 11270.662667,
+        "fixed": 11269.524643,
+        "delta_percent": -0.010097223505156627
+      },
+      "first:general_ja:wall_s": {
+        "parent": 14.373538667045068,
+        "fixed": 13.93756664544344,
+        "delta_percent": -3.033157190450275
+      },
+      "first:general_ja:prefill_ms": {
+        "parent": 2130.489,
+        "fixed": 1861.213,
+        "delta_percent": -12.639164060457485
+      },
+      "first:general_ja:specdec2_mtp2_target_ms": {
+        "parent": 11721.665397,
+        "fixed": 11583.885590000002,
+        "delta_percent": -1.1754285959677868
+      },
+      "first:mixed_ja_en:wall_s": {
+        "parent": 13.617134005995467,
+        "fixed": 13.319978760031518,
+        "delta_percent": -2.1822157719320057
+      },
+      "first:mixed_ja_en:prefill_ms": {
+        "parent": 2348.8755,
+        "fixed": 2033.354,
+        "delta_percent": -13.432874581901
+      },
+      "first:mixed_ja_en:specdec2_mtp2_target_ms": {
+        "parent": 10843.220453000002,
+        "fixed": 10840.743310000002,
+        "delta_percent": -0.022845085652711816
+      },
+      "warm:all:wall_s": {
+        "parent": 62.721730623433054,
+        "fixed": 63.66964825281563,
+        "delta_percent": 1.5113065598805875
+      },
+      "warm:all:prefill_ms": {
+        "parent": 8334.899,
+        "fixed": 8453.752333333334,
+        "delta_percent": 1.425972088364058
+      },
+      "warm:all:specdec2_mtp2_target_ms": {
+        "parent": 51310.37877433334,
+        "fixed": 51664.307570666664,
+        "delta_percent": 0.6897801278956228
+      },
+      "warm:code:wall_s": {
+        "parent": 20.62424555552813,
+        "fixed": 20.951546694190863,
+        "delta_percent": 1.5869726617709023
+      },
+      "warm:code:prefill_ms": {
+        "parent": 2739.701,
+        "fixed": 2775.673333333333,
+        "delta_percent": 1.31300216094139
+      },
+      "warm:code:specdec2_mtp2_target_ms": {
+        "parent": 16904.5272135,
+        "fixed": 17063.1527865,
+        "delta_percent": 0.9383614874086454
+      },
+      "warm:general_en:wall_s": {
+        "parent": 13.96978554094676,
+        "fixed": 14.221150145303303,
+        "delta_percent": 1.7993447617343117
+      },
+      "warm:general_en:prefill_ms": {
+        "parent": 1806.4516666666666,
+        "fixed": 1831.693,
+        "delta_percent": 1.3972880536521348
+      },
+      "warm:general_en:specdec2_mtp2_target_ms": {
+        "parent": 11442.983779,
+        "fixed": 11555.523900333334,
+        "delta_percent": 0.9834858067339525
+      },
+      "warm:general_ja:wall_s": {
+        "parent": 14.48491725816469,
+        "fixed": 14.557694028170468,
+        "delta_percent": 0.502431382303925
+      },
+      "warm:general_ja:prefill_ms": {
+        "parent": 1813.4476666666667,
+        "fixed": 1836.7353333333333,
+        "delta_percent": 1.2841653550152987
+      },
+      "warm:general_ja:specdec2_mtp2_target_ms": {
+        "parent": 11921.882926333334,
+        "fixed": 11876.515754333333,
+        "delta_percent": -0.38053696954020166
+      },
+      "warm:mixed_ja_en:wall_s": {
+        "parent": 13.642782268793477,
+        "fixed": 13.939257385150995,
+        "delta_percent": 2.1731279625833766
+      },
+      "warm:mixed_ja_en:prefill_ms": {
+        "parent": 1975.2986666666666,
+        "fixed": 2009.6506666666667,
+        "delta_percent": 1.739078782347847
+      },
+      "warm:mixed_ja_en:specdec2_mtp2_target_ms": {
+        "parent": 11040.9848555,
+        "fixed": 11169.1151295,
+        "delta_percent": 1.1604967824602408
+      }
+    },
+    "control_differences": [
+      {
+        "owner": 1,
+        "arm": "fixed",
+        "repeat": 0,
+        "id": "heldout_general_ja_speculative",
+        "accepted": 45,
+        "baseline_accepted": 44
+      },
+      {
+        "owner": 1,
+        "arm": "fixed",
+        "repeat": 1,
+        "id": "heldout_general_ja_speculative",
+        "accepted": 45,
+        "baseline_accepted": 44
+      },
+      {
+        "owner": 1,
+        "arm": "fixed",
+        "repeat": 2,
+        "id": "heldout_general_ja_speculative",
+        "accepted": 45,
+        "baseline_accepted": 44
+      },
+      {
+        "owner": 1,
+        "arm": "fixed",
+        "repeat": 3,
+        "id": "heldout_general_ja_speculative",
+        "accepted": 45,
+        "baseline_accepted": 44
+      },
+      {
+        "owner": 2,
+        "arm": "fixed",
+        "repeat": 0,
+        "id": "heldout_general_ja_speculative",
+        "accepted": 45,
+        "baseline_accepted": 44
+      },
+      {
+        "owner": 2,
+        "arm": "fixed",
+        "repeat": 1,
+        "id": "heldout_general_ja_speculative",
+        "accepted": 45,
+        "baseline_accepted": 44
+      },
+      {
+        "owner": 2,
+        "arm": "fixed",
+        "repeat": 2,
+        "id": "heldout_general_ja_speculative",
+        "accepted": 45,
+        "baseline_accepted": 44
+      },
+      {
+        "owner": 2,
+        "arm": "fixed",
+        "repeat": 3,
+        "id": "heldout_general_ja_speculative",
+        "accepted": 45,
+        "baseline_accepted": 44
+      }
+    ],
+    "all_ids_equal": true,
+    "no_recoverable_failures": true,
+    "allocations_retired": true,
+    "requests": 288
+  }
+}
