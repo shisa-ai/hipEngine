@@ -8,8 +8,8 @@ forward, and the accepted prefix plus the corrected token are committed, so the
 output is bit-identical to true greedy AR (the lossless gate).
 
 Bring-up scope: greedy (temperature <= 0), one request, chain proposals, a
-dedicated resident session per request. Sampled acceptance and shared-session
-prefix reuse are named refusals until their gates land.
+target-owned pooled resident session and a persistent drafter. Sampled acceptance
+and prompt-prefix reuse are not implemented.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.kernels.backends import hip_target_arch_environment
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -83,7 +84,7 @@ class Qwen35DSpineTextProvider:
             "supported_modes": ["verify_chain"],
             "tree_supported": False,
             "transaction_mode": "kv_truncate",
-            "resource_ownership": "provider draft weights + dedicated target session",
+            "resource_ownership": "provider draft weights + target-owned pooled session",
             "policy": "explicit_attach",
             "streaming_compatible": True,
             "candidate_budget": self.candidate_budget,
@@ -99,6 +100,9 @@ class Qwen35DSpineTextProvider:
             self._native = None
 
     def _prepare_request(self, request: GenerationRequest) -> tuple[int, ...]:
+        if self._closed:
+            raise RuntimeError("DSpine provider is closed")
+        raise_if_generation_deadline_expired(request)
         if len(request.prompts) != 1:
             raise ValueError("Qwen3.5 DSpine serves one prompt per request")
         if request.temperature > 0.0:
@@ -122,20 +126,24 @@ class Qwen35DSpineTextProvider:
 
     def _generate_row(self, request: GenerationRequest, prompt_ids: tuple[int, ...]) -> GenerationOutput:
         from hipengine.runtime.dspine import DSpineNativeDrafter
-        from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
         from hipengine.speculative.dspine_cycle import run_dspine_cycle
 
+        self.target._prepare_kv_policy(request)
         self._ensure_loaded()
         block_size = int(self._config["block_size"])
-        max_seq = len(prompt_ids) + request.max_tokens + block_size + 2
+        required = len(prompt_ids) + request.max_tokens + block_size + 2
+        max_seq = getattr(self.target, "_prepared_max_sequence_length", None) or required
+        if required > max_seq:
+            raise ValueError("DSpine request and draft workspace exceed target context capacity")
         stop_ids = set(request.stop_token_ids) | set(getattr(self.target.tokenizer, "stop_token_ids", ()))
         eos = (self.target.tokenizer.eos_token_id if request.eos_token_id is None
                else int(request.eos_token_id))
         started = time.perf_counter()
-        with Qwen35GGUFResidentSession(
-            self.target.model_path, backend=self.target.backend, compiler_version=None,
-            require_cached_build=False, max_sequence_length=max_seq, max_batch_size=1,
-        ) as session:
+        with hip_target_arch_environment(self.target.target_arch), self.target._resident_session_scope(
+            shared_runner=self.target._get_shared_runner(), pool_name="dspine_target",
+            max_sequence_length=max_seq,
+        ) as (session, reused):
+            raise_if_generation_deadline_expired(request)
             # Persist the drafter across requests so the refine head upload and
             # weight uploads amortize; recreate only if a longer context is needed.
             if self._native is None or self._native.max_context_len < max_seq:
@@ -167,11 +175,16 @@ class Qwen35DSpineTextProvider:
                 "execution_path": QWEN35_DSPINE_EXECUTION_PATH,
                 "prompt_tokens": len(prompt_ids),
                 "generated_tokens": len(ids),
-                "draft_forwards": ds["draft_forwards"],
-                "mean_acceptance": ds["mean_acceptance"],
-                "decode_seconds": ds["elapsed_s"],
-                "load_seconds": self.last_load_seconds,
-                "total_seconds": time.perf_counter() - started,
+                "diagnostics": {
+                    "draft_forwards": ds["draft_forwards"],
+                    "target_session_reused": reused,
+                    "graph_verify_cycles": ds["graph_verify_cycles"],
+                    "mean_acceptance": ds["mean_acceptance"],
+                },
+                "timing": {
+                    "decode_ms": ds["elapsed_s"] * 1000,
+                    "total_ms": (time.perf_counter() - started) * 1000,
+                },
             },
         )
 

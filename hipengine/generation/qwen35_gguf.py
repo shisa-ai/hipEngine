@@ -3587,6 +3587,7 @@ class Qwen35GGUFBringupGenerator:
         pool_name: str,
         use_wmma_prefill: bool | None = None,
         use_gemv_decode: bool | None = _GGUF_PUBLIC_USE_GEMV_DECODE,
+        max_sequence_length: int | None = None,
     ):
         if use_wmma_prefill is None:
             use_wmma_prefill = _resident_session_wmma_prefill_default()
@@ -3602,6 +3603,8 @@ class Qwen35GGUFBringupGenerator:
                 **self._target_verify_f32_session_kwargs(),
                 **self._target_q4_t16_dual_silu_r28_session_kwargs(),
             }
+            if max_sequence_length is not None:
+                session_kwargs["max_sequence_length"] = int(max_sequence_length)
             if use_wmma_prefill is not None:
                 session_kwargs["use_wmma_prefill"] = bool(use_wmma_prefill)
             if use_gemv_decode is not None:
@@ -3615,11 +3618,13 @@ class Qwen35GGUFBringupGenerator:
             pool_name=pool_name,
             use_wmma_prefill=use_wmma_prefill,
             use_gemv_decode=use_gemv_decode,
+            **({"max_sequence_length": int(max_sequence_length)}
+               if max_sequence_length is not None else {}),
         )
         try:
             self._configure_session(session)
             yield session, reused
-        except Exception:
+        except BaseException:
             session.close()
             raise
         else:
@@ -3813,6 +3818,8 @@ class Qwen35GGUFBringupGenerator:
             self._shared_runner = None
         assets = getattr(self, "_mtp_serving_assets", None)
         self._mtp_serving_assets = None
+        provider = getattr(self, "_speculative_provider", None)
+        self._speculative_provider = None
         # Draft providers borrow the shared NextN block, so it is freed after
         # them and before the target runner whose roots it borrows.
         runtime = getattr(shared_runner, "runtime", None)
@@ -3824,7 +3831,7 @@ class Qwen35GGUFBringupGenerator:
             weight_closers.append(assets.upload_cache.close)
 
         error: BaseException | None = None
-        for resource in (*reversed(sessions), *reversed(drafts), *weight_closers, shared_runner):
+        for resource in (provider, *reversed(sessions), *reversed(drafts), *weight_closers, shared_runner):
             if resource is None:
                 continue
             closer = resource if callable(resource) and not hasattr(resource, "close") else getattr(resource, "close", None)
