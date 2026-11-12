@@ -218,12 +218,12 @@ class DSpineNumpyDrafter:
         The GPU refine computes ``cand`` on device (WMMA head projection +
         top-16) and calls this for the small [n, K, K] table and chain walk.
         """
-        n = final_hidden.shape[0] - 1
+        n = int(cand.shape[0])
         K = self.head_topk
         R = self.rank
-        raw = stash["raw"][1:].astype(np.float32)        # [n, H]
-        rms = stash["rms"][1:].astype(np.float32)        # [n]
-        q = stash["packed"][1:, :R].astype(np.float32)   # [n, R]
+        raw = stash["raw"][1:1 + n].astype(np.float32)        # [n, H]
+        rms = stash["rms"][1:1 + n].astype(np.float32)        # [n]
+        q = stash["packed"][1:1 + n, :R].astype(np.float32)   # [n, R]
         norm_w = self.w["norm.weight"]
         write_w = self.bridge.feature_write_weights[-1]  # [H, R]
         gate_b = self.bridge.gate_bias

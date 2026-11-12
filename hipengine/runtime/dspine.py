@@ -249,23 +249,31 @@ class DSpineNativeDrafter(DFlash2NativeDrafter):
         drafts, _cand = self._numpy.refine_greedy(self._last_final_hidden, self._last_stash, output_head_weight, anchor)
         return drafts
 
-    def refine_gpu(self, output_head_weight: np.ndarray, anchor: int) -> np.ndarray:
+    def refine_gpu(self, output_head_weight: np.ndarray, anchor: int, *,
+                   n_rows: int | None = None) -> np.ndarray:
         """GPU transition-cache refine: WMMA head projection + top-16 on device,
         then the small [n, K, K] score table + chain walk on the host. Replaces
         the 163 ms CPU head projection + 43 ms argsort with device kernels.
+
+        ``n_rows`` limits the refine to the first ``n_rows`` proposal rows (the
+        verified prefix). The greedy chain walk is left-to-right, so the first
+        ``n_rows`` drafts are identical to the full-block refine; skipping the
+        unverified tail cuts the [n, K, H] head-row gather + score-table matmuls
+        (the dominant host cost) and the top-16 work without changing acceptance.
         """
         bs, H = self.block_size, self.hidden_size
         V = int(output_head_weight.shape[0])
-        n = bs - 1
+        n_max = bs - 1
+        n = n_max if n_rows is None else max(1, min(int(n_rows), n_max))
         K = self.head_topk
         if getattr(self, "_head_dev", None) is None:
             hb = _to_bf16_bits(np.asarray(output_head_weight, dtype=np.float32))
             self._head_dev_buf = DeviceBuffer(ptr=self.runtime.malloc(hb.nbytes), nbytes=hb.nbytes)
             copy_host_array_to_device(self._head_dev_buf, np.ascontiguousarray(hb), runtime=self.runtime)
             self._head_dev = self._head_dev_buf.ptr
-            self._logits_buf = DeviceBuffer(ptr=self.runtime.malloc(n * V * 4), nbytes=n * V * 4)
-            self._topk_ids_buf = DeviceBuffer(ptr=self.runtime.malloc(n * K * 4), nbytes=n * K * 4)
-            self._topk_vals_buf = DeviceBuffer(ptr=self.runtime.malloc(n * K * 4), nbytes=n * K * 4)
+            self._logits_buf = DeviceBuffer(ptr=self.runtime.malloc(n_max * V * 4), nbytes=n_max * V * 4)
+            self._topk_ids_buf = DeviceBuffer(ptr=self.runtime.malloc(n_max * K * 4), nbytes=n_max * K * 4)
+            self._topk_vals_buf = DeviceBuffer(ptr=self.runtime.malloc(n_max * K * 4), nbytes=n_max * K * 4)
         fh_ptr = self.block_norm.ptr + H * 2  # final-normed proposal rows 1..bs-1 (bf16)
         dflash_dense_bf16_to_f32_wmma(fh_ptr, self._head_dev, self._logits_buf.ptr, n, H, V,
                                       library=self._lib1, runtime=self.runtime)
@@ -273,7 +281,7 @@ class DSpineNativeDrafter(DFlash2NativeDrafter):
                            n, V, K, library=self._lib2, runtime=self.runtime)
         self.runtime.device_synchronize()
         ids = np.empty(n * K, dtype=np.int32)
-        copy_device_to_host(host_array_ptr(ids), self._topk_ids_buf, runtime=self.runtime)
+        copy_device_to_host(host_array_ptr(ids), self._topk_ids_buf, nbytes=n * K * 4, runtime=self.runtime)
         cand = np.sort(ids.reshape(n, K).astype(np.int64), axis=-1)
         drafts, _cand = self._numpy.refine_greedy_from_cand(
             self._last_final_hidden, self._last_stash, output_head_weight, anchor, cand)

@@ -104,8 +104,10 @@ def run_dspine_cycle(session, native, nd, token_embd, head, *, prompt_ids,
         noise = token_embd[block_input].astype(np.float32)
         positions = np.arange(0, ctx_len + block_size, dtype=np.int64)
         native.forward(noise, positions, anchor_id=bonus)
-        refine_fn = native.refine_gpu if use_gpu_refine else native.refine
-        drafts = [int(t) for t in refine_fn(head, bonus)[:n_drafts]]
+        if use_gpu_refine:
+            drafts = [int(t) for t in native.refine_gpu(head, bonus, n_rows=n_verify)]
+        else:
+            drafts = [int(t) for t in native.refine(head, bonus)[:n_drafts]]
         verify_drafts = drafts[:n_verify]
         start_pos = int(session.position)
         bres = verify_qwen35_gguf_native_b2_target(
