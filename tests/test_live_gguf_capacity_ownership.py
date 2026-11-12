@@ -12,7 +12,7 @@ from scripts.gguf_packed_lease_probe import _pool_summary, _resident_runner
 
 
 @pytest.mark.parametrize("capacity,context", [(1, 511), (4, 1536), (4, 5379)])
-def test_public_generation_capacity_cancel_refill(hip_test_target_arch, capacity, context):
+def test_public_generation_capacity_cancel_refill(hip_test_target_arch, capacity, context, monkeypatch):
     from hipengine import LLM, SamplingParams
     from hipengine.core.memory import memory_stats
     from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND
@@ -67,13 +67,17 @@ def test_public_generation_capacity_cancel_refill(hip_test_target_arch, capacity
         assert after["refcounted_pages"] == initial["refcounted_pages"]
         assert llm.engine_service_health()["status"] == "ok"
         if capacity > 1 and context > 1024:
-            # Exercise real private growth after public generation, then reuse
-            # the service. The pinned floor cannot hold this context.
+            # Force the standalone fallback by refusing additional arena leases.
+            # Otherwise the pool can grow and legitimately avoid private storage.
+            from hipengine.runtime import qwen35_gguf_runner as runner_module
+
             owner = runner._resident_batch_owner
-            state, _ = owner._ensure_packed_verify_workspace(
-                slot_count=capacity, rows=capacity,
-                max_sequence_length=context, runtime=owner.runtime,
-            )
+            with monkeypatch.context() as patch:
+                patch.setattr(runner_module, "_lease_packed_workspace_growth", lambda *a, **kw: None)
+                state, _ = owner._ensure_packed_verify_workspace(
+                    slot_count=capacity, rows=capacity,
+                    max_sequence_length=context, runtime=owner.runtime,
+                )
             assert state.kv_backing_kind == "private"
             assert runner._kv_pool.private_workspace_bytes > 0
             assert _pool_summary(runner)["workspace_lease_pages"] == capacity * 4
