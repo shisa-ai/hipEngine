@@ -380,6 +380,7 @@ class PrefillF16StagingWorkspace:
 
     ptr: int
     nbytes: int
+    workspace_owner: object | None = None
 
     def __post_init__(self) -> None:
         if int(self.ptr) <= 0 or int(self.nbytes) <= 0:
@@ -397,6 +398,7 @@ def prefill_f16_staging_session(
     *,
     workspace_ptr: int = 0,
     workspace_nbytes: int = 0,
+    workspace_owner: object | None = None,
 ) -> Iterator[None]:
     """Enable F16 staging with one caller-owned bounded device workspace."""
 
@@ -405,6 +407,7 @@ def prefill_f16_staging_session(
         workspace = PrefillF16StagingWorkspace(
             ptr=int(workspace_ptr),
             nbytes=int(workspace_nbytes),
+            workspace_owner=workspace_owner,
         )
     enabled_token = _prefill_f16_staging_session_enabled.set(bool(enabled))
     workspace_token = _prefill_f16_staging_workspace.set(workspace)
@@ -498,6 +501,14 @@ def _launch_prefill_f16_staged(
     )
     stage_kwargs = dict(kwargs)
     stage_kwargs.pop("library", None)
+    workspace = prefill_f16_staging_workspace()
+    owner_type = getattr(sibling, "workspace_owner_type", None)
+    if (
+        workspace is not None
+        and owner_type is not None
+        and isinstance(workspace.workspace_owner, owner_type)
+    ):
+        stage_kwargs["workspace_owner"] = workspace.workspace_owner
     _LAUNCH_ABI["t16"](
         sibling,
         weight,

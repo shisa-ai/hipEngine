@@ -25,6 +25,10 @@ def test_session_teardown_closes_retained_prefix_arenas(slot_view):
     session._moe_graph = None
     closed = []
     session._gguf_prefix_snapshot_arena_pool = SimpleNamespace(close=lambda: closed.append(True))
+    fullgemm_closed = []
+    session._prefill_fullgemm_workspace = SimpleNamespace(
+        close=lambda: fullgemm_closed.append(True)
+    )
     if slot_view:
         session._resident_batch_owner = object()
         session._close_resident_slot_view_buffers(runtime=session.runtime)
@@ -33,6 +37,8 @@ def test_session_teardown_closes_retained_prefix_arenas(slot_view):
         session.close()
         session.close()
     assert closed == [True]
+    assert fullgemm_closed == [True]
+    assert session._prefill_fullgemm_workspace is None
 
 
 def test_dynamic_verifier_scratch_growth_belongs_to_session_root(monkeypatch):

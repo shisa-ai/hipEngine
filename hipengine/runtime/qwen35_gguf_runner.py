@@ -13386,6 +13386,7 @@ class Qwen35GGUFResidentSession:
     _bulk_prefill_full_prompt_capacity_rows: int = field(default=0, init=False)
     _bulk_prefill_hidden_planes: int = field(default=0, init=False)
     _prefill_f16_staging_buf: object | None = field(default=None, init=False)
+    _prefill_fullgemm_workspace: object | None = field(default=None, init=False)
     _iq_dense_mmq_buf: object | None = field(default=None, init=False)
     _q6_integer_mmq_library: object | None = field(default=None, init=False)
     _iq_dense_mmq_library: object | None = field(default=None, init=False)
@@ -15154,6 +15155,7 @@ class Qwen35GGUFResidentSession:
                 f"resident slot view {index} outside [1, {int(owner.slot_count)})"
             )
         view = copy(self)
+        view._prefill_fullgemm_workspace = None
         view.__dict__["_resident_state_storage"] = ResidentStateStorage()
         view.__dict__["_graph_lifetime_state"] = Qwen35GGUFGraphLifetime()
         view._state_storage().canonical.owns_scratch = False
@@ -18594,10 +18596,16 @@ class Qwen35GGUFResidentSession:
         if not bool(self.use_prefill_f16_staging):
             return prefill_f16_staging_session(False)
         buffer = self._ensure_prefill_f16_staging_buffer()
+        if self._prefill_fullgemm_workspace is None:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import (
+                Q6FullGemmWorkspace,
+            )
+            self._prefill_fullgemm_workspace = Q6FullGemmWorkspace()
         return prefill_f16_staging_session(
             True,
             workspace_ptr=int(buffer.ptr),
             workspace_nbytes=int(buffer.nbytes),
+            workspace_owner=self._prefill_fullgemm_workspace,
         )
 
     def _wide_f16_activation_context(self):
@@ -29853,12 +29861,19 @@ class Qwen35GGUFResidentSession:
         self._verify_logits_buf = None
         self._verify_lm_rows_capacity = 0
 
+    def _close_prefill_fullgemm_workspace(self) -> None:
+        owner = self._prefill_fullgemm_workspace
+        if owner is not None:
+            owner.close()
+            self._prefill_fullgemm_workspace = None
+
     def _close_resident_slot_view_buffers(self, *, runtime: HipRuntime) -> None:
         """Release allocations grown by one lightweight resident slot view."""
 
         if getattr(self, "_resident_batch_owner", None) is None:
             raise RuntimeError("resident slot-view cleanup requires a batch owner")
         self._check_state_capture_released()
+        self._close_prefill_fullgemm_workspace()
         self._close_prefix_snapshot_pool()
         native_sampler = self._native_sampler_workspace
         if native_sampler is not None:
@@ -29923,6 +29938,7 @@ class Qwen35GGUFResidentSession:
             self.__dict__["_construction_rollback_errors"] = ()
             return ()
 
+        attempt("prefill-fullgemm-workspace", self._close_prefill_fullgemm_workspace)
         recorder = self.__dict__.get("_prefill_flight_recorder")
         if recorder is not None:
             synchronized = True
@@ -30131,6 +30147,7 @@ class Qwen35GGUFResidentSession:
         views = tuple(self.__dict__.get("_resident_slot_views", ()))
         for view in views:
             view._check_state_capture_released()
+        self._close_prefill_fullgemm_workspace()
         self._close_prefix_snapshot_pool()
         for view in reversed(views):
             view._close_resident_slot_view_buffers(runtime=runtime)

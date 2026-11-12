@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 from pathlib import Path
+from threading import RLock
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
@@ -743,8 +744,63 @@ def gguf_q6_k_t16_qmicro_planar_f16_rocblas_bf16_bf16_out(
 # large projections. The activation arrives pre-cast to IEEE half (F16 staging
 # sibling ABI); the weight F16 plane is shared across row counts and the
 # per-shape best algorithm is selected once and cached.
-_Q6_FULLGEMM_WEIGHT_CACHE: dict[tuple[int, int], object] = {}
-_Q6_FULLGEMM_PLAN_CACHE: dict[tuple[int, int, int], tuple] = {}
+class Q6FullGemmWorkspace:
+    """Session-owned scratch, isolated by runtime, device and submission stream."""
+
+    def __init__(self) -> None:
+        self.weights: dict[tuple, object] = {}
+        self.plans: dict[tuple, tuple] = {}
+        self.bindings: dict[tuple, tuple[HipRuntime, int, int]] = {}
+        self.resources: list[tuple[tuple, object, str]] = []
+        self.lock = RLock()
+        self.closed = False
+
+    def binding(self, runtime: HipRuntime, stream: int) -> tuple:
+        if self.closed:
+            raise RuntimeError("Q6 full-GEMM workspace is closed")
+        device = runtime.current_device()
+        if any(rt is runtime and bound_device != device
+               for rt, bound_device, _stream in self.bindings.values()):
+            raise RuntimeError("Q6 workspace cannot change its allocation device")
+        key = (id(runtime), device, int(stream))
+        self.bindings[key] = (runtime, device, int(stream))
+        return key
+
+    def release_since(self, start: int) -> None:
+        from hipengine.core.memory import free
+
+        errors = []
+        while len(self.resources) > start:
+            binding, resource, kind = self.resources.pop()
+            try:
+                if kind == "buffer":
+                    free(resource, runtime=self.bindings[binding][0])
+                else:
+                    resource.close()
+            except BaseException as error:
+                errors.append(error)
+        if errors:
+            for error in errors[1:]:
+                errors[0].add_note(f"additional Q6 workspace release failure: {error!r}")
+            raise errors[0]
+
+    def close(self) -> None:
+        with self.lock:
+            if self.closed:
+                return
+            # Check every binding before touching resources. A failed retirement
+            # leaves the owner available for retry rather than freeing live work.
+            for runtime, device, stream in self.bindings.values():
+                if runtime.current_device() != device:
+                    raise RuntimeError("Q6 workspace close requires its allocation device")
+                runtime.stream_synchronize(stream)
+            self.plans.clear()
+            self.weights.clear()
+            try:
+                self.release_since(0)
+            finally:
+                self.bindings.clear()
+                self.closed = True
 
 
 def gguf_q6_k_t16_qmicro_planar_fullgemm_fp16_in_bf16_out(
@@ -758,27 +814,49 @@ def gguf_q6_k_t16_qmicro_planar_fullgemm_fp16_in_bf16_out(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    workspace_owner: Q6FullGemmWorkspace | None = None,
     **kwargs,
 ) -> None:
     """Dequantize planar Q6T16 to F16 and run a hipBLASLt GEMM (BF16 out)."""
     del kwargs
+    runtime = runtime or get_hip_runtime()
+    owner = workspace_owner if workspace_owner is not None else Q6FullGemmWorkspace()
+    try:
+        with owner.lock:
+            binding = owner.binding(runtime, stream)
+            _launch_q6_fullgemm(
+                owner, binding, x_ptr, tiles_ptr, out_ptr, rows, in_features,
+                out_features, stream=stream, library=library, runtime=runtime,
+            )
+    finally:
+        if workspace_owner is None:
+            owner.close()
+
+
+def _launch_q6_fullgemm(
+    owner, binding, x_ptr, tiles_ptr, out_ptr, rows, in_features, out_features,
+    *, stream, library, runtime,
+) -> None:
     import time
     from hipengine.core.hipblaslt import (
         HipblasLt, HipblasLtProblem, HIP_R_16F, HIP_R_32F,
     )
     from hipengine.core.memory import malloc
 
-    runtime = runtime or get_hip_runtime()
     library = library or build_gguf_q6_k_f16_rocblas_prefill(load=True)
     rows = int(rows)
+    if rows <= 0:
+        raise ValueError("Q6 full-GEMM rows must be positive")
     in_features = _check_in_features(in_features)
     out_features = _check_out_features(out_features)
 
-    wkey = (in_features, out_features)
-    weight_f16 = _Q6_FULLGEMM_WEIGHT_CACHE.get(wkey)
-    if weight_f16 is None:
+    resource_start = len(owner.resources)
+    wkey = (*binding, in_features, out_features)
+    weight_f16 = owner.weights.get(wkey)
+    new_weight = weight_f16 is None
+    if new_weight:
         weight_f16 = malloc(out_features * in_features * 2, runtime=runtime)
-        _Q6_FULLGEMM_WEIGHT_CACHE[wkey] = weight_f16
+        owner.resources.append((binding, weight_f16, "buffer"))
 
     def dequant_weight() -> None:
         _launch_t16_dequantize_f16_tile(
@@ -794,47 +872,74 @@ def gguf_q6_k_t16_qmicro_planar_fullgemm_fp16_in_bf16_out(
             runtime=runtime,
         )
 
-    pkey = (rows, in_features, out_features)
-    plan = _Q6_FULLGEMM_PLAN_CACHE.get(pkey)
+    pkey = (*binding, rows, in_features, out_features)
+    plan = owner.plans.get(pkey)
     if plan is None:
         workspace_nbytes = 64 * 1024 * 1024
-        out_f32 = malloc(rows * out_features * 4, runtime=runtime)
-        workspace = malloc(workspace_nbytes, runtime=runtime)
-        lt = HipblasLt()
-        prob = HipblasLtProblem(
-            lt, rows, in_features, out_features, workspace_nbytes,
-            ab_type=HIP_R_16F, cd_type=HIP_R_32F,
-        )
-        dequant_weight()
-        runtime.stream_synchronize(stream)
-        best = None
-        best_t = float("inf")
-        for algo in prob.algorithms(16)[:12]:
-            try:
-                prob.launch(algo, x_ptr, int(weight_f16.ptr), int(out_f32.ptr),
-                            int(workspace.ptr), stream=stream)
-                runtime.stream_synchronize(stream)
-                t0 = time.perf_counter()
-                for _ in range(3):
+        out_f32 = workspace = lt = prob = None
+        try:
+            out_f32 = malloc(rows * out_features * 4, runtime=runtime)
+            owner.resources.append((binding, out_f32, "buffer"))
+            workspace = malloc(workspace_nbytes, runtime=runtime)
+            owner.resources.append((binding, workspace, "buffer"))
+            lt = HipblasLt()
+            owner.resources.append((binding, lt, "handle"))
+            # Register before initialization so partially created descriptors
+            # remain owned if hipBLASLt rejects a layout or preference.
+            prob = HipblasLtProblem.__new__(HipblasLtProblem)
+            owner.resources.append((binding, prob, "problem"))
+            prob.__init__(
+                lt, rows, in_features, out_features, workspace_nbytes,
+                ab_type=HIP_R_16F, cd_type=HIP_R_32F,
+            )
+            dequant_weight()
+            runtime.stream_synchronize(stream)
+            best = None
+            best_t = float("inf")
+            for algo in prob.algorithms(16)[:12]:
+                try:
                     prob.launch(algo, x_ptr, int(weight_f16.ptr), int(out_f32.ptr),
                                 int(workspace.ptr), stream=stream)
+                    runtime.stream_synchronize(stream)
+                    t0 = time.perf_counter()
+                    for _ in range(3):
+                        prob.launch(algo, x_ptr, int(weight_f16.ptr), int(out_f32.ptr),
+                                    int(workspace.ptr), stream=stream)
+                    runtime.stream_synchronize(stream)
+                    dt = (time.perf_counter() - t0) / 3
+                    if dt < best_t:
+                        best_t = dt
+                        best = algo
+                except Exception:
+                    continue
+            if best is None:
+                best = prob.algorithms(1)[0]
+        except BaseException as error:
+            try:
                 runtime.stream_synchronize(stream)
-                dt = (time.perf_counter() - t0) / 3
-                if dt < best_t:
-                    best_t = dt
-                    best = algo
-            except Exception:
-                continue
-        if best is None:
-            best = prob.algorithms(1)[0]
+            except BaseException as sync_error:
+                # Keep unpublished resources owned until a later successful
+                # close can establish that queued work has retired.
+                error.add_note(f"Q6 workspace cleanup deferred: {sync_error!r}")
+            else:
+                try:
+                    owner.release_since(resource_start)
+                except BaseException as cleanup_error:
+                    error.add_note(f"Q6 workspace cleanup failed: {cleanup_error!r}")
+            raise
         plan = (prob, best, out_f32, workspace)
-        _Q6_FULLGEMM_PLAN_CACHE[pkey] = plan
+        owner.plans[pkey] = plan
+    owner.weights[wkey] = weight_f16
     prob, algo, out_f32, workspace = plan
     dequant_weight()
     prob.launch(algo, x_ptr, int(weight_f16.ptr), int(out_f32.ptr),
                 int(workspace.ptr), stream=stream)
     f32_to_bf16(int(out_f32.ptr), out_ptr, rows * out_features,
                 stream=stream, runtime=runtime)
+
+
+# Dispatch passes owned scratch only to registered callables declaring it.
+gguf_q6_k_t16_qmicro_planar_fullgemm_fp16_in_bf16_out.workspace_owner_type = Q6FullGemmWorkspace
 
 
 def register_gguf_q6_k_f16_rocblas_prefill_kernels(

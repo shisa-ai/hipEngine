@@ -37,6 +37,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.runtime import MemcpyKind
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import Q6FullGemmWorkspace
 from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_bf16_add,
@@ -133,6 +134,7 @@ class MuseGlimmerResidentSession:
         self._history_valid = 0
         self._image_overrides: dict[int, np.ndarray] | None = None
         self._scratch: _SessionScratch | None = None
+        self._prefill_fullgemm_workspace = Q6FullGemmWorkspace()
         self._kv: list[tuple[DeviceBuffer, DeviceBuffer]] = []
         self._buffers: list[DeviceBuffer] = []
         self._allocate()
@@ -311,6 +313,7 @@ class MuseGlimmerResidentSession:
     def close(self) -> None:
         if self._closed:
             return
+        self._prefill_fullgemm_workspace.close()
         self._closed = True
         if self._scratch is not None:
             self._scratch.close(self.runtime)
@@ -347,6 +350,7 @@ class MuseGlimmerResidentSession:
             True,
             workspace_ptr=int(self._f16_staging.ptr),
             workspace_nbytes=int(self._f16_staging.nbytes),
+            workspace_owner=self._prefill_fullgemm_workspace,
         ):
             for begin, end in self._prefill_chunks(ids.size, int(start)):
                 logits = self._forward_block(ids[begin:end], position_offset=begin)
@@ -848,6 +852,7 @@ class MuseGlimmerResidentSession:
             True,
             workspace_ptr=int(self._f16_staging.ptr),
             workspace_nbytes=int(self._f16_staging.nbytes),
+            workspace_owner=self._prefill_fullgemm_workspace,
         ):
             for begin, end in self._prefill_chunks(ids.size, int(start)):
                 logits, taps = self._forward_block(
