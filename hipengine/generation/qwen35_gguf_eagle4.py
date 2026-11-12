@@ -196,15 +196,10 @@ register_speculative_provider(
         quant="gguf_q4_k_m",
     ),
     make_qwen35_eagle4_text_provider,
-    # Measured KV-cache chain optimum on the full mtpbench suite (gfx1151,
-    # Qwen3.8-27B-Q4_K_M, 25 new tokens). After Q8 drafter quantization
-    # (ad18223cb, draft chain 13.23->8.46ms), the n_draft re-sweep gives
-    # 1/2/3/4 -> 16.17/17.82/18.61/17.84 tok/s (1.43/1.57/1.65/1.68x own AR),
-    # acceptance 0.750/0.650/0.556/0.501, all AR-exact. The cheaper Q8 draft
-    # step lets a third draft amortize: n_draft=3 now leads n2 by ~4% with a
-    # stable ~11.3 tok/s AR reference (n4's ratio is inflated by a thermally
-    # drifted 10.64 AR). n_draft=3 is retained. Pre-Q8 the peak was flat at
-    # n2-3 and n2 was kept (worklog 20261109T200212); Q8 shifted it to n3.
+    # Keep depth 3 pending a longer, matched public-path comparison. The short
+    # post-Q8 sweep does not establish a depth win: token-weighted reconstruction
+    # of per-prompt medians puts n2 and n3 effectively level. See the aggregation
+    # correction in benchmarks/results/2026-11-12-qwen38-specdec-reaggregation.json.
     candidate_budget=3,
 )
 

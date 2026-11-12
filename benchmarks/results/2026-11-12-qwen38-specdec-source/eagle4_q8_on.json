@@ -1,0 +1,216 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_eagle4_relative_baseline",
+  "status": "relative_baseline_internal",
+  "performance_claim": false,
+  "publishable": false,
+  "note": "Internal relative baseline; native EAGLE-4 chain draft (dynamic tree is a follow-up). Speed is pre-optimization (task #21).",
+  "provenance": {
+    "hipengine_commit": "1d5edd24d7c2bb87ece1ef7dac845a3ffaecddd0",
+    "git_branch": "qwen38-dspine-eagle4",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "drafter": "/home/lhl/.cache/huggingface/hub/models--EAGLE-Corp--Qwen3.8-27B-EAGLE4/snapshots/f58a5985223040552ad404fba98f0dd27f5f676a",
+    "backend": "hip_gfx1151",
+    "command": "scripts/qwen38_eagle4_baseline.py --n-draft 2 --reps 3 --max-new-tokens 25 --output /tmp/eagle4_q8_on.json",
+    "date": "2026-11-12T02:05:08"
+  },
+  "protocol": {
+    "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite": "mtpbench-code-general-ja (10 prompts)",
+    "max_new_tokens": 25,
+    "n_draft": 2,
+    "reps": 3,
+    "verify": "native chain (verify_target_block)",
+    "warmup": "1 discarded prompt",
+    "aggregation": "median EAGLE-4 decode tok/s across reps; AR reference deterministic per prompt"
+  },
+  "summary": {
+    "eagle4_tok_s_median_of_prompts": 17.98573319938862,
+    "ar_tok_s_median_of_prompts": 11.38052603964041,
+    "ratio_vs_ar": 1.5803955930280456,
+    "exact_all": true,
+    "mean_acceptance": 0.6496212121212122
+  },
+  "rows": [
+    {
+      "category": "code",
+      "prompt_len": 28,
+      "ar_tok_s": 11.392875660985448,
+      "mean_acceptance": 0.5416666666666666,
+      "accepted_per_draft": 1.0833333333333333,
+      "id": "code_merge_intervals",
+      "eagle4_tok_s_median": 16.42645123766315,
+      "ar_tok_s_median": 11.392875660985448,
+      "eagle4_tok_s_reps": [
+        15.975323527685678,
+        16.520163116312364,
+        16.42645123766315
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 1.4418178277776723
+    },
+    {
+      "category": "code",
+      "prompt_len": 38,
+      "ar_tok_s": 11.342804539103993,
+      "mean_acceptance": 0.6363636363636364,
+      "accepted_per_draft": 1.2727272727272727,
+      "id": "code_topological_sort",
+      "eagle4_tok_s_median": 17.842519320218543,
+      "ar_tok_s_median": 11.368832101685125,
+      "eagle4_tok_s_reps": [
+        17.865411814101364,
+        17.842519320218543,
+        17.79782731261377
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 1.5694241203169732
+    },
+    {
+      "category": "code",
+      "prompt_len": 35,
+      "ar_tok_s": 11.419440548038736,
+      "mean_acceptance": 0.75,
+      "accepted_per_draft": 1.5,
+      "id": "code_lru_cache",
+      "eagle4_tok_s_median": 19.724119886770858,
+      "ar_tok_s_median": 11.419440548038736,
+      "eagle4_tok_s_reps": [
+        19.946310005904017,
+        19.519558470468024,
+        19.724119886770858
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 1.727240472402865
+    },
+    {
+      "category": "code",
+      "prompt_len": 40,
+      "ar_tok_s": 11.458073813099421,
+      "mean_acceptance": 0.6363636363636364,
+      "accepted_per_draft": 1.2727272727272727,
+      "id": "code_markdown_table",
+      "eagle4_tok_s_median": 17.9261340558306,
+      "ar_tok_s_median": 11.43598849388484,
+      "eagle4_tok_s_reps": [
+        18.051146876678374,
+        17.9261340558306,
+        17.919003005789076
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 1.5675194204170662
+    },
+    {
+      "category": "general_en",
+      "prompt_len": 27,
+      "ar_tok_s": 11.35372368496522,
+      "mean_acceptance": 0.6363636363636364,
+      "accepted_per_draft": 1.2727272727272727,
+      "id": "general_en_plan",
+      "eagle4_tok_s_median": 18.047379379837455,
+      "ar_tok_s_median": 11.35372368496522,
+      "eagle4_tok_s_reps": [
+        18.047379379837455,
+        18.081675601630582,
+        17.916432721742908
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 1.5895559800998222
+    },
+    {
+      "category": "general_en",
+      "prompt_len": 28,
+      "ar_tok_s": 11.390040865089793,
+      "mean_acceptance": 0.75,
+      "accepted_per_draft": 1.5,
+      "id": "general_en_explain",
+      "eagle4_tok_s_median": 19.67778364476777,
+      "ar_tok_s_median": 11.390040865089793,
+      "eagle4_tok_s_reps": [
+        19.21743685320069,
+        19.67778364476777,
+        19.747327432539667
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 1.7276306448627166
+    },
+    {
+      "category": "general_ja",
+      "prompt_len": 31,
+      "ar_tok_s": 11.376816586319926,
+      "mean_acceptance": 0.6363636363636364,
+      "accepted_per_draft": 1.2727272727272727,
+      "id": "general_ja_plan",
+      "eagle4_tok_s_median": 18.04533234294664,
+      "ar_tok_s_median": 11.377517545496916,
+      "eagle4_tok_s_reps": [
+        17.894126603557076,
+        18.04533234294664,
+        18.157253240750638
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 1.5860518140961921
+    },
+    {
+      "category": "general_ja",
+      "prompt_len": 31,
+      "ar_tok_s": 11.380101855079246,
+      "mean_acceptance": 0.6363636363636364,
+      "accepted_per_draft": 1.2727272727272727,
+      "id": "general_ja_explain",
+      "eagle4_tok_s_median": 18.047253698214156,
+      "ar_tok_s_median": 11.362795439661348,
+      "eagle4_tok_s_reps": [
+        17.96908189567968,
+        18.151426080078828,
+        18.047253698214156
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 1.588275859936807
+    },
+    {
+      "category": "mixed_ja_en",
+      "prompt_len": 52,
+      "ar_tok_s": 11.349848999491945,
+      "mean_acceptance": 0.6363636363636364,
+      "accepted_per_draft": 1.2727272727272727,
+      "id": "mixed_ja_en_translate",
+      "eagle4_tok_s_median": 17.89829869177131,
+      "ar_tok_s_median": 11.349848999491945,
+      "eagle4_tok_s_reps": [
+        17.898997513532013,
+        17.551371045886647,
+        17.89829869177131
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 1.576963595953787
+    },
+    {
+      "category": "mixed_ja_en",
+      "prompt_len": 59,
+      "ar_tok_s": 11.383534533783903,
+      "mean_acceptance": 0.6363636363636364,
+      "accepted_per_draft": 1.2727272727272727,
+      "id": "mixed_ja_en_review",
+      "eagle4_tok_s_median": 17.83718546772764,
+      "ar_tok_s_median": 11.383534533783903,
+      "eagle4_tok_s_reps": [
+        17.725535178633237,
+        17.880874111102695,
+        17.83718546772764
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 1.5669285681692866
+    }
+  ]
+}

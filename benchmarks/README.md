@@ -1,6 +1,18 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-11-06 UTC**
+Last updated: **2026-11-12 UTC**
+
+## Qwen3.8-27B speculative diagnostics — ZBook
+
+The short `Q4_K_M` EAGLE-4 depth sweep on **zbook / Radeon 8060S**
+(`gfx1151`, ten mtpbench prompts, 25 outputs, three repetitions) does not
+establish a winning depth. Reconstructing throughput from the saved per-prompt
+median times gives **17.94 tok/s at depth 2** and **17.87 tok/s at depth 3**;
+the previously reported depth-3 figure, 18.61 tok/s, is a median of prompt rates.
+Q8 drafter timing gains survive reaggregation within each method, but these
+harness-only measurements do not establish public serving performance or an
+EAGLE-versus-MTP ranking. The MTP suite also uses a different token denominator.
+[Reproducible correction, commands, source hashes, and evidence limitations](results/2026-11-12-qwen38-specdec-reaggregation.json).
 
 ## Muse Glimmer 30B DFlash — Radeon 8060S (gfx1151)
 

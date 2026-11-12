@@ -1,0 +1,463 @@
+{
+  "schema": 1,
+  "kind": "historical_speculative_aggregation_correction",
+  "status": "diagnostic_reconstruction",
+  "performance_claim": false,
+  "publishable": false,
+  "command": "python3 scripts/qwen38_specdec_reaggregate.py --source benchmarks/results/2026-11-12-qwen38-specdec-source --output benchmarks/results/2026-11-12-qwen38-specdec-reaggregation.json",
+  "hardware_context": {
+    "host": "zbook",
+    "gpu": "Radeon 8060S",
+    "backend": "hip_gfx1151",
+    "source": "campaign worklogs; originals do not record host or clocks"
+  },
+  "limitations": [
+    "No GPU rerun. Source JSON files are preserved byte-for-byte; stale note fields are historical, not current descriptions.",
+    "Fixed output counts are inferred from the harness and configured budget, not saved counts. Historical exact_all checked only the common prefix, not lengths; token IDs were not saved.",
+    "Weighted prompt medians use harmonic means of rates with equal assumed token counts. They differ from pooling every repetition's elapsed time.",
+    "Per-repetition AR rates were discarded, so a fully paired pooled ratio cannot be recovered.",
+    "Legacy rates count all outputs over post-prefill wall; the MTP suite counts output transitions. Timing and numerator differences prevent cross-method ranking even after reaggregation.",
+    "Original artifacts record HEAD but not the working-tree diff or environment overrides. Q8 arm identity comes from file names and linked worklogs, not a complete variant manifest.",
+    "Deterministic repetitions add timing observations, not independent prompt or correctness coverage. No confidence interval for depth selection is available."
+  ],
+  "conclusions": {
+    "depth": "The short suite does not establish that n3 is faster than n2. Keep the shipping depth pending a longer matched public-path comparison.",
+    "cross_method_ranking": "Unresolved; neither EAGLE nor MTP is established as the winner by these artifacts.",
+    "q8": "Within-method timing improvements survive both aggregations; public-path performance and full-length correctness need separate validation."
+  },
+  "q8_gains": {
+    "eagle4": {
+      "prompt_median_gain_percent": 10.115425900876552,
+      "weighted_prompt_medians_gain_percent": 9.641798529906097,
+      "pooled_repetitions_gain_percent": 9.32967903741375
+    },
+    "dspine": {
+      "prompt_median_gain_percent": 13.022223177994308,
+      "weighted_prompt_medians_gain_percent": 12.94682009713184,
+      "pooled_repetitions_gain_percent": 12.882989086593044
+    },
+    "dflash2": {
+      "prompt_median_gain_percent": 9.48204067442675,
+      "weighted_prompt_medians_gain_percent": 9.821842829715589,
+      "pooled_repetitions_gain_percent": 9.995159678819787
+    }
+  },
+  "rows": {
+    "dflash2_q8_off": {
+      "source": "benchmarks/results/2026-11-12-qwen38-specdec-source/dflash2_q8_off.json",
+      "source_sha256": "c11457f05e968142d5739d0c2774ac6ca26f4546eea23f208c3ea27b5f9c79ea",
+      "method": "dflash2",
+      "provenance": {
+        "hipengine_commit": "d4ca237e83b176ce55ac05cf89b35353422be4d0",
+        "git_branch": "qwen38-dspine-eagle4",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "drafter": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
+        "backend": "hip_gfx1151",
+        "command": "scripts/qwen38_dflash2_baseline.py --block-size 3 --reps 3 --max-new-tokens 25 --output /tmp/dflash2_q8_off.json",
+        "date": "2026-11-10T19:32:12"
+      },
+      "protocol": {
+        "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "suite": "mtpbench-code-general-ja (10 prompts)",
+        "max_new_tokens": 25,
+        "block_size": 3,
+        "reps": 3,
+        "verify": "native batched chain",
+        "warmup": "1 discarded prompt",
+        "aggregation": "median DFlash2 decode tok/s across reps; AR reference deterministic per prompt"
+      },
+      "reported_prompt_median_tok_s": 9.889070411414155,
+      "weighted_prompt_medians_tok_s": 9.515847930554663,
+      "ar_weighted_prompt_medians_tok_s": 11.18886371506438,
+      "ratio_of_weighted_prompt_medians": 0.8504749162100157,
+      "pooled_repetitions_tok_s_reconstructed": 9.506592358331725,
+      "pooled_ar_repetitions_tok_s": null,
+      "historical_exact_all": true,
+      "prompt_count": 10,
+      "configured_token_positions_per_pass": 250,
+      "mean_acceptance": 2.318722943722944
+    },
+    "dflash2_q8_on": {
+      "source": "benchmarks/results/2026-11-12-qwen38-specdec-source/dflash2_q8_on.json",
+      "source_sha256": "0afc8228d3f2aacb415cc03edf5258a9f6e4953a1c4d039725fc6fba2f705934",
+      "method": "dflash2",
+      "provenance": {
+        "hipengine_commit": "d4ca237e83b176ce55ac05cf89b35353422be4d0",
+        "git_branch": "qwen38-dspine-eagle4",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "drafter": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
+        "backend": "hip_gfx1151",
+        "command": "scripts/qwen38_dflash2_baseline.py --block-size 3 --reps 3 --max-new-tokens 25 --output /tmp/dflash2_q8_on.json",
+        "date": "2026-11-10T19:25:03"
+      },
+      "protocol": {
+        "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "suite": "mtpbench-code-general-ja (10 prompts)",
+        "max_new_tokens": 25,
+        "block_size": 3,
+        "reps": 3,
+        "verify": "native batched chain",
+        "warmup": "1 discarded prompt",
+        "aggregation": "median DFlash2 decode tok/s across reps; AR reference deterministic per prompt"
+      },
+      "reported_prompt_median_tok_s": 10.826756090147146,
+      "weighted_prompt_medians_tok_s": 10.450479558208485,
+      "ar_weighted_prompt_medians_tok_s": 11.360594770806907,
+      "ratio_of_weighted_prompt_medians": 0.9198884186119263,
+      "pooled_repetitions_tok_s_reconstructed": 10.45679144456146,
+      "pooled_ar_repetitions_tok_s": null,
+      "historical_exact_all": true,
+      "prompt_count": 10,
+      "configured_token_positions_per_pass": 250,
+      "mean_acceptance": 2.318722943722944
+    },
+    "dspine_orig_r3": {
+      "source": "benchmarks/results/2026-11-12-qwen38-specdec-source/dspine_orig_r3.json",
+      "source_sha256": "6ed55460d5e9b04f73f01b519b95777e7256ddc247182ab2cfd2bb0c657c1cce",
+      "method": "dspine",
+      "provenance": {
+        "hipengine_commit": "30a1f44169cb34de3bd91a31c51bc4fad3388993",
+        "git_branch": "qwen38-dspine-eagle4",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "drafter": "/home/lhl/.cache/huggingface/hub/models--tencent--Qwen3.8-27B-DSpine-b16/snapshots/ea909c0f5fab8865f9e14600334f55f7ce47308f",
+        "backend": "hip_gfx1151",
+        "command": "scripts/qwen38_dspine_baseline.py --gpu-refine --candidate-budget 5 --reps 3 --max-new-tokens 25 --output /tmp/dspine_orig_r3.json",
+        "date": "2026-11-12T14:47:44"
+      },
+      "protocol": {
+        "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "suite": "mtpbench-code-general-ja (10 prompts)",
+        "max_new_tokens": 25,
+        "block_size": 16,
+        "reps": 3,
+        "candidate_budget": 5,
+        "gpu_refine": true,
+        "verify": "native chain (verify_target_block)",
+        "warmup": "1 discarded prompt",
+        "aggregation": "median DSpine decode tok/s across reps; AR reference deterministic per prompt"
+      },
+      "reported_prompt_median_tok_s": 13.909974919094033,
+      "weighted_prompt_medians_tok_s": 13.864679430692847,
+      "ar_weighted_prompt_medians_tok_s": 11.244615877977472,
+      "ratio_of_weighted_prompt_medians": 1.2330060520650383,
+      "pooled_repetitions_tok_s_reconstructed": 13.854180953311326,
+      "pooled_ar_repetitions_tok_s": null,
+      "historical_exact_all": true,
+      "prompt_count": 10,
+      "configured_token_positions_per_pass": 250,
+      "mean_acceptance": 0.5202380952380952
+    },
+    "dspine_q8_off": {
+      "source": "benchmarks/results/2026-11-12-qwen38-specdec-source/dspine_q8_off.json",
+      "source_sha256": "3d344f66d8d64cf00a755d8c71e5882bad60ebdd97e9703f32298e83333b19e7",
+      "method": "dspine",
+      "provenance": {
+        "hipengine_commit": "274d088523611ea75cf7356d3976a073453bf0b2",
+        "git_branch": "qwen38-dspine-eagle4",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "drafter": "/home/lhl/.cache/huggingface/hub/models--tencent--Qwen3.8-27B-DSpine-b16/snapshots/ea909c0f5fab8865f9e14600334f55f7ce47308f",
+        "backend": "hip_gfx1151",
+        "command": "scripts/qwen38_dspine_baseline.py --candidate-budget 5 --gpu-refine --reps 3 --max-new-tokens 25 --output /tmp/dspine_q8_off.json",
+        "date": "2026-11-10T18:53:47"
+      },
+      "protocol": {
+        "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "suite": "mtpbench-code-general-ja (10 prompts)",
+        "max_new_tokens": 25,
+        "block_size": 16,
+        "reps": 3,
+        "candidate_budget": 5,
+        "gpu_refine": true,
+        "verify": "native chain (verify_target_block)",
+        "warmup": "1 discarded prompt",
+        "aggregation": "median DSpine decode tok/s across reps; AR reference deterministic per prompt"
+      },
+      "reported_prompt_median_tok_s": 12.434008583690321,
+      "weighted_prompt_medians_tok_s": 12.318014142974386,
+      "ar_weighted_prompt_medians_tok_s": 11.236693728547664,
+      "ratio_of_weighted_prompt_medians": 1.0962311904683801,
+      "pooled_repetitions_tok_s_reconstructed": 12.313533127610752,
+      "pooled_ar_repetitions_tok_s": null,
+      "historical_exact_all": true,
+      "prompt_count": 10,
+      "configured_token_positions_per_pass": 250,
+      "mean_acceptance": 0.5132936507936507
+    },
+    "dspine_q8_on": {
+      "source": "benchmarks/results/2026-11-12-qwen38-specdec-source/dspine_q8_on.json",
+      "source_sha256": "c9a9e1e8c05e1e9437ddddc4c5e88718b012737f209fe3bc6e74616149867511",
+      "method": "dspine",
+      "provenance": {
+        "hipengine_commit": "274d088523611ea75cf7356d3976a073453bf0b2",
+        "git_branch": "qwen38-dspine-eagle4",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "drafter": "/home/lhl/.cache/huggingface/hub/models--tencent--Qwen3.8-27B-DSpine-b16/snapshots/ea909c0f5fab8865f9e14600334f55f7ce47308f",
+        "backend": "hip_gfx1151",
+        "command": "scripts/qwen38_dspine_baseline.py --candidate-budget 5 --gpu-refine --reps 3 --max-new-tokens 25 --output /tmp/dspine_q8_on.json",
+        "date": "2026-11-10T18:49:02"
+      },
+      "protocol": {
+        "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "suite": "mtpbench-code-general-ja (10 prompts)",
+        "max_new_tokens": 25,
+        "block_size": 16,
+        "reps": 3,
+        "candidate_budget": 5,
+        "gpu_refine": true,
+        "verify": "native chain (verify_target_block)",
+        "warmup": "1 discarded prompt",
+        "aggregation": "median DSpine decode tok/s across reps; AR reference deterministic per prompt"
+      },
+      "reported_prompt_median_tok_s": 14.053192931429443,
+      "weighted_prompt_medians_tok_s": 13.912805273604535,
+      "ar_weighted_prompt_medians_tok_s": 11.32501549034889,
+      "ratio_of_weighted_prompt_medians": 1.2285020965720481,
+      "pooled_repetitions_tok_s_reconstructed": 13.899884256614865,
+      "pooled_ar_repetitions_tok_s": null,
+      "historical_exact_all": true,
+      "prompt_count": 10,
+      "configured_token_positions_per_pass": 250,
+      "mean_acceptance": 0.5202380952380952
+    },
+    "dspine_rows5_r3": {
+      "source": "benchmarks/results/2026-11-12-qwen38-specdec-source/dspine_rows5_r3.json",
+      "source_sha256": "4f5480a0d4a2fb26682a6cd47654bfeb902d51aa7064a906ee99721bd78fe11b",
+      "method": "dspine",
+      "provenance": {
+        "hipengine_commit": "30a1f44169cb34de3bd91a31c51bc4fad3388993",
+        "git_branch": "qwen38-dspine-eagle4",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "drafter": "/home/lhl/.cache/huggingface/hub/models--tencent--Qwen3.8-27B-DSpine-b16/snapshots/ea909c0f5fab8865f9e14600334f55f7ce47308f",
+        "backend": "hip_gfx1151",
+        "command": "scripts/qwen38_dspine_baseline.py --gpu-refine --candidate-budget 5 --reps 3 --max-new-tokens 25 --output /tmp/dspine_rows5_r3.json",
+        "date": "2026-11-12T14:42:53"
+      },
+      "protocol": {
+        "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "suite": "mtpbench-code-general-ja (10 prompts)",
+        "max_new_tokens": 25,
+        "block_size": 16,
+        "reps": 3,
+        "candidate_budget": 5,
+        "gpu_refine": true,
+        "verify": "native chain (verify_target_block)",
+        "warmup": "1 discarded prompt",
+        "aggregation": "median DSpine decode tok/s across reps; AR reference deterministic per prompt"
+      },
+      "reported_prompt_median_tok_s": 14.10337958774823,
+      "weighted_prompt_medians_tok_s": 14.1666699652115,
+      "ar_weighted_prompt_medians_tok_s": 11.293423964424553,
+      "ratio_of_weighted_prompt_medians": 1.2544176159363154,
+      "pooled_repetitions_tok_s_reconstructed": 14.177081810145674,
+      "pooled_ar_repetitions_tok_s": null,
+      "historical_exact_all": true,
+      "prompt_count": 10,
+      "configured_token_positions_per_pass": 250,
+      "mean_acceptance": 0.5202380952380952
+    },
+    "eagle4_q8_off": {
+      "source": "benchmarks/results/2026-11-12-qwen38-specdec-source/eagle4_q8_off.json",
+      "source_sha256": "a4a221b0a185b0fead33348bec98ebb6ebc1d13270a9a56933c8e8dcbc9c6bb5",
+      "method": "eagle4",
+      "provenance": {
+        "hipengine_commit": "1d5edd24d7c2bb87ece1ef7dac845a3ffaecddd0",
+        "git_branch": "qwen38-dspine-eagle4",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "drafter": "/home/lhl/.cache/huggingface/hub/models--EAGLE-Corp--Qwen3.8-27B-EAGLE4/snapshots/f58a5985223040552ad404fba98f0dd27f5f676a",
+        "backend": "hip_gfx1151",
+        "command": "scripts/qwen38_eagle4_baseline.py --n-draft 2 --reps 3 --max-new-tokens 25 --output /tmp/eagle4_q8_off.json",
+        "date": "2026-11-12T02:09:17"
+      },
+      "protocol": {
+        "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "suite": "mtpbench-code-general-ja (10 prompts)",
+        "max_new_tokens": 25,
+        "n_draft": 2,
+        "reps": 3,
+        "verify": "native chain (verify_target_block)",
+        "warmup": "1 discarded prompt",
+        "aggregation": "median EAGLE-4 decode tok/s across reps; AR reference deterministic per prompt"
+      },
+      "reported_prompt_median_tok_s": 16.333527343915442,
+      "weighted_prompt_medians_tok_s": 16.51101130414715,
+      "ar_weighted_prompt_medians_tok_s": 11.352089194171443,
+      "ratio_of_weighted_prompt_medians": 1.4544469323430331,
+      "pooled_repetitions_tok_s_reconstructed": 16.520748782090124,
+      "pooled_ar_repetitions_tok_s": null,
+      "historical_exact_all": true,
+      "prompt_count": 10,
+      "configured_token_positions_per_pass": 250,
+      "mean_acceptance": 0.6496212121212122
+    },
+    "eagle4_q8_on": {
+      "source": "benchmarks/results/2026-11-12-qwen38-specdec-source/eagle4_q8_on.json",
+      "source_sha256": "ba6e38f00aae45279ab79ab49f08133adfd9894868108bcc7bddff41f6fcfa47",
+      "method": "eagle4",
+      "provenance": {
+        "hipengine_commit": "1d5edd24d7c2bb87ece1ef7dac845a3ffaecddd0",
+        "git_branch": "qwen38-dspine-eagle4",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "drafter": "/home/lhl/.cache/huggingface/hub/models--EAGLE-Corp--Qwen3.8-27B-EAGLE4/snapshots/f58a5985223040552ad404fba98f0dd27f5f676a",
+        "backend": "hip_gfx1151",
+        "command": "scripts/qwen38_eagle4_baseline.py --n-draft 2 --reps 3 --max-new-tokens 25 --output /tmp/eagle4_q8_on.json",
+        "date": "2026-11-12T02:05:08"
+      },
+      "protocol": {
+        "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "suite": "mtpbench-code-general-ja (10 prompts)",
+        "max_new_tokens": 25,
+        "n_draft": 2,
+        "reps": 3,
+        "verify": "native chain (verify_target_block)",
+        "warmup": "1 discarded prompt",
+        "aggregation": "median EAGLE-4 decode tok/s across reps; AR reference deterministic per prompt"
+      },
+      "reported_prompt_median_tok_s": 17.98573319938862,
+      "weighted_prompt_medians_tok_s": 18.10296974934304,
+      "ar_weighted_prompt_medians_tok_s": 11.383399472480017,
+      "ratio_of_weighted_prompt_medians": 1.5902955697116619,
+      "pooled_repetitions_tok_s_reconstructed": 18.062081618036572,
+      "pooled_ar_repetitions_tok_s": null,
+      "historical_exact_all": true,
+      "prompt_count": 10,
+      "configured_token_positions_per_pass": 250,
+      "mean_acceptance": 0.6496212121212122
+    },
+    "eagle4_sweep_n1": {
+      "source": "benchmarks/results/2026-11-12-qwen38-specdec-source/eagle4_sweep_n1.json",
+      "source_sha256": "b10fa452012af2c1953cb17aed730445f8c4e3224a71b285c2ac8d0f38d55894",
+      "method": "eagle4",
+      "provenance": {
+        "hipengine_commit": "ad18223cb512a3c2afc5e560290a3c7603ced98b",
+        "git_branch": "qwen38-dspine-eagle4",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "drafter": "/home/lhl/.cache/huggingface/hub/models--EAGLE-Corp--Qwen3.8-27B-EAGLE4/snapshots/f58a5985223040552ad404fba98f0dd27f5f676a",
+        "backend": "hip_gfx1151",
+        "command": "scripts/qwen38_eagle4_baseline.py --n-draft 1 --reps 3 --max-new-tokens 25 --output /tmp/eagle4_sweep_n1.json",
+        "date": "2026-11-12T02:40:17"
+      },
+      "protocol": {
+        "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "suite": "mtpbench-code-general-ja (10 prompts)",
+        "max_new_tokens": 25,
+        "n_draft": 1,
+        "reps": 3,
+        "verify": "native chain (verify_target_block)",
+        "warmup": "1 discarded prompt",
+        "aggregation": "median EAGLE-4 decode tok/s across reps; AR reference deterministic per prompt"
+      },
+      "reported_prompt_median_tok_s": 16.171309660927136,
+      "weighted_prompt_medians_tok_s": 15.875923638235374,
+      "ar_weighted_prompt_medians_tok_s": 11.316914363586966,
+      "ratio_of_weighted_prompt_medians": 1.4028491449327714,
+      "pooled_repetitions_tok_s_reconstructed": 15.877038304646025,
+      "pooled_ar_repetitions_tok_s": null,
+      "historical_exact_all": true,
+      "prompt_count": 10,
+      "configured_token_positions_per_pass": 250,
+      "mean_acceptance": 0.75
+    },
+    "eagle4_sweep_n2": {
+      "source": "benchmarks/results/2026-11-12-qwen38-specdec-source/eagle4_sweep_n2.json",
+      "source_sha256": "8e50be754b1e297f8fd96d9343efe13e20b086250c290581c037c6dfde2ca65e",
+      "method": "eagle4",
+      "provenance": {
+        "hipengine_commit": "ad18223cb512a3c2afc5e560290a3c7603ced98b",
+        "git_branch": "qwen38-dspine-eagle4",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "drafter": "/home/lhl/.cache/huggingface/hub/models--EAGLE-Corp--Qwen3.8-27B-EAGLE4/snapshots/f58a5985223040552ad404fba98f0dd27f5f676a",
+        "backend": "hip_gfx1151",
+        "command": "scripts/qwen38_eagle4_baseline.py --n-draft 2 --reps 3 --max-new-tokens 25 --output /tmp/eagle4_sweep_n2.json",
+        "date": "2026-11-12T02:44:25"
+      },
+      "protocol": {
+        "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "suite": "mtpbench-code-general-ja (10 prompts)",
+        "max_new_tokens": 25,
+        "n_draft": 2,
+        "reps": 3,
+        "verify": "native chain (verify_target_block)",
+        "warmup": "1 discarded prompt",
+        "aggregation": "median EAGLE-4 decode tok/s across reps; AR reference deterministic per prompt"
+      },
+      "reported_prompt_median_tok_s": 17.822420994335708,
+      "weighted_prompt_medians_tok_s": 17.9404874805709,
+      "ar_weighted_prompt_medians_tok_s": 11.316011885471243,
+      "ratio_of_weighted_prompt_medians": 1.5854072673434445,
+      "pooled_repetitions_tok_s_reconstructed": 17.976304514671494,
+      "pooled_ar_repetitions_tok_s": null,
+      "historical_exact_all": true,
+      "prompt_count": 10,
+      "configured_token_positions_per_pass": 250,
+      "mean_acceptance": 0.6496212121212122
+    },
+    "eagle4_sweep_n3": {
+      "source": "benchmarks/results/2026-11-12-qwen38-specdec-source/eagle4_sweep_n3.json",
+      "source_sha256": "810a7575b4a33cc71ec184bd9c90f12e7426ed996b09bf90ec94ea8ec9779b14",
+      "method": "eagle4",
+      "provenance": {
+        "hipengine_commit": "ad18223cb512a3c2afc5e560290a3c7603ced98b",
+        "git_branch": "qwen38-dspine-eagle4",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "drafter": "/home/lhl/.cache/huggingface/hub/models--EAGLE-Corp--Qwen3.8-27B-EAGLE4/snapshots/f58a5985223040552ad404fba98f0dd27f5f676a",
+        "backend": "hip_gfx1151",
+        "command": "scripts/qwen38_eagle4_baseline.py --n-draft 3 --reps 3 --max-new-tokens 25 --output /tmp/eagle4_sweep_n3.json",
+        "date": "2026-11-12T02:48:34"
+      },
+      "protocol": {
+        "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "suite": "mtpbench-code-general-ja (10 prompts)",
+        "max_new_tokens": 25,
+        "n_draft": 3,
+        "reps": 3,
+        "verify": "native chain (verify_target_block)",
+        "warmup": "1 discarded prompt",
+        "aggregation": "median EAGLE-4 decode tok/s across reps; AR reference deterministic per prompt"
+      },
+      "reported_prompt_median_tok_s": 18.609145689210003,
+      "weighted_prompt_medians_tok_s": 17.86931531493949,
+      "ar_weighted_prompt_medians_tok_s": 11.290388294504039,
+      "ratio_of_weighted_prompt_medians": 1.5827015731281764,
+      "pooled_repetitions_tok_s_reconstructed": 17.932507489417848,
+      "pooled_ar_repetitions_tok_s": null,
+      "historical_exact_all": true,
+      "prompt_count": 10,
+      "configured_token_positions_per_pass": 250,
+      "mean_acceptance": 0.5555555555555556
+    },
+    "eagle4_sweep_n4": {
+      "source": "benchmarks/results/2026-11-12-qwen38-specdec-source/eagle4_sweep_n4.json",
+      "source_sha256": "32db407edda1cf1a2fd5ca618771e7b5594397f3f104ac8dd4641b8d5fde570e",
+      "method": "eagle4",
+      "provenance": {
+        "hipengine_commit": "ad18223cb512a3c2afc5e560290a3c7603ced98b",
+        "git_branch": "qwen38-dspine-eagle4",
+        "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "drafter": "/home/lhl/.cache/huggingface/hub/models--EAGLE-Corp--Qwen3.8-27B-EAGLE4/snapshots/f58a5985223040552ad404fba98f0dd27f5f676a",
+        "backend": "hip_gfx1151",
+        "command": "scripts/qwen38_eagle4_baseline.py --n-draft 4 --reps 3 --max-new-tokens 25 --output /tmp/eagle4_sweep_n4.json",
+        "date": "2026-11-12T02:52:54"
+      },
+      "protocol": {
+        "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "suite": "mtpbench-code-general-ja (10 prompts)",
+        "max_new_tokens": 25,
+        "n_draft": 4,
+        "reps": 3,
+        "verify": "native chain (verify_target_block)",
+        "warmup": "1 discarded prompt",
+        "aggregation": "median EAGLE-4 decode tok/s across reps; AR reference deterministic per prompt"
+      },
+      "reported_prompt_median_tok_s": 17.838892209406634,
+      "weighted_prompt_medians_tok_s": 17.223569740336785,
+      "ar_weighted_prompt_medians_tok_s": 10.628044790863413,
+      "ratio_of_weighted_prompt_medians": 1.6205774513806463,
+      "pooled_repetitions_tok_s_reconstructed": 17.135935721419028,
+      "pooled_ar_repetitions_tok_s": null,
+      "historical_exact_all": true,
+      "prompt_count": 10,
+      "configured_token_positions_per_pass": 250,
+      "mean_acceptance": 0.5007440476190477
+    }
+  }
+}
