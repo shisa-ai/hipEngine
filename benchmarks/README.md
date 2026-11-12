@@ -4,6 +4,29 @@ Last updated: **2026-11-12 UTC**
 
 ## Qwen3.8-27B speculative diagnostics — ZBook
 
+A matched public streaming run on **zbook / Radeon 8060S** (`gfx1151`),
+`Q4_K_M`, production profile and BF16 KV uses all ten mtpbench prompts plus
+eight category heldouts, two repetitions and 256 greedy outputs per request.
+One request runs at a time with rotating method order and no prefix cache;
+three target owners remain resident, with AR/MTP sharing one.
+
+| Method | Pooled request tok/s | Pooled arrival transitions/s | Median first token (s) |
+| --- | ---: | ---: | ---: |
+| AR | 9.01 | 9.13 | 0.460 |
+| MTP budget 3 | 15.05 | 15.47 | 0.539 |
+| EAGLE-4 depth 3 | 14.45 | 14.98 | 0.690 |
+| DSpine budget 5 | 11.24 | 11.59 | 0.774 |
+
+Request rate divides total output tokens by external request wall time;
+arrival rate divides total output transitions by first-to-last token arrival
+time. Every method repeats exactly and runs its intended route. All three
+speculative methods produce identical IDs, but differ from production AR on
+13 of 18 prompts. These are diagnostic timings, not an AR-equivalent quality
+claim or a desktop result. MTP's request rate exceeds EAGLE-4 by 4.10% in this
+session; all methods slow in the second repetition. First-use latency is
+recorded separately and is not a process-cold measurement.
+[Commands, IDs, stream arrivals, manifests and per-category results](results/2026-11-12-qwen38-public-production-comparison.json).
+
 The short `Q4_K_M` EAGLE-4 depth sweep on **zbook / Radeon 8060S**
 (`gfx1151`, ten mtpbench prompts, 25 outputs, three repetitions) does not
 establish a winning depth. Reconstructing throughput from the saved per-prompt
