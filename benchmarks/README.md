@@ -2,6 +2,24 @@
 
 Last updated: **2026-11-12 UTC**
 
+## Qwen3.8 rollback snapshot batching — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
+profile, BF16 KV, MTP budget 3, prefix cache off, one request and 64 greedy
+outputs. Same-resident-session public-library diagnostic over ten category
+prompts plus eight held-outs, loop/batch/batch/loop order after warmup:
+
+| Snapshot execution | Mean suite wall |
+| --- | ---: |
+| Per-state copy loop | 63.790 s |
+| Pointer-table copy | 62.838 s |
+
+Whole-request wall is **1.49% lower**, with matching output IDs and checked
+speculative controls across arms/repeats. Fresh-session comparisons exposed
+acceptance-count variation in both paths and failed control repeatability;
+this result does not establish a fresh-session speedup or resolve that issue.
+[Protocol, failed comparisons, byte checks and commands](results/2026-11-12-gfx1151-snapshot-copy/NOTES.md).
+
 ## Qwen3.8 dense MTP mixed-pair batching — Radeon 8060S
 
 Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**

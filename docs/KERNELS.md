@@ -379,7 +379,7 @@ uses separate variate Q/K normalization and `timesfm3_sgemm_f64acc` in FP32.
 | `speculative/dflash_drafter.hip` | DFlash draft-model projections, normalization, attention, and metadata. `dflash_gqa_attention` / `f32_bf16_staged` splits exact score, softmax and value passes using caller-owned FP32 scores; `f32_bf16` is the monolithic parent. |
 | `speculative/dflash2.hip` | DFlash2 dynamic convolution, top-k, and candidate selection. |
 | `speculative/dflash_accept.hip` | Draft-chain acceptance and commit summaries, plus the greedy-chain EOS budget bound applied before accept. |
-| `speculative/dflash_commit.hip` | Commit selected recurrent states and cursors. |
+| `speculative/dflash_commit.hip` | Commit selected recurrent states and cursors. `linear_state_pair_copy/f32/chunked_i32` copies rollback snapshots through device pointer tables on gfx1100 and gfx1151; per-state copies remain the fallback for unsupported layouts. |
 | `speculative/mtp.hip` | Multi-token prediction proposal, routing, and acceptance helpers. |
 | `speculative/mtp_nextn.hip` | NextN draft-layer projections, attention, and expert operations. |
 | `speculative/sampled_accept.hip` | Probabilistic draft-chain acceptance and residual sampling. |

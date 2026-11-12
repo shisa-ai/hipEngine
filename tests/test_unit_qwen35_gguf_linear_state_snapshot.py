@@ -96,7 +96,7 @@ def test_wide_owner_journal_binds_only_the_target_slot_view(monkeypatch) -> None
     journal.close()
 
 
-def test_linear_state_snapshot_copy_registers_only_for_gfx1100() -> None:
+def test_linear_state_snapshot_copy_registers_for_both_gfx11_backends() -> None:
     register_dflash_commit_kernels(replace=True)
     register_gfx1151_kernels(replace=True)
 
@@ -117,8 +117,29 @@ def test_linear_state_snapshot_copy_registers_only_for_gfx1100() -> None:
             variant="chunked_i32",
             missing="none",
         )
-        is None
+        is linear_state_pair_commit_chunked_i32
     )
+
+
+@pytest.mark.parametrize("layout", ["no_conv", "layer_mismatch", "conv_size", "recurrent_size"])
+def test_gfx1151_snapshot_incompatible_layout_keeps_memcpy_fallback(layout) -> None:
+    register_gfx1151_kernels(replace=True)
+    target = _fake_target(backend="hip_gfx1151")
+    conv = [(0, DeviceBuffer(0x1000, 64), DeviceBuffer(0xA000, 64)),
+            (2, DeviceBuffer(0x2000, 64), DeviceBuffer(0xB000, 64))]
+    rec = [(0, DeviceBuffer(0x3000, 128), DeviceBuffer(0xC000, 128)),
+           (2, DeviceBuffer(0x4000, 128), DeviceBuffer(0xD000, 128))]
+    if layout == "no_conv":
+        conv = []
+    elif layout == "layer_mismatch":
+        rec[1] = (3, rec[1][1], rec[1][2])
+    elif layout == "conv_size":
+        conv[1] = (2, DeviceBuffer(0x2000, 65), conv[1][2])
+    else:
+        rec[1] = (2, DeviceBuffer(0x4000, 129), rec[1][2])
+    assert _StateJournal._allocate_initial_state_copy(
+        target, conv_rows=conv, recurrent_rows=rec, runtime=target.runtime,
+    ) is None
 
 
 def test_state_journal_initial_snapshot_and_rollback_use_one_pointer_table_launch(monkeypatch) -> None:
