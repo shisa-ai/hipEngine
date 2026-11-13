@@ -855,10 +855,13 @@ def _apply_route_env(
     staged = STAGED_F32_LAYERS_ENV in values
     with contextlib.ExitStack() as scope_stack:
         if staged:
-            from hipengine.runtime.qwen4_exp_runner import q8_dpp_reduction_enabled
+            from hipengine.runtime.qwen4_exp_runner import (
+                q4k_rowtile_enabled, q8_dpp_reduction_enabled,
+            )
             # Both arms need the exact parent; these rewrites otherwise
             # preempt the staged selector before it can run.
             scope_stack.enter_context(q8_dpp_reduction_enabled(generator, False))
+            scope_stack.enter_context(q4k_rowtile_enabled(generator, False))
             scope_stack.enter_context(q4k_rowtile_session(False))
         scope_stack.enter_context(q8_wmma_layer_scope(generator, scope))
         scope_stack.enter_context(q8_dense_wide_policy(generator, wide))
