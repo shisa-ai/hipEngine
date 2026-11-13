@@ -51,17 +51,29 @@ def built():
     return {artifact: build(artifact) for artifact in ARTIFACTS}
 
 
-def test_manifest_files_exist_and_match_a_fresh_build(built):
-    """A checked-in manifest must equal what the builder produces now."""
+def test_historical_manifest_files_have_valid_hashes():
+    """Validate recorded evidence without relabeling it with today's owners."""
+
+    import hashlib
+
+    from hipengine.execution_profiles import manifest_sha256, validate_variant_manifest
 
     for artifact in ARTIFACTS:
-        path = _manifest_path(artifact)
-        assert path.exists(), f"{path} is missing; run scripts/ud_strict_manifest.py"
-        on_disk = json.loads(path.read_text())
-        assert on_disk == built[artifact], (
-            f"{path} is stale relative to the artifact's GGUF bytes or the "
-            "admission table; re-run scripts/ud_strict_manifest.py"
-        )
+        record = json.loads(_manifest_path(artifact).read_text())
+        assert record["artifact"] == artifact
+        entries = record["strict_manifests"]
+        assert entries
+        for entry in entries:
+            manifest = entry["strict_manifest"]
+            assert validate_variant_manifest(manifest) == manifest
+            assert manifest_sha256(manifest) == entry["strict_manifest_sha256"]
+        encoded = json.dumps(
+            [(entry["registry_quant"], entry["owner_class"], entry["strict_manifest_sha256"])
+             for entry in entries],
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        assert hashlib.sha256(encoded).hexdigest() == record["strict_manifest_bundle_sha256"]
 
 
 def test_every_manifest_validates_under_the_gate_validator(built):
@@ -138,10 +150,11 @@ def test_scope_is_rederived_from_the_artifact_bytes(built):
         )
 
 
-def test_certification_carries_the_manifest_bundle(built):
+def test_certification_carries_the_manifest_bundle():
     cert = json.loads(CERTIFICATION.read_text())
     entries = {str(entry["artifact"]): entry for entry in cert["artifacts"]}
-    for artifact, record in built.items():
+    for artifact in ARTIFACTS:
+        record = json.loads(_manifest_path(artifact).read_text())
         entry = entries[artifact]
         assert (
             entry["strict_manifest_bundle_sha256"]
