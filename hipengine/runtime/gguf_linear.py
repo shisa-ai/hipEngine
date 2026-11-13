@@ -7,7 +7,7 @@ import ctypes
 import os
 import warnings
 from contextvars import ContextVar, Token
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Callable, Iterator, Mapping
 
@@ -1448,6 +1448,9 @@ class _Q8MMQPrefillSession:
     library: ctypes.CDLL | None
     policy: Q8MMQPrefillPolicy
     prepacked_weights: Mapping[tuple[int, int, int], tuple[int, int]] | None = None
+    # The dispatch memo outlives this session. Retain a resource-free identity
+    # there instead of an integer id that a later session can reuse.
+    cache_token: object = field(default_factory=object, compare=False, repr=False)
 
 
 _q8_mmq_prefill_session: ContextVar[_Q8MMQPrefillSession | None] = ContextVar(
@@ -5657,7 +5660,7 @@ def _launch_gguf_linear_impl(
         _q4_pack8_wmma_bulk_raw() != "0",
         registered_variant,
         bool(_native_batch_decode_session_enabled),
-        None if mmq_session is None else id(mmq_session),
+        None if mmq_session is None else mmq_session.cache_token,
         None if q5_raw_mmq_session is None else id(q5_raw_mmq_session),
         None if f32_ordered_session is None else id(f32_ordered_session),
         (
