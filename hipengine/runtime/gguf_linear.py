@@ -1450,7 +1450,7 @@ class _Q8MMQPrefillSession:
     prepacked_weights: Mapping[tuple[int, int, int], tuple[int, int]] | None = None
     # The dispatch memo outlives this session. Retain a resource-free identity
     # there instead of an integer id that a later session can reuse.
-    cache_token: object = field(default_factory=object, compare=False, repr=False)
+    cache_token: object = field(default_factory=object, init=False, compare=False, repr=False)
 
 
 _q8_mmq_prefill_session: ContextVar[_Q8MMQPrefillSession | None] = ContextVar(
@@ -1468,6 +1468,7 @@ class _Q5RawMMQTargetSession:
     source_layout: bool
     planar_dp4a: bool = False
     planar_library: ctypes.CDLL | None = None
+    cache_token: object = field(default_factory=object, init=False, compare=False, repr=False)
 
 
 _q5_raw_mmq_target_session: ContextVar[_Q5RawMMQTargetSession | None] = (
@@ -1561,6 +1562,7 @@ class F32OrderedPrefillSession:
     activation_bf16_ptr: int = 0
     activation_bf16_nbytes: int = 0
     resident_weight_f32_planes: Mapping[int, Q5F32ResidentPlane] | None = None
+    cache_token: object = field(default_factory=object, init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if not 0 < int(self.min_rows) <= int(self.max_rows):
@@ -1658,6 +1660,7 @@ class T16F16RocblasPrefillSession:
         tuple[str, int, int, str, int],
         Mapping[tuple[int, int], tuple[int, str, bool]],
     ] | None = None
+    cache_token: object = field(default_factory=object, init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if not 1 < int(self.min_rows) <= int(self.max_rows):
@@ -5661,13 +5664,13 @@ def _launch_gguf_linear_impl(
         registered_variant,
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else mmq_session.cache_token,
-        None if q5_raw_mmq_session is None else id(q5_raw_mmq_session),
-        None if f32_ordered_session is None else id(f32_ordered_session),
+        None if q5_raw_mmq_session is None else q5_raw_mmq_session.cache_token,
+        None if f32_ordered_session is None else f32_ordered_session.cache_token,
         (
             None
             if (t16_f16_session := _t16_f16_rocblas_prefill_session.get())
             is None
-            else id(t16_f16_session)
+            else t16_f16_session.cache_token
         ),
         (
             None
@@ -9826,7 +9829,7 @@ def _resolve_gguf_linear_pair_plan(
             None
             if (source_f16_session := _t16_f16_rocblas_prefill_session.get())
             is None
-            else id(source_f16_session)
+            else source_f16_session.cache_token
         ),
         bool(_native_batch_decode_session_enabled),
         bool(registered_decode_only),
