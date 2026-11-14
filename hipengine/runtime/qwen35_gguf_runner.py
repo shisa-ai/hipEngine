@@ -10294,10 +10294,8 @@ def _gguf_model_info_artifact_preset_key(model_info: object) -> str | None:
 
     Header-only (no payload read, no device): builds the production tensor
     map plus the structural NextN map exactly like the materializer and
-    resolves the same admission qualification — ``None`` for a pinned
-    qualified plain control, a UD preset key, or the unqualified-manifest
-    sentinel. Session-level policy callers use this so their stamp-keyed
-    admissions bind the actual manifest, not the header stamp alone.
+    resolves a specialized UD preset key or ``None`` for generic policies.
+    Unfamiliar manifests remain eligible for generic capability routing.
     """
 
     from hipengine.loading.qwen35_gguf_admission import (

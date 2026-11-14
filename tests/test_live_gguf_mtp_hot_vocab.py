@@ -56,7 +56,7 @@ def test_cjk_selection_covers_han_hiragana_and_katakana() -> None:
     assert not _matches_script("한국어", "cjk")
 
 
-def test_packaged_default_is_exact_qwen38_model_identity() -> None:
+def test_packaged_default_is_tokenizer_compatible_across_quants() -> None:
     model = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
     if not model.exists():
         pytest.skip(f"local GGUF fixture not found: {model}")
@@ -69,7 +69,7 @@ def test_packaged_default_is_exact_qwen38_model_identity() -> None:
 
     q4ks = Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf")
     if q4ks.exists():
-        assert default_gguf_hot_vocab_path(GGUFReader(q4ks).info) is None
+        assert default_gguf_hot_vocab_path(GGUFReader(q4ks).info) == path
 
 
 def test_hot_vocab_selection_accepts_compact_bitmap_encoding(tmp_path) -> None:
@@ -110,14 +110,6 @@ def test_hot_vocab_selection_is_model_bound_and_sorted(tmp_path) -> None:
         (
             lambda payload: payload["model"].update(tokenizer_tokens_sha256="0" * 64),
             "tokenizer hash",
-        ),
-        (
-            lambda payload: payload["model"].update(basename="foreign"),
-            "basename",
-        ),
-        (
-            lambda payload: payload["model"].update(file_type="MOSTLY_Q4_K_S"),
-            "file_type",
         ),
     ],
 )

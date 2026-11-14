@@ -315,10 +315,8 @@ def materialize_qwen35_gguf_nextn_weights(
             nextn_map=structural_map,
             file_type_stamp=getattr(reader.info, "file_type_name", None),
         )
-        # Plain-control qualification: a pinned qualified plain control keeps
-        # the historical plain (stamp + tokenizer) hot-vocabulary identity;
-        # an unknown manifest gets the unqualified sentinel so the packaged
-        # hot-vocabulary selection never resolves for it.
+        # Preserve specialized preset metadata; unfamiliar layouts use generic
+        # routing. Hot-vocabulary compatibility is checked by tokenizer IDs.
         artifact_preset_key = qwen35_gguf_artifact_preset_key(
             main_map,
             nextn_map=structural_map,

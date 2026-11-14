@@ -1,4 +1,4 @@
-"""Model-bound selected-vocabulary maps for GGUF MTP proposal heads."""
+"""Tokenizer-bound selected-vocabulary maps for GGUF MTP proposal heads."""
 
 from __future__ import annotations
 
@@ -14,13 +14,8 @@ from hipengine.loading.gguf import GGUFModelInfo
 HOT_VOCAB_SCHEMA_VERSION = 1
 HOT_VOCAB_KIND = "hipengine.gguf_mtp_hot_vocab"
 _DEFAULT_HOT_VOCAB_IDENTITIES = {
-    (
-        "qwen35",
-        "Qwen3.8-27B",
-        65,
-        "MOSTLY_Q4_K_M",
-        "b7f4906b5bf6a845baf3f41fdcdcd70f0f2f234eb702aabb830ce1536604e5d6",
-    ): "qwen38-27b-hot131072-cjk-v1.json",
+    "b7f4906b5bf6a845baf3f41fdcdcd70f0f2f234eb702aabb830ce1536604e5d6":
+        "qwen38-27b-hot131072-cjk-v1.json",
 }
 
 
@@ -56,25 +51,15 @@ def default_gguf_hot_vocab_path(
     info: GGUFModelInfo,
     artifact_preset_key: str | None = None,
 ) -> Path | None:
-    """Resolve a packaged model-plugin selection by exact model/tokenizer identity.
+    """Resolve a packaged token map for the model's ordered vocabulary.
 
-    The identity is (architecture, basename, block count, file-type stamp,
-    tokenizer hash) plus, when the caller binds one, the artifact admission
-    preset key. A preset-qualified artifact therefore never reuses a packaged
-    selection that was certified for the plain artifact sharing its stamp;
-    unknown preset keys resolve to no packaged map instead.
+    Token IDs are meaningful only for the same tokenizer vocabulary. Model
+    names, layer counts, weight quantization and admission presets do not
+    change that compatibility. ``artifact_preset_key`` remains accepted for
+    callers using the previous interface but does not restrict selection.
     """
 
-    metadata = info.metadata
-    key = (
-        str(metadata.get("general.architecture", "")),
-        str(metadata.get("general.basename", "")),
-        int(metadata.get("qwen35.block_count", 0) or 0),
-        str(info.file_type_name),
-        gguf_tokenizer_tokens_sha256(info),
-    )
-    if artifact_preset_key is not None:
-        key = key + (str(artifact_preset_key),)
+    key = gguf_tokenizer_tokens_sha256(info)
     filename = _DEFAULT_HOT_VOCAB_IDENTITIES.get(key)
     if filename is None:
         return None
@@ -88,7 +73,7 @@ def load_gguf_hot_vocab_selection(
     path: str | Path,
     info: GGUFModelInfo,
 ) -> GGUFHotVocabSelection:
-    """Load and validate a model-bound selected-vocabulary JSON artifact."""
+    """Load a selected-vocabulary map bound to compatible tokenizer IDs."""
 
     source_path = Path(path)
     payload = json.loads(source_path.read_text(encoding="utf-8"))
@@ -108,20 +93,6 @@ def load_gguf_hot_vocab_selection(
     expected_hash = gguf_tokenizer_tokens_sha256(info)
     if str(model.get("tokenizer_tokens_sha256", "")) != expected_hash:
         raise ValueError("GGUF MTP hot-vocabulary tokenizer hash does not match the model")
-    identity_fields = {
-        "architecture": "general.architecture",
-        "basename": "general.basename",
-        "block_count": "qwen35.block_count",
-    }
-    for artifact_key, metadata_key in identity_fields.items():
-        expected = info.metadata.get(metadata_key)
-        actual = model.get(artifact_key)
-        if actual != expected:
-            raise ValueError(
-                f"GGUF MTP hot-vocabulary {artifact_key} does not match the model"
-            )
-    if model.get("file_type") != info.file_type_name:
-        raise ValueError("GGUF MTP hot-vocabulary file_type does not match the model")
 
     raw_ids = payload.get("token_ids")
     bitmap_encoded = payload.get("token_bitmap_base64")
