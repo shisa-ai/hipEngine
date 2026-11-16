@@ -1,0 +1,145 @@
+{
+  "commit": "1d39cc7e7",
+  "exit_code": 139,
+  "collected_nodes": 41129,
+  "captured_failure_reports": 631,
+  "resource_failure_reports": 623,
+  "failed_modules": {
+    "tests/test_integration_benchmark_readme_sync.py": 1,
+    "tests/test_live_muse_glimmer_exact_rows.py": 30,
+    "tests/test_live_muse_glimmer_prefix_cache.py": 4,
+    "tests/test_live_muse_glimmer_runner.py": 6,
+    "tests/test_live_muse_glimmer_vision_gpu.py": 3,
+    "tests/test_live_pack8_width_interface.py": 2,
+    "tests/test_live_prefill_backend_chunks.py": 1,
+    "tests/test_live_qwen35_gguf_chunked_prefill.py": 22,
+    "tests/test_live_qwen35_gguf_full_attention_gpu.py": 2,
+    "tests/test_live_qwen35_gguf_mapping.py": 2,
+    "tests/test_live_qwen35_gguf_moe_graph_parity.py": 1,
+    "tests/test_live_qwen35_gguf_p10_x2_layer_correctness.py": 1,
+    "tests/test_live_qwen35_gguf_runner.py": 9,
+    "tests/test_live_qwen35_gguf_verify_advance_state_only.py": 7,
+    "tests/test_live_qwen38_dflash_row8_verify.py": 1,
+    "tests/test_live_qwen38_nextn_proposal_head_rowtile.py": 1,
+    "tests/test_live_qwen38_q5_t16_r16.py": 1,
+    "tests/test_live_qwen38_q5_t16_true_r12.py": 1,
+    "tests/test_live_qwen38_q6_t16_r16_chunk.py": 1,
+    "tests/test_live_qwen38_q6_t16_true_r12.py": 1,
+    "tests/test_live_qwen4_exp_mtp_runner.py": 1,
+    "tests/test_live_qwen4_exp_vision_runner.py": 1,
+    "tests/test_live_qwen4exp_chunk_memory_ladder.py": 2,
+    "tests/test_live_qwen4exp_dense_wide_policy.py": 10,
+    "tests/test_live_qwen4exp_dense_wide_profile_owner.py": 3,
+    "tests/test_live_qwen4exp_expert_grid_owner.py": 24,
+    "tests/test_live_qwen4exp_fullattn_context_retirement.py": 3,
+    "tests/test_live_qwen4exp_gdn_colwarps_layers.py": 18,
+    "tests/test_live_qwen4exp_gdn_colwarps_owner.py": 5,
+    "tests/test_live_qwen4exp_gdn_tile16_variant.py": 4,
+    "tests/test_live_qwen4exp_gr_dpp_owner.py": 5,
+    "tests/test_live_qwen4exp_gr_iu8_owner.py": 55,
+    "tests/test_live_qwen4exp_mmq_planes_owner.py": 15,
+    "tests/test_live_qwen4exp_mmq_prepack_owner.py": 18,
+    "tests/test_live_qwen4exp_ple_mapping_owner.py": 1,
+    "tests/test_live_qwen4exp_production_moe_owner.py": 3,
+    "tests/test_live_qwen4exp_q4_dp4a_decode_owner.py": 6,
+    "tests/test_live_qwen4exp_q4_iu8_owner.py": 66,
+    "tests/test_live_qwen4exp_q4_iu8_prefill_owner.py": 45,
+    "tests/test_live_qwen4exp_q51_iu8_owner.py": 24,
+    "tests/test_live_qwen4exp_q5_risk_owner.py": 1,
+    "tests/test_live_qwen4exp_q5k_iu8_owner.py": 21,
+    "tests/test_live_qwen4exp_q8_down_variant.py": 3,
+    "tests/test_live_qwen4exp_q8_dpp_interface.py": 12,
+    "tests/test_live_qwen4exp_q8_selected_owner.py": 42,
+    "tests/test_live_qwen4exp_qsa_flash_owner.py": 21,
+    "tests/test_live_qwen4exp_qsa_ordered_owner.py": 9,
+    "tests/test_live_qwen4exp_raw_prefill_owner.py": 18,
+    "tests/test_live_qwen4exp_reset_owner.py": 1,
+    "tests/test_live_qwen4exp_staged_f32_interface.py": 4,
+    "tests/test_live_qwen4exp_transport_cancellation.py": 2,
+    "tests/test_live_qwen4exp_transport_state_parity.py": 3,
+    "tests/test_live_qwen4exp_wmma_layer_owner.py": 3,
+    "tests/test_live_qwen4exp_wmma_prefill_owner.py": 21,
+    "tests/test_live_timesfm_cpu_reference.py": 1,
+    "tests/test_live_vibevoice_tts_decoder_gpu.py": 10,
+    "tests/test_live_vibevoice_tts_diffusion_gpu.py": 5,
+    "tests/test_live_vibevoice_tts_session_gpu.py": 15,
+    "tests/test_live_vibevoice_tts_synthesize.py": 7,
+    "tests/test_unit_gemma4_assistant_device.py": 1,
+    "tests/test_unit_gemma4_attention_logit_tree.py": 1,
+    "tests/test_unit_gemma4_generate.py": 2,
+    "tests/test_unit_gemma4_gguf_device.py": 1,
+    "tests/test_unit_gemma4_gpu_kernels.py": 5,
+    "tests/test_unit_gemma4_runner.py": 9,
+    "tests/test_unit_gfx1151_policy_capability_gguf_boundary.py": 2,
+    "tests/test_unit_llama_dense_generation.py": 4,
+    "tests/test_unit_scripts_gguf_quant_route_audit.py": 1
+  },
+  "nonresource_failure_reports": [
+    {
+      "nodeid": "tests/test_integration_benchmark_readme_sync.py::test_benchmark_readme_is_a_compact_current_scoreboard",
+      "phase": "call",
+      "error": "E   AssertionError: assert 3080 < 3000\nE    +  where 3080 = len(['# hipEngine Topline Benchmarks', '', 'Last updated: **2026-11-12 UTC**', '', '## Qwen3.8-27B speculative diagnostics \u2014 ZBook', '', ...])\nE    +    where ['# hipEngine Topline Benchmarks', '', 'Last updated: **2026-11-12 UTC**', '', '## Qwen3.8-27B speculative diagnostics \u2014 ZBook', '', ...] = <built-in method splitlines of str object at 0x1d5d3b00>()\nE    +      where <built-in method splitlines of str object at 0x1d5d3b00> = '# hipEngine Topline Benchmarks\\n\\nLast updated: **2026-11-12 UTC**\\n\\n## Qwen3.8-27B speculative diagnostics \u2014 ZBook\\...ate `Last updated`, run\\n`python3 scripts/sync_benchmark_readme.py --write`, then `--check` and\\n`git diff --check`.\\n'.splitlines"
+    },
+    {
+      "nodeid": "tests/test_unit_gfx1151_policy_capability_gguf_boundary.py::test_package_resolves_every_policy_declaration_from_its_owner",
+      "phase": "call",
+      "error": "E   AssertionError: GGUF_IQ_DENSE_PREFILL_POLICY\nE   assert {'gguf_iq4_xs': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, 'gguf_iq3_xx...16_out'}, 'gguf_iq4_nl': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, ...} is {'gguf_iq4_xs': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, 'gguf_iq3_xx...16_out'}, 'gguf_iq4_nl': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, ...}\nE    +  where {'gguf_iq4_xs': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, 'gguf_iq3_xx...16_out'}, 'gguf_iq4_nl': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, ...} = backend_package_capability('hip_gfx1151', 'GGUF_IQ_DENSE_PREFILL_POLICY', <object object at 0x7ef20d6668b0>)\nE    +  and   {'gguf_iq4_xs': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, 'gguf_iq3_xx...16_out'}, 'gguf_iq4_nl': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, ...} = getattr(<module 'hipengine.kernels.hip_gfx1151.policy_gguf' from '/home/lhl/hipEngine-main/hipengine/kernels/hip_gfx1151/policy_gguf.py'>, 'GGUF_IQ_DENSE_PREFILL_POLICY')"
+    },
+    {
+      "nodeid": "tests/test_unit_gfx1151_policy_capability_gguf_boundary.py::test_declared_policy_owners_are_collision_free",
+      "phase": "call",
+      "error": "E   AssertionError: GGUF_IQ_DENSE_PREFILL_POLICY\nE   assert {'gguf_iq4_xs': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, 'gguf_iq3_xx...16_out'}, 'gguf_iq4_nl': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, ...} is {'gguf_iq4_xs': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, 'gguf_iq3_xx...16_out'}, 'gguf_iq4_nl': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, ...}\nE    +  where {'gguf_iq4_xs': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, 'gguf_iq3_xx...16_out'}, 'gguf_iq4_nl': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, ...} = backend_package_capability('hip_gfx1151', 'GGUF_IQ_DENSE_PREFILL_POLICY', <object object at 0x7ef20d6667a0>)\nE    +  and   {'gguf_iq4_xs': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, 'gguf_iq3_xx...16_out'}, 'gguf_iq4_nl': {'min_rows': 8, 'max_rows': 131072, 'variant': 'dense_wmma_w4a16_prefill_bf16_bf16_out'}, ...} = getattr(<module 'hipengine.kernels.hip_gfx1151.policy_gguf' from '/home/lhl/hipEngine-main/hipengine/kernels/hip_gfx1151/policy_gguf.py'>, 'GGUF_IQ_DENSE_PREFILL_POLICY')"
+    },
+    {
+      "nodeid": "tests/test_unit_llama_dense_generation.py::test_generator_defaults_the_context_to_the_checkpoint_limit",
+      "phase": "call",
+      "error": "E   assert 1 == 512\nE    +  where 1 = LlamaDenseGenerator(model_path=PosixPath('/tmp/pytest-of-lhl/pytest-517/test_generator_defaults_the_co0/tiny'), weight...stant\\n{% if enable_thinking %}<think>\\n{% else %}<think>\\n\\n</think>\\n\\n{% endif %}{% endif %}\"), max_prompt_tokens=1).context_length\nE    +  and   512 = int(512)"
+    },
+    {
+      "nodeid": "tests/test_unit_llama_dense_generation.py::test_generator_defaults_the_context_to_the_checkpoint_positions",
+      "phase": "call",
+      "error": "E   assert 1 == 32768\nE    +  where 1 = LlamaDenseGenerator(model_path=PosixPath('/tmp/pytest-of-lhl/pytest-517/test_generator_defaults_the_co1/wide-default')...stant\\n{% if enable_thinking %}<think>\\n{% else %}<think>\\n\\n</think>\\n\\n{% endif %}{% endif %}\"), max_prompt_tokens=1).context_length"
+    },
+    {
+      "nodeid": "tests/test_unit_llama_dense_generation.py::test_generator_refuses_a_prompt_beyond_the_prefill_bound",
+      "phase": "call",
+      "error": "E   assert 1 < 1\nE    +  where 1 = LlamaDenseGenerator(model_path=PosixPath('/tmp/pytest-of-lhl/pytest-517/test_generator_refuses_a_promp0/wide'), weight...stant\\n{% if enable_thinking %}<think>\\n{% else %}<think>\\n\\n</think>\\n\\n{% endif %}{% endif %}\"), max_prompt_tokens=1).max_prompt_tokens\nE    +  and   1 = LlamaDenseGenerator(model_path=PosixPath('/tmp/pytest-of-lhl/pytest-517/test_generator_refuses_a_promp0/wide'), weight...stant\\n{% if enable_thinking %}<think>\\n{% else %}<think>\\n\\n</think>\\n\\n{% endif %}{% endif %}\"), max_prompt_tokens=1).context_length"
+    },
+    {
+      "nodeid": "tests/test_unit_llama_dense_generation.py::test_generator_refuses_a_prompt_that_leaves_no_room_to_generate",
+      "phase": "call",
+      "error": "E   AssertionError: Regex pattern did not match.\nE     Expected regex: 'exceeds the 512-token context'\nE     Actual message: 'prompt of 510 tokens exceeds the 1-token prompt bound of the selected dense causal prefill attention and serving context'"
+    },
+    {
+      "nodeid": "tests/test_unit_scripts_gguf_quant_route_audit.py::test_fp16_recurrent_state_report_binds_artifact_qualification",
+      "phase": "call",
+      "error": "E   assert True is False"
+    }
+  ],
+  "crash_node": "tests/test_unit_yue2_nar_kernels.py::test_gather_add_is_bit_exact",
+  "fresh_tail": {
+    "passed": 396,
+    "subtests_passed": 15
+  },
+  "fresh_nonmemory_bundle": {
+    "passed": 123,
+    "failed": 2
+  },
+  "issues": {
+    "resource_cascade": 14,
+    "scoreboard": 15,
+    "audit_expectation": 16,
+    "native_crash_followup": 11
+  },
+  "limitations": [
+    "No final full-suite summary after native crash.",
+    "Failure reports include setup/call/teardown and cannot be equated with independent defects.",
+    "Six non-memory failures did not repeat in focused group; do not claim repaired.",
+    "Fresh tail success is not proof of full-process correctness."
+  ],
+  "log_sha256": {
+    "/tmp/main-full-suite-1d39cc7e7.txt": "120f7a199750db7644402a8206fd9d0b7835bc92eb2507c1210c983260757350",
+    "/tmp/main-suite-fresh-tail.txt": "ed289fe79fe0947f490eb6e00b36757bf3534278abe2a1030aa80ccbd36510d4",
+    "/tmp/main-suite-nonmemory.txt": "4f02567dc881e280ec9b4660e58022dce58f92cb48d4b57b4f3b71f4c87cac59"
+  }
+}
