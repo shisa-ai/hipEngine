@@ -313,16 +313,35 @@ class MuseGlimmerResidentSession:
     def close(self) -> None:
         if self._closed:
             return
+        rt = self.runtime
+        streams = tuple(dict.fromkeys(
+            stream for stream in (getattr(self, "_graph_stream", 0),
+                                  getattr(self, "_vg_stream", 0)) if stream
+        ))
+        for stream in streams:
+            rt.stream_synchronize(stream)
+        if getattr(self, "_graph_exec", 0):
+            rt.graph_exec_destroy(self._graph_exec)
+            self._graph_exec = 0
+        cache = getattr(self, "_verify_graph_exec", None)
+        if cache:
+            for graph_exec in cache.values():
+                rt.graph_exec_destroy(graph_exec)
+            cache.clear()
+        for stream in streams:
+            rt.stream_destroy(stream)
+        self._graph_stream = self._vg_stream = 0
+        for name in ("_g_staging", "_vg_key_end", "_vg_tap_buf", "_vg_logits_buf"):
+            buffer = getattr(self, name, None)
+            if buffer is not None:
+                free(buffer, runtime=rt)
+                setattr(self, name, None)
         self._prefill_fullgemm_workspace.close()
-        self._closed = True
         if self._scratch is not None:
-            self._scratch.close(self.runtime)
+            self._scratch.close(rt)
             self._scratch = None
-        staging = getattr(self, "_g_staging", None)
-        if staging is not None:
-            free(staging, runtime=self.runtime)
-            self._g_staging = None
         self._kv.clear()
+        self._closed = True
 
     def _require_open(self) -> None:
         if self._closed:
@@ -435,7 +454,7 @@ class MuseGlimmerResidentSession:
                 muse_glimmer_decode_attention_shared, muse_glimmer_kv_append,
             )
 
-            stream = getattr(self, "_graph_stream", 0) or rt.stream_create()
+            stream = self._graph_stream = getattr(self, "_graph_stream", 0) or rt.stream_create()
             # One staging allocation [token, pos, key_end] (int64) so each
             # replay uploads its position-dependent inputs in a single copy.
             # Reused across threshold-crossing re-captures.
@@ -447,7 +466,6 @@ class MuseGlimmerResidentSession:
             self._g_key_end = DeviceBuffer(ptr=base + 16, nbytes=8)
             self._g_staging_host = np.zeros(3, dtype=np.int64)
             self._softcap_host = np.empty(self.config.vocab_size, dtype=np.float32)
-            self._graph_stream = stream
             # Warm every kernel on the capture stream outside capture.
             self._g_staging_host[:] = (13796, self._length, self._length + 1)
             copy_host_array_to_device(self._g_staging, self._g_staging_host, runtime=rt)
@@ -463,15 +481,13 @@ class MuseGlimmerResidentSession:
                 raise
             if not graph:
                 raise RuntimeError("decode graph capture produced no graph")
-            self._graph_exec = rt.graph_instantiate(graph)
-            rt.graph_destroy(graph)
+            try:
+                self._graph_exec = rt.graph_instantiate(graph)
+            finally:
+                rt.graph_destroy(graph)
             return self._graph_exec
         except Exception:
             self._graph_failed = True
-            buf = getattr(self, "_g_staging", None)
-            if buf is not None:
-                free(buf, runtime=rt)
-            self._g_staging = self._g_token = self._g_pos = self._g_key_end = None
             return None
 
     def _decode_graph_body(self, stream: int) -> None:
@@ -638,7 +654,7 @@ class MuseGlimmerResidentSession:
             cfg = self.config
             hidden = cfg.n_embd
             n_taps = len(key[1])
-            stream = rt.stream_create()
+            stream = self._vg_stream = getattr(self, "_vg_stream", 0) or rt.stream_create()
             if getattr(self, "_vg_key_end", None) is None:
                 self._vg_key_end = malloc(8, runtime=rt)
                 self._vg_tap_buf = malloc(
@@ -646,7 +662,6 @@ class MuseGlimmerResidentSession:
                 self._vg_logits_buf = malloc(
                     self._MAX_VERIFY_ROWS * cfg.vocab_size * 4, runtime=rt)
                 self._vg_tap_layers = key[1]
-            self._vg_stream = stream
             self._exact_multirow = True
             # Warm every kernel on the capture stream outside capture.
             self._vg_stage_inputs(np.zeros(tokens, dtype=np.int64), self._length, tokens)
@@ -662,8 +677,10 @@ class MuseGlimmerResidentSession:
                 raise
             if not graph:
                 raise RuntimeError("verify graph capture produced no graph")
-            exec_handle = rt.graph_instantiate(graph)
-            rt.graph_destroy(graph)
+            try:
+                exec_handle = rt.graph_instantiate(graph)
+            finally:
+                rt.graph_destroy(graph)
             cache[key] = exec_handle
             return exec_handle
         except Exception:

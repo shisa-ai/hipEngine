@@ -179,3 +179,105 @@ def test_context_beyond_trained_positions_runs_with_a_warning(caplog) -> None:
     assert "trained 131072" in caplog.text
     with pytest.raises(ValueError):
         MuseGlimmerGGUFGenerator._validate_context(owner, 0)
+
+
+@pytest.mark.parametrize("owner", ["target", "drafter"])
+@pytest.mark.parametrize("fail_upload", [False, True])
+def test_weight_owner_releases_each_tensor_allocation(owner, fail_upload):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from hipengine.kernels.cpu_reference.muse_glimmer_dflash import MuseGlimmerDFlashConfig
+    from hipengine.loading.muse_glimmer_gguf import materialize_muse_glimmer_weights
+    from hipengine.runtime.muse_glimmer_dflash import MuseGlimmerDFlashDrafter
+
+    info = _info(n_layers=1)
+    info = replace(info, tensors=tuple(_tensor(t.name, t.shape) for t in info.tensors))
+    reader = SimpleNamespace(
+        info=info, tensor_info=info.tensor,
+        tensor_data=lambda name: np.zeros(info.tensor(name).shape, dtype=np.float32),
+    )
+
+    class Runtime:
+        def __init__(self):
+            self.attempts = 0
+            self.live = set()
+
+        def malloc(self, nbytes):
+            self.attempts += 1
+            if fail_upload and self.attempts == 3:
+                raise MemoryError("injected upload allocation failure")
+            ptr = self.attempts * 0x10000
+            self.live.add(ptr)
+            return ptr
+
+        def free(self, ptr):
+            self.live.remove(ptr)
+
+        def memcpy(self, dst, src, nbytes, kind):
+            assert dst in self.live
+
+    runtime = Runtime()
+
+    def load():
+        if owner == "target":
+            weights = materialize_muse_glimmer_weights(
+                reader, backend="hip_gfx1151", runtime=runtime,
+            )
+            assert len({weights.ptr(t.name) for t in info.tensors}) == len(info.tensors)
+            weights.free(runtime=runtime)
+        else:
+            config = MuseGlimmerDFlashConfig(
+                n_layers=1, n_embd=32, n_ff=96, n_heads=4, n_kv_heads=2,
+                head_dim=8, block_size=4, sliding_window=8, rope_freq_base=500000.0,
+                rms_eps=1e-5, target_layers=(0,), mask_token_id=0,
+            )
+            draft = MuseGlimmerDFlashDrafter(
+                reader, config, target_weights=SimpleNamespace(config=SimpleNamespace(vocab_size=64)),
+                backend="hip_gfx1151", max_context=8, runtime=runtime,
+            )
+            draft.close()
+
+    if fail_upload:
+        with pytest.raises(MemoryError, match="injected upload allocation failure"):
+            load()
+    else:
+        load()
+    assert runtime.live == set()
+
+
+def test_session_close_releases_graph_resources_before_backing_storage(monkeypatch):
+    from types import SimpleNamespace
+
+    from hipengine.runtime import muse_glimmer
+
+    events = []
+    runtime = SimpleNamespace(**{
+        name: lambda value, name=name: events.append((name, value))
+        for name in ("stream_synchronize", "graph_exec_destroy", "stream_destroy")
+    })
+    session = object.__new__(muse_glimmer.MuseGlimmerResidentSession)
+    session.runtime = runtime
+    session._closed = False
+    session._graph_stream = 1
+    session._vg_stream = 2
+    session._graph_exec = 3
+    session._verify_graph_exec = {(2, ()): 4, (3, ()): 5}
+    session._prefill_fullgemm_workspace = SimpleNamespace(
+        close=lambda: events.append(("workspace", None)),
+    )
+    session._scratch = None
+    session._kv = []
+    for name in ("_g_staging", "_vg_key_end", "_vg_tap_buf", "_vg_logits_buf"):
+        setattr(session, name, name)
+    monkeypatch.setattr(muse_glimmer, "free", lambda buf, **kw: events.append(("free", buf)))
+
+    session.close()
+    session.close()  # Idempotent.
+    assert events == [
+        ("stream_synchronize", 1), ("stream_synchronize", 2),
+        ("graph_exec_destroy", 3), ("graph_exec_destroy", 4), ("graph_exec_destroy", 5),
+        ("stream_destroy", 1), ("stream_destroy", 2),
+        ("free", "_g_staging"), ("free", "_vg_key_end"),
+        ("free", "_vg_tap_buf"), ("free", "_vg_logits_buf"), ("workspace", None),
+    ]

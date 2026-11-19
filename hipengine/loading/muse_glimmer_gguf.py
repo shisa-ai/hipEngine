@@ -290,7 +290,8 @@ def materialize_muse_glimmer_weights(
                 force_raw=(name == "token_embd.weight"),
             )
             weights[name] = weight
-            allocations.update(allocs)
+            # Allocation roles are local to each weight; own them by tensor name.
+            allocations.update((allocation.name, allocation) for allocation in allocs.values())
     except Exception:
         DeviceWeightMap(tensors=allocations).free(runtime=runtime)
         raise

@@ -95,6 +95,7 @@ class MuseGlimmerDFlashDrafter:
         self._weights: dict[str, MuseGlimmerDeviceWeight] = {}
         self._kv: list[tuple[DeviceBuffer, DeviceBuffer]] = []
         allocations: dict[str, DeviceTensorAllocation] = {}
+        self._map = DeviceWeightMap(tensors=allocations)
         rt = self.runtime
         try:
             from hipengine.loading.muse_glimmer_gguf import upload_glimmer_tensor
@@ -106,8 +107,7 @@ class MuseGlimmerDFlashDrafter:
                     name, raw, tensor.ggml_type_name, backend=backend, runtime=rt,
                 )
                 self._weights[name] = weight
-                allocations.update(allocs)
-            self._map = DeviceWeightMap(tensors=allocations)
+                allocations.update((allocation.name, allocation) for allocation in allocs.values())
 
             cfg = config
             h, q_dim, kv_dim, d = cfg.n_embd, cfg.n_heads * cfg.head_dim, cfg.n_kv_heads * cfg.head_dim, cfg.head_dim
