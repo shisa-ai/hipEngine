@@ -36,9 +36,13 @@ def gen():
     from hipengine.loading.gguf import scan_gguf
     from hipengine.models.muse_glimmer import MUSE_GLIMMER_GGUF
 
-    return make_muse_glimmer_gguf_generator_gfx1151(
+    generator = make_muse_glimmer_gguf_generator_gfx1151(
         model_path=TARGET, weight_index=scan_gguf(TARGET),
         model_plugin=MUSE_GLIMMER_GGUF, max_sequence_length=4096)
+    try:
+        yield generator
+    finally:
+        generator.close()
 
 
 def _prefill(session, generator, n: int) -> None:
