@@ -3926,6 +3926,9 @@ void q4_k_t16_dense_dual_rowtile_silu_gemv_kernel(
   const int lane = tid & 31;
   const int64_t out_group = blockIdx.x;
   const uint8_t* __restrict__ tiles = wave == 0 ? tiles_a : tiles_b;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * ROW_TILE;
+  x += row_base * in_features;
+  out += row_base * out_features;
   float acc[ROW_TILE][kTileCols];
   q4_k_t16_dense_rowtile_accumulate<scalar_t, ROW_TILE, kTileCols>(
       x, tiles, lane, in_features, out_group, acc);
@@ -7837,11 +7840,11 @@ int launch_q4_dense_dual_rowtile_silu(
     return hipErrorInvalidValue;
   }
   const dim3 block(64);
-  const dim3 grid(static_cast<unsigned int>(out_features / 8));
-#define Q4_T16_DENSE_DUAL_ROWTILE_CASE(N)                                   \
+  const dim3 grid(static_cast<unsigned int>(out_features / 8), rows == 4 ? 4 : 1);
+#define Q4_T16_DENSE_DUAL_ROWTILE_CASE(N, TILE)                                   \
   case N:                                                                    \
     hipLaunchKernelGGL(                                                       \
-        (q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<scalar_t, N>),         \
+        (q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<scalar_t, TILE>),         \
         grid, block, 0, stream,                                               \
         reinterpret_cast<const scalar_t*>(x),                                \
         reinterpret_cast<const uint8_t*>(tiles_a),                           \
@@ -7849,13 +7852,13 @@ int launch_q4_dense_dual_rowtile_silu(
         reinterpret_cast<scalar_t*>(out), in_features, out_features);        \
     break
   switch (rows) {
-    Q4_T16_DENSE_DUAL_ROWTILE_CASE(2);
-    Q4_T16_DENSE_DUAL_ROWTILE_CASE(3);
-    Q4_T16_DENSE_DUAL_ROWTILE_CASE(4);
-    Q4_T16_DENSE_DUAL_ROWTILE_CASE(5);
-    Q4_T16_DENSE_DUAL_ROWTILE_CASE(6);
-    Q4_T16_DENSE_DUAL_ROWTILE_CASE(7);
-    Q4_T16_DENSE_DUAL_ROWTILE_CASE(8);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(2, 2);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(3, 3);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(4, 1);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(5, 5);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(6, 6);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(7, 7);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(8, 8);
     default:
       return hipErrorInvalidValue;
   }

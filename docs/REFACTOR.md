@@ -1197,8 +1197,7 @@ R0523. rocprofv3 graph-mode cache-only census collected for c1+c2 and c1+c4
 census filter was corrected to count the col8_residual variant). Prerequisite test
 bundles green. See
 [`worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md`](../worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md)
-and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-r0387-*`. Remaining: the
-R0523 c4 race root-cause/fix.
+and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-r0387-*`. The c4 correctness issue is closed under R0523.
 
 Done when: inspect `scripts/server_f1_concurrency_bench.py --help`, then collect matched
 current c1/c2/c4 and neighboring/unrelated logical-width requests on one gfx1100 host with model,
@@ -1744,9 +1743,13 @@ graph-pointer, lifecycle, cancellation, pressure, SLO and production load. Only 
 registered packages migrate may compatibility fixtures retire. Registered strict/unfused/serial
 numerical fallbacks remain independent of allocator cleanup.
 
-### R0523 — Root-cause the intermittent c4 packed-decode nondeterminism
+### R0523 — Closed: intermittent c4 packed-decode nondeterminism
 
-Owner: `hipengine/runtime/gguf_packed_decode_graph.py`.
+Owner: `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip`.
+
+The gfx1100 compact Q4 gate/up kernel now gives each of four packed rows its own workgroup within one launch. See the [reproduction, fix and clearing results](../worklog/entries/20261119T222435.493300Z-lhl-r0523-compact-q4-c4-0854fc.md).
+
+Original investigation and clearing criteria:
 
 Scope: native c4 packed AR decode (`gguf_packed_ar_server_decode`) on gfx1100,
 dense Qwen3.8-27B-Q4_K_M; graph-replay state/KV ownership and GEMV split-K decode.

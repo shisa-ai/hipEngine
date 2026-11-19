@@ -1,0 +1,249 @@
+{
+  "issue": "R0523",
+  "host": "epyc",
+  "gpu": "AMD Radeon Pro W7900 (gfx1100)",
+  "scope": "Matched diagnostic HTTP burst; not a passing live-admission benchmark.",
+  "protocol_note": "Eager packed decode. The harness is scripts/server_f1_concurrency_bench.py with prompt[-1] = int(token_id) + 1 for every request. Same server options and prompt generator before and after.",
+  "before": {
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 refactor-gfx1100/bench_r0523_allplus1.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-27b-q4km --correctness-profile strict --hipengine-route-expectation native --hipengine-kv-storage bf16 --hipengine-top-k 1 --memory-domain vram --concurrencies 1,4 --live-concurrency 4 --measured-runs 30 --json /tmp/refactor-gfx1100/r0523-perf-before.json",
+    "created_at": "2026-11-14T19:32:01.911070+00:00",
+    "status": "failed_gate",
+    "model": {
+      "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "size_bytes": 17106773984,
+      "algorithm": "sha256-sampled-v1",
+      "sampled_bytes_per_offset": 1048576,
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "value": "0cf5a9a0ff35bd30b04f16e04d8418267ceba5456eda7899ab81f4b1b4519476",
+      "path_type": "file",
+      "revision": null
+    },
+    "rows": {
+      "1": {
+        "http_wall_tok_s_aggregate": {
+          "samples": [
+            24.767430542616864,
+            24.678034413877228,
+            24.598011300243755,
+            24.52794440390291,
+            24.501091940733534,
+            24.41108997321211,
+            24.359631420887986,
+            24.375346719825195,
+            24.332629387161234,
+            24.32922950932563,
+            24.320066552128225,
+            24.309751120456134,
+            24.333216727825953,
+            24.317777573939626,
+            24.306249456651436,
+            24.26305965308571,
+            24.249890797442657,
+            24.28727554034116,
+            24.29041227053794,
+            24.241066857389487,
+            24.23874744473189,
+            24.240078541805293,
+            24.209826591421987,
+            24.226679337301164,
+            24.210218580822573,
+            24.208469214195027,
+            24.18203610144881,
+            24.205201570564682,
+            24.22492591333538,
+            24.193082409675213
+          ],
+          "median": 24.298330863594686,
+          "p95": 24.678034413877228,
+          "p99": 24.767430542616864,
+          "min": 24.18203610144881,
+          "max": 24.767430542616864,
+          "stdev": 0.14663591891551955,
+          "stdev_pct_of_median": 0.6034814479179674
+        },
+        "exact": 30,
+        "total": 30,
+        "route_ok": true,
+        "paths": [
+          "gguf_packed_ar_server_decode"
+        ],
+        "resident_overlap_before_first_completion": null
+      },
+      "4": {
+        "http_wall_tok_s_aggregate": {
+          "samples": [
+            59.589510561864444,
+            59.35863890783535,
+            59.07817171909101,
+            58.93854458216808,
+            58.93075135467448,
+            58.87006831743394,
+            58.83454430751302,
+            58.8612037538391,
+            58.85538283892292,
+            58.84843582892038,
+            58.76366359213243,
+            58.82909468847519,
+            58.88062684972587,
+            58.79356491058117,
+            58.81162833433632,
+            58.818720765320826,
+            58.81042495711643,
+            58.867718033891485,
+            58.718729876872544,
+            58.81595616795604,
+            58.80443500941547,
+            58.811602440358136,
+            58.81118437398829,
+            58.82229405576729,
+            58.85730835438939,
+            58.850922386330524,
+            58.86144081197846,
+            58.885693679859386,
+            58.82068732642962,
+            58.86157825532923
+          ],
+          "median": 58.84967910762545,
+          "p95": 59.35863890783535,
+          "p99": 59.589510561864444,
+          "min": 58.718729876872544,
+          "max": 59.589510561864444,
+          "stdev": 0.173282229437436,
+          "stdev_pct_of_median": 0.2944488943100846
+        },
+        "exact": 110,
+        "total": 120,
+        "route_ok": true,
+        "paths": [
+          "gguf_packed_ar_server_decode"
+        ],
+        "resident_overlap_before_first_completion": false
+      }
+    }
+  },
+  "after": {
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 refactor-gfx1100/bench_r0523_allplus1.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-27b-q4km --correctness-profile strict --hipengine-route-expectation native --hipengine-kv-storage bf16 --hipengine-top-k 1 --memory-domain vram --concurrencies 1,4 --live-concurrency 4 --measured-runs 30 --json /tmp/refactor-gfx1100/r0523-perf-after-grid-row.json",
+    "created_at": "2026-11-19T22:12:07.604336+00:00",
+    "status": "failed_gate",
+    "model": {
+      "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "size_bytes": 17106773984,
+      "algorithm": "sha256-sampled-v1",
+      "sampled_bytes_per_offset": 1048576,
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "value": "0cf5a9a0ff35bd30b04f16e04d8418267ceba5456eda7899ab81f4b1b4519476",
+      "path_type": "file",
+      "revision": null
+    },
+    "rows": {
+      "1": {
+        "http_wall_tok_s_aggregate": {
+          "samples": [
+            24.379395693530434,
+            24.27068037506659,
+            24.201990485676415,
+            24.172390431629523,
+            24.15994401456022,
+            24.168511076722734,
+            24.1659932107872,
+            24.157847796190417,
+            24.16685368064258,
+            24.160842900607847,
+            24.154845178393124,
+            24.159330663885225,
+            23.56262744643956,
+            24.16842180771726,
+            24.165765545902264,
+            24.166630161249657,
+            24.164163422970155,
+            24.17306122307477,
+            24.190121593811575,
+            24.161204965091777,
+            24.18872062837148,
+            24.201006557096004,
+            24.173600983980553,
+            24.19253356599708,
+            24.17352919414,
+            24.156277507963953,
+            24.18282614833884,
+            24.16580687695959,
+            24.181331510050104,
+            24.166463377064858
+          ],
+          "median": 24.16763774417992,
+          "p95": 24.27068037506659,
+          "p99": 24.379395693530434,
+          "min": 23.56262744643956,
+          "max": 24.379395693530434,
+          "stdev": 0.12112881032503763,
+          "stdev_pct_of_median": 0.5012025238346185
+        },
+        "exact": 30,
+        "total": 30,
+        "route_ok": true,
+        "paths": [
+          "gguf_packed_ar_server_decode"
+        ],
+        "resident_overlap_before_first_completion": null
+      },
+      "4": {
+        "http_wall_tok_s_aggregate": {
+          "samples": [
+            46.053477126949566,
+            45.72759870029372,
+            45.54163054145446,
+            45.62914040197745,
+            45.57715638126552,
+            45.50891854429951,
+            45.336416884393664,
+            45.40076788992743,
+            45.59306596842402,
+            45.584133879297966,
+            45.606925265309265,
+            45.487999471436446,
+            45.490562122441766,
+            45.44483109773856,
+            45.51139410689389,
+            45.50761469401149,
+            45.51125384622764,
+            45.43935476038853,
+            45.50743877846746,
+            45.59205561554678,
+            45.594941999504655,
+            45.615455086285735,
+            45.64361394220626,
+            45.65617418099974,
+            45.53837317050314,
+            45.73451787315554,
+            45.66211286481351,
+            45.66131827924965,
+            45.68156032137112,
+            45.740972602594994
+          ],
+          "median": 45.588094747422375,
+          "p95": 45.740972602594994,
+          "p99": 46.053477126949566,
+          "min": 45.336416884393664,
+          "max": 46.053477126949566,
+          "stdev": 0.13226303340170129,
+          "stdev_pct_of_median": 0.2901262580384096
+        },
+        "exact": 120,
+        "total": 120,
+        "route_ok": true,
+        "paths": [
+          "gguf_packed_ar_server_decode"
+        ],
+        "resident_overlap_before_first_completion": false
+      }
+    }
+  }
+}

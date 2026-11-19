@@ -888,6 +888,26 @@ def _pack8_rowtile_chunks(rows: int) -> tuple[int, ...]:
     return (first, rows - first)
 
 
+def test_q4_t16_dense_dual_c4_duplicate_rows_stay_identical(
+    t16_selected_library, q4_library,
+) -> None:
+    rng = np.random.default_rng(523)
+    width, columns = 1024, 256
+    raw_a = make_q4_k_weight(columns, width)
+    raw_b = np.roll(raw_a, 7, axis=0).copy()
+    tiles = [repack_gguf_q4_k_tile16(w[None, ...]).tiles for w in (raw_a, raw_b)]
+    packed = [repack_gguf_q4_k_pack8(w) for w in (raw_a, raw_b)]
+    x = _f32_to_bf16_u16(rng.normal(size=(1, width)).astype(np.float32)).repeat(4, axis=0)
+    expected = _run_pack8_dual_rowtile_silu(x, *packed, columns, q4_library)
+    np.testing.assert_array_equal(expected, np.repeat(expected[:1], 4, axis=0))
+    for _ in range(16):
+        actual = _run_dense_dual_silu(
+            x, *tiles, columns, np.uint16, t16_selected_library,
+            fn=gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
+        )
+        np.testing.assert_array_equal(actual, expected)
+
+
 @pytest.mark.parametrize("rows", [2, 3, 4, 5, 6, 7, 8])
 def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
     rows: int,
