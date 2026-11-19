@@ -1792,47 +1792,27 @@ def test_check_constants_gate_fails_when_a_name_vanishes(tmp_path, capsys):
     assert audit.main(["--check-constants", str(tmp_path / "unused.gguf")]) == 0
 
 
-def test_fp16_recurrent_state_report_binds_artifact_qualification(monkeypatch):
-    """UD-U1 F5: the audit's ``fp16_recurrent_state_default_on`` must follow
-    the same artifact qualification as the runner: a K_S-stamped synthetic
-    manifest that is not a pinned qualified plain control reports the default
-    OFF (no plain-certified inheritance from the stamp), while pinning the
-    exact manifest fingerprint restores the certified ON default."""
+@pytest.mark.parametrize("specialized", [False, True])
+def test_fp16_recurrent_state_report_uses_resolved_policy_identity(monkeypatch, specialized):
+    """Unfamiliar generic layouts inherit the backend default, not UD presets."""
+    from types import SimpleNamespace
 
-    import hipengine.loading.qwen35_gguf_admission as admission_module
-    from hipengine.loading.qwen35_gguf_admission import (
-        GGUF_UNQUALIFIED_MANIFEST_PRESET,
-        build_qwen35_gguf_role_manifest,
-    )
+    import hipengine.loading.qwen35_gguf_admission as admission
+
+    preset_key = admission.GGUF_UD_Q4_K_S_PRESET if specialized else None
+    if specialized:
+        monkeypatch.setattr(
+            admission,
+            "resolve_qwen35_gguf_artifact_preset",
+            lambda *args, **kwargs: SimpleNamespace(preset_key=preset_key),
+        )
 
     metadata = dict(_QWEN35_METADATA)
     metadata["general.file_type"] = 14  # MOSTLY_Q4_K_S: the gfx1151 FP16 stamp
-    tensors = _fixture_tensors()
     maps = audit.build_tensor_maps(
-        pathlib.Path("synthetic-qwen35-ud-map.gguf"), metadata, tensors, 3
+        pathlib.Path("synthetic-qwen35-ud-map.gguf"), metadata, _fixture_tensors(), 3
     )
 
     report = audit.plan("hip_gfx1151", metadata, maps)
-    # The synthetic manifest is not a pinned plain control: sentinel identity,
-    # generic FP32 default, no stamp inheritance.
-    assert report["fp16_recurrent_state_default_on"] is False
-
-    manifest = build_qwen35_gguf_role_manifest(
-        maps.model_map,
-        nextn_map=maps.nextn_map,
-    )
-    assert (
-        admission_module.qwen35_gguf_artifact_preset_key(
-            maps.model_map,
-            nextn_map=maps.nextn_map,
-            file_type_stamp=report["file_type_name"],
-        )
-        == GGUF_UNQUALIFIED_MANIFEST_PRESET
-    )
-    monkeypatch.setattr(
-        admission_module,
-        "_PINNED_PLAIN_CONTROL_FINGERPRINTS",
-        frozenset({manifest.fingerprint}),
-    )
-    report = audit.plan("hip_gfx1151", metadata, maps)
-    assert report["fp16_recurrent_state_default_on"] is True
+    assert report["artifact_preset_key"] == preset_key
+    assert report["fp16_recurrent_state_default_on"] is (not specialized)
