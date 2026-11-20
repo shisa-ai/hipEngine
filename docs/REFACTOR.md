@@ -693,31 +693,6 @@ rather than trusting that field. Run the graph-policy nodes in
 then exercise public `LLM.generate()` with the repaired route confirmed and allocations drained.
 Evaluate capture-inclusive wall separately before an automatic performance choice.
 
-### R0281-GGUF-REPACK — Decode layout control and comparison callers
-
-Owner: `hipengine/loading/qwen35_gguf_policy.py`.
-
-Scope: `resolve_gguf_decode_repack()`, `use_wmma_prefill`, `use_gemv_decode`;
-`HIPENGINE_GGUF_DECODE_REPACK`.
-
-Done when: complete public layout/lifecycle validation on gfx1100. Retain explicit
-API/environment layout selection as load-time resource policy and diagnostics:
-`resolve_gguf_decode_repack()` already gives admission and materialization one
-meaning with explicit-value precedence. Semantic and true-AR comparison harnesses
-still exercise both values. No reader retirement is needed for these maintained
-comparisons. Preserve per-tensor capability, byte planning, cleanup and observed
-raw-fastpath containment; never use artifact/measurement admission allowlists or
-change activation math as a repacking side effect.
-
-**Clearing action:** exercise actual public default/raw requests with compatible
-quants on gfx1100 and confirm layouts, selectors, no duplicate raw/T16 residency,
-bounded allocation and cleanup. The decode-repack semantics/dispatch/fastpath,
-GDN semantic-gate and benchmark-metadata unit bundle passes. Local gfx1151 public
-Q4_K_S default/raw requests produce distinct planned/resident layouts, no raw/T16
-allocation pair on one weight, matching short greedy output and clean tracked
-allocation teardown. This is local lifecycle evidence, not a full model-quality
-or cross-backend parity claim.
-
 ### R0281-CONV — Convolution schedule selector and isolation profiles
 
 Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
