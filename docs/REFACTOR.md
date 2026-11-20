@@ -1270,55 +1270,6 @@ remaining check needs a Qwen4Exp Q4_K_M checkpoint: load it through
 fallback and actual GDN leaf, then generate and close. Do not substitute a
 similarly named model or count the CPU binder test as that public execution.
 
-### R0471 — Optional selected DP4A adapter intent
-
-Owner: `hipengine/loading/gguf_selected_contract.py`.
-
-Scope: `bind_selected_call`, `SelectedCallIntent`, `SELECTED_OPTIONAL_ADAPTERS`.
-
-The shared selected-call intent now represents the optional DP4A routes
-(`HIPENGINE_GGUF_RAW_SELECTED_DP4A`, `HIPENGINE_GGUF_T16_SELECTED_DP4A`,
-`HIPENGINE_GGUF_Q4K_SELECTED_DUAL_DP4A`) instead of refusing them: the intent
-declares the route and the caller-owned Q8_1 workspace, and a bound call records
-the conversion symbol, the dp4a kernel, the Q8_1 operand and the plan-owned
-workspace (`moe_q8_1`, scratch-plan lifetime, per-token rows and the resident's
-K). Engagement still comes from the live selectors, so one plan binds both
-arithmetic contracts and a certificate never covers the other. Row limits,
-ordered dual partners, the strict two-single fallback and F32 capabilities are
-unchanged.
-
-The host bundle and public gfx1151 optional-adapter on/off checks pass, including
-C2 AR after the BF16-QKV/FP32-Conv scratch repair. They execute `ar_decode_rows`
-and `ar_prefill`, not `ar_decode_native_rows`. The public scheduler integration is
-now implemented on gfx1100: `Qwen35GGUFResidentModelRunner._step_native_rows_compact`
-(`hipengine/generation/qwen35_gguf.py`) routes a compact, all-greedy physical group
-through the batch owner's `step_rows_native` when the generator requests
-`native_batch_decode`, flushing packed state, aligning the owner cursor to
-slot-view 0 and recording tokens through `_record_native_token`; it returns False
-to fall back to packed/serial, so the default path is untouched. Host ownership
-tests (`tests/test_unit_gguf_native_rows_scheduler.py`) pass RED->GREEN. See
-[`worklog/entries/20261111T211401.188154Z-lhl-r0471-impl-fe7f1d.md`](../worklog/entries/20261111T211401.188154Z-lhl-r0471-impl-fe7f1d.md).
-
-The public gfx1100 check is complete on Qwen3.6-35B-A3B-UD-Q3_K_M.
-Compact native rows use the scheduler's live BF16 KV leases when all rows fit
-one backing chunk; unsupported layouts continue through packed or serial
-decode. With decode repacking disabled, public generation exercised both the
-unconverted Q6_K kernel and the optional Q8_1 conversion plus DP4A kernel.
-The enabled resident certificate binds `moe_q8_1` to the conversion; the disabled
-certificate records the unconverted call. See the [validation record](../worklog/entries/20261120T163814.266757Z-lhl-r0471-public-native-rows-9d78ae.md).
-
-Done when: integrate compact native-row execution with resident scheduler session,
-position, active-slot, state/KV and reclaim ownership, preserving packed/serial
-routes; then run public native-row generation with an optional adapter engaged
-and report its actual launch plus the bound kernel, converter and workspace
-owner from the resident certificate. An unengaged run of the same artifact must
-report the unconverted record. The clearing host checks are
-`tests/test_integration_gguf_invocation_contract.py`,
-`tests/test_integration_gguf_selected_call_intents.py` and
-`tests/test_integration_gguf_execution_authorization.py`, all passing today for
-the host contract. Any changed arithmetic default additionally follows the
-execution-profile gate. The optional adapter remains opt-in.
-
 ### R0484 — Surya decode fallback and sparse-chunk work
 
 Owner: `hipengine/runtime/surya.py`.
