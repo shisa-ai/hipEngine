@@ -105,15 +105,16 @@ def test_w4a16_needs_the_session_but_not_a_plane():
     assert not iq_mmq.iq_dense_mmq_has_workspace()
 
 
-def test_integer_mmq_variant_still_requires_its_workspace():
+def test_integer_mmq_variant_still_requires_its_workspace(monkeypatch):
     """Swapping the policy back to integer MMQ must re-impose the workspace gate."""
     import hipengine.kernels.hip_gfx1151 as be
     from hipengine.runtime.gguf_linear import _IQ_DENSE_INTEGER_MMQ_VARIANT
-    base = dict(backend_package_capability("hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY"))
+    base = backend_package_capability("hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY")
     swapped = {q: {**e, "variant": _IQ_DENSE_INTEGER_MMQ_VARIANT}
                for q, e in base.items()}
-    setattr(be, "GGUF_IQ_DENSE_PREFILL_POLICY", swapped)
-    try:
+    # Restore absence of the package override, not a copy of the owner's policy.
+    with monkeypatch.context() as scoped:
+        scoped.setattr(be, "GGUF_IQ_DENSE_PREFILL_POLICY", swapped, raising=False)
         with iq_mmq.iq_dense_mmq_session(True):
             out = _dispatch("gguf_iq4_xs", rows=512, in_features=5120,
                             out_features=17408)
@@ -122,8 +123,7 @@ def test_integer_mmq_variant_still_requires_its_workspace():
                                          workspace_nbytes=1 << 24):
             out = _dispatch("gguf_iq4_xs", rows=512, in_features=5120, out_features=17408)
         assert out.key.variant == _IQ_DENSE_INTEGER_MMQ_VARIANT
-    finally:
-        setattr(be, "GGUF_IQ_DENSE_PREFILL_POLICY", base)
+    assert backend_package_capability("hip_gfx1151", "GGUF_IQ_DENSE_PREFILL_POLICY") is base
 
 
 @pytest.mark.parametrize(
