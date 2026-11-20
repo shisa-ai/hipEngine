@@ -1012,6 +1012,13 @@ def _run_dense_mtp_context_crossing() -> None:
             int(record["root_position"]) + int(record["budget"]) + 1 > 1023
             for record in context_misses
         )
+        # Proposal admission checks the already-cached graph. Once eager
+        # verification changes its bindings, that graph may be rejected as
+        # stale before proposal admission reaches the context check.
+        expected_proposal_refusals = {
+            "target_graph_context_bucket_miss",
+            "target_graph_binding_generation_miss",
+        }
         unexpected_handoffs = [
             {key: record[key] for key in (
                 "root_position", "budget", "target_native_graph_submitted",
@@ -1020,7 +1027,7 @@ def _run_dense_mtp_context_crossing() -> None:
             for record in context_misses
             if record["target_native_graph_submitted"]
             or record["proposal_target_device_chained"]
-            or record["device_proposal_fallback_reason"] != "target_graph_context_bucket_miss"
+            or record["device_proposal_fallback_reason"] not in expected_proposal_refusals
         ]
         assert not unexpected_handoffs, unexpected_handoffs
 
