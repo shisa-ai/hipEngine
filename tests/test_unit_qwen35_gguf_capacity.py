@@ -254,6 +254,14 @@ def test_scratch_plan_matches_single_arena_allocation(monkeypatch) -> None:
     assert int(allocations[0].nbytes) == plan.arena_bytes()
 
 
+@pytest.mark.parametrize("rows", [2, 4])
+def test_resident_moe_q8_workspace_covers_all_rows(rows):
+    runner = _fake_moe_qwen36_runner()
+    single = _plan_for(runner, max_batch_size=1).field_sizes["moe_q8_1"]
+    packed = _plan_for(runner, max_batch_size=rows).field_sizes["moe_q8_1"]
+    assert packed == rows * single
+
+
 def test_scratch_plan_decomposition_is_exhaustive() -> None:
     """Every planned byte belongs to exactly one named accounting bucket."""
 
@@ -748,6 +756,27 @@ def test_auto_context_reserve_shrinks_the_selected_context(monkeypatch) -> None:
     assert baseline is not None and reserved is not None
     assert reserved < baseline
     assert reserved % 256 == 0
+
+
+@pytest.mark.parametrize("capacity, requested", [(1, True), (2, False), (2, True)])
+def test_shared_session_requests_native_rows_for_multirequest_owner(monkeypatch, capacity, requested):
+    generator = _auto_context_generator()
+    generator.native_batch_decode = requested
+    generator._prepared_session_kv_kwargs = lambda: {}
+    generator._attach_capacity_estimate = lambda *args, **kwargs: None
+    calls = []
+
+    def construct(path, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace()
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", construct)
+    generator._construct_shared_session(
+        _auto_context_runner(free_gib=8.0), max_sequence_length=1024,
+        max_batch_size=capacity, defer_kv_allocation=True,
+        use_wmma_prefill=None, use_gemv_decode=None,
+    )
+    assert ("native_rows" in calls[0].get("execution_routes", ())) == (requested and capacity > 1)
 
 
 def test_construct_shared_session_retries_smaller_after_oom(monkeypatch) -> None:

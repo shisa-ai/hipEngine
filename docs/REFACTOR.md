@@ -1258,15 +1258,13 @@ to fall back to packed/serial, so the default path is untouched. Host ownership
 tests (`tests/test_unit_gguf_native_rows_scheduler.py`) pass RED->GREEN. See
 [`worklog/entries/20261111T211401.188154Z-lhl-r0471-impl-fe7f1d.md`](../worklog/entries/20261111T211401.188154Z-lhl-r0471-impl-fe7f1d.md).
 
-The remaining blocker is the public engaged/unengaged device run, which is
-model-availability-bound on this gfx1100 machine: `ar_decode_native_rows` admission
-requires BF16 recurrent `ssm_alpha`/`ssm_beta` weights and resident device operands
-(the UD-Q3_K_M artifact class). Every locally present artifact fails with a named
-capability miss — Q4_K_M has Q8_0 recurrent weights, Qwen3.8-27B-UD-Q4_K_M uses
-deferred device slots, and Qwen3.6-35B-A3B-UD-Q4_K_M has F32 recurrent weights — and
-no UD-Q3_K_M GGUF is on disk. The route is a load-time session choice
-(`_native_rows_ready`), so it must be requested at construction, not toggled on a
-live session.
+The public gfx1100 check is complete on Qwen3.6-35B-A3B-UD-Q3_K_M.
+Compact native rows use the scheduler's live BF16 KV leases when all rows fit
+one backing chunk; unsupported layouts continue through packed or serial
+decode. With decode repacking disabled, public generation exercised both the
+unconverted Q6_K kernel and the optional Q8_1 conversion plus DP4A kernel.
+The enabled resident certificate binds `moe_q8_1` to the conversion; the disabled
+certificate records the unconverted call. See the [validation record](../worklog/entries/20261120T163814.266757Z-lhl-r0471-public-native-rows-9d78ae.md).
 
 Done when: integrate compact native-row execution with resident scheduler session,
 position, active-slot, state/KV and reclaim ownership, preserving packed/serial
@@ -1278,10 +1276,7 @@ report the unconverted record. The clearing host checks are
 `tests/test_integration_gguf_selected_call_intents.py` and
 `tests/test_integration_gguf_execution_authorization.py`, all passing today for
 the host contract. Any changed arithmetic default additionally follows the
-execution-profile gate. The optional contract, the compatibility native-row route,
-and its public scheduler integration are implemented; the public engaged/unengaged
-device run remains blocked on a UD-Q3_K_M artifact being present on the gfx1100
-machine.
+execution-profile gate. The optional adapter remains opt-in.
 
 ### R0484 — Surya decode fallback and sparse-chunk work
 

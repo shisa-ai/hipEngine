@@ -403,6 +403,22 @@ def test_aotriton_threshold_neighbors_and_unrelated_rows(
         assert "native" in harness.labels()
 
 
+def test_packed_prefill_uses_row_local_spans_kernel(monkeypatch) -> None:
+    from hipengine.kernels.hip_gfx1100.attention import paged_attn_decode as kernels
+
+    monkeypatch.setattr(runner_mod, "is_registered", lambda key: True)
+    def resolve(**key):
+        if key["quant"] == "gguf_ud_q3_k_m":
+            return kernels.qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans
+        return kernels.qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans
+    monkeypatch.setattr(runner_mod, "resolve", resolve)
+    runner = NS(backend="hip_gfx1100", _gguf_prefill_quant="gguf_ud_q3_k_m")
+    select = runner_mod.Qwen35GGUFFullStackRunner._full_attn_prefill_native_fn
+    assert select(runner) is kernels.qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans
+    assert select(runner, packed_spans=True) is kernels.qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans
+    assert select(runner) is kernels.qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans
+
+
 def test_native_path_grows_split_rows_before_launch(monkeypatch) -> None:
     harness = _Harness(monkeypatch, rows=3, threshold=4, allow_aotriton=False)
 

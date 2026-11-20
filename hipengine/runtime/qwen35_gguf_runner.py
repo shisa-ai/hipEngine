@@ -757,6 +757,7 @@ def _bulk_full_attention_selectors(
     runtime: Any,
     *,
     rows: int,
+    packed_spans: bool = False,
     q8_t16_rowtile_all: bool | None = None,
 ) -> _bulk_attn.BulkFullAttentionSelectors:
     """Lazy selected operations for one bulk prefill attention call."""
@@ -792,7 +793,8 @@ def _bulk_full_attention_selectors(
             )
         ),
         native_prefill_fn=partial(
-            _layer_runner_method, runner, "_full_attn_prefill_native_fn"
+            _layer_runner_method, runner, "_full_attn_prefill_native_fn",
+            **({"packed_spans": True} if packed_spans else {}),
         ),
         head_major_buffers=lambda views, *, context_len: (
             _gguf_aotriton_head_major_buffers(scratch, context_len=context_len)
@@ -3905,8 +3907,20 @@ class Qwen35GGUFFullStackRunner:
             self._gguf_full_attn_decode_short_batch_fn_cache = fn
         return fn
 
-    def _full_attn_prefill_native_fn(self):
-        """Return the native GQA prefill kernel on the selected quant axis."""
+    def _full_attn_prefill_native_fn(self, *, packed_spans: bool = False):
+        """Resolve attention for packed spans or a contiguous single sequence."""
+
+        if packed_spans:
+            # Packed rows carry independent spans. Quant-specific wrappers may
+            # infer context from the row index within a single sequence.
+            fn = resolve(
+                backend=self.backend,
+                layer="full_attn_prefill",
+                quant="gguf_qwen35",
+                variant="causal_gqa_gate_bf16",
+                missing="none",
+            )
+            return fn or qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans
 
         fn = getattr(self, "_gguf_full_attn_prefill_native_fn_cache", None)
         if fn is None:
@@ -4982,7 +4996,10 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
             rows=rows,
             start=scratch.start,
-            selectors=_bulk_full_attention_selectors(self, scratch, runtime, rows=rows),
+            selectors=_bulk_full_attention_selectors(
+                self, scratch, runtime, rows=rows,
+                packed_spans=paged_max_context_len is not None,
+            ),
             policy=_bulk_full_attention_policy(),
             cos_table_ptr=cos_table_ptr,
             sin_table_ptr=sin_table_ptr,
@@ -21816,6 +21833,29 @@ class Qwen35GGUFResidentSession:
             )
         return execution_paths, captures
 
+    def native_rows_bound_kv_backing(self, sessions):
+        """Return the BF16 chunk addressable by all compact native rows."""
+        backing = None
+        for index, session in enumerate(sessions):
+            if index == 0:
+                if session is not self:
+                    return None
+            elif (
+                getattr(session, "_resident_batch_owner", None) is not self
+                or getattr(session, "_resident_slot_index", None) != index
+            ):
+                return None
+            allocation = session._device_kv_allocation
+            if allocation is None or (backing is not None and allocation.backing is not backing):
+                return None
+            backing = allocation.backing
+            if any(dtype not in (None, DType.BF16) for dtype in backing.layout.layer_storage_dtypes):
+                return None
+            if any(not backing.start_block_id <= page < backing.start_block_id + backing.pages
+                   for page in allocation.block_ids):
+                return None
+        return backing
+
     def step_rows_native(
         self,
         token_ids: tuple[int, ...] | list[int],
@@ -21826,6 +21866,7 @@ class Qwen35GGUFResidentSession:
         return_logits: bool = True,
         capture_layer_ids: tuple[int, ...] | list[int] | set[int] = (),
         stream: int = 0,
+        bound_kv_sessions: tuple["Qwen35GGUFResidentSession", ...] = (),
     ) -> Qwen35GGUFTargetRowsResult:
         """Advance compact c>1 rows with native state, attention, and MoE families."""
 
@@ -21857,13 +21898,28 @@ class Qwen35GGUFResidentSession:
             if token < 0 or token >= int(self.runner.vocab_size):
                 raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
 
+        bound_kv_backing = None
+        if self.defer_kv_allocation:
+            if len(bound_kv_sessions) != rows:
+                raise NotImplementedError("native rows require a bound KV lease per row")
+            bound_kv_backing = self.native_rows_bound_kv_backing(bound_kv_sessions)
+            if bound_kv_backing is None:
+                raise NotImplementedError("native rows require one shared BF16 KV chunk")
         current_positions = list(self.row_positions)
+        if bound_kv_backing is not None:
+            current_positions[:rows] = [int(session.position) for session in bound_kv_sessions]
         consumed_positions = tuple(current_positions[slot] for slot in slots)
         if positions is not None and tuple(int(position) for position in positions) != consumed_positions:
             raise ValueError("native target row positions do not match resident cursors")
         owner = self._target_scratch_owner
         owner.set_full_attention_positions(tuple(current_positions), self.runtime or get_hip_runtime())
         scratch = self._native_compact_scratch(rows, span_role=span_role)
+        if bound_kv_backing is not None:
+            scratch = replace(
+                scratch,
+                full_key_caches=bound_kv_backing.full_key_caches,
+                full_value_caches=bound_kv_backing.full_value_caches,
+            )
         capture_ids = tuple(sorted({int(layer_id) for layer_id in capture_layer_ids}))
         layer_count = len(self.runner.weights.config.layer_types)
         if any(layer_id < 0 or layer_id >= layer_count for layer_id in capture_ids):

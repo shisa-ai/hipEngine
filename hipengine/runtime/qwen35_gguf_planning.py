@@ -304,7 +304,7 @@ def _full_stack_scratch_plan(
     moe_shared_ffn = max(1, int(cfg.expert_shared_feed_forward_length or ffn_size or 1))
     q8_1_gate_blocks = (int(hidden_size) + _Q8_1_BLOCK - 1) // _Q8_1_BLOCK
     q8_1_down_blocks = moe_top_k * ((int(ffn_size) + _Q8_1_BLOCK - 1) // _Q8_1_BLOCK)
-    q8_1_moe_bytes = max(q8_1_gate_blocks, q8_1_down_blocks) * _Q8_1_BLOCK_BYTES
+    q8_1_moe_bytes = slot_count * max(q8_1_gate_blocks, q8_1_down_blocks) * _Q8_1_BLOCK_BYTES
     linear_qkv_bytes = slot_count * int(linear_qkv_width) * 2
     ssm_inner_bytes = slot_count * cfg.ssm_inner_size * 2
     alpha_bytes = slot_count * cfg.ssm_time_step_rank * 2

@@ -120,6 +120,17 @@ def _capability_runner(monkeypatch, *, native_batch_decode=True):
     return runner
 
 
+@pytest.mark.parametrize("requested, expected", [(True, [0, 1]), (False, [3, 2])])
+def test_resident_leases_prioritize_compact_slots_only_for_native_rows(monkeypatch, requested, expected):
+    runner = _capability_runner(monkeypatch, native_batch_decode=requested)
+    runner._resident_batch_owner = object()
+    runner._available = [
+        SimpleNamespace(session=SimpleNamespace(_resident_slot_index=i))
+        for i in range(4)
+    ]
+    assert [runner._acquire_lease().session._resident_slot_index for _ in expected] == expected
+
+
 def test_route_declines_when_not_requested(monkeypatch):
     runner = _capability_runner(monkeypatch, native_batch_decode=False)
     assert runner._step_native_rows_compact(

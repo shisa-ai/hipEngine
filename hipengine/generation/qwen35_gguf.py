@@ -3366,6 +3366,11 @@ class Qwen35GGUFBringupGenerator:
                     use_gemv_decode=use_gemv_decode,
                     defer_kv_allocation=bool(defer_kv_allocation),
                     max_batch_size=int(max_batch_size),
+                    execution_routes=(
+                        ("eager", "native_rows")
+                        if int(max_batch_size) > 1 and self.native_batch_decode
+                        else ("eager",)
+                    ),
                     **self._prepared_session_kv_kwargs(),
                     **self._target_verifier_rowtile_session_kwargs(),
                     **self._target_fp16_recurrent_state_session_kwargs(),
@@ -7955,6 +7960,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         positions = len(row.prompt_ids) + max(0, int(row.request.max_tokens) - 1)
         if positions <= 0:
             return
+        self._prioritize_native_row_leases()
         lease = self._available[-1] if self._available else None
         if lease is None:
             raise RuntimeError("GGUF resident model runner has no free session at admission")
@@ -10595,9 +10601,19 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 return session
         return None
 
+    def _prioritize_native_row_leases(self) -> None:
+        if getattr(self, "_resident_batch_owner", None) is not None and getattr(
+            self.generator, "native_batch_decode", False
+        ):
+            self._available.sort(
+                key=lambda lease: int(getattr(lease.session, "_resident_slot_index", 0)),
+                reverse=True,
+            )
+
     def _acquire_lease(self) -> _GGUFResidentSessionLease:
         if not self._available:
             raise RuntimeError("GGUF resident model runner has no free session")
+        self._prioritize_native_row_leases()
         return self._available.pop()
 
     def _packed_execution_owner(
@@ -12196,17 +12212,27 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         step_rows = getattr(owner, "step_rows_native", None)
         if not callable(step_rows):
             return False
+        bound_kv_sessions = (
+            tuple(slot.session for slot in concrete)
+            if getattr(owner, "defer_kv_allocation", False)
+            else ()
+        )
         # Flush any packed-workspace state back to the sessions before switching
         # to the native-row state layout.
         flush_packed_decode_owners_if_chunk_changed(concrete)
         # Align the owner's scalar cursor with slot-view 0. position_host[1:] is
         # already shared through the slot-view scratch views; row_positions
         # overrides index 0 with this scalar.
-        owner._position = int(concrete[0].seq_position)
+        if not bound_kv_sessions:
+            owner._position = int(concrete[0].seq_position)
         try:
             result = step_rows(
                 [int(slot.prev_token) for slot in concrete],
                 return_logits=False,
+                **({
+                    "bound_kv_sessions": bound_kv_sessions,
+                    "positions": tuple(int(slot.seq_position) for slot in concrete),
+                } if bound_kv_sessions else {}),
             )
         except NotImplementedError:
             return False
@@ -12227,6 +12253,8 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         self._route_counts[f"native_c{width}_decode_steps"] += 1
         for row, slot, token in zip(rows, concrete, tokens, strict=True):
             self._record_native_token(row, token)
+            if bound_kv_sessions:
+                slot.session._position = int(slot.seq_position)
             slot.packed_decode_owner = owner
             slot.native_decode_steps += 1
         manifest = getattr(owner, "last_native_rows_execution_manifest", None)
