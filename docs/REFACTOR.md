@@ -1180,39 +1180,6 @@ role-policy and dense-metadata contracts; then GPU global/SWA parity across part
 and verifier cases plus public `LLM.generate()` at short, boundary-neighbor and unrelated lengths.
 Confirm selected variants, append ordering, state/output equality and cleanup.
 
-### R0387 — Dense gfx1100 packed-step profiling follow-up
-
-Owner: `hipengine/runtime/gguf_linear.py`.
-
-Scope: `tests/test_unit_server_f1_concurrency_bench.py`; `tests/test_unit_gguf_ar_decode_control.py`.
-
-**Remaining work:** profile the dense packed decode step on gfx1100 before choosing a kernel,
-state-transfer or submission change. The old comparison did not show aggregate scaling, but it is
-not a measurement of today's route. Keep default packed execution and its scalar comparison; do not
-infer a current speed result or disable the route from the old timing.
-
-**Status (2026-11-10):** concurrency evidence collected on the W7900 (c1/c2/c4 plus
-neighboring c3/c5 and unrelated c8/c13; dense Qwen3.8-27B-Q4_K_M, BF16 KV, greedy,
-strict): every width is route-clean and deterministic except c4, which shows an
-intermittent packed-decode nondeterminism (1 divergence in 18 runs) — filed as
-the local c4 correctness investigation (R0523). rocprofv3 graph-mode cache-only census collected for c1+c2 and c1+c4
-(capture excluded, one steady replay); both c2 and c4 close (the c2 dense-down
-census filter was corrected to count the col8_residual variant). Prerequisite test
-bundles green. See
-[`worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md`](../worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md)
-and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-r0387-*`. The c4 correctness issue is closed; see [the repair record](../worklog/entries/20261119T222435.493300Z-lhl-r0523-compact-q4-c4-0854fc.md).
-
-Done when: inspect `scripts/server_f1_concurrency_bench.py --help`, then collect matched
-current c1/c2/c4 and neighboring/unrelated logical-width requests on one gfx1100 host with model,
-quant, KV policy, context, sampler, queue count and execution profile recorded. Confirm actual
-public packed submission and slot/state ownership. Profile warmed cache-only execution with
-`rocprofv3 --kernel-trace`; separate projection/attention work, state/KV copies, host submission and
-synchronization, and separate capture from replay. Check teacher-forced numerics/tasks for changed
-arithmetic and exact ownership, ragged/shrinking groups, cancellation, repeats and cleanup. Preserve
-complete request-wall and per-request latency alongside aggregate throughput. Run
-`tests/test_unit_server_f1_concurrency_bench.py`, `tests/test_unit_gguf_ar_decode_control.py` and
-execution-profile contract tests before changing the comparison interface.
-
 ### R0459 — Row-split GDN recurrence removal decision
 
 Owner: `hipengine/generation/qwen4_exp_profiles.py`.
