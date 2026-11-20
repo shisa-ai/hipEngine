@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_eagle4_device_head_depth_sweep",
+  "status": "relative_baseline_internal",
+  "performance_claim": false,
+  "publishable": false,
+  "note": "Internal evidence for the device-resident efficient head + draft step (task #25 d/e). Sub-window win: per-chain host round-trips eliminated (8 syncs/20 H2D/11 D2H -> 0/0/1); cycle wall flat because the head device compute and eager target verify dominate. 1 rep, single load; not a publishable perf claim.",
+  "provenance": {
+    "hipengine_commit": "80cc4067e93cdf8658e018ddb5b9cec27ddb07c9",
+    "git_branch": "qwen38-dspine-eagle4",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "drafter": "/home/lhl/.cache/huggingface/hub/models--EAGLE-Corp--Qwen3.8-27B-EAGLE4/snapshots/f58a5985223040552ad404fba98f0dd27f5f676a",
+    "backend": "hip_gfx1151",
+    "command": "/tmp/eagle4_device_head_sweep.py + /tmp/eagle4_draft_ab.py (ten-prompt mtpbench suite; run_eagle4_cycle KV path; A/B old module from d45b81af1)",
+    "date": "2026-11-09T22:55:59"
+  },
+  "protocol": {
+    "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite": "mtpbench-code-general-ja (10 prompts)",
+    "max_new_tokens": 25,
+    "n_draft_sweep": [
+      1,
+      2,
+      3,
+      4,
+      6,
+      8
+    ],
+    "reps": 1,
+    "verify": "native KV-cache chain, device-resident head (verify_target_block)",
+    "warmup": "1 discarded prompt",
+    "aggregation": "median EAGLE-4 decode tok/s across the 10 prompts per depth; AR reference deterministic per prompt (single load)",
+    "ab_microbench": "draft_greedy_chain_cached(4), 12 iters, median of last 10; runtime sync/memcpy wrapped to count round-trips; old vs new module in one process"
+  },
+  "summary": {
+    "optimum_n_draft": 2,
+    "optimum_tok_s_median_of_prompts": 10.429847982509349,
+    "optimum_ratio_vs_ar": 0.9361077123771464,
+    "exact_all_depths": true,
+    "roundtrips_per_4token_chain": {
+      "old": {
+        "sync": 8,
+        "h2d": 20,
+        "d2h": 11,
+        "d2d": 10
+      },
+      "new": {
+        "sync": 0,
+        "h2d": 0,
+        "d2h": 1,
+        "d2d": 16
+      }
+    },
+    "draft4_ms_median": {
+      "old": 115.23698561359197,
+      "new": 121.70437397435308
+    },
+    "draft_ids_identical": true
+  },
+  "rows": [
+    {
+      "n_draft": 1,
+      "tok_s_median": 9.593740843323914,
+      "ratio_vs_ar": 0.8610647834027617,
+      "accepted_per_draft": 0.75,
+      "exact_all": true
+    },
+    {
+      "n_draft": 2,
+      "tok_s_median": 10.429847982509349,
+      "ratio_vs_ar": 0.9361077123771464,
+      "accepted_per_draft": 1.2992424242424243,
+      "exact_all": true
+    },
+    {
+      "n_draft": 3,
+      "tok_s_median": 10.413162254589379,
+      "ratio_vs_ar": 0.9346101221324271,
+      "accepted_per_draft": 1.6666666666666665,
+      "exact_all": true
+    },
+    {
+      "n_draft": 4,
+      "tok_s_median": 10.264025779312796,
+      "ratio_vs_ar": 0.9212247108649501,
+      "accepted_per_draft": 2.0029761904761907,
+      "exact_all": true
+    },
+    {
+      "n_draft": 6,
+      "tok_s_median": 8.176896990826844,
+      "ratio_vs_ar": 0.7338991277018478,
+      "accepted_per_draft": 2.308531746031746,
+      "exact_all": true
+    },
+    {
+      "n_draft": 8,
+      "tok_s_median": 4.611521137601759,
+      "ratio_vs_ar": 0.4138967806566848,
+      "accepted_per_draft": 2.515873015873016,
+      "exact_all": true
+    }
+  ],
+  "microbench": {
+    "prompt": "code_merge_intervals",
+    "prompt_len": 28,
+    "prefill_ms_median": 21.613124990835786,
+    "draft4_ms_median": 129.23216097988188
+  }
+}

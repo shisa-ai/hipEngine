@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_eagle4_graph_verify_ab",
+  "status": "relative_measurement_internal",
+  "performance_claim": false,
+  "publishable": false,
+  "note": "Task #25 part (a) integration A/B: eager vs graph-captured native target verify in the EAGLE-4 cycle, same process/model/thermal state. Graph ran 33/33 cycles (no fallback), AR-exact via public surface. Verify 140.8->126.2ms; cycle wall 217.3->195.3ms (-10%). Win limited by the graph-captured device route being slower (~120ms) than the eager synced device route (~98ms); closing that gap is the next perf lever. Internal evidence, not a publishable perf claim.",
+  "provenance": {
+    "hipengine_commit": "9f4049f901f0158de5ffe3841500b2e43008a3c4",
+    "git_branch": "qwen38-dspine-eagle4",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "drafter": "/home/lhl/.cache/huggingface/hub/models--EAGLE-Corp--Qwen3.8-27B-EAGLE4/snapshots/f58a5985223040552ad404fba98f0dd27f5f676a",
+    "backend": "hip_gfx1151",
+    "command": "/tmp/eagle4_graph_ab_profile.py (3 prompts x 25 tokens, eager then graph, per-phase perf_counter + device_synchronize); AR-exact via /tmp/llm_eagle4_device_check.py",
+    "date": "2026-11-09T23:49:07"
+  },
+  "protocol": {
+    "n_draft": 2,
+    "prompts": [
+      "code_merge_intervals",
+      "code_lru_cache",
+      "general_en_plan"
+    ],
+    "max_new_tokens": 25,
+    "aggregation": "median per-cycle phase wall across 33 cycles per route"
+  },
+  "summary": {
+    "eager": {
+      "verify_ms_median": 140.77195106074214,
+      "draft_ms_median": 51.236833445727825,
+      "aux_append_ms_median": 14.334239065647125,
+      "cycle_wall_ms_median": 217.27161086164415,
+      "graph_cycles_total": 0,
+      "n_cycles_total": 33
+    },
+    "graph": {
+      "verify_ms_median": 126.18210702203214,
+      "draft_ms_median": 51.85708811040968,
+      "aux_append_ms_median": 16.022413037717342,
+      "cycle_wall_ms_median": 195.3195089008659,
+      "graph_cycles_total": 33,
+      "n_cycles_total": 33
+    }
+  }
+}

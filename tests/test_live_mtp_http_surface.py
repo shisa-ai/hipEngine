@@ -189,11 +189,14 @@ def _ids(body, index=0):
 
 def _cycles(body, index=0):
     hipengine = body["choices"][index]["hipengine"]
+    diagnostics = hipengine.get("diagnostics") or {}
+    resident = diagnostics.get("specdec2_mtp2") or {}
+    if "cycles" in resident:
+        return int(resident["cycles"] or 0)
     summary = hipengine.get("speculative_mtp") or {}
     if "draft_cycles" in summary:
         return int(summary["draft_cycles"] or 0)
-    # Legacy providers still publish scalar MTP timing; resident MTP2 reports
-    # the same count in the response summary without a timing mirror.
+    # Older providers publish scalar MTP timing instead of terminal diagnostics.
     timing = hipengine.get("timing", {})
     return int(timing.get("mtp_cycles_count", 0))
 
@@ -205,9 +208,10 @@ def _assert_parity(ar, mtp, *, label, choices=1, require_mtp=True):
         assert _ids(ar, index) == _ids(mtp, index), (
             f"{label}: choice {index} drifted from the AR route"
         )
-    assert _cycles(ar, 0) == 0, (label, "the AR arm reported MTP cycles")
-    if require_mtp:
-        assert _cycles(mtp, 0) > 0, (label, "the MTP arm reported no MTP cycles")
+    for index in range(choices):
+        assert _cycles(ar, index) == 0, (label, index, "the AR arm reported MTP cycles")
+        if require_mtp:
+            assert _cycles(mtp, index) > 0, (label, index, "the MTP arm reported no MTP cycles")
 
 
 def test_multiple_choices_match_ar_and_report_every_choice(client) -> None:

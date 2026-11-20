@@ -1690,7 +1690,7 @@ class Gemma4Runner:
     # The save/restore file schema this runner writes and accepts. Class
     # attributes, deliberately not dataclass fields: they are format constants,
     # not per-runner state.
-    KV_STATE_SCHEMA = 1
+    KV_STATE_SCHEMA = 2
     _KV_STATE_CHUNK_BYTES = 16 * 1024 * 1024
 
     def save_kv_state(
@@ -1737,6 +1737,8 @@ class Gemma4Runner:
             "kind": "gemma4_kv_state",
             "capacity": int(self.capacity),
             "position": position,
+            "layer_capacities": list(self._kv_capacity),
+            "base_positions": list(self._kv_base),
             "plane_bytes": [int(cache.nbytes) for cache in self._caches],
             "identity": dict(identity) if identity is not None else None,
             "logits": None if logits is None else int(logits.size),
@@ -1748,9 +1750,10 @@ class Gemma4Runner:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("wb") as handle:
             handle.write(json.dumps(header).encode("utf-8") + b"\n")
-            for cache in self._caches:
-                per_position = int(cache.nbytes) // int(self.capacity)
-                remaining = position * per_position
+            for index, cache in enumerate(self._caches):
+                layer = index // 2
+                per_position = int(cache.nbytes) // self._kv_capacity[layer]
+                remaining = (position - self._kv_base[layer]) * per_position
                 done = 0
                 while remaining > 0:
                     take = min(self._KV_STATE_CHUNK_BYTES, remaining)
@@ -1837,12 +1840,39 @@ class Gemma4Runner:
                     f"capacity {self.capacity}"
                 )
 
+            if header.get("layer_capacities") != list(self._kv_capacity):
+                raise ValueError("kv state layer capacities do not match this runner")
+            bases = header.get("base_positions")
+            if (
+                not isinstance(bases, list)
+                or len(bases) != len(self._kv_capacity)
+                or any(
+                    type(base) is not int or not 0 <= base <= position
+                    or position - base > capacity
+                    for base, capacity in zip(bases, self._kv_capacity)
+                )
+            ):
+                raise ValueError("kv state base positions are outside the layer capacities")
+
+            logits_count = header.get("logits")
+            if logits_count is not None and (
+                type(logits_count) is not int or logits_count < 0
+            ):
+                raise ValueError("kv state logits count must be nonnegative")
+            payload_bytes = sum(
+                (position - bases[index // 2])
+                * (int(cache.nbytes) // self._kv_capacity[index // 2])
+                for index, cache in enumerate(self._caches)
+            ) + (0 if logits_count is None else logits_count * 4)
+            if path.stat().st_size - handle.tell() != payload_bytes:
+                raise ValueError("kv state payload size does not match its layout")
+
             # Validation is done: rewind the exposed state, then land the bytes.
             self.reset()
-            chunk = np.empty(self._KV_STATE_CHUNK_BYTES, dtype=np.uint8)
-            for cache in self._caches:
-                per_position = int(cache.nbytes) // int(self.capacity)
-                remaining = position * per_position
+            for index, cache in enumerate(self._caches):
+                layer = index // 2
+                per_position = int(cache.nbytes) // self._kv_capacity[layer]
+                remaining = (position - bases[layer]) * per_position
                 done = 0
                 while remaining > 0:
                     take = min(self._KV_STATE_CHUNK_BYTES, remaining)
@@ -1871,9 +1901,10 @@ class Gemma4Runner:
             self._kv[index] = Gemma4LayerKV(
                 key_cache=entry.key_cache,
                 value_cache=entry.value_cache,
-                capacity=self.capacity,
-                write_offset=position,
+                capacity=self._kv_capacity[index],
+                write_offset=position - bases[index],
             )
+        self._kv_base[:] = bases
         self._position = position
         return logits
 

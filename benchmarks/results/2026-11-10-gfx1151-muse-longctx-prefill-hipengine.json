@@ -1,0 +1,60 @@
+{
+ "schema": 1,
+ "kind": "muse_glimmer_hipengine_ar_bench",
+ "status": "diagnostic",
+ "performance_claim": false,
+ "date": "2026-11-10",
+ "model": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "backend": "hip_gfx1151",
+ "timing_boundary": "decode_model_step = sum of synchronized decode_step walls (llama-bench tg boundary); decode = user-facing wall incl greedy argmax; prefill = synchronized session wall",
+ "repeats": 2,
+ "warmup": "32-token and (prefill_chunk + 512)-token prefills, 4 decode steps each",
+ "execution_path": "muse_glimmer_gguf_resident_eager",
+ "rows": [
+  {
+   "prompt_tokens": 32768,
+   "gen_tokens": 8,
+   "prefill_tok_s": 452.2267639521777,
+   "decode_tok_s": 12.234687195377564,
+   "decode_model_step_tok_s": 12.23657520628549,
+   "prefill_s_samples": [
+    72.41434823296731,
+    72.504098051053
+   ],
+   "decode_s_samples": [
+    0.6539041820215061,
+    0.6538529959507287
+   ],
+   "decode_model_step_s_samples": [
+    0.6537964409217238,
+    0.6537589600193314
+   ],
+   "prefill_s_median": 72.45922314201016,
+   "decode_s_median": 0.6538785889861174,
+   "decode_model_step_s_median": 0.6537777004705276
+  },
+  {
+   "prompt_tokens": 131072,
+   "gen_tokens": 8,
+   "prefill_tok_s": 286.4394416539282,
+   "decode_tok_s": 11.301842424082789,
+   "decode_model_step_tok_s": 11.303374932065168,
+   "prefill_s_samples": [
+    456.4973025890067,
+    458.6839255489758
+   ],
+   "decode_s_samples": [
+    0.7079483830020763,
+    0.707749996043276
+   ],
+   "decode_model_step_s_samples": [
+    0.7078482439974323,
+    0.7076581951114349
+   ],
+   "prefill_s_median": 457.5906140689913,
+   "decode_s_median": 0.7078491895226762,
+   "decode_model_step_s_median": 0.7077532195544336
+  }
+ ]
+}

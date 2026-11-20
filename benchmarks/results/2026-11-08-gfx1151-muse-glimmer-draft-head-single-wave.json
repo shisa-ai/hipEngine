@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "kind": "muse_glimmer_dflash_draft_head_single_wave",
+  "status": "retained",
+  "performance_claim": true,
+  "claim_scope": "DFlash draft lm_head sub-window + full-suite decode; verify exactness unchanged",
+  "date": "2026-11-08",
+  "model": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+  "draft": "/models/gguf/Muse-Glimmer-30B-GGUF/dflash-Muse-Glimmer-30B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1151",
+  "host": "zbook / Radeon 8060S (gfx1151), Ryzen AI MAX+ PRO 395",
+  "baseline_commit": "9cc3361ea283c3aacb26c1135b5538e9bcd49def",
+  "change": "Route the DFlash draft lm_head (Q5_K, 202048 vocab) to the existing single-wave Q5 production rowtile (registered for gfx1151), via capability-driven registry resolve guarded to rows 2..8, exact_rows fallback otherwise. The draft head only proposes; verify stays exact so DFlash IDs == true AR.",
+  "head_kernel_ms_per_cycle": {
+    "four_wave_parent_parity": 7.18,
+    "single_wave_production": 4.37,
+    "delta_ms": -2.81,
+    "delta_pct": -39,
+    "method": "rocprofv3 --kernel-trace of draft_block, synthetic window fill; unchanged attention 9.2 ms as thermal control; context-independent weight GEMV"
+  },
+  "full_mtpbench_suite_ab_budget4": {
+    "prompts": 10,
+    "max_tokens": 256,
+    "single_wave": {"decode_tok_s": 22.41, "acceptance": 0.42718, "accepted": 1232, "proposed": 2884, "exact": true},
+    "four_wave_fallback": {"decode_tok_s": 21.79, "acceptance": 0.42718, "accepted": 1232, "proposed": 2884, "exact": true},
+    "decode_delta_pct": 2.8,
+    "note": "acceptance identical to 5 decimals (zero proposal argmax flips); DFlash IDs == AR both arms"
+  },
+  "long_context_back_to_back_ab_budget4": {
+    "method": "single-wave vs four-wave fallback on the same resident prompt KV, run back-to-back per context to control laptop thermal drift; 128 greedy tokens",
+    "rows": [
+      {"ctx": 32768, "single_wave_ms_per_cycle": 197.0, "four_wave_ms_per_cycle": 204.9, "delta_ms": -7.9, "acceptance": 0.55625, "exact": true},
+      {"ctx": 126000, "single_wave_ms_per_cycle": 234.5, "four_wave_ms_per_cycle": 241.5, "delta_ms": -7.0, "acceptance": 0.51190, "exact": true}
+    ],
+    "thermal_caveat": "absolute cycle times are thermally inflated this session (~200 ms vs ~141 in the earlier budget sweep); the attributable head-kernel saving is the rocprof -2.81 ms and the A/B confirms a non-regressive cycle win with identical acceptance"
+  },
+  "correctness_gates": {
+    "test_live_muse_glimmer_dflash_gpu.py": "2 pass (draft oracle vs llama.cpp + window slice; rows=16 exercises fallback)",
+    "test_live_muse_glimmer_dflash_exactness.py": "2 pass (ten-prompt DFlash IDs == AR budget 15 + public dflash LLM surface)",
+    "acceptance": "identical single-wave vs four-wave on full mtpbench (budget 4) and at 32K/126K"
+  },
+  "remaining": "draft attention (~9.2 ms/cycle, strict scalar non-causal windowed block kernel) needs a new non-causal WMMA block-flash kernel; available flash routes are causal-only/head_dim-256-only. Separate follow-up unit.",
+  "worklog": "worklog/entries/20261108T173703.302553Z-lhl-muse-glimmer-f4516d.md",
+  "campaign": "docs/campaigns/MUSE-GLIMMER.md §11.1"
+}

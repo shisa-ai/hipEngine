@@ -1,0 +1,1082 @@
+{
+  "schema": 1,
+  "kind": "muse_glimmer_hipengine_dflash_mtpbench",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "date": "2026-11-10",
+  "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified)",
+  "model_path": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+  "draft_path": "/models/gguf/Muse-Glimmer-30B-GGUF/dflash-Muse-Glimmer-30B-Q4_K_M.gguf",
+  "suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "max_tokens": 512,
+  "candidate_budget": 4,
+  "adaptive_depth": true,
+  "repeats": 1,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 3,
+    "collected_at": "2026-11-10T10:23:46.920442+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "be3550ba6c2ac45aa98d0d1ba5e8c89f4a68e5d7",
+    "git_branch": "main",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 2,
+    "dirty": true,
+    "dirty_paths": [
+      "hipengine/kernels/hip_gfx1100/attention/muse_glimmer_decode_attention.hip",
+      "hipengine/runtime/muse_glimmer.py"
+    ],
+    "dirty_path_count": 2,
+    "untracked_paths": [
+      "benchmarks/results/2026-11-10-gfx1151-muse-gate-a-decode-opt.json",
+      "tests/test_gpu_muse_glimmer_attn_short_mode.py"
+    ],
+    "execution_affecting_dirty": true,
+    "execution_affecting_paths": [
+      "hipengine/kernels/hip_gfx1100/attention/muse_glimmer_decode_attention.hip",
+      "hipengine/runtime/muse_glimmer.py",
+      "tests/test_gpu_muse_glimmer_attn_short_mode.py"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/home/lhl/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "0c34990e9926ceab29c14f6f253b5b90d7c48c204d1aa88d866c785220ce189e",
+      "size_bytes": 16756683904,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8377817664,
+        16755635328
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "f16/f16",
+    "command": [
+      "scripts/muse_glimmer_dflash_bench.py",
+      "--max-tokens",
+      "512",
+      "--output",
+      "benchmarks/results/2026-11-10-gfx1151-muse-decode-opt-exactness.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": "post-prefill decode wall; output transitions; per-cycle logits readback sync",
+    "warmups": null,
+    "repetitions": 1,
+    "profiler": null
+  },
+  "gate_b_target_tok_s": 21.3,
+  "exactness_all": true,
+  "ar_summary": {
+    "generated_tokens": 3496,
+    "decode_wall_s": 271.75380338006653,
+    "decode_tok_s": 12.864585358206014,
+    "transition_normalized_tok_s": 12.827787345167668,
+    "per_request_decode_tok_s_median": 12.853510310147158
+  },
+  "dflash_summary": {
+    "generated_tokens": 3496,
+    "decode_wall_s": 126.94811772898538,
+    "decode_tok_s": 27.538809259570275,
+    "transition_normalized_tok_s": 27.460036921871275,
+    "per_request_decode_tok_s_median": 23.85855389599307
+  },
+  "speedup_vs_ar": 2.140668237084215,
+  "beats_gate_b": true,
+  "economics": {
+    "proposed": 4197,
+    "accepted": 2311,
+    "acceptance": 0.550631403383369,
+    "committed": 3496,
+    "target_forwards": 1201,
+    "tokens_per_target_forward": 2.9109075770191506
+  },
+  "rows": [
+    {
+      "repeat": 0,
+      "id": "code_merge_intervals",
+      "category": "code",
+      "prompt_tokens": 30,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.4274918839801103,
+      "ar_decode_s": 39.84736921702279,
+      "spec_prefill_s": 0.4314801449654624,
+      "spec_decode_s": 12.864839542016853,
+      "exact": true,
+      "proposed": 561,
+      "accepted": 398,
+      "committed": 512,
+      "target_forwards": 117,
+      "draft_forwards": 116,
+      "acceptance": 0.7094474153297683,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 5,
+        "cycles": 116,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9703369140625
+          },
+          {
+            "cycle": 12,
+            "action": "revert",
+            "from": 5,
+            "to": 4,
+            "probe_rate": 0.03269685483169659,
+            "base_rate": 0.04434591240449276
+          },
+          {
+            "cycle": 32,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9563152298291403
+          },
+          {
+            "cycle": 36,
+            "action": "keep",
+            "from": 4,
+            "to": 5,
+            "probe_rate": 0.04477476052854662,
+            "base_rate": 0.043389788114854146
+          },
+          {
+            "cycle": 88,
+            "action": "probe",
+            "from": 5,
+            "to": 6,
+            "acceptance_ewma": 0.8179537370094884
+          },
+          {
+            "cycle": 92,
+            "action": "revert",
+            "from": 6,
+            "to": 5,
+            "probe_rate": 0.02911286700793614,
+            "base_rate": 0.04537182788301007
+          },
+          {
+            "cycle": 112,
+            "action": "probe",
+            "from": 5,
+            "to": 6,
+            "acceptance_ewma": 0.8072775610027241
+          },
+          {
+            "cycle": 116,
+            "action": "revert",
+            "from": 6,
+            "to": 5,
+            "probe_rate": 0.026368956305310817,
+            "base_rate": 0.04471796148203723
+          }
+        ],
+        "stats": {
+          "4": {
+            "samples": 27,
+            "tokens_per_ms": 0.043389788114854146,
+            "acceptance_ewma": 0.9563152298291403
+          },
+          "5": {
+            "samples": 81,
+            "tokens_per_ms": 0.04677456687875674,
+            "acceptance_ewma": 0.855458170752043
+          },
+          "6": {
+            "samples": 8,
+            "tokens_per_ms": 0.026368956305310817,
+            "acceptance_ewma": 0.3347981770833333
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "code_topological_sort",
+      "category": "code",
+      "prompt_tokens": 39,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.5166130770230666,
+      "ar_decode_s": 39.83852350298548,
+      "spec_prefill_s": 0.44444814295275137,
+      "spec_decode_s": 12.019520525995176,
+      "exact": true,
+      "proposed": 534,
+      "accepted": 407,
+      "committed": 512,
+      "target_forwards": 107,
+      "draft_forwards": 106,
+      "acceptance": 0.7621722846441947,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 6,
+        "cycles": 106,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9703369140625
+          },
+          {
+            "cycle": 12,
+            "action": "revert",
+            "from": 5,
+            "to": 4,
+            "probe_rate": 0.0414958809609366,
+            "base_rate": 0.044303643244680904
+          },
+          {
+            "cycle": 48,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9594867997570511
+          },
+          {
+            "cycle": 52,
+            "action": "keep",
+            "from": 4,
+            "to": 5,
+            "probe_rate": 0.045924011892993694,
+            "base_rate": 0.04360003067075178
+          },
+          {
+            "cycle": 64,
+            "action": "probe",
+            "from": 5,
+            "to": 6,
+            "acceptance_ewma": 0.9128534120798577
+          },
+          {
+            "cycle": 68,
+            "action": "keep",
+            "from": 5,
+            "to": 6,
+            "probe_rate": 0.0601169667021903,
+            "base_rate": 0.04988943564993611
+          },
+          {
+            "cycle": 80,
+            "action": "probe",
+            "from": 6,
+            "to": 7,
+            "acceptance_ewma": 0.9013716876506805
+          },
+          {
+            "cycle": 84,
+            "action": "revert",
+            "from": 7,
+            "to": 6,
+            "probe_rate": 0.04962824483985685,
+            "base_rate": 0.055352614549815916
+          }
+        ],
+        "stats": {
+          "4": {
+            "samples": 43,
+            "tokens_per_ms": 0.04360003067075178,
+            "acceptance_ewma": 0.9594867997570511
+          },
+          "5": {
+            "samples": 20,
+            "tokens_per_ms": 0.04988943564993611,
+            "acceptance_ewma": 0.9128534120798577
+          },
+          "6": {
+            "samples": 39,
+            "tokens_per_ms": 0.03505635525371184,
+            "acceptance_ewma": 0.5144406008221423
+          },
+          "7": {
+            "samples": 4,
+            "tokens_per_ms": 0.04962824483985685,
+            "acceptance_ewma": 1.0
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "code_lru_cache",
+      "category": "code",
+      "prompt_tokens": 36,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.5182880790089257,
+      "ar_decode_s": 39.837720567011274,
+      "spec_prefill_s": 0.4418624129611999,
+      "spec_decode_s": 13.243266137025785,
+      "exact": true,
+      "proposed": 526,
+      "accepted": 392,
+      "committed": 512,
+      "target_forwards": 121,
+      "draft_forwards": 120,
+      "acceptance": 0.7452471482889734,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 5,
+        "cycles": 120,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9703369140625
+          },
+          {
+            "cycle": 12,
+            "action": "revert",
+            "from": 5,
+            "to": 4,
+            "probe_rate": 0.03857735531042591,
+            "base_rate": 0.044416632609452486
+          },
+          {
+            "cycle": 64,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.969649625053666
+          },
+          {
+            "cycle": 68,
+            "action": "revert",
+            "from": 5,
+            "to": 4,
+            "probe_rate": 0.0428494164813127,
+            "base_rate": 0.04387284765951621
+          },
+          {
+            "cycle": 88,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9446524800342309
+          },
+          {
+            "cycle": 92,
+            "action": "keep",
+            "from": 4,
+            "to": 5,
+            "probe_rate": 0.050086847592133665,
+            "base_rate": 0.042954178737491924
+          },
+          {
+            "cycle": 96,
+            "action": "probe",
+            "from": 5,
+            "to": 6,
+            "acceptance_ewma": 0.9751318639144301
+          },
+          {
+            "cycle": 100,
+            "action": "revert",
+            "from": 6,
+            "to": 5,
+            "probe_rate": 0.05155157847895875,
+            "base_rate": 0.05231020894740295
+          },
+          {
+            "cycle": 120,
+            "action": "probe",
+            "from": 5,
+            "to": 6,
+            "acceptance_ewma": 0.9946953646909741
+          }
+        ],
+        "stats": {
+          "4": {
+            "samples": 79,
+            "tokens_per_ms": 0.042954178737491924,
+            "acceptance_ewma": 0.9446524800342309
+          },
+          "5": {
+            "samples": 36,
+            "tokens_per_ms": 0.053035258272802095,
+            "acceptance_ewma": 0.9946953646909741
+          },
+          "6": {
+            "samples": 5,
+            "tokens_per_ms": 0.05368680955700478,
+            "acceptance_ewma": 0.875
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "code_markdown_table",
+      "category": "code",
+      "prompt_tokens": 42,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.521277186984662,
+      "ar_decode_s": 39.8370670999866,
+      "spec_prefill_s": 0.4466778769856319,
+      "spec_decode_s": 15.283868638973217,
+      "exact": true,
+      "proposed": 546,
+      "accepted": 374,
+      "committed": 512,
+      "target_forwards": 141,
+      "draft_forwards": 140,
+      "acceptance": 0.684981684981685,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 6,
+        "cycles": 140,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9703369140625
+          },
+          {
+            "cycle": 12,
+            "action": "revert",
+            "from": 5,
+            "to": 4,
+            "probe_rate": 0.04321934410373587,
+            "base_rate": 0.04436289064677802
+          },
+          {
+            "cycle": 48,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.18392592121134854
+          },
+          {
+            "cycle": 52,
+            "action": "keep",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.029908845611243108,
+            "base_rate": 0.0165542806212287
+          },
+          {
+            "cycle": 64,
+            "action": "probe",
+            "from": 3,
+            "to": 4,
+            "acceptance_ewma": 0.8896600734442472
+          },
+          {
+            "cycle": 68,
+            "action": "revert",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.033660355989158584,
+            "base_rate": 0.033920993019339485
+          },
+          {
+            "cycle": 88,
+            "action": "probe",
+            "from": 3,
+            "to": 4,
+            "acceptance_ewma": 0.9336264576861848
+          },
+          {
+            "cycle": 92,
+            "action": "revert",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.02961485968432246,
+            "base_rate": 0.034945490317162216
+          },
+          {
+            "cycle": 112,
+            "action": "probe",
+            "from": 3,
+            "to": 4,
+            "acceptance_ewma": 0.8964201304261415
+          },
+          {
+            "cycle": 116,
+            "action": "keep",
+            "from": 3,
+            "to": 4,
+            "probe_rate": 0.040012509411853844,
+            "base_rate": 0.03395631826988717
+          },
+          {
+            "cycle": 120,
+            "action": "probe",
+            "from": 4,
+            "to": 5,
+            "acceptance_ewma": 0.9560745541390621
+          },
+          {
+            "cycle": 124,
+            "action": "keep",
+            "from": 4,
+            "to": 5,
+            "probe_rate": 0.04610825226101413,
+            "base_rate": 0.04329095842071491
+          },
+          {
+            "cycle": 128,
+            "action": "probe",
+            "from": 5,
+            "to": 6,
+            "acceptance_ewma": 0.8629266738891601
+          },
+          {
+            "cycle": 132,
+            "action": "keep",
+            "from": 5,
+            "to": 6,
+            "probe_rate": 0.056377675375180264,
+            "base_rate": 0.04762683000240304
+          },
+          {
+            "cycle": 136,
+            "action": "probe",
+            "from": 6,
+            "to": 7,
+            "acceptance_ewma": 0.9360860188802084
+          },
+          {
+            "cycle": 140,
+            "action": "revert",
+            "from": 7,
+            "to": 6,
+            "probe_rate": 0.03052560060298661,
+            "base_rate": 0.05671687385458131
+          }
+        ],
+        "stats": {
+          "3": {
+            "samples": 56,
+            "tokens_per_ms": 0.03395631826988717,
+            "acceptance_ewma": 0.8964201304261415
+          },
+          "4": {
+            "samples": 59,
+            "tokens_per_ms": 0.04329095842071491,
+            "acceptance_ewma": 0.9560745541390621
+          },
+          "5": {
+            "samples": 12,
+            "tokens_per_ms": 0.04762683000240304,
+            "acceptance_ewma": 0.8629266738891601
+          },
+          "6": {
+            "samples": 9,
+            "tokens_per_ms": 0.057517820118237334,
+            "acceptance_ewma": 0.9520645141601562
+          },
+          "7": {
+            "samples": 4,
+            "tokens_per_ms": 0.03052560060298661,
+            "acceptance_ewma": 0.3683035714285714
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "general_en_plan",
+      "category": "general_en",
+      "prompt_tokens": 29,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.4888581479899585,
+      "ar_decode_s": 39.829886410036124,
+      "spec_prefill_s": 0.43761286104563624,
+      "spec_decode_s": 27.359617840964347,
+      "exact": true,
+      "proposed": 668,
+      "accepted": 248,
+      "committed": 512,
+      "target_forwards": 266,
+      "draft_forwards": 265,
+      "acceptance": 0.3712574850299401,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 2,
+        "cycles": 265,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.1578369140625
+          },
+          {
+            "cycle": 12,
+            "action": "keep",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.032678022104966765,
+            "base_rate": 0.015765166025335953
+          },
+          {
+            "cycle": 64,
+            "action": "probe",
+            "from": 3,
+            "to": 2,
+            "acceptance_ewma": 0.15742429639664238
+          },
+          {
+            "cycle": 68,
+            "action": "revert",
+            "from": 2,
+            "to": 3,
+            "probe_rate": 0.011617398651203778,
+            "base_rate": 0.014412557909477996
+          },
+          {
+            "cycle": 136,
+            "action": "probe",
+            "from": 3,
+            "to": 2,
+            "acceptance_ewma": 0.09780938425268694
+          },
+          {
+            "cycle": 140,
+            "action": "keep",
+            "from": 3,
+            "to": 2,
+            "probe_rate": 0.0169556170674302,
+            "base_rate": 0.012727927377180273
+          }
+        ],
+        "stats": {
+          "2": {
+            "samples": 134,
+            "tokens_per_ms": 0.01924785655671287,
+            "acceptance_ewma": 0.4814042315104966
+          },
+          "3": {
+            "samples": 124,
+            "tokens_per_ms": 0.012727927377180273,
+            "acceptance_ewma": 0.09780938425268694
+          },
+          "4": {
+            "samples": 7,
+            "tokens_per_ms": 0.015765166025335953,
+            "acceptance_ewma": 0.1578369140625
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "general_en_explain",
+      "category": "general_en",
+      "prompt_tokens": 28,
+      "ar_generated": 115,
+      "spec_generated": 115,
+      "ar_prefill_s": 0.4891049709985964,
+      "ar_decode_s": 8.875815359991975,
+      "spec_prefill_s": 0.43713246000697836,
+      "spec_decode_s": 7.375059001031332,
+      "exact": true,
+      "proposed": 272,
+      "accepted": 44,
+      "committed": 115,
+      "target_forwards": 72,
+      "draft_forwards": 71,
+      "acceptance": 0.16176470588235295,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 71,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 16,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.14759038388729095
+          },
+          {
+            "cycle": 20,
+            "action": "revert",
+            "from": 3,
+            "to": 4,
+            "probe_rate": 0.011780325554058977,
+            "base_rate": 0.01511334189546173
+          },
+          {
+            "cycle": 40,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.10661424676825465
+          },
+          {
+            "cycle": 44,
+            "action": "revert",
+            "from": 3,
+            "to": 4,
+            "probe_rate": 0.011908239978524368,
+            "base_rate": 0.013791343282387515
+          },
+          {
+            "cycle": 64,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.19787121759173343
+          },
+          {
+            "cycle": 68,
+            "action": "revert",
+            "from": 3,
+            "to": 4,
+            "probe_rate": 0.013768093303679525,
+            "base_rate": 0.016992390858880158
+          }
+        ],
+        "stats": {
+          "3": {
+            "samples": 12,
+            "tokens_per_ms": 0.013768093303679525,
+            "acceptance_ewma": 0.1304636001586914
+          },
+          "4": {
+            "samples": 59,
+            "tokens_per_ms": 0.017021545266815673,
+            "acceptance_ewma": 0.1973733149411344
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "prompt_tokens": 36,
+      "ar_generated": 2,
+      "spec_generated": 2,
+      "ar_prefill_s": 0.42599004600197077,
+      "ar_decode_s": 0.0780336830066517,
+      "spec_prefill_s": 0.4333239850238897,
+      "spec_decode_s": 0.2030839899671264,
+      "exact": true,
+      "proposed": 8,
+      "accepted": 0,
+      "committed": 2,
+      "target_forwards": 3,
+      "draft_forwards": 2,
+      "acceptance": 0.0,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 2,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 2,
+            "tokens_per_ms": 0.009895261868138465,
+            "acceptance_ewma": 0.0
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "prompt_tokens": 34,
+      "ar_generated": 512,
+      "spec_generated": 512,
+      "ar_prefill_s": 0.5102623730199412,
+      "ar_decode_s": 39.839037847996224,
+      "spec_prefill_s": 0.4414310129941441,
+      "spec_decode_s": 24.837696615955792,
+      "exact": true,
+      "proposed": 724,
+      "accepted": 273,
+      "committed": 512,
+      "target_forwards": 240,
+      "draft_forwards": 239,
+      "acceptance": 0.3770718232044199,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 3,
+        "cycles": 239,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.17034912109375
+          },
+          {
+            "cycle": 12,
+            "action": "keep",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.026164845481249584,
+            "base_rate": 0.016304991439238543
+          },
+          {
+            "cycle": 48,
+            "action": "probe",
+            "from": 3,
+            "to": 2,
+            "acceptance_ewma": 0.17029924711799738
+          },
+          {
+            "cycle": 52,
+            "action": "revert",
+            "from": 2,
+            "to": 3,
+            "probe_rate": 0.010098168496754194,
+            "base_rate": 0.014859143511951205
+          },
+          {
+            "cycle": 208,
+            "action": "probe",
+            "from": 3,
+            "to": 4,
+            "acceptance_ewma": 0.8141711629861079
+          },
+          {
+            "cycle": 212,
+            "action": "revert",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.028522288896090976,
+            "base_rate": 0.031760351449253155
+          }
+        ],
+        "stats": {
+          "2": {
+            "samples": 4,
+            "tokens_per_ms": 0.010098168496754194,
+            "acceptance_ewma": 0.0
+          },
+          "3": {
+            "samples": 224,
+            "tokens_per_ms": 0.01939236646288149,
+            "acceptance_ewma": 0.349124765200185
+          },
+          "4": {
+            "samples": 11,
+            "tokens_per_ms": 0.028522288896090976,
+            "acceptance_ewma": 0.5236260890960693
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 53,
+      "ar_generated": 254,
+      "spec_generated": 254,
+      "ar_prefill_s": 0.5283407779643312,
+      "ar_decode_s": 19.71842402603943,
+      "spec_prefill_s": 0.4508355369907804,
+      "spec_decode_s": 11.727253397053573,
+      "exact": true,
+      "proposed": 282,
+      "accepted": 141,
+      "committed": 254,
+      "target_forwards": 114,
+      "draft_forwards": 113,
+      "acceptance": 0.5,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 3,
+        "cycles": 113,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [
+          {
+            "cycle": 8,
+            "action": "probe",
+            "from": 4,
+            "to": 3,
+            "acceptance_ewma": 0.12890625
+          },
+          {
+            "cycle": 12,
+            "action": "keep",
+            "from": 4,
+            "to": 3,
+            "probe_rate": 0.018327253232813184,
+            "base_rate": 0.014495340227722208
+          },
+          {
+            "cycle": 24,
+            "action": "probe",
+            "from": 3,
+            "to": 2,
+            "acceptance_ewma": 0.07423715014010668
+          },
+          {
+            "cycle": 28,
+            "action": "keep",
+            "from": 3,
+            "to": 2,
+            "probe_rate": 0.023840011622787996,
+            "base_rate": 0.012079941737446377
+          },
+          {
+            "cycle": 88,
+            "action": "probe",
+            "from": 2,
+            "to": 3,
+            "acceptance_ewma": 0.861698668643095
+          },
+          {
+            "cycle": 92,
+            "action": "keep",
+            "from": 2,
+            "to": 3,
+            "probe_rate": 0.029215430518931967,
+            "base_rate": 0.025829993423683147
+          }
+        ],
+        "stats": {
+          "2": {
+            "samples": 64,
+            "tokens_per_ms": 0.025829993423683147,
+            "acceptance_ewma": 0.861698668643095
+          },
+          "3": {
+            "samples": 42,
+            "tokens_per_ms": 0.021213888252830625,
+            "acceptance_ewma": 0.4095062119824839
+          },
+          "4": {
+            "samples": 7,
+            "tokens_per_ms": 0.014495340227722208,
+            "acceptance_ewma": 0.12890625
+          }
+        }
+      }
+    },
+    {
+      "repeat": 0,
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "prompt_tokens": 62,
+      "ar_generated": 53,
+      "spec_generated": 53,
+      "ar_prefill_s": 0.5269893420045264,
+      "ar_decode_s": 4.051925665989984,
+      "spec_prefill_s": 0.45319753797957674,
+      "spec_decode_s": 2.0339120400021784,
+      "exact": true,
+      "proposed": 76,
+      "accepted": 34,
+      "committed": 53,
+      "target_forwards": 20,
+      "draft_forwards": 19,
+      "acceptance": 0.4473684210526316,
+      "depth_summary": {
+        "enabled": true,
+        "initial_budget": 4,
+        "final_budget": 4,
+        "cycles": 19,
+        "bounds": [
+          2,
+          7
+        ],
+        "decisions": [],
+        "stats": {
+          "4": {
+            "samples": 19,
+            "tokens_per_ms": 0.027877434983057517,
+            "acceptance_ewma": 0.5022032489650883
+          }
+        }
+      }
+    }
+  ],
+  "timing_boundary": {
+    "decode_tok_s": "sum(generated tokens) / sum(post-prefill decode wall)",
+    "transition_normalized_tok_s": "(sum(generated) - requests) / sum(decode wall); mirrors llama.cpp (predicted_n-1)/predicted_ms",
+    "sync": "each verify/decode cycle ends in a device-to-host logits readback"
+  },
+  "notes": [
+    "Gate B: hipEngine DFlash must beat llama.cpp draft-dflash 21.300 tok/s (transition-normalized) with exact greedy ID equality vs true AR.",
+    "Diagnostic until a retained rollup attaches the correctness gate + provenance."
+  ]
+}

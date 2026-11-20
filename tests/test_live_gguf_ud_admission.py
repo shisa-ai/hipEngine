@@ -1215,17 +1215,7 @@ def test_hot_vocab_identity_binds_artifact_preset(monkeypatch, tmp_path):
     tokenizer_hash = "f" * 64
     monkeypatch.setattr(hot_vocab, "gguf_tokenizer_tokens_sha256", lambda info: tokenizer_hash)
     packaged_name = "qwen38-27b-hot131072-cjk-v1.json"  # real packaged artifact
-    packaged = {
-        ("qwen35", "Qwen3.8-27B", 65, "MOSTLY_Q4_K_M", tokenizer_hash): packaged_name,
-        (
-            "qwen35",
-            "Qwen3.8-27B",
-            65,
-            "MOSTLY_Q4_K_M",
-            tokenizer_hash,
-            GGUF_UD_Q4_K_M_PRESET,
-        ): packaged_name,
-    }
+    packaged = {tokenizer_hash: packaged_name}
     monkeypatch.setattr(hot_vocab, "_DEFAULT_HOT_VOCAB_IDENTITIES", packaged)
     info = SimpleNamespace(
         metadata={
@@ -1235,20 +1225,17 @@ def test_hot_vocab_identity_binds_artifact_preset(monkeypatch, tmp_path):
         },
         file_type_name="MOSTLY_Q4_K_M",
     )
-    # Plain artifact: unchanged 5-part identity resolves its packaged map.
+    # Compatible tokenizer IDs resolve regardless of admission preset.
     resolved = hot_vocab.default_gguf_hot_vocab_path(info)
     assert resolved is not None and resolved.name == packaged_name
-    # Same stamp + tokenizer, UD preset: the plain row's key no longer matches;
-    # the preset has its own distinct key, and unknown presets resolve to None.
+    # Weight quantization and preset metadata do not change token-ID meaning.
     ud_resolved = hot_vocab.default_gguf_hot_vocab_path(
         info, artifact_preset_key=GGUF_UD_Q4_K_M_PRESET
     )
     assert ud_resolved is not None and ud_resolved.name == packaged_name
     assert hot_vocab.default_gguf_hot_vocab_path(
         info, artifact_preset_key="gguf_ud_q4_k_s"
-    ) is None
-    # And the plain artifact does not resolve through the preset-qualified key
-    # either (the plain identity has no preset component).
+    ) == resolved
     assert hot_vocab.default_gguf_hot_vocab_path(info) == resolved
 
 
@@ -3067,11 +3054,8 @@ def test_qualified_plain_controls_keep_plain_identity_and_exact_ud_binds_preset(
 
 
 @pytest.mark.skipif(not PLAIN_Q4_K_M.exists(), reason=f"pinned artifact missing: {PLAIN_Q4_K_M}")
-def test_mutated_plain_manifest_with_same_histogram_is_an_unknown_manifest():
-    """U1 repair 5: a mutated plain K_M whose quant histogram is unchanged
-    (ffn_up/ffn_down types swapped) has a different role-manifest fingerprint,
-    so it must not inherit the plain-certified policy identity, the packaged
-    hot-vocabulary selection, or the plain 2-part policy-table key."""
+def test_mutated_plain_manifest_keeps_generic_policy_identity():
+    """A changed quant layout is checked per tensor, not against a hash list."""
 
     import dataclasses
     from types import MappingProxyType, SimpleNamespace
@@ -3108,26 +3092,25 @@ def test_mutated_plain_manifest_with_same_histogram_is_an_unknown_manifest():
     assert mutated_histogram == base_histogram
     assert mutated_manifest.fingerprint != base_fingerprint
 
-    # Unknown manifest: not a qualified plain control, not a UD preset.
-    assert qwen35_gguf_artifact_preset_key(
+    # A new fingerprint does not suppress generic policy routing.
+    preset_key = qwen35_gguf_artifact_preset_key(
         mutated_map, nextn_map=nextn_map, file_type_stamp=stamp
-    ) == GGUF_UNQUALIFIED_MANIFEST_PRESET
+    )
+    assert preset_key is None
 
     geometry = GGUFModelGeometry.try_from_config(mutated_map.config)
     assert geometry is not None
     sentinel_resident = SimpleNamespace(
         geometry=geometry,
         file_type_name=stamp,
-        artifact_preset_key=GGUF_UNQUALIFIED_MANIFEST_PRESET,
+        artifact_preset_key=preset_key,
     )
     identity = _gguf_policy_identity(sentinel_resident)
-    assert identity == (geometry, stamp, GGUF_UNQUALIFIED_MANIFEST_PRESET)
-    # The sentinel identity misses plain 2-part policy-table keys by
-    # construction (3-tuple != (geometry, stamp)).
+    assert identity == (geometry, stamp)
 
 
 @pytest.mark.skipif(not PLAIN_Q4_K_M.exists(), reason=f"pinned artifact missing: {PLAIN_Q4_K_M}")
-def test_unknown_manifest_cannot_reuse_the_packaged_hot_vocabulary():
+def test_unfamiliar_manifest_can_reuse_compatible_packaged_hot_vocabulary():
     from hipengine.loading.gguf import GGUFReader
     from hipengine.loading.gguf_mtp_hot_vocab import default_gguf_hot_vocab_path
     from hipengine.loading.qwen35_gguf_admission import (
@@ -3137,12 +3120,12 @@ def test_unknown_manifest_cannot_reuse_the_packaged_hot_vocabulary():
     info = GGUFReader(PLAIN_Q4_K_M).info
     # The qualified plain control resolves the packaged selection...
     assert default_gguf_hot_vocab_path(info) is not None
-    # ...an unknown manifest with the same metadata never does.
+    # Manifest provenance does not change tokenizer compatibility.
     assert (
         default_gguf_hot_vocab_path(
             info, artifact_preset_key=GGUF_UNQUALIFIED_MANIFEST_PRESET
         )
-        is None
+        == default_gguf_hot_vocab_path(info)
     )
 
 
@@ -3172,7 +3155,7 @@ def test_loader_binds_the_unqualified_manifest_sentinel_for_unknown_manifests(
         GGUF_UNQUALIFIED_MANIFEST_PRESET,
     )
 
-    assert resident.artifact_preset_key == GGUF_UNQUALIFIED_MANIFEST_PRESET
+    assert resident.artifact_preset_key is None
 
 
 # ---------------------------------------------------------------------------
@@ -4020,15 +4003,10 @@ def test_private_c1_arena_policies_bind_artifact_qualification(monkeypatch):
     ) == (True, "private_c1_selective")
 
 
-def test_session_private_c1_arena_admission_binds_actual_manifest(
+def test_session_private_c1_arena_admission_uses_capability_for_new_manifest(
     monkeypatch, tmp_path
 ):
-    """The real ``Qwen35GGUFResidentSession`` initializer resolves the private
-    -c1 arena policy from the GGUF header before materialization: the
-    admission must bind the actual artifact qualification derived from the
-    manifest (unknown fixture manifests get the sentinel and must not inherit
-    the stamp-certified rows), while pinning the manifest as a qualified plain
-    control restores the historical admission."""
+    """A new fixture manifest uses its declared geometry policy without pinning."""
 
     from types import SimpleNamespace
 
@@ -4105,22 +4083,7 @@ def test_session_private_c1_arena_admission_binds_actual_manifest(
             Qwen35GGUFResidentSession.__post_init__(session)
         return session
 
-    # Unknown fixture manifest: sentinel identity, no plain-row inheritance.
-    session = initialized_session()
-    assert session.small_weight_arena_enabled is False
-    assert session.small_weight_arena_reason == "backend_capability_fallback"
-    assert session.decode_scratch_arena_enabled is False
-    assert session.decode_scratch_arena_reason == "backend_capability_fallback"
-
-    # Pin the exact fixture manifest fingerprint: the qualified plain control
-    # lane restores the historical stamp-keyed admission.
-    model_map = runner_module.build_qwen35_gguf_tensor_map(info)
-    manifest = build_qwen35_gguf_role_manifest(model_map)
-    monkeypatch.setattr(
-        admission_module,
-        "_PINNED_PLAIN_CONTROL_FINGERPRINTS",
-        frozenset({manifest.fingerprint}),
-    )
+    # The unfamiliar fixture uses the registered geometry policies directly.
     session = initialized_session()
     assert session.small_weight_arena_enabled is True
     assert session.small_weight_arena_reason == "private_c1_selective"

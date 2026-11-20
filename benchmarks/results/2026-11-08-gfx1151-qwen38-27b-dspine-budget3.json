@@ -1,0 +1,197 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_dspine_relative_baseline",
+  "status": "relative_baseline_internal",
+  "performance_claim": false,
+  "publishable": false,
+  "note": "Internal relative baseline; native DSpine drafter with CPU transition-cache refine. Speed is pre-optimization (task #18).",
+  "provenance": {
+    "hipengine_commit": "aa8c12acf7651bed68376c23dd86cb5c0b4c16c8",
+    "git_branch": "qwen38-dspine-eagle4",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "drafter": "/home/lhl/.cache/huggingface/hub/models--tencent--Qwen3.8-27B-DSpine-b16/snapshots/ea909c0f5fab8865f9e14600334f55f7ce47308f",
+    "backend": "hip_gfx1151",
+    "command": "scripts/qwen38_dspine_baseline.py --reps 1 --max-new-tokens 25 --candidate-budget 3 --output benchmarks/results/2026-11-08-gfx1151-qwen38-27b-dspine-budget3.json",
+    "date": "2026-11-09T08:39:27"
+  },
+  "protocol": {
+    "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite": "mtpbench-code-general-ja (10 prompts)",
+    "max_new_tokens": 25,
+    "block_size": 16,
+    "reps": 1,
+    "candidate_budget": 3,
+    "verify": "native chain (verify_target_block)",
+    "warmup": "1 discarded prompt",
+    "aggregation": "median DSpine decode tok/s across reps; AR reference deterministic per prompt"
+  },
+  "summary": {
+    "dspine_tok_s_median_of_prompts": 2.17723984099917,
+    "ar_tok_s_median_of_prompts": 11.26748638667203,
+    "ratio_vs_ar": 0.19323208089912242,
+    "exact_all": true,
+    "mean_acceptance": 0.0
+  },
+  "rows": [
+    {
+      "category": "code",
+      "prompt_len": 28,
+      "ar_tok_s": 11.333210500415133,
+      "mean_acceptance": 0.0,
+      "accepted_per_draft": 0.0,
+      "id": "code_merge_intervals",
+      "dspine_tok_s_median": 2.176794802566617,
+      "ar_tok_s_median": 11.333210500415133,
+      "dspine_tok_s_reps": [
+        2.176794802566617
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.19207221135501554
+    },
+    {
+      "category": "code",
+      "prompt_len": 38,
+      "ar_tok_s": 11.33629744409105,
+      "mean_acceptance": 0.0,
+      "accepted_per_draft": 0.0,
+      "id": "code_topological_sort",
+      "dspine_tok_s_median": 2.1769838649202113,
+      "ar_tok_s_median": 11.33629744409105,
+      "dspine_tok_s_reps": [
+        2.1769838649202113
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.19203658651837385
+    },
+    {
+      "category": "code",
+      "prompt_len": 35,
+      "ar_tok_s": 11.27708377180168,
+      "mean_acceptance": 0.0,
+      "accepted_per_draft": 0.0,
+      "id": "code_lru_cache",
+      "dspine_tok_s_median": 2.176613220768441,
+      "ar_tok_s_median": 11.27708377180168,
+      "dspine_tok_s_reps": [
+        2.176613220768441
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.19301206453844538
+    },
+    {
+      "category": "code",
+      "prompt_len": 40,
+      "ar_tok_s": 11.25788900154238,
+      "mean_acceptance": 0.0,
+      "accepted_per_draft": 0.0,
+      "id": "code_markdown_table",
+      "dspine_tok_s_median": 2.1913985952888404,
+      "ar_tok_s_median": 11.25788900154238,
+      "dspine_tok_s_reps": [
+        2.1913985952888404
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.19465448584442513
+    },
+    {
+      "category": "general_en",
+      "prompt_len": 27,
+      "ar_tok_s": 11.208214940744615,
+      "mean_acceptance": 0.0,
+      "accepted_per_draft": 0.0,
+      "id": "general_en_plan",
+      "dspine_tok_s_median": 2.171550974376244,
+      "ar_tok_s_median": 11.208214940744615,
+      "dspine_tok_s_reps": [
+        2.171550974376244
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.19374637137641987
+    },
+    {
+      "category": "general_en",
+      "prompt_len": 28,
+      "ar_tok_s": 11.187186083839796,
+      "mean_acceptance": 0.0,
+      "accepted_per_draft": 0.0,
+      "id": "general_en_explain",
+      "dspine_tok_s_median": 2.176324372492243,
+      "ar_tok_s_median": 11.187186083839796,
+      "dspine_tok_s_reps": [
+        2.176324372492243
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.19453724611196058
+    },
+    {
+      "category": "general_ja",
+      "prompt_len": 31,
+      "ar_tok_s": 11.243200856536484,
+      "mean_acceptance": 0.0,
+      "accepted_per_draft": 0.0,
+      "id": "general_ja_plan",
+      "dspine_tok_s_median": 2.177495817078129,
+      "ar_tok_s_median": 11.243200856536484,
+      "dspine_tok_s_reps": [
+        2.177495817078129
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.19367223310007786
+    },
+    {
+      "category": "general_ja",
+      "prompt_len": 31,
+      "ar_tok_s": 11.223946205379477,
+      "mean_acceptance": 0.0,
+      "accepted_per_draft": 0.0,
+      "id": "general_ja_explain",
+      "dspine_tok_s_median": 2.180307876397052,
+      "ar_tok_s_median": 11.223946205379477,
+      "dspine_tok_s_reps": [
+        2.180307876397052
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.1942550183777664
+    },
+    {
+      "category": "mixed_ja_en",
+      "prompt_len": 52,
+      "ar_tok_s": 11.34960710368222,
+      "mean_acceptance": 0.0,
+      "accepted_per_draft": 0.0,
+      "id": "mixed_ja_en_translate",
+      "dspine_tok_s_median": 2.1882394239401872,
+      "ar_tok_s_median": 11.34960710368222,
+      "dspine_tok_s_reps": [
+        2.1882394239401872
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.19280309916897861
+    },
+    {
+      "category": "mixed_ja_en",
+      "prompt_len": 59,
+      "ar_tok_s": 11.362818312894571,
+      "mean_acceptance": 0.0,
+      "accepted_per_draft": 0.0,
+      "id": "mixed_ja_en_review",
+      "dspine_tok_s_median": 2.1943609562031985,
+      "ar_tok_s_median": 11.362818312894571,
+      "dspine_tok_s_reps": [
+        2.1943609562031985
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.19311766639030292
+    }
+  ]
+}

@@ -801,12 +801,11 @@ GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
     "production": ((1, 2), (1, 3), (2, 2), (2, 3), (8, 3)),
     "strict": ((2, 2),),
 }
-# Production prompt streaming follows the same model-local physical evidence.
-# C8 is retained only on the dense Qwen3.8 C8-K3 serving key; the serving
-# evidence resolver rejects other capacity-8 due groups before provider mutation.
+# Prompt streaming is a geometry/profile capability; per-tensor consumers
+# validate weight layouts independently of the header's quantization label.
 GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
-    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 8),
-    (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2),
+    (QWEN35_DENSE_H5120_GEOMETRY, None, "production"): (1, 2, 8),
+    (QWEN35_MOE_H2048_E256_GEOMETRY, None, "production"): (1, 2),
 }
 # Native target verification uses allocated capacity for the feed-forward
 # kinds whose multi-row verify body is implemented. Dense and MoE are both

@@ -1,0 +1,268 @@
+{
+  "probe": "pr29510-paged-decode-pool-invariance",
+  "date": "2026-11-08",
+  "status": "diagnostic",
+  "branch": "unified-kv-multiseq",
+  "purpose": "Confirm hipEngine paged decode attention is invariant to shared-pool size (no llama.cpp-style unified-KV mask penalty) and quantify mixed-length empty-split overhead in the production split-K batch wrapper.",
+  "identity": {
+    "hostname": "gfx1151",
+    "kernel": "7.3.1-1-cachyos",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "pci_bus_id": "0000:c1:00.0",
+    "hip_runtime_version": 71526333,
+    "rocm_sdk_package": "10.0.0",
+    "vram_free_gib": 119.996,
+    "vram_total_gib": 120.0
+  },
+  "kernel_wrapper": "qwen35_paged_full_attn_decode_split_k_gqa_gate_bf16_batch_spans",
+  "kernel_symbols": [
+    "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_batch_bf16_spans",
+    "hipengine_qwen35_paged_full_attn_decode_split_k_reduce_gate_bf16_batch"
+  ],
+  "production_call_site": "hipengine/runtime/qwen35_gguf_runner.py:6990 (kv_live_spans_batch_split_gqa)",
+  "geometry": {
+    "q_heads": 24,
+    "kv_heads": 4,
+    "head_dim": 256,
+    "block_size": 256,
+    "model_class": "Qwen3.8-27B (24Q/4KV/head-256)"
+  },
+  "method": {
+    "warmup": 10,
+    "batches": 5,
+    "iters_per_batch": 40,
+    "timing": "HIP events around back-to-back wrapper calls (context kernel + gated reduce), per-call us = batch elapsed / iters",
+    "num_splits_formula": "ceil(max_context_len / 256), as at the production call site"
+  },
+  "oracle": {
+    "max_abs_diff_vs_bf16_numpy": 6.103515625e-05,
+    "all_finite": true,
+    "pass": true
+  },
+  "arms": {
+    "A1_equal8K_pool32K": {
+      "contexts": [
+        8192,
+        8192,
+        8192,
+        8192
+      ],
+      "pool_tokens": 32768,
+      "num_splits": 32,
+      "grid_blocks": 512,
+      "empty_split_blocks": 0,
+      "per_call_us_median": 767.293119430542,
+      "per_call_us_mean": 767.7943420410156,
+      "per_call_us_min": 765.894365310669,
+      "batch_samples_us": [
+        765.894365310669,
+        766.530179977417,
+        767.293119430542,
+        769.5488929748535,
+        769.7051525115967
+      ]
+    },
+    "A2_equal8K_pool512K": {
+      "contexts": [
+        8192,
+        8192,
+        8192,
+        8192
+      ],
+      "pool_tokens": 524288,
+      "num_splits": 32,
+      "grid_blocks": 512,
+      "empty_split_blocks": 0,
+      "per_call_us_median": 769.1754341125488,
+      "per_call_us_mean": 769.445629119873,
+      "per_call_us_min": 768.4481143951416,
+      "batch_samples_us": [
+        768.4481143951416,
+        768.6404705047607,
+        769.1754341125488,
+        771.6227054595947,
+        769.3414211273193
+      ]
+    },
+    "B1_mixed_32K_1K_1K_1K": {
+      "contexts": [
+        32768,
+        1024,
+        1024,
+        1024
+      ],
+      "pool_tokens": 524288,
+      "num_splits": 128,
+      "grid_blocks": 2048,
+      "empty_split_blocks": 1488,
+      "per_call_us_median": 862.4141693115234,
+      "per_call_us_mean": 861.9571304321289,
+      "per_call_us_min": 858.6929321289062,
+      "batch_samples_us": [
+        858.6929321289062,
+        862.1454238891602,
+        862.5171661376953,
+        864.0159606933594,
+        862.4141693115234
+      ]
+    },
+    "B2_equal_4x8960_same_total": {
+      "contexts": [
+        8960,
+        8960,
+        8960,
+        8960
+      ],
+      "pool_tokens": 524288,
+      "num_splits": 35,
+      "grid_blocks": 560,
+      "empty_split_blocks": 0,
+      "per_call_us_median": 791.3769245147705,
+      "per_call_us_mean": 792.3491859436035,
+      "per_call_us_min": 790.9020900726318,
+      "batch_samples_us": [
+        793.3236122131348,
+        791.3769245147705,
+        791.3599014282227,
+        790.9020900726318,
+        794.7834014892578
+      ]
+    },
+    "B3_short4x1K_splits128": {
+      "contexts": [
+        1024,
+        1024,
+        1024,
+        1024
+      ],
+      "pool_tokens": 524288,
+      "num_splits": 128,
+      "grid_blocks": 2048,
+      "empty_split_blocks": 1984,
+      "per_call_us_median": 157.63980150222778,
+      "per_call_us_mean": 157.39274501800537,
+      "per_call_us_min": 154.99987602233887,
+      "batch_samples_us": [
+        157.63980150222778,
+        158.40924978256226,
+        159.246826171875,
+        156.66797161102295,
+        154.99987602233887
+      ]
+    },
+    "B4_short4x1K_splits4": {
+      "contexts": [
+        1024,
+        1024,
+        1024,
+        1024
+      ],
+      "pool_tokens": 524288,
+      "num_splits": 4,
+      "grid_blocks": 64,
+      "empty_split_blocks": 0,
+      "per_call_us_median": 80.17445206642151,
+      "per_call_us_mean": 80.1995050907135,
+      "per_call_us_min": 80.14039993286133,
+      "batch_samples_us": [
+        80.18847703933716,
+        80.1584243774414,
+        80.14039993286133,
+        80.17445206642151,
+        80.3357720375061
+      ]
+    },
+    "B5_long1x32K_splits128": {
+      "contexts": [
+        32768
+      ],
+      "pool_tokens": 524288,
+      "num_splits": 128,
+      "grid_blocks": 512,
+      "empty_split_blocks": 0,
+      "per_call_us_median": 800.2429008483887,
+      "per_call_us_mean": 799.6963787078857,
+      "per_call_us_min": 797.0606803894043,
+      "batch_samples_us": [
+        797.0606803894043,
+        798.931360244751,
+        801.8387794494629,
+        800.2429008483887,
+        800.4081726074219
+      ]
+    },
+    "B6_mixed_128K_1K_1K_1K": {
+      "contexts": [
+        131072,
+        1024,
+        1024,
+        1024
+      ],
+      "pool_tokens": 524288,
+      "num_splits": 512,
+      "grid_blocks": 8192,
+      "empty_split_blocks": 6096,
+      "per_call_us_median": 3129.5780181884766,
+      "per_call_us_mean": 3129.327812194824,
+      "per_call_us_min": 3127.9678344726562,
+      "batch_samples_us": [
+        3128.116798400879,
+        3127.9678344726562,
+        3129.9848556518555,
+        3129.5780181884766,
+        3130.991554260254
+      ]
+    },
+    "B7_short4x1K_splits512": {
+      "contexts": [
+        1024,
+        1024,
+        1024,
+        1024
+      ],
+      "pool_tokens": 524288,
+      "num_splits": 512,
+      "grid_blocks": 8192,
+      "empty_split_blocks": 8128,
+      "per_call_us_median": 671.4012145996094,
+      "per_call_us_mean": 671.3984107971191,
+      "per_call_us_min": 669.9494361877441,
+      "batch_samples_us": [
+        670.2661037445068,
+        669.9494361877441,
+        671.4012145996094,
+        672.4522113800049,
+        672.9230880737305
+      ]
+    },
+    "B8_long1x128K_splits512": {
+      "contexts": [
+        131072
+      ],
+      "pool_tokens": 524288,
+      "num_splits": 512,
+      "grid_blocks": 2048,
+      "empty_split_blocks": 0,
+      "per_call_us_median": 2807.804298400879,
+      "per_call_us_mean": 2807.223777770996,
+      "per_call_us_min": 2803.372001647949,
+      "batch_samples_us": [
+        2803.372001647949,
+        2807.804298400879,
+        2809.8514556884766,
+        2807.072067260742,
+        2808.0190658569336
+      ]
+    }
+  },
+  "verdict": {
+    "arm_A_pool512K_vs_pool32K_delta_pct": 0.25,
+    "arm_A_flat_within_5pct": true,
+    "arm_B_empty_split_overhead_us_B3_minus_B4": 77.47,
+    "arm_B_empty_overhead_pct_of_B3": 49.14,
+    "arm_B_mixed_vs_equal_total_pct": 8.98,
+    "arm_B_empty_split_overhead_us_at512_B7_minus_B4": 591.23,
+    "arm_B_mixed128K_vs_long_only128K_pct": 11.46
+  },
+  "command": "scripts/probe_paged_decode_pool_invariance.py --json-out benchmarks/results/2026-11-08-pr29510-paged-decode-pool-invariance-diagnostic.json"
+}

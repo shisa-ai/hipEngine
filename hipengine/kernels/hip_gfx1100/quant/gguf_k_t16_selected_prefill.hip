@@ -993,8 +993,8 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
   }
 
   for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
-    const int decode_pair = threadIdx.x >> 2;
-    if (decode_pair < OUT_COLS_PER_BLOCK / 2) {
+    for (int decode_pair = threadIdx.x >> 2;
+         decode_pair < OUT_COLS_PER_BLOCK / 2; decode_pair += WAVES_PER_BLOCK * 8) {
       const int tm = decode_pair / (T16_COLS / 2);
       const int tile_pair = decode_pair % (T16_COLS / 2);
       const int tile_col0 = tile_pair * 2;
@@ -3316,7 +3316,9 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out
 }
 
 // B2 P1: F16-staged activation sibling of the shared-B owner (x bits are
-// IEEE half).
+// IEEE half). Wide projections use the 8-wave <5,8,2> tile (more threads
+// decode the slab, wider N amortizes activation re-reads); narrow outputs
+// keep the <3,4,4> default because wide-N underfills them.
 extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out(
     const uint16_t* x,
     const uint8_t* tiles,
@@ -3325,6 +3327,16 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
+  if (out_features >= 1024) {
+    return launch_q4_t16_dense_wmma_prefill_shared_b_impl<5, 8, 2, half_t>(
+        reinterpret_cast<const half_t*>(x),
+        tiles,
+        out,
+        rows,
+        in_features,
+        out_features,
+        stream);
+  }
   return launch_q4_t16_dense_wmma_prefill_shared_b_impl<3, 4, 4, half_t>(
       reinterpret_cast<const half_t*>(x),
       tiles,

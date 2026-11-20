@@ -1366,7 +1366,7 @@ def test_gpu_generator_rejects_an_over_time_page_before_vision() -> None:
 
     from hipengine.generation.registry import GenerationRequest
     from hipengine.generation.surya_gpu import SuryaOCRGeneratorGPU
-    from hipengine.runtime.surya import SuryaGpuRuntimeError
+    from hipengine.generation.surya_contract import SuryaRequestError
 
     page = FIXTURES / "page_full.png"
     if not page.exists():
@@ -1380,7 +1380,7 @@ def test_gpu_generator_rejects_an_over_time_page_before_vision() -> None:
         assert gen.max_vision_seconds == 0.25
         estimate = gen.runner.vision_time_seconds([(1, 64, 64)])
         assert estimate > 0.25, estimate
-        with pytest.raises(SuryaGpuRuntimeError, match="vision time budget"):
+        with pytest.raises(SuryaRequestError, match="vision time budget"):
             gen.generate_multimodal_detailed(
                 "Transcribe this page.",
                 str(page),

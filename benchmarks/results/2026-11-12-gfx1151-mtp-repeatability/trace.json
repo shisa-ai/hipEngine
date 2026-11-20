@@ -1,0 +1,664 @@
+{
+  "source_commit": "2f9c07bca87916e32a5b9659b2e543c573d3e447",
+  "host": "gfx1151",
+  "model": "Qwen3.8-27B UD-Q4_K_M",
+  "profile": "production",
+  "kv": "bf16",
+  "budget": 3,
+  "max_tokens": 64,
+  "baseline_trace": [
+    {
+      "positions": [
+        41,
+        42,
+        43,
+        44
+      ],
+      "tokens": [
+        248068,
+        198,
+        760,
+        1156
+      ],
+      "top1": [
+        198,
+        760,
+        1156,
+        369
+      ],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        369
+      ]
+    },
+    {
+      "positions": [
+        45,
+        46,
+        47,
+        48
+      ],
+      "tokens": [
+        369,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        10033
+      ]
+    },
+    {
+      "positions": [
+        49,
+        50,
+        51,
+        52
+      ],
+      "tokens": [
+        10033,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        2
+      ],
+      "next_tokens": [
+        11
+      ]
+    },
+    {
+      "positions": [
+        52,
+        53,
+        54,
+        55
+      ],
+      "tokens": [
+        11,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        63520
+      ]
+    },
+    {
+      "positions": [
+        56,
+        57,
+        58,
+        59
+      ],
+      "tokens": [
+        63520,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        2590
+      ]
+    },
+    {
+      "positions": [
+        60,
+        61,
+        62,
+        63
+      ],
+      "tokens": [
+        2590,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        446
+      ]
+    },
+    {
+      "positions": [
+        64,
+        65,
+        66,
+        67
+      ],
+      "tokens": [
+        446,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        1
+      ],
+      "next_tokens": [
+        2302
+      ]
+    },
+    {
+      "positions": [
+        66,
+        67,
+        68,
+        69
+      ],
+      "tokens": [
+        2302,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        0
+      ],
+      "next_tokens": [
+        11352
+      ]
+    },
+    {
+      "positions": [
+        67,
+        68,
+        69,
+        70
+      ],
+      "tokens": [
+        11352,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        5615
+      ]
+    },
+    {
+      "positions": [
+        71,
+        72,
+        73,
+        74
+      ],
+      "tokens": [
+        5615,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        4238
+      ]
+    },
+    {
+      "positions": [
+        75,
+        76,
+        77,
+        78
+      ],
+      "tokens": [
+        4238,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        11
+      ]
+    },
+    {
+      "positions": [
+        79,
+        80,
+        81,
+        82
+      ],
+      "tokens": [
+        11,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        13
+      ]
+    },
+    {
+      "positions": [
+        83,
+        84,
+        85,
+        86
+      ],
+      "tokens": [
+        13,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        1683
+      ]
+    },
+    {
+      "positions": [
+        87,
+        88,
+        89,
+        90
+      ],
+      "tokens": [
+        1683,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        25
+      ]
+    },
+    {
+      "positions": [
+        91,
+        92,
+        93,
+        94
+      ],
+      "tokens": [
+        25,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        1
+      ],
+      "next_tokens": [
+        8068
+      ]
+    },
+    {
+      "positions": [
+        93,
+        94,
+        95,
+        96
+      ],
+      "tokens": [
+        8068,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        1
+      ],
+      "next_tokens": [
+        45543
+      ]
+    },
+    {
+      "positions": [
+        95,
+        96,
+        97,
+        98
+      ],
+      "tokens": [
+        45543,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        0
+      ],
+      "next_tokens": [
+        4138
+      ]
+    },
+    {
+      "positions": [
+        96,
+        97,
+        98,
+        99
+      ],
+      "tokens": [
+        4138,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        16
+      ]
+    },
+    {
+      "positions": [
+        100,
+        101,
+        102,
+        103
+      ],
+      "tokens": [
+        16,
+        0,
+        0,
+        0
+      ],
+      "top1": [],
+      "proposal_values": [],
+      "accepted": [
+        3
+      ],
+      "next_tokens": [
+        328
+      ]
+    }
+  ],
+  "baseline_ids": [
+    248068,
+    198,
+    760,
+    1156,
+    369,
+    9859,
+    728,
+    310,
+    10033,
+    303,
+    10452,
+    11,
+    30515,
+    11,
+    3069,
+    63520,
+    45543,
+    3070,
+    914,
+    2590,
+    2895,
+    310,
+    4478,
+    446,
+    13,
+    2302,
+    11352,
+    1318,
+    728,
+    310,
+    5615,
+    383,
+    25,
+    24693,
+    4238,
+    11,
+    22188,
+    2695,
+    11,
+    321,
+    4779,
+    10121,
+    13,
+    271,
+    9764,
+    728,
+    1683,
+    1472,
+    411,
+    15060,
+    25,
+    271,
+    8068,
+    21473,
+    45543,
+    4138,
+    539,
+    25,
+    198,
+    16,
+    13,
+    357,
+    2526,
+    328
+  ],
+  "checks": [
+    {
+      "owner": 0,
+      "repeat": 0,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 0,
+      "repeat": 1,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 0,
+      "repeat": 2,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 1,
+      "repeat": 0,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 1,
+      "repeat": 1,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 1,
+      "repeat": 2,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 2,
+      "repeat": 0,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 2,
+      "repeat": 1,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 2,
+      "repeat": 2,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 3,
+      "repeat": 0,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 3,
+      "repeat": 1,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 3,
+      "repeat": 2,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 4,
+      "repeat": 0,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 4,
+      "repeat": 1,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 4,
+      "repeat": 2,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 5,
+      "repeat": 0,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 5,
+      "repeat": 1,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    },
+    {
+      "owner": 5,
+      "repeat": 2,
+      "trace_equal": true,
+      "ids_equal": true,
+      "controls_equal": true,
+      "cycles": 19,
+      "accepted": 44
+    }
+  ]
+}

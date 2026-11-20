@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_eagle4_eager_cycle_phase_baseline",
+  "status": "relative_baseline_internal",
+  "performance_claim": false,
+  "publishable": false,
+  "note": "Pre-graph-capture baseline for task #25 part (a). Phase-by-phase wall of the eager EAGLE-4 cycle (n_draft=2) plus synced verify stage timings. Establishes verify=141ms (67% of cycle) and that it is dispatch-bound (async host enqueue ~131ms vs synced device layer stack ~98ms). Internal evidence, not a publishable perf claim.",
+  "provenance": {
+    "hipengine_commit": "0b9a75a6a866a4f0f81e3176ddbedbcdbbedf7ad",
+    "git_branch": "qwen38-dspine-eagle4",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "drafter": "/home/lhl/.cache/huggingface/hub/models--EAGLE-Corp--Qwen3.8-27B-EAGLE4/snapshots/f58a5985223040552ad404fba98f0dd27f5f676a",
+    "backend": "hip_gfx1151",
+    "command": "/tmp/eagle4_cycle_profile.py (3 prompts x 25 tokens, per-phase perf_counter; verify record_stage_timings) + /tmp/eagle4_verify_device_time.py (sync_stage_timings device split)",
+    "date": "2026-11-09T23:18:48"
+  },
+  "protocol": {
+    "n_draft": 2,
+    "prompts": [
+      "code_merge_intervals",
+      "code_lru_cache",
+      "general_en_plan"
+    ],
+    "max_new_tokens": 25,
+    "aggregation": "median per-cycle phase wall across 33 cycles"
+  },
+  "summary": {
+    "n_cycles": 33,
+    "n_draft": 2,
+    "phase_ms_median": {
+      "draft": 51.26643902622163,
+      "verify": 141.03841199539602,
+      "accept_commit": 0.4100389778614044,
+      "aux_append": 17.61548686772585
+    },
+    "phase_ms_mean": {
+      "draft": 56.179797763682224,
+      "verify": 142.32524715109983,
+      "accept_commit": 0.5208296404982155,
+      "aux_append": 20.235554512703057
+    },
+    "verify_stage_ms_median": {
+      "target_block_cursor_update": 0.03829202614724636,
+      "target_block_embedding": 0.14755688607692719,
+      "target_block_full_attn_layers": 74.98406688682735,
+      "target_block_hidden_readback": 0.05200784653425217,
+      "target_block_layer_total": 131.05568732134998,
+      "target_block_linear_attn_layers": 57.090591406449676,
+      "target_block_lm_head_sample": 5.911644082516432,
+      "target_block_output_norm_hidden": 0.2861770335584879,
+      "target_block_setup": 0.17083995044231415
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "image": "fixtures/muse_glimmer/images/gradient_896.png",
+  "bitmap_id": "6cd3b3ffb0730783e0d426cb565f8d6dec078e859fceb37191b92a48b7f97b2d",
+  "nx": 896,
+  "ny": 896,
+  "n_embd": 6656,
+  "chunks": [
+    {"type": "text", "n_tokens": 7, "tokens": [200000, 51212, 544, 3371, 38, 220, 200080]},
+    {"type": "image", "n_tokens": 1024, "first_decoder_pos": [0, 0, 0]},
+    {"type": "text", "n_tokens": 1, "tokens": [200081]}
+  ],
+  "n_out": 1024
+}

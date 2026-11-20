@@ -1,6 +1,169 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-10-31 UTC**
+Last updated: **2026-11-12 UTC**
+
+## Qwen3.8-27B speculative diagnostics — ZBook
+
+A matched public streaming run on **zbook / Radeon 8060S** (`gfx1151`),
+`Q4_K_M`, production profile and BF16 KV uses all ten mtpbench prompts plus
+eight category heldouts, two repetitions and 256 greedy outputs per request.
+One request runs at a time with rotating method order and no prefix cache;
+three target owners remain resident, with AR/MTP sharing one.
+
+| Method | Pooled request tok/s | Pooled arrival transitions/s | Median first token (s) |
+| --- | ---: | ---: | ---: |
+| AR | 9.01 | 9.13 | 0.460 |
+| MTP budget 3 | 15.05 | 15.47 | 0.539 |
+| EAGLE-4 depth 3 | 14.45 | 14.98 | 0.690 |
+| DSpine budget 5 | 11.24 | 11.59 | 0.774 |
+
+Request rate divides total output tokens by external request wall time;
+arrival rate divides total output transitions by first-to-last token arrival
+time. Every method repeats exactly and runs its intended route. All three
+speculative methods produce identical IDs, but differ from production AR on
+13 of 18 prompts. These are diagnostic timings, not an AR-equivalent quality
+claim or a desktop result. MTP's request rate exceeds EAGLE-4 by 4.10% in this
+session; all methods slow in the second repetition. First-use latency is
+recorded separately and is not a process-cold measurement.
+[Commands, IDs, stream arrivals, manifests and per-category results](results/2026-11-12-qwen38-public-production-comparison.json).
+
+The short `Q4_K_M` EAGLE-4 depth sweep on **zbook / Radeon 8060S**
+(`gfx1151`, ten mtpbench prompts, 25 outputs, three repetitions) does not
+establish a winning depth. Reconstructing throughput from the saved per-prompt
+median times gives **17.94 tok/s at depth 2** and **17.87 tok/s at depth 3**;
+the previously reported depth-3 figure, 18.61 tok/s, is a median of prompt rates.
+Q8 drafter timing gains survive reaggregation within each method, but these
+harness-only measurements do not establish public serving performance or an
+EAGLE-versus-MTP ranking. The MTP suite also uses a different token denominator.
+[Reproducible correction, commands, source hashes, and evidence limitations](results/2026-11-12-qwen38-specdec-reaggregation.json).
+
+A fixed-prefix verifier diagnostic on the same host, using the public production
+owner, measures increasing cost from two through eight rows. At a 64-token
+prefix, four/six/eight rows take 122.14/149.37/167.83 ms; at 2048 tokens they take
+144.13/177.25/213.28 ms (unprofiled medians, six repetitions). All measured IDs
+match the greedy teacher and public AR. Kernel tracing attributes the short-prefix
+cost mainly to quantized projections; longer-prefix attention also grows per row.
+These are verifier-only timings, not end-to-end method rankings.
+[Protocol, selected variants, samples and kernel attribution](results/2026-11-12-qwen38-verifier-width/summary.json).
+
+## Qwen3.8 long-context NextN graphs — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
+profile, BF16 KV, MTP budget 3, one request and 48 greedy outputs. Same-owner
+public-library comparison over ten category prompts plus eight held-outs,
+padded to 970–4082 prompt tokens, in eager/graph/graph/eager order after warmups:
+
+| Proposal execution | Mean whole-request suite wall |
+| --- | ---: |
+| Eager | 210.789 s |
+| Context-scheduled graph | 207.329 s |
+
+Wall is **1.64% lower**, every category improves, and output IDs and speculative
+controls match across arms/repeats. This is a same-owner diagnostic, not a
+fresh-session or MTP-versus-AR claim.
+[Protocol, commands and validation](results/2026-11-12-gfx1151-nextn-long-graphs/NOTES.md).
+
+## Qwen3.8 Q5 verifier tiles — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
+profile, BF16 KV, MTP budget 3, prefix cache off, one request and 64 greedy
+outputs. Public-library category/heldout comparison with fresh sessions and
+parent/candidate/candidate/parent ordering after a warmup each:
+
+| Q5 wide-shape selection | Mean whole-request suite wall |
+| --- | ---: |
+| Previous selection | 63.453 s |
+| Eight-column tiles at both added wide shapes | 62.700 s |
+
+Wall is **1.19% lower**, every category improves, and output IDs and speculative
+controls match across arms/repeats. The baseline already includes the IQ4 change
+below. [Commands, shape screen and validation](results/2026-11-12-gfx1151-q5-col8/NOTES.md).
+
+## Qwen3.8 IQ4 verifier tile — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
+profile, BF16 KV, MTP budget 3, prefix cache off, one request and 64 greedy
+outputs. Public-library ten-category-prompt plus eight-heldout comparison,
+fresh parent/candidate/candidate/parent sessions after a warmup each:
+
+| IQ4 output columns per block | Mean whole-request suite wall |
+| --- | ---: |
+| Eight | 64.804 s |
+| Four | 63.483 s |
+
+Wall is **2.04% lower**, with every category improving and identical output IDs,
+acceptance counts and fallback reasons across arms/repeats. Scalar decode is
+unchanged. [Commands, numerical checks and hardware counters](results/2026-11-12-gfx1151-iq4-col4/NOTES.md).
+
+## Qwen3.8 rollback snapshot batching — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**, production
+profile, BF16 KV, MTP budget 3, prefix cache off, one request and 64 greedy
+outputs. Same-resident-session public-library diagnostic over ten category
+prompts plus eight held-outs, loop/batch/batch/loop order after warmup:
+
+| Snapshot execution | Mean suite wall |
+| --- | ---: |
+| Per-state copy loop | 63.790 s |
+| Pointer-table copy | 62.838 s |
+
+Whole-request wall is **1.49% lower**, with matching output IDs and checked
+speculative controls across arms/repeats. Fresh-session comparisons exposed
+acceptance-count variation in both paths and failed control repeatability;
+this result does not establish a fresh-session speedup or resolve that issue.
+[Protocol, failed comparisons, byte checks and commands](results/2026-11-12-gfx1151-snapshot-copy/NOTES.md).
+
+## Qwen3.8 dense MTP mixed-pair batching — Radeon 8060S
+
+Qwen3.8-27B `UD-Q4_K_M`, physical host **gfx1151 / Radeon 8060S**
+(Ryzen AI MAX+ 395), default production profile, BF16 KV, prefix cache off,
+MTP budget 3, one request and 64 greedy outputs. Public-library diagnostic:
+ten category prompts plus eight held-outs, one discarded warmup per fresh
+session, loop/batch/batch/loop order.
+
+| Mixed-pair execution | Mean suite wall | Whole-call throughput |
+| --- | ---: | ---: |
+| Previous per-row loop | 63.339 s | 18.188 tok/s |
+| Single batched launch | 62.701 s | 18.373 tok/s |
+
+Batching reduces whole-request wall by **1.01%**; every category improves.
+All batch/loop outputs, acceptance counts and fallback reasons match, including
+repeats. These rates include prompt processing, not just decode. The baseline
+already differs from true AR on `general_en_explain`; this is an optimization
+comparison against the previous MTP path, not an AR-exactness or quality claim.
+[Commands, samples, numerical checks and public trace](results/2026-11-12-gfx1151-qwen38-mixed-pair-batch/NOTES.md).
+The clean-source ten-prompt server confirmation measures MTP complete-request
+wall **35.478 → 35.156 s (−0.91%)**, with unchanged per-arm IDs and acceptance.
+Both runs still fail the same AR-exact comparison on `general_en_explain`.
+[Server confirmation and remaining dense costs](results/2026-11-12-gfx1151-qwen38-dense-followup/NOTES.md).
+
+
+## Muse Glimmer 30B DFlash — Radeon 8060S (gfx1151)
+
+Muse Glimmer 30B GGUF `Q4_K_M` (KQuant-17GB), host **Desktop / Radeon 8060S**
+(`gfx1151`, Ryzen AI MAX+ PRO 395, 128 GiB unified), greedy, one request.
+Ten natural mtpbench prompts (code / general / Japanese), 512 outputs.
+hipEngine runs acceptance-triggered adaptive draft depth; llama.cpp is
+upstream HEAD `3b4d6ab3f` (HIP, flash attention, f16 KV) with
+`draft-dflash`. Decode uses the shared cross-engine transition boundary:
+output tokens minus the prompt-produced first token, divided by the
+post-prefill decode wall.
+
+| Engine | AR decode tok/s | DFlash decode tok/s | DFlash/AR | Draft acceptance |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine | 12.61 | 27.38 | 2.17x | 0.549 |
+| llama.cpp `draft-dflash` | 12.83 | 27.20 | 2.12x | 0.557 |
+
+DFlash decode is at parity between the two engines (0.7% apart); each is
+about 2.1x its own no-draft AR. hipEngine's generated IDs equal true greedy
+AR token-for-token on every prompt: the block verify is bit-identical to AR,
+so speculation changes only how many tokens commit per forward, never the
+output. hipEngine leads prefill at every measured shape, 1.10-1.20x over
+llama.cpp from 512 to 131K context (371.6 vs 338.4 tok/s at 131K); at short
+prompts both engines are overhead-dominated.
+[hipEngine artifact](results/2026-11-09-gfx1151-muse-glimmer-depth-adaptive-ab.json) ·
+[llama.cpp baseline](results/2026-11-10-gfx1151-muse-glimmer-llamacpp-head-mtpbench.json) ·
+[prefill pairing](results/2026-11-10-gfx1151-muse-prefill-padding-ab-diagnostic.json).
 
 ## 16K INT8/MTP with and without DMS — RX 7900 XTX
 
@@ -175,92 +338,10 @@ replace the published performance rows.
 
 ## Qwen3.8 Flash Next HTTP prefill and decode
 
-On Framework Desktop / Radeon 8060S (`gfx1151`), Qwen3.8-Flash-Next
-`UD-Q4_K_XL` with a `Q8_0` MTP sidecar, production profile and BF16 KV,
-the October 22 HTTP comparison isolates batch-decode attention and selection
-changes. Both arms use one active request, fresh prompts, prefix cache off,
-64 greedy outputs, MTP budget 3 and up to 4096-token idle prefill chunks.
-Each cell is the median of four categories and three measured repetitions
-after one warmup per case and arm.
-
-| Fresh prompt | AR prefill before → after | MTP prefill before → after | AR decode before → after | MTP decode before → after |
-| ---: | ---: | ---: | ---: | ---: |
-| 1,024 | 1319.3 → 1314.3 | 1100.8 → 1091.2 | 15.315 → 17.082 (+11.54%) | 37.986 → 36.799 (−3.13%) |
-| 4,096 | 1654.4 → 1644.6 | 1325.5 → 1305.5 | 12.153 → 14.676 (+20.76%) | 37.440 → 36.783 (−1.75%) |
-
-All rates are tok/s. MTP prefill includes predictor priming; decode measures
-63 first-to-last-output transitions, not whole-request throughput. All 208
-canonical and category/heldout outputs match their baselines. A counterbalanced
-old/new MTP rerun did not reproduce the table's slowdown: median paired change
-−0.001%, with all eight cases between −0.194% and +0.016%. No MTP gain is claimed.
-These are diagnostic timings: inherited strict-teacher numerical findings remain open,
-and this exact change does not establish a new numerical-quality verdict.
-[Protocol, samples and correctness checks](results/2026-10-22-gfx1151-flashnext-batch-decode.json).
-
-An October 23 comparison on the same host, model and execution profile reduces
-MTP partial-acceptance restoration overhead by combining cursor uploads.
-The synchronized diagnostic covers 56 partial restores across nine requests
-at 1,024, 1,537 and 4,096 prompt tokens, each generating 32 tokens.
-
-| Partial-acceptance restore | Before | After |
-| --- | ---: | ---: |
-| Median restore window | 1.503 ms | 1.211 ms (−19.4%) |
-| Cursor uploads per restore | 24 | 1 |
-
-The separate uninstrumented 208-request comparison preserves every output and
-shows no per-case median decode regression. This is a restore-window improvement,
-not an isolated end-to-end speedup claim.
-[Commands, state checks and all timing samples](results/2026-10-23-gfx1151-flashnext-mtp-cursors.json).
-
-A subsequent same-host comparison enables a request-local subset of the MTP
-output head: a fixed token prefix plus special tokens and committed-history
-rows. Target verification is unchanged. Against the cursor-upload baseline,
-median MTP decode improves **6.10–6.79%** across the eight 1K/4K canonical
-cases using the same protocol above. The 18 category/heldout cases use natural
-prompt lengths and 32 outputs (31 decode transitions), with the same warmup,
-repetition and alternating-arm schedule. In those cases, code
-and English improve **6.59–7.48%**, Japanese changes by −0.03% to +0.19%, and
-mixed-language cases improve 0.08–3.11%. Japanese requests mostly select the
-full-head fallback because of recent vocabulary misses. AR changes by less
-than 0.1% in either direction.
-
-All 208 output sequences and acceptance rates match the previous baseline.
-Greedy and sampled public controls, repeatability and cancellation/reuse checks
-pass. These are native diagnostic timings, not a new cross-engine comparison
-or a resolution of the inherited numerical findings above.
-[Source, commands, route checks and per-case samples](results/2026-10-23-gfx1151-flashnext-mtp-subset-head.json).
-
-Request-local prompt lookup now supplies copied candidates when a committed
-suffix matches earlier text. The target still verifies every candidate. With
-that addition, the same model, host and protocols above show no suite speedup
-against the subset-head baseline:
-
-| Suite | Change in per-case median MTP decode |
-| --- | ---: |
-| Eight 1K/4K canonical cases, 64 outputs | −0.13% to 0.00% |
-| Eighteen category/heldout cases, 32 outputs | −0.13% to +0.03% |
-
-All 208 output sequences and acceptance results match. Separate greedy and
-sampled copy controls exercise lookup and preserve output IDs; varied prose
-uses neural proposals. Those controls ignore EOS and are not a copy-throughput
-claim. Six cancellation/reuse checks pass.
-[Commands, controls and samples](results/2026-10-23-gfx1151-flashnext-prompt-lookup.json).
-
-The exact fused router selection/BF16 cast now runs by default. Against the
-prompt-lookup baseline on the same Radeon 8060S and canonical protocol above:
-
-| Fresh prompt | AR before → after (tok/s) | MTP before → after (tok/s) |
-| --- | ---: | ---: |
-| 1024 tokens | 17.153 → 17.177 | 39.273 → 39.235 |
-| 4096 tokens | 14.694 → 14.714 | 39.063 → 39.041 |
-
-Rates pool 63 decode transitions per request across four categories and three
-measured repetitions per arm (harmonic mean of request rates). All 208 canonical
-and category/heldout outputs and acceptance results match. The four-row router
-API window falls from 17.844 to 16.752 microseconds, but this does not establish
-an end-to-end MTP speedup. The public trace confirms fused execution; four device
-cases preserve exact selection, routing and cast bits, and four expert tests pass.
-[Source, commands, attribution and samples](results/2026-10-23-gfx1151-flashnext-router-default.json).
+The October 22–23 batch-decode, cursor-upload, subset-head, prompt-lookup
+and fused-router diagnostics are archived in
+[`HISTORY.md`](HISTORY.md#qwen38-flash-next-http-prefill-and-decode-october-2223);
+current rates are in the next section.
 
 ## Qwen3.8 Flash Next current production rates
 
@@ -402,131 +483,11 @@ operation evidence, not model throughput. Natural-input and model-state gates
 are pending; the production selector is unchanged.
 [Protocol, identities, samples and artifact](results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows/README.md).
 
-## Qwen3.8 Flash Next dense Q8 checked/full-row qualification
+## Qwen3.8 Flash Next October qualification and production route evidence
 
-On the Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, the
-separately registered checked-int32/full-four-row dense Q8 DPP sibling was
-qualified on natural activations and complete model state. The candidate
-remains diagnostic-only; the generic DPP parent remains the production path.
-
-The natural-input owner screen covers six canonical cases and six declared Q8
-geometries with **594 candidate captures**. Complete owner-operation ratios
-are 1.454x at p512, 1.458x at p1024 and 1.466x–1.467x across four category
-p4096 cases; geometric mean is **1.463x**. Every capture is full-output
-bit-identical, input/raw-weight immutable and finite; teardown is clean.
-
-The full-state gate covers all 12 canonical category/shape cases with
-parent/candidate/candidate/candidate/parent arms, 16 decode steps and full KV
-hashes: **3,564 candidate calls**, exact prefill/decode logits, exact recurrent
-state/layout, exact full KV bytes and exact token IDs/repeats, with zero
-teardown allocations. This is operation and correctness evidence, not request
-throughput. A complete-engine A/B remains required before any default decision.
-[Protocol, artifacts and identities](results/2026-10-07-qwen4exp-dense-dpp-checked-full-rows-qualification/README.md).
-
-## Qwen3.8 Flash Next DP-2 rows-4096-only engine qualification
-
-On the Radeon 8060S/gfx1151 host `55ea6c509d0b49eea8de7094a1023668`, the
-production/BF16 route was measured in one tracked-clean process and one model
-residency at commit `b59b2872068237631e869f09b25bf3976d8ec361`. The run covers
-12 canonical cases plus 16 category-heldouts, one warmup, three counterbalanced
-measurements per arm and 128 decode transitions. Admission is only rows=4096;
-p512 and p1024 are zero-engagement controls.
-
-| Prompt shape | Parent prefill tok/s | Candidate prefill tok/s | Candidate / parent | Parent decode tok/s | Candidate decode tok/s |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 512 | 294.748 | 294.777 | 1.000098x | 20.986 | 20.979 |
-| 1024 | 321.450 | 321.377 | 0.999771x | 19.500 | 19.513 |
-| 4096 | 324.521 | 325.134 | 1.001890x | 10.555 | 10.543 |
-
-At p4096, all four canonical categories engage exactly 61 ordered pairs per
-case. Cross-arm output IDs are exact and all 28 cases are deterministic. The
-candidate's p4096 client-wall total is 0.999610x parent, but this small
-complete-engine difference is not promoted as a model-wall win. The bounded
-candidate remains opt-in/default-off; no unmeasured row or scope is inferred.
-
-[Protocol, full artifact and decision](results/2026-10-06-qwen4exp-dp2-shared-cast/README.md).
-
-
-On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, the gfx1151
-UD-Q4_K_XL production profile publishes existing F32 grouped norm and identical
-staging F16 bytes in one kernel, then runs the padded HC-down GEMM. Admission
-is exactly 4096 rows, K10240/N320, branches4/H2560, layers13–47 HC-down roles.
-The immediate-use handoff borrows the session workspace and eliminates 70
-staging casts per qualified prefill without adding device allocations.
-Complete norm+cast+GEMM event timing over six natural cases/420 exact calls:
-
-| Natural input | Parent owner ms | Publisher owner ms | Speedup |
-| --- | ---: | ---: | ---: |
-| code p512 | 57.277 | 54.074 | 1.059x |
-| code p1024 | 93.045 | 99.133 | 0.939x |
-| four categories p4096 | 358.844–360.867 | 326.934–328.139 | 1.096–1.104x |
-
-The 1024-row screen is slower and is not integrated; 512/1024 and unmeasured
-rows keep parent norm+cast. All outputs/input bytes and teardown pass; kernel
-scratch is zero. Fourteen native canonical/heldout state cases are exact with
-full KV, 2,520 candidate publisher/consumer calls, zero decode calls and zero
-teardown allocations. The tracked-clean 12-case A/B gives a 1.0015x weighted
-4096 prefill ratio (322.618→323.115 tok/s, +0.154%). Aggregate request wall
-is 0.9970x, with a 2.77% general-English p4096 request regression. The measured
-benefit is the bounded prefill operation, not an all-request or decode speedup.
-The small engine prefill effect is within run variation (maximum within-arm
-prefill CV 0.608%; one paired stratum 0.9999x).
-[Protocol, samples and qualification artifact](results/2026-10-06-qwen4exp-norm-f16-publish/README.md).
-
-## Qwen3.8 Flash Next padded dense-wide tail production route
-
-On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
-BF16 KV and chunk4096, the gfx1151 production profile selects a padded
-F16-input Q8_0 HC-down leaf only at K10240/N320 and 512–4096 rows.
-The same-host comparison uses all 12 canonical cases, one model residency
-and three counterbalanced measurements per arm, with 128 decode transitions.
-
-| Prompt tokens | Parent prefill tok/s | Padded prefill tok/s | Change |
-| ---: | ---: | ---: | ---: |
-| 512 | 291.581 | 294.602 | +1.036% |
-| 1024 | 317.528 | 319.415 | +0.594% |
-| 4096 | 324.275 | 325.719 | +0.445% |
-
-All 12 cases improve prefill; all 72 measured trajectories are exact and
-deterministic. Total client wall falls 493.851329→493.049429 s (−0.162%);
-ten request cases improve, but Japanese 4K is 0.214% slower and mixed 512
-is 0.279% slower. Decode by shape changes +0.018%/−0.089%/−0.200%; no
-decode-speed or all-case request-wall claim follows.
-
-The natural complete-GEMM owner improves 1.312–1.361x over six cases/420
-exact input-preserving calls, with private scratch 92→0 B/lane and
-spills 58→0. All 20 canonical/heldout full-logit/state/KV cases pass three
-candidate repeats and clean teardown. Strict, Q4_K_M and peer backends
-keep their preceding routes.
-[Protocol, correctness and artifacts](results/2026-10-06-qwen4exp-dense-wide-padded-gate/README.md).
-
-## Qwen3.8 Flash Next checked-index GDN production route
-
-On Radeon 8060S host `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL,
-BF16 KV and chunk4096, the gfx1151 production profile selects checked
-int32 indexing for the serial D128 GDN leaf at 2–4096 rows. A same-source,
-same-residency A/B uses all 12 canonical cases and three counterbalanced
-measurements per arm, with 128 decode transitions.
-
-| Prompt tokens | Wide-index prefill tok/s | Checked-index prefill tok/s | Change |
-| ---: | ---: | ---: | ---: |
-| 512 | 291.658 | 292.093 | +0.149% |
-| 1024 | 317.351 | 318.314 | +0.303% |
-| 4096 | 324.199 | 324.936 | +0.227% |
-
-All 72 measured trajectories are exact and deterministic. Natural-model GDN
-owner timing improves 1.027–1.044x over six cases/216 exact calls; all 20
-canonical/heldout full-logit/state/KV cases pass three candidate repeats and
-leak-free teardown. Private scratch drops 36→28 bytes/lane; static VGPR
-remains 256. Strict, Q4_K_M production and shapes outside the bound do not
-select the checked-index leaf.
-
-This is a qualified owner-time improvement with a small aggregate prefill
-gain, not an all-case request-wall win. Japanese p512 prefill is 0.008% slower
-(max within-arm prefill CV 0.629%); three request cases are slower, worst
-mixed p512 at 0.546%. Both prefill order strata improve; decode is unchanged
-and no decode-speed claim follows.
-[Protocol and artifacts](results/2026-10-06-qwen4exp-gdn-narrow-index/README.md).
+The dense Q8 checked/full-row and DP-2 results do not establish a request-speed
+win. For the padded dense-wide tail and checked-index GDN production routes,
+see the October comparisons and correctness records in [benchmark history](HISTORY.md#qwen38-flash-next-october-qualification-and-production-route-evidence).
 
 ## Qwen3.8 Flash Next ordered router DPP production route
 

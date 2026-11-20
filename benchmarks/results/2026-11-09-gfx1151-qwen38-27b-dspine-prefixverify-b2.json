@@ -1,0 +1,198 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_dspine_relative_baseline",
+  "status": "relative_baseline_internal",
+  "performance_claim": false,
+  "publishable": false,
+  "note": "Internal relative baseline; native DSpine drafter with CPU transition-cache refine. Speed is pre-optimization (task #18).",
+  "provenance": {
+    "hipengine_commit": "3f652f36d1bdd0afda59874e4a330f58e0d93eb8",
+    "git_branch": "qwen38-dspine-eagle4",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "drafter": "/home/lhl/.cache/huggingface/hub/models--tencent--Qwen3.8-27B-DSpine-b16/snapshots/ea909c0f5fab8865f9e14600334f55f7ce47308f",
+    "backend": "hip_gfx1151",
+    "command": "scripts/qwen38_dspine_baseline.py --reps 1 --max-new-tokens 25 --candidate-budget 2 --gpu-refine --output benchmarks/results/2026-11-09-gfx1151-qwen38-27b-dspine-prefixverify-b2.json",
+    "date": "2026-11-09T12:58:32"
+  },
+  "protocol": {
+    "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite": "mtpbench-code-general-ja (10 prompts)",
+    "max_new_tokens": 25,
+    "block_size": 16,
+    "reps": 1,
+    "candidate_budget": 2,
+    "gpu_refine": true,
+    "verify": "native chain (verify_target_block)",
+    "warmup": "1 discarded prompt",
+    "aggregation": "median DSpine decode tok/s across reps; AR reference deterministic per prompt"
+  },
+  "summary": {
+    "dspine_tok_s_median_of_prompts": 8.530953059044045,
+    "ar_tok_s_median_of_prompts": 11.411318412379291,
+    "ratio_vs_ar": 0.7475869790636503,
+    "exact_all": true,
+    "mean_acceptance": 0.6931818181818181
+  },
+  "rows": [
+    {
+      "category": "code",
+      "prompt_len": 28,
+      "ar_tok_s": 11.519893789278798,
+      "mean_acceptance": 0.75,
+      "accepted_per_draft": 1.5,
+      "id": "code_merge_intervals",
+      "dspine_tok_s_median": 9.047082870123516,
+      "ar_tok_s_median": 11.519893789278798,
+      "dspine_tok_s_reps": [
+        9.047082870123516
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.7853442953218328
+    },
+    {
+      "category": "code",
+      "prompt_len": 38,
+      "ar_tok_s": 11.469593268439615,
+      "mean_acceptance": 0.75,
+      "accepted_per_draft": 1.5,
+      "id": "code_topological_sort",
+      "dspine_tok_s_median": 8.628839635933154,
+      "ar_tok_s_median": 11.469593268439615,
+      "dspine_tok_s_reps": [
+        8.628839635933154
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.752323071444631
+    },
+    {
+      "category": "code",
+      "prompt_len": 35,
+      "ar_tok_s": 11.428171309301364,
+      "mean_acceptance": 0.75,
+      "accepted_per_draft": 1.5,
+      "id": "code_lru_cache",
+      "dspine_tok_s_median": 9.286508254702095,
+      "ar_tok_s_median": 11.428171309301364,
+      "dspine_tok_s_reps": [
+        9.286508254702095
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.8125979216940707
+    },
+    {
+      "category": "code",
+      "prompt_len": 40,
+      "ar_tok_s": 11.381428236090112,
+      "mean_acceptance": 0.75,
+      "accepted_per_draft": 1.5,
+      "id": "code_markdown_table",
+      "dspine_tok_s_median": 9.20936050580997,
+      "ar_tok_s_median": 11.381428236090112,
+      "dspine_tok_s_reps": [
+        9.20936050580997
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.8091568399656037
+    },
+    {
+      "category": "general_en",
+      "prompt_len": 27,
+      "ar_tok_s": 11.358019766511623,
+      "mean_acceptance": 0.6363636363636364,
+      "accepted_per_draft": 1.2727272727272727,
+      "id": "general_en_plan",
+      "dspine_tok_s_median": 8.371606330344655,
+      "ar_tok_s_median": 11.358019766511623,
+      "dspine_tok_s_reps": [
+        8.371606330344655
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.7370656595463752
+    },
+    {
+      "category": "general_en",
+      "prompt_len": 28,
+      "ar_tok_s": 11.421241570704401,
+      "mean_acceptance": 0.75,
+      "accepted_per_draft": 1.5,
+      "id": "general_en_explain",
+      "dspine_tok_s_median": 8.893739226213617,
+      "ar_tok_s_median": 11.421241570704401,
+      "dspine_tok_s_reps": [
+        8.893739226213617
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.7787016123558884
+    },
+    {
+      "category": "general_ja",
+      "prompt_len": 31,
+      "ar_tok_s": 11.41565817768365,
+      "mean_acceptance": 0.6363636363636364,
+      "accepted_per_draft": 1.2727272727272727,
+      "id": "general_ja_plan",
+      "dspine_tok_s_median": 8.30826658633209,
+      "ar_tok_s_median": 11.41565817768365,
+      "dspine_tok_s_reps": [
+        8.30826658633209
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.727795669510658
+    },
+    {
+      "category": "general_ja",
+      "prompt_len": 31,
+      "ar_tok_s": 11.399111455411287,
+      "mean_acceptance": 0.6363636363636364,
+      "accepted_per_draft": 1.2727272727272727,
+      "id": "general_ja_explain",
+      "dspine_tok_s_median": 8.337454034085656,
+      "ar_tok_s_median": 11.399111455411287,
+      "dspine_tok_s_reps": [
+        8.337454034085656
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.7314126251592857
+    },
+    {
+      "category": "mixed_ja_en",
+      "prompt_len": 52,
+      "ar_tok_s": 11.398363404098324,
+      "mean_acceptance": 0.6363636363636364,
+      "accepted_per_draft": 1.2727272727272727,
+      "id": "mixed_ja_en_translate",
+      "dspine_tok_s_median": 8.106680922071305,
+      "ar_tok_s_median": 11.398363404098324,
+      "dspine_tok_s_reps": [
+        8.106680922071305
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.7112144642762064
+    },
+    {
+      "category": "mixed_ja_en",
+      "prompt_len": 59,
+      "ar_tok_s": 11.406978647074933,
+      "mean_acceptance": 0.6363636363636364,
+      "accepted_per_draft": 1.2727272727272727,
+      "id": "mixed_ja_en_review",
+      "dspine_tok_s_median": 8.433066482154935,
+      "ar_tok_s_median": 11.406978647074933,
+      "dspine_tok_s_reps": [
+        8.433066482154935
+      ],
+      "ar_agreement": 1.0,
+      "exact_all_reps": true,
+      "ratio_vs_ar": 0.739290108543984
+    }
+  ]
+}

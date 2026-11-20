@@ -38,7 +38,11 @@ pytestmark = pytest.mark.skipif(
 def llm():
     import hipengine
 
-    return hipengine.LLM(model=str(_MODEL))
+    owner = hipengine.LLM(model=str(_MODEL))
+    try:
+        yield owner
+    finally:
+        owner.close()
 
 
 def _text(out) -> str:

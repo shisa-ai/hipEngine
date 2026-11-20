@@ -1,0 +1,47 @@
+{
+  "status": "same-owner diagnostic passed; fresh-owner control comparison failed",
+  "host": {
+    "hostname": "gfx1151",
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "os": "Linux 7.3.1-1-cachyos"
+  },
+  "compiler": {
+    "hip": "7.15.26333",
+    "clang": "23.0.0git",
+    "llvm_revision": "8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "f343914a95e38d8f9f56886d10de4248738ad94aabb0fa0af8fd1b00c4e82f97",
+      "size_bytes": 16464440224,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8231695824,
+        16463391648
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "source_commit": "cdc2880ee2d365f64e0357fb59acba0c995e5237",
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1151/__init__.py": "a424a2d35d4d0cbf57440783d3dec375a2ae7bf1d992664f477e41f2e885d032",
+    "hipengine/runtime/qwen35_gguf_mtp.py": "99642cb0d74558cf27ad301db7bd784e497b81e1728fd1639f4f856c6c2f0a31",
+    "hipengine/kernels/hip_gfx1100/speculative/dflash_commit.hip": "75ceafee5aef6fe59a1ed65656f5ffc7f41cb04e58f5eccd12d99b12c32f3b12"
+  },
+  "prompt_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76",
+  "runtime_profile": "production",
+  "manifest": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+  "mean_suite_wall_s": {
+    "loop": 63.78985326451948,
+    "batch": 62.83771908492781
+  },
+  "wall_reduction_percent": 1.492610706664299,
+  "validation": "Same-owner output/control equality; live snapshot bytes; boundary/reset; GPU and CPU tests. Fresh-owner acceptance repeatability remains open."
+}

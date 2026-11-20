@@ -1,0 +1,116 @@
+{
+ "schema": 1,
+ "kind": "pmc_bound_classification",
+ "status": "diagnostic_retained",
+ "date": "2026-11-10",
+ "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified, Desktop)",
+ "hipengine_commit": "e506a2b8c08941e1c0b9fa94440d3bdfad7fa752",
+ "kernel": "muse_glimmer_decode_attn_shared_kernel (shared-row WMMA), split_keys=256, n_blocks=128, 32Q/2KV/head-128 bf16",
+ "method": {
+  "profiler": "rocprofv3 (TheRock SDK), 3 passes: FETCH_SIZE | SQ_INSTS_VALU SQ_WAVES | GRBM_GUI_ACTIVE SQ_BUSY_CYCLES",
+  "timing": "unprofiled probe wall, 50 iters after 3 warmup, device-synchronized (scripts/muse_glimmer_decode_attn_scale.py)",
+  "fetch_calibration": "FETCH_SIZE in KB; previously calibrated 0.06% against a known single-read decode shape (gemma4 prefill roofline work); here within 2-6% of the K/V byte model at every point",
+  "roofline": "220 GB/s practical sustained-read ceiling for this host (probe default); theoretical LPDDR5X 256 GB/s"
+ },
+ "rows": [
+  {
+   "context": 4096,
+   "verify_rows": 1,
+   "unprofiled_ms": 0.084,
+   "kv_model_mb": 4.2,
+   "fetch_size_mb": 4.9,
+   "fetch_over_model": 1.175,
+   "effective_gbps": 49.9,
+   "ratio_to_220gbps_floor": 4.41,
+   "sq_insts_valu_relative": 27185.0
+  },
+  {
+   "context": 4096,
+   "verify_rows": 5,
+   "unprofiled_ms": 0.122,
+   "kv_model_mb": 4.2,
+   "fetch_size_mb": 10.5,
+   "fetch_over_model": 2.499,
+   "effective_gbps": 34.4,
+   "ratio_to_220gbps_floor": 6.4,
+   "sq_insts_valu_relative": 93443.0
+  },
+  {
+   "context": 32768,
+   "verify_rows": 1,
+   "unprofiled_ms": 0.152,
+   "kv_model_mb": 33.6,
+   "fetch_size_mb": 35.7,
+   "fetch_over_model": 1.064,
+   "effective_gbps": 220.8,
+   "ratio_to_220gbps_floor": 1.0,
+   "sq_insts_valu_relative": 188703.0
+  },
+  {
+   "context": 32768,
+   "verify_rows": 5,
+   "unprofiled_ms": 0.435,
+   "kv_model_mb": 33.6,
+   "fetch_size_mb": 46.9,
+   "fetch_over_model": 1.398,
+   "effective_gbps": 77.1,
+   "ratio_to_220gbps_floor": 2.85,
+   "sq_insts_valu_relative": 565879.0
+  },
+  {
+   "context": 131072,
+   "verify_rows": 1,
+   "unprofiled_ms": 0.682,
+   "kv_model_mb": 134.2,
+   "fetch_size_mb": 136.4,
+   "fetch_over_model": 1.016,
+   "effective_gbps": 196.8,
+   "ratio_to_220gbps_floor": 1.12,
+   "sq_insts_valu_relative": 715296.0
+  },
+  {
+   "context": 131072,
+   "verify_rows": 5,
+   "unprofiled_ms": 1.496,
+   "kv_model_mb": 134.2,
+   "fetch_size_mb": 147.6,
+   "fetch_over_model": 1.1,
+   "effective_gbps": 89.7,
+   "ratio_to_220gbps_floor": 2.45,
+   "sq_insts_valu_relative": 2054452.0
+  },
+  {
+   "context": 262144,
+   "verify_rows": 1,
+   "unprofiled_ms": 1.299,
+   "kv_model_mb": 268.4,
+   "fetch_size_mb": 270.6,
+   "fetch_over_model": 1.008,
+   "effective_gbps": 206.6,
+   "ratio_to_220gbps_floor": 1.06,
+   "sq_insts_valu_relative": 1417419.0
+  },
+  {
+   "context": 262144,
+   "verify_rows": 5,
+   "unprofiled_ms": 2.856,
+   "kv_model_mb": 268.4,
+   "fetch_size_mb": 281.8,
+   "fetch_over_model": 1.05,
+   "effective_gbps": 94.0,
+   "ratio_to_220gbps_floor": 2.34,
+   "sq_insts_valu_relative": 4014972.0
+  }
+ ],
+ "classification": {
+  "ar_decode_tok1_ge_32k": "DRAM-bandwidth-bound: 197-221 GB/s effective = 90-100% of the practical roofline; FETCH_SIZE ~= one K/V read (no re-fetch). No meaningful kernel-level headroom for AR decode attention at long context.",
+  "ar_decode_tok1_4k": "Latency/launch-bound (4.4x floor) but absolute cost tiny: 0.084 ms/layer, ~1.1 ms/step over 13 NoPE layers. Not worth chasing.",
+  "verify_tok5": "NOT bandwidth-bound: K/V fetch amortized to ~1x model at every context, yet 2.3-2.9x the single-row floor (77-94 GB/s effective). Residual is per-row compute/occupancy in the multi-row path. Only remaining attention-side lever; benefits DFlash verify. Upper-bound saving if row sharing reached the 1-row floor: 13 NoPE layers x (ms5-ms1) = 3.7 ms/verify at 32K, 10.6 at 131K, 20.2 at 260K."
+ },
+ "caveats": [
+  "SQ_INSTS_VALU/SQ_WAVES/GRBM_GUI_ACTIVE/SQ_BUSY_CYCLES absolute values are unreliable on this rocprofv3/gfx1151 combination (SQ_WAVES=19 for a 256-workgroup grid; GRBM_GUI_ACTIVE non-monotonic in kernel duration; 40 instance rows per dispatch). Relative VALU scaling (~row-count) is consistent. Classification therefore rests on calibrated FETCH_SIZE + unprofiled durations + roofline arithmetic, not activity-counter utilization.",
+  "PMC-mode dispatch timestamps underestimated the 32K tok=1 kernel (0.115 vs 0.152 ms unprofiled, implying an impossible 312 GB/s); unprofiled walls are authoritative for rates.",
+  "Isolated synthetic K/V probe, one NoPE-layer geometry; per-model figures multiply by 13 NoPE layers (SWA layers window-bounded)."
+ ],
+ "verdict": "Further AR decode-attention work cannot pay at long context (at the DRAM roof). The one attention-side candidate with headroom is multi-row verify sharing (tok>1), queued behind the target-prefill TTFT lever."
+}

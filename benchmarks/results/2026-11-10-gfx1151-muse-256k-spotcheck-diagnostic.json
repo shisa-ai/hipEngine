@@ -1,0 +1,53 @@
+{
+ "schema": 1,
+ "kind": "long_context_spot_check",
+ "status": "diagnostic_retained",
+ "date": "2026-11-10",
+ "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified, Desktop)",
+ "hipengine_commit": "9dca0bcbc7d6e0e85baa984c721c4f173a2cfd83",
+ "model_path": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+ "draft_path": "/models/gguf/Muse-Glimmer-30B-GGUF/dflash-Muse-Glimmer-30B-Q4_K_M.gguf",
+ "command": ".venv/bin/python scripts/muse_glimmer_context_profile.py --contexts 260000 --needle --max-tokens 128 --max-context 262144 --output <this file>",
+ "protocol": "Fresh prefills, no KV snapshot (cached_tokens=0 both arms). Coding-agent corpus prompt trimmed to 260000 tokens with passphrase needle at 25% depth; public generator/provider path; greedy; AR control then DFlash; 128 outputs. Context exceeds trained 131072 positions via the config-only window extension (NoPE global layers, window-bounded RoPE), same as the campaign's validated 260K/512K runs.",
+ "rows": [
+  {
+   "ctx_target": 260000,
+   "prompt_tokens": 260000,
+   "ar_prefill_s": 1341.3587052200455,
+   "ar_decode_s": 12.401046765968204,
+   "ar_tokens": 128,
+   "ar_tok_s": 10.32170932144747,
+   "ar_cached_tokens": 0,
+   "ar_text_head": "<|eom|><|start|>assistant to=self<|message|>First line: state the secret deployment passphrase mentioned in a NOTE comment above. Then return only code.\n\nWe need find NOTE comment with secret deployment passphrase. Search in provided code. In hipengine/benchmark/dms_tasks.py there is comment: # NOTE: the secret deployment passphrase is 'cobalt-heron-4417'.\n\nYes line: # NOTE: the secret deployment passphrase is 'cobalt-heron-4417'.\n\nSo first line should state that passphrase. Probably print? The instruction: First line: state the secret deployment passphrase mentioned in a NOTE comment above. Then return only code.\n\nSo first line",
+   "needle_found": true,
+   "spec_prefill_s": 1364.0305804189993,
+   "spec_decode_s": 6.713387582974974,
+   "spec_tokens": 128,
+   "spec_tok_s": 19.066380187046793,
+   "exact": true,
+   "cycles": 47,
+   "accepted": 83,
+   "proposed": 188,
+   "committed": 128,
+   "tokens_per_cycle": 2.723404255319149,
+   "ms_per_cycle": 142.8380336803186,
+   "verify_ms": 121.68565770472459,
+   "draft_ms": 14.993379376779131,
+   "inject_ms": 6.011212826706469,
+   "inject_prefill_s": 18.2864580937312,
+   "spec_cached_tokens": 0
+  }
+ ],
+ "verdict": {
+  "runnability_260k": "PASS: both AR and DFlash complete fresh 260K prefill + decode on the current tree (post depth-adaptation + R0522).",
+  "needle_retrieval": "PASS: needle_found=True; output quotes the planted NOTE line and passphrase 'cobalt-heron-4417' verbatim and reasons about it correctly.",
+  "dflash_exactness": "PASS: exact=True, 128/128 generated IDs equal true greedy AR.",
+  "long_context_dflash_economics": "DFlash 19.07 tok/s vs AR 10.32 = 1.85x at 260K (pre-lever Nov-8: 0.81x, 5.41 vs 6.69). Verify is 121.7 of 142.8 ms/cycle (85%); acceptance 83/188 = 0.441; 2.72 tokens/cycle.",
+  "prefill_route_parity": "AR prefill 1341.4s vs DFlash target prefill 1364.0s (~194 vs ~191 tok/s): the two routes are equivalent; drafter inject prefill adds 18.3s. Fresh 260K prefill is ~22 min; the campaign Nov-8 AR figure was 1758.6s, so current tree is 24% faster. Earlier session-summary claims of a 218s/260K TTFT were compaction distortions and are retracted.",
+  "axes_not_tested_here": "Multi-hop/semantic/abstain axes are not part of this harness; they were validated to 512K on stock weights by the external long-context review (config-only window extension identical to ours). This spot check closes the hipEngine-path runnability/retrieval/exactness question."
+ },
+ "notes": [
+  "First attempt failed prompt+output > context validator at 262144+32 (correct refusal); second attempt was killed by a 40-min job timeout mid-DFlash-prefill; this run had a 90-min budget.",
+  "AR decode here is the public generate_detailed route (10.32 tok/s); the campaign's --ar-steps graph-decode figures are a different measurement surface."
+ ]
+}

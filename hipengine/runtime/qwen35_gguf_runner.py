@@ -1214,10 +1214,12 @@ class DFlash2HiddenCaptureTargets:
         normalized: dict[int, DeviceBuffer] = {}
         for raw_depth, buffer in self.buffers.items():
             depth = int(raw_depth)
-            if depth not in DFLASH2_TAP_DEPTHS:
+            # Tap depths are caller-defined (depth = target layer_id + 1). DFlash2
+            # uses DFLASH2_TAP_DEPTHS; other drafters (e.g. DSpine) supply their
+            # own target_layer_ids, so accept any positive post-layer depth.
+            if depth < 1:
                 raise ValueError(
-                    "DFlash2 hidden captures are limited to the configured tap depths "
-                    f"{DFLASH2_TAP_DEPTHS}; got {depth}"
+                    f"hidden capture depth must be a positive post-layer depth; got {depth}"
                 )
             if not isinstance(buffer, DeviceBuffer):
                 raise TypeError("DFlash2 hidden capture destinations must be DeviceBuffer views")
@@ -1519,6 +1521,7 @@ class Qwen35GGUFBlockVerifyResult:
     start_position: int
     pre_output_norm_hidden: np.ndarray | None = None
     layer_output_hidden: dict[int, np.ndarray] | None = None
+    layer_output_hidden_device: dict[int, int] | None = None
     layer_boundary_hidden: dict[int, dict[str, np.ndarray]] | None = None
     lm_head_logits_f32: np.ndarray | None = None
     linear_state_rows_captured: bool = False
@@ -3237,6 +3240,8 @@ class Qwen35GGUFFullStackRunner:
     # Profile-owned recurrent-state allocation decision. ``None`` keeps the
     # unbound/direct diagnostic environment and backend-package default.
     target_fp16_recurrent_state: bool | None = None
+    # Bound short-context attention variant; None keeps direct diagnostic controls.
+    target_short_c1_attn_variant: str | None = None
     # Profile-owned verifier capture mode. ``None`` keeps the unbound/direct
     # diagnostic environment input, resolved once at construction.
     target_verifier_prefill_gdn_capture: bool | None = None
@@ -3882,17 +3887,22 @@ class Qwen35GGUFFullStackRunner:
     def _full_attn_decode_short_batch_fn(self, spans: KVLiveSpans):
         """Return the short-context batch attention leaf.
 
-        Defaults to the exact 256-thread fixed256 leaf. A production
-        thread-geometry override (GGUF_SHORT_C1_BATCH_ATTN_THREADS capability
-        or HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS env) selects the same body at a
-        wider block width (non-exact; execution-profile gated).
+        A profile-owned registry variant wins over diagnostic controls. Unbound
+        runners resolve the package default or thread-geometry environment override.
+        The registered 256-thread reference remains the strict leaf.
         """
 
         missing = object()
         fn = getattr(self, "_gguf_full_attn_decode_short_batch_fn_cache", missing)
         if fn is missing:
-            threads = _gguf_short_c1_attn_threads(self.backend)
-            if threads == 256:
+            variant = getattr(self, "target_short_c1_attn_variant", None)
+            threads = _gguf_short_c1_attn_threads(self.backend) if variant is None else None
+            if variant is not None:
+                fn = resolve(
+                    backend=self.backend, layer="paged_attn_decode",
+                    quant="w4_paro", variant=variant,
+                )
+            elif threads == 256:
                 fn = resolve_paged_attn_decode(
                     backend=self.backend,
                     spans=spans,
@@ -6261,19 +6271,11 @@ class Qwen35GGUFFullStackRunner:
                         runtime=runtime,
                     )
                 else:
-                    # Below the split threshold the scalar owner picks its
-                    # short-context batch leaf from this row's own ``position + 1``
-                    # cap. That leaf takes the cap as a scalar argument, so it is
-                    # only the scalar owner's arithmetic when the caller can
-                    # vouch for the row's position: the eager verifier stages the
-                    # metadata it reads back, while the captured target graph
-                    # updates positions on device and the host mirror is a
-                    # capture-time guess. Using a guessed cap launches the batch
-                    # leaf with the wrong live count and breaks AR identity on the
-                    # retained 3-prompt ladder (shared prefix 7/16). Without that
-                    # guarantee the plain span leaf is the correct choice: its
-                    # loop is bounded by the row's own live count, so the
-                    # span-wide limit stays inert.
+                    # The batch leaf reads live counts on device. Eager rows
+                    # use their exact cap; graph rows use the immutable bucket
+                    # bound, never the capture-time host position. Select the
+                    # scalar owner's variant only when that whole bound lies
+                    # within its short-context range.
                     row_active_context = int(row_scratch.position_host[0]) + 1
                     row_short_batch_max_context = max(
                         0,
@@ -6285,10 +6287,12 @@ class Qwen35GGUFFullStackRunner:
                             )
                         ),
                     )
-                    if (
-                        row_views_have_scalar_caps
-                        and 0 < row_active_context <= row_short_batch_max_context
-                    ):
+                    batch_context_limit = (
+                        row_active_context
+                        if row_views_have_scalar_caps
+                        else attention_context_limit
+                    )
+                    if 0 < batch_context_limit <= row_short_batch_max_context:
                         self._full_attn_decode_short_batch_fn(
                             row_scratch.decode_spans
                         )(
@@ -6298,7 +6302,7 @@ class Qwen35GGUFFullStackRunner:
                             context_ptr,
                             row_scratch.decode_spans,
                             1,
-                            row_active_context,
+                            batch_context_limit,
                             row_scratch.block_size,
                             cfg.head_count,
                             cfg.head_count_kv,
@@ -10307,10 +10311,8 @@ def _gguf_model_info_artifact_preset_key(model_info: object) -> str | None:
 
     Header-only (no payload read, no device): builds the production tensor
     map plus the structural NextN map exactly like the materializer and
-    resolves the same admission qualification — ``None`` for a pinned
-    qualified plain control, a UD preset key, or the unqualified-manifest
-    sentinel. Session-level policy callers use this so their stamp-keyed
-    admissions bind the actual manifest, not the header stamp alone.
+    resolves a specialized UD preset key or ``None`` for generic policies.
+    Unfamiliar manifests remain eligible for generic capability routing.
     """
 
     from hipengine.loading.qwen35_gguf_admission import (
@@ -13210,6 +13212,7 @@ class Qwen35GGUFResidentSession:
     # Profile-owned recurrent-state allocation decision. ``None`` keeps the
     # unbound/direct diagnostic environment and backend-package default.
     target_fp16_recurrent_state: bool | None = None
+    target_short_c1_attn_variant: str | None = None
     # Profile-owned verifier capture mode. ``None`` inherits the runner's frozen
     # decision, or resolves the unbound/direct environment once.
     target_verifier_prefill_gdn_capture: bool | None = None
@@ -13409,6 +13412,7 @@ class Qwen35GGUFResidentSession:
     _bulk_prefill_full_prompt_capacity_rows: int = field(default=0, init=False)
     _bulk_prefill_hidden_planes: int = field(default=0, init=False)
     _prefill_f16_staging_buf: object | None = field(default=None, init=False)
+    _prefill_fullgemm_workspace: object | None = field(default=None, init=False)
     _iq_dense_mmq_buf: object | None = field(default=None, init=False)
     _q6_integer_mmq_library: object | None = field(default=None, init=False)
     _iq_dense_mmq_library: object | None = field(default=None, init=False)
@@ -13713,6 +13717,7 @@ class Qwen35GGUFResidentSession:
                     self.small_weight_arena_max_allocation_bytes
                 ),
                 target_fp16_recurrent_state=self.target_fp16_recurrent_state,
+                target_short_c1_attn_variant=self.target_short_c1_attn_variant,
                 target_verifier_prefill_gdn_capture=(
                     self.target_verifier_prefill_gdn_capture
                 ),
@@ -13736,6 +13741,11 @@ class Qwen35GGUFResidentSession:
         # The full-stack runner has already resolved it against the detected
         # device, so keep the resident session on that concrete identity too.
         self.backend = self.runner.backend
+        requested_short_attn = self.target_short_c1_attn_variant
+        if requested_short_attn is not None and getattr(
+            self.runner, "target_short_c1_attn_variant", None
+        ) != requested_short_attn:
+            raise RuntimeError("shared runner short attention variant does not match the owner request")
         requested_fp16 = self.target_fp16_recurrent_state
         if requested_fp16 is not None:
             live_fp16 = getattr(self.runner, "fp16_recurrent_state", None)
@@ -15177,6 +15187,7 @@ class Qwen35GGUFResidentSession:
                 f"resident slot view {index} outside [1, {int(owner.slot_count)})"
             )
         view = copy(self)
+        view._prefill_fullgemm_workspace = None
         view.__dict__["_resident_state_storage"] = ResidentStateStorage()
         view.__dict__["_graph_lifetime_state"] = Qwen35GGUFGraphLifetime()
         view._state_storage().canonical.owns_scratch = False
@@ -18617,10 +18628,16 @@ class Qwen35GGUFResidentSession:
         if not bool(self.use_prefill_f16_staging):
             return prefill_f16_staging_session(False)
         buffer = self._ensure_prefill_f16_staging_buffer()
+        if self._prefill_fullgemm_workspace is None:
+            from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import (
+                Q6FullGemmWorkspace,
+            )
+            self._prefill_fullgemm_workspace = Q6FullGemmWorkspace()
         return prefill_f16_staging_session(
             True,
             workspace_ptr=int(buffer.ptr),
             workspace_nbytes=int(buffer.nbytes),
+            workspace_owner=self._prefill_fullgemm_workspace,
         )
 
     def _wide_f16_activation_context(self):
@@ -20654,6 +20671,7 @@ class Qwen35GGUFResidentSession:
         _graph_hidden_f32_a: object | None = None,
         _graph_hidden_f32_b: object | None = None,
         _graph_pre_output_norm_hidden_buf: object | None = None,
+        _graph_layer_output_hidden_bufs: Mapping[int, object] | None = None,
         _native_decode_row_scratches: tuple[object, ...] | None = None,
         _native_attention_context_limit: int | None = None,
     ) -> Qwen35GGUFBlockVerifyResult | None:
@@ -20747,8 +20765,27 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(
                     "enqueue-only pre-output-norm capture requires a graph-owned destination"
                 )
-            if capture_layer_output_hidden or capture_layer_boundary_hidden:
-                raise ValueError("enqueue-only target verification does not support layer host captures")
+            if capture_layer_boundary_hidden:
+                raise ValueError("enqueue-only target verification does not support layer boundary host captures")
+            if capture_layer_output_hidden:
+                if _graph_layer_output_hidden_bufs is None:
+                    raise ValueError(
+                        "enqueue-only layer output capture requires graph-owned device destinations"
+                    )
+                aux_capture_ids = self._normalize_layer_output_capture(capture_layer_output_hidden)
+                expected_aux_nbytes = rows * self.runner.hidden_size * DType.FP32.itemsize
+                for aux_layer_id in aux_capture_ids:
+                    aux_dest = _graph_layer_output_hidden_bufs.get(int(aux_layer_id))
+                    aux_dest_nbytes = int(getattr(aux_dest, "nbytes", 0)) if aux_dest is not None else 0
+                    if aux_dest is not None and aux_dest_nbytes == 0:
+                        aux_dest_nbytes = int(getattr(aux_dest, "numel", 0)) * int(
+                            getattr(getattr(aux_dest, "dtype", None), "itemsize", 0)
+                        )
+                    if aux_dest is None or aux_dest_nbytes != expected_aux_nbytes:
+                        raise ValueError(
+                            "enqueue-only layer output capture requires a graph-owned "
+                            f"(rows, hidden_size) FP32 destination for layer {aux_layer_id}"
+                        )
             if record_stage_timings or sync_stage_timings:
                 raise ValueError("enqueue-only target verification does not support host stage timings")
             graph_hidden = (
@@ -20791,6 +20828,7 @@ class Qwen35GGUFResidentSession:
             or _graph_hidden_f32_a is not None
             or _graph_hidden_f32_b is not None
             or _graph_pre_output_norm_hidden_buf is not None
+            or _graph_layer_output_hidden_bufs is not None
         ):
             raise ValueError("private target graph controls require enqueue-only mode")
         if _native_decode_row_scratches is not None and (
@@ -20989,6 +21027,55 @@ class Qwen35GGUFResidentSession:
                 and full_attention_prefused_ready
                 and self.runner._rounded_add_rmsnorm_fn(rows=rows) is not None
             )
+
+            def _capture_verify_layer_output(layer_id, *, hidden, hidden_f32, use_f32_residual):
+                # Enqueue-only: write the aux rows straight into a graph-owned
+                # device FP32 buffer (D2D), so the generic drafter can consume
+                # them without a per-cycle D2H. The rows sit at scratch_row_start
+                # (0 for a reusable/prebuilt graph scratch), matching the
+                # pre-output-norm graph capture. Host capture reads the same
+                # physical scratch rows rather than logical token positions.
+                if _enqueue_only:
+                    dest = (
+                        None
+                        if _graph_layer_output_hidden_bufs is None
+                        else _graph_layer_output_hidden_bufs.get(int(layer_id))
+                    )
+                    if dest is None:
+                        raise RuntimeError(
+                            f"graph-owned aux destination missing for layer {layer_id}"
+                        )
+                    if use_f32_residual:
+                        runtime.memcpy_async(
+                            int(dest.ptr),
+                            int(hidden_f32.ptr),
+                            rows * self.runner.hidden_size * DType.FP32.itemsize,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                    else:
+                        bf16_to_f32(
+                            hidden.ptr + scratch_row_start * row_nbytes,
+                            int(dest.ptr),
+                            rows * self.runner.hidden_size,
+                            stream=stream,
+                            library=self.runner._cast_library(),
+                            runtime=runtime,
+                        )
+                    return None
+                if use_f32_residual:
+                    return _copy_f32_ptr_to_host(
+                        int(hidden_f32.ptr),
+                        rows * self.runner.hidden_size,
+                        runtime=runtime,
+                    ).reshape(rows, self.runner.hidden_size)
+                return _copy_bf16_rows_to_host_f32(
+                    hidden.ptr + scratch_row_start * row_nbytes,
+                    rows,
+                    self.runner.hidden_size,
+                    runtime=runtime,
+                )
+
             with (
                 launch_decision_session(getattr(self, "launch_decision_owner", None)),
                 wmma_prefill_session(block_wmma_prefill),
@@ -21089,20 +21176,7 @@ class Qwen35GGUFResidentSession:
                                 verify_f32_post_norm=verify_f32_post_norm,
                             )
                         ),
-                        output=lambda layer_id, *, hidden, hidden_f32, use_f32_residual: (
-                            _copy_f32_ptr_to_host(
-                                int(hidden_f32.ptr),
-                                rows * self.runner.hidden_size,
-                                runtime=runtime,
-                            ).reshape(rows, self.runner.hidden_size)
-                            if use_f32_residual
-                            else _copy_bf16_rows_to_host_f32(
-                                hidden.ptr + start * row_nbytes,
-                                rows,
-                                self.runner.hidden_size,
-                                runtime=runtime,
-                            )
-                        ),
+                        output=_capture_verify_layer_output,
                     ),
                     self.runner._run_native_attention_bulk_ffn_layer_rows,
                     self.runner._run_linear_attention_prefill_layer_rows,
@@ -29911,12 +29985,19 @@ class Qwen35GGUFResidentSession:
         self._verify_logits_buf = None
         self._verify_lm_rows_capacity = 0
 
+    def _close_prefill_fullgemm_workspace(self) -> None:
+        owner = self._prefill_fullgemm_workspace
+        if owner is not None:
+            owner.close()
+            self._prefill_fullgemm_workspace = None
+
     def _close_resident_slot_view_buffers(self, *, runtime: HipRuntime) -> None:
         """Release allocations grown by one lightweight resident slot view."""
 
         if getattr(self, "_resident_batch_owner", None) is None:
             raise RuntimeError("resident slot-view cleanup requires a batch owner")
         self._check_state_capture_released()
+        self._close_prefill_fullgemm_workspace()
         self._close_prefix_snapshot_pool()
         native_sampler = self._native_sampler_workspace
         if native_sampler is not None:
@@ -29981,6 +30062,7 @@ class Qwen35GGUFResidentSession:
             self.__dict__["_construction_rollback_errors"] = ()
             return ()
 
+        attempt("prefill-fullgemm-workspace", self._close_prefill_fullgemm_workspace)
         recorder = self.__dict__.get("_prefill_flight_recorder")
         if recorder is not None:
             synchronized = True
@@ -30189,6 +30271,7 @@ class Qwen35GGUFResidentSession:
         views = tuple(self.__dict__.get("_resident_slot_views", ()))
         for view in views:
             view._check_state_capture_released()
+        self._close_prefill_fullgemm_workspace()
         self._close_prefix_snapshot_pool()
         for view in reversed(views):
             view._close_resident_slot_view_buffers(runtime=runtime)

@@ -1,0 +1,49 @@
+{
+ "schema": 1,
+ "kind": "prefill_kernel_profile",
+ "status": "diagnostic_retained",
+ "date": "2026-11-10",
+ "hardware": "Radeon 8060S / gfx1151 (Ryzen AI MAX+ PRO 395, 128 GiB unified, Desktop)",
+ "hipengine_commit": "38019535316e2a2f017de04240f98f8118881e56",
+ "model_path": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+ "method": "rocprofv3 --kernel-trace --marker-trace, roctx ranges around synchronized session.prefill at 32768 and 131072 (chunk 1024); scripts/rocprof_marker_breakdown.py attribution. Trace walls match unprofiled pairing within 0.2% (451.3/286.7 vs 452.2/286.4 tok/s).",
+ "rows": [
+  {
+   "context": 32768,
+   "wall_s": 72.6,
+   "kernel_sum_s": 72.2,
+   "launches": 53472,
+   "gap_s": 0.39,
+   "shares": {
+    "flash_prefill_wmma_mt_attention": 0.248,
+    "q4_t16_dense_wmma_prefill": 0.565,
+    "tensile_cijk_gemm": 0.097,
+    "cast_bf16_to_f16": 0.028,
+    "q6_k_dequantize": 0.019,
+    "other": 0.043
+   }
+  },
+  {
+   "context": 131072,
+   "wall_s": 457.2,
+   "kernel_sum_s": 455.6,
+   "launches": 213888,
+   "gap_s": 1.58,
+   "shares": {
+    "flash_prefill_wmma_mt_attention": 0.523,
+    "q4_t16_dense_wmma_prefill": 0.358,
+    "tensile_cijk_gemm": 0.061,
+    "cast_bf16_to_f16": 0.018,
+    "q6_k_dequantize": 0.012,
+    "other": 0.028
+   }
+  }
+ ],
+ "scaling_32k_to_131k": {
+  "attention": "17.9s -> 238.2s (13.3x, near-quadratic; SWA layers window-bounded)",
+  "q4_projections": "40.8s -> 163.3s (4.0x, linear)",
+  "tensile_gemm": "7.0s -> 27.9s (4.0x, linear)"
+ },
+ "verdict": "The 131K prefill inversion vs llama.cpp (0.85x) is the flash-prefill attention kernel: 52.3% of the 131K wall (238.2s), ~15.4 TFLOP/s effective on the full-attention layers. Projections scale linearly and are not the inversion cause. Lever: long-key-range efficiency of muse_glimmer_flash_prefill_wmma_mt_kernel (tile/pipeline/occupancy) and/or prefill chunk size; projections are the secondary short-shape lever.",
+ "raw_breakdown": "results/2026-11-10-gfx1151-muse-prefill-kernel-breakdown.txt"
+}

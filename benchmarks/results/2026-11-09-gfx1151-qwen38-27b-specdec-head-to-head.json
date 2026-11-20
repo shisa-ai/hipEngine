@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_gfx1151_specdec_head_to_head",
+  "status": "relative_measurement_internal",
+  "performance_claim": false,
+  "publishable": false,
+  "note": "Diagnostic apples-to-apples head-to-head: AR + MTP/DFlash2/DSpine/EAGLE-4 on the matched relative-baseline protocol. Thermally-throttled ZBook (NOT the official publishing lane); each method measured against its own back-to-back AR, so ratio_vs_ar is the fair comparison. Absolute tok/s drift with throttle (AR reference ranged 9.02-11.23 across sequential runs). All methods AR-exact on all 10 prompts.",
+  "provenance": {
+    "hipengine_commit": "c119b5418185f928bb276addfeb05b7d65cff8f0",
+    "git_branch": "qwen38-dspine-eagle4",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "backend": "hip_gfx1151",
+    "hardware": "Radeon 8060S (gfx1151), Ryzen AI MAX+ PRO 395, thermally throttled",
+    "date": "2026-11-10T01:49:15",
+    "commands": [
+      "scripts/qwen38_dflash2_baseline.py --block-size 3 --reps 3 --max-new-tokens 25",
+      "scripts/qwen38_dspine_baseline.py --candidate-budget 5 --gpu-refine --reps 3 --max-new-tokens 25",
+      "scripts/qwen38_eagle4_baseline.py --n-draft 2 --reps 3 --max-new-tokens 25",
+      "scripts/qwen36_dense_gguf_suite.py --quant gguf_q4_k_m --max-new-tokens 25 --candidate-budgets 3 --runs 3 --warmup --require-cached-build"
+    ],
+    "source_artifacts": [
+      "/tmp/specdec_headtohead/dflash2_b3.json",
+      "/tmp/specdec_headtohead/dspine_b5.json",
+      "/tmp/specdec_headtohead/eagle4_n2.json",
+      "/tmp/specdec_headtohead/mtp_b3.json"
+    ]
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl (10 prompts, 4 categories)",
+    "max_new_tokens": 25,
+    "reps": 3,
+    "aggregation": "median decode tok/s across reps, median across prompts; MTP weighted over prompts",
+    "ar_reference": "per-method back-to-back true no-spec AR (session.step / suite true_ar)",
+    "greedy": true,
+    "warmup": "1 discarded prompt/run"
+  },
+  "rows": [
+    {
+      "method": "true_AR",
+      "config": "no speculation",
+      "decode_tok_s": 9.02,
+      "ratio_vs_ar": 1.0,
+      "acceptance": null,
+      "ar_exact": true,
+      "ar_reference_tok_s": 9.02
+    },
+    {
+      "method": "MTP",
+      "config": "B3 (native NextN)",
+      "decode_tok_s": 14.71,
+      "ratio_vs_ar": 1.631,
+      "acceptance": 0.603,
+      "ar_exact": true,
+      "ar_reference_tok_s": 9.02
+    },
+    {
+      "method": "EAGLE-4",
+      "config": "chain n_draft=2",
+      "decode_tok_s": 13.9,
+      "ratio_vs_ar": 1.306,
+      "acceptance": 0.65,
+      "ar_exact": true,
+      "ar_reference_tok_s": 10.64
+    },
+    {
+      "method": "DSpine",
+      "config": "b16 block, verify prefix 5, GPU refine",
+      "decode_tok_s": 11.13,
+      "ratio_vs_ar": 0.991,
+      "acceptance": 0.532,
+      "ar_exact": true,
+      "ar_reference_tok_s": 11.23
+    },
+    {
+      "method": "DFlash2",
+      "config": "B3 batched chain",
+      "decode_tok_s": 9.86,
+      "ratio_vs_ar": 0.881,
+      "acceptance": 2.319,
+      "ar_exact": true,
+      "ar_reference_tok_s": 11.19
+    }
+  ],
+  "ordering_by_ratio": [
+    "MTP 1.63x",
+    "EAGLE-4 1.31x",
+    "AR 1.00x",
+    "DSpine 0.99x",
+    "DFlash2 0.88x"
+  ],
+  "mtp_still_fastest": true,
+  "bottleneck_map": {
+    "MTP": {
+      "cycle_ms": 185.4,
+      "tokens_per_cycle": 2.73,
+      "bound": "verify/GEMV",
+      "split": "target verify ~85% (graph-captured exact rowtile, <=4-row bucket), NextN proposal ~23ms, host <1ms",
+      "source": "this run cycle_records + campaign QWEN38-27B-SPECDEC-OPTIMIZATION-CAMPAIGN.md \u00a76.1",
+      "next": "GEMV bandwidth floor; exactness-constrained (no reassociation)"
+    },
+    "EAGLE-4": {
+      "cycle_ms": 165,
+      "tokens_per_cycle": 2.3,
+      "bound": "verify/GEMV",
+      "split": "verify ~111ms (67%, graph-captured), draft chain ~39ms, device fc-projection+append ~12ms, accept/commit 0.4ms",
+      "source": "this-session phase probes (/tmp/eagle4_append_profile.py, accept_profile) + rocprof e3e1cc",
+      "next": "GEMV floor; draft-step graph capture; deeper n_draft if acceptance holds"
+    },
+    "DSpine": {
+      "cycle_ms": 335.7,
+      "tokens_per_cycle": 3.0,
+      "bound": "eager verify + tap D2H",
+      "split": "eager 5-row verify + 5-layer tap D2H 216.8ms (65%), full-16-row drafter forward 46.9ms (14%), GPU refine 40.3ms (12%), host project+append 29.8ms (9%), accept 1.9ms",
+      "source": "/tmp/dspine_phase_profile.py (this run)",
+      "next": "P1 not yet applied: graph verify + device aux + device projection (EAGLE-4 already has these); would attack ~247ms of 336ms"
+    },
+    "DFlash2": {
+      "cycle_ms": null,
+      "tokens_per_cycle": 2.32,
+      "bound": "drafter forward (architectural)",
+      "split": "5-layer drafter forward+select ~96ms/cycle vs MTP NextN ~2.4ms; verify exactness-constrained; _PACK8_ROWTILE_MAX_ROWS=4 cliff",
+      "source": "campaign \u00a76.2 / DFLASH2-CAMPAIGN rocprof (#15)",
+      "next": "structural 5-layer cost; toolkit closes margins only"
+    }
+  },
+  "shared_next_lever": "verify GEMV bandwidth floor + lift _PACK8_ROWTILE_MAX_ROWS=4 cliff (raises every method's 5-8-row verify ceiling); exactness-constrained (no arithmetic reassociation). DSpine additionally needs the P1 graph-verify/device-aux/device-projection it has not yet received."
+}

@@ -129,6 +129,10 @@ class SpeculativeProviderConfig:
     provider: str
     draft_model: str | Path
     candidate_budget: int = DEFAULT_PROVIDER_CANDIDATE_BUDGET
+    # Acceptance-triggered online depth adaptation around candidate_budget
+    # (block DFlash providers). Output-invariant: verify is target-corrected,
+    # so depth changes tokens-per-cycle, never token identity.
+    adaptive_depth: bool = True
 
     def __post_init__(self) -> None:
         provider = str(self.provider).strip()
@@ -351,7 +355,10 @@ def register_builtin_speculative_providers() -> None:
         return
     from hipengine.generation import gemma4_mtp as _gemma4_mtp  # noqa: F401
     from hipengine.generation import laguna_dflash as _laguna_dflash  # noqa: F401
+    from hipengine.generation import muse_glimmer_dflash as _muse_glimmer_dflash  # noqa: F401
     from hipengine.generation import qwen4_exp_mtp as _qwen4_exp_mtp  # noqa: F401
+    from hipengine.generation import qwen35_gguf_dspine as _qwen35_gguf_dspine  # noqa: F401
+    from hipengine.generation import qwen35_gguf_eagle4 as _qwen35_gguf_eagle4  # noqa: F401
 
     _BUILTINS_REGISTERED = True
 

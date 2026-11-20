@@ -50,6 +50,43 @@ def test_retired_environment_is_ignored_and_explicit_f32_field_wins(monkeypatch,
     assert policy.f32_planes == 3
 
 
+def test_cached_launch_does_not_reuse_a_dead_session_identity(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setenv("HIPENGINE_GGUF_WMMA_PREFILL", "0")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_DENSE_WIDE", "0")
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_Q8_STAGED_F32_LAYERS", "")
+    monkeypatch.setattr(linear, "_DISPATCH_RESOLVE_CACHE", {})
+    # Model allocator ID reuse deterministically, without relying on GC timing.
+    monkeypatch.setattr(linear, "id", lambda value: 123, raising=False)
+    monkeypatch.setattr(linear, "generation", lambda: 17)
+    monkeypatch.setattr(linear, "_ensure_linear_kernel_registered", lambda key: None)
+    monkeypatch.setattr(linear, "resolve", lambda **kwargs: object())
+    calls = []
+    for count in (2, 3):
+        monkeypatch.setitem(linear._LAUNCH_ABI, f"raw_mmq_d4x{count}_f32",
+                            lambda *args, _count=count: calls.append(_count))
+    weight = SimpleNamespace(
+        spec=SimpleNamespace(layout="raw_gguf", quant_key="gguf_q8_0",
+                             slot_path="layers.0.attn_qkv.weight"),
+        backend="hip_gfx1100",
+        allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=4096)),
+    )
+    for planes in (2, 3, 2):
+        policy = Q8MMQPrefillPolicy({(2816, 4096): 64}, 4096, 0.0, 4096,
+                                   f32_planes=planes)
+        token = linear._q8_mmq_prefill_session.set(_session(policy))
+        try:
+            for _ in range(2):
+                linear.launch_gguf_linear(
+                    weight, 100, 200, 512, 2816, 4096,
+                    activation_dtype=linear.GGUF_ACTIVATION_F32,
+                    output_dtype=linear.GGUF_OUTPUT_F32, libraries={})
+        finally:
+            linear._q8_mmq_prefill_session.reset(token)
+    assert calls == [2, 2, 3, 3, 2, 2]
+
+
 @pytest.mark.parametrize("planes", [0, 1, 4])
 def test_unsupported_f32_plane_counts_fail_loudly(planes):
     with pytest.raises(ValueError, match="f32_planes"):

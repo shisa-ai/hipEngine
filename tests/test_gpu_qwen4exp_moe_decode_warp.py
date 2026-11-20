@@ -22,8 +22,7 @@ from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out,
     qwen4_exp_q5_1_selected_weighted_sum_warp256_fast_bf16_bf16_out,
 )
-from tests._gguf_synthetic_weights import make_q4_k_weight
-from tests.test_gpu_gguf_q5_1_t16_expert_major_wmma import make_q5_1_weight
+from tests._gguf_synthetic_weights import make_q4_k_weight, make_q5_1_weight
 
 
 def _hip_available():

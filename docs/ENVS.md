@@ -406,7 +406,7 @@ independent workload gates.
 | `HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN` | retired | No runtime reader | The rejected one-cycle suppression experiment is removed. Normal K0 provider catchup remains; stale values do not suppress speculation. |
 | `HIPENGINE_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA` | retired | No longer read | Private-c1 weight allocation follows backend policy; programmatic opt-out, shared-runner and allocation fallbacks remain. |
 | `HIPENGINE_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA` | retired | No longer read | Private-c1 decode scratch follows the backend policy; programmatic opt-out, shared-runner and allocation fallbacks remain. |
-| `HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS` | gfx1151: `1024` | Rollback seam | Overrides the short-prompt c1 batch-attention workgroup; the calibrated 1024-thread variant passed the execution-profile c1 threads gate and the exact 256-thread leaf stays the strict fallback. |
+| `HIPENGINE_GGUF_SHORT_C1_ATTN_THREADS` | unbound gfx1151: `1024` | Diagnostic override | Overrides the short-context c1 workgroup on unbound runners. Dense gfx1151 profile owners bind the registered 256-thread leaf for strict and the existing 1024-thread leaf for production; neither reads this override. |
 | `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL` | unset | Diagnostic | Session-acquire-time WMMA-prefill selector shared by resident pools, direct streaming and fallback AR. Unset keeps the shipping WMMA route; empty or unrecognised values raise. An explicit per-call route still wins. |
 
 ### Resident MTP draft dense-Q8 diagnostic controls
@@ -527,6 +527,9 @@ value; leave them unset in production and use the override only for bisection.
 | `HIPENGINE_EVIE_GDN_RECURRENCE` | unset | Evie GDN prefill recurrence owner: unset uses the normalized cluster8 kernel (bit-repeatable, ~9%/page faster than k2); `k2` restores the split fallback for rollback/bisection. |
 | `HIPENGINE_DFLASH_DRAFTER_DENSE` | `wmma` | Dense-project DFlash drafter body: `wmma` (default after R3.4 validated exact-AR plus a per-prompt perf gain) or `naive` to revert. |
 | `HIPENGINE_DFLASH_DRAFTER_ADD_RMSNORM` | `off` | Fused add+RMSNorm drafter variant; `fused`/`on` selects it, with the unfused `dflash_add_bf16` + `dflash_rmsnorm_bf16` chain as the registered fallback. |
+| `HIPENGINE_DSPINE_DRAFTER_Q8` | `on` | Q8_0-quantize the DSpine drafter gate/up/down/o projections and run the row-tiled Q8 WMMA prefill (bandwidth-bound forward; ~2.6x forward, +13% matched decode, AR-exact). `0` reverts those GEMMs to BF16 as a precision rollback lever (R0523); v_proj stays BF16 either way. |
+| `HIPENGINE_DFLASH2_DRAFTER_Q8` | `on` | Q8_0-quantize the DFlash2 drafter gate/up/down/o projections and run the row-tiled Q8 WMMA prefill (bandwidth-bound forward; +9.5% matched decode, AR-exact). `0` reverts those GEMMs to BF16 as a precision rollback lever (R0524); v + conv projections stay BF16 either way. |
+| `HIPENGINE_EAGLE4_DRAFTER_Q8` | `on` | Q8_0-quantize the EAGLE-4 drafter bf16 FFN/attention projections (gate/up/down/o/v) + fc and run the row-tiled Q8 WMMA prefill (bandwidth-bound draft chain; 1.56x chain, +10.2% matched decode, AR-exact). `0` reverts those GEMMs to BF16 as a precision rollback lever (R0525); q/k + full-V efficient head stay f32/BF16 either way. |
 | `HIPENGINE_MTP_DRAFT_VOCAB_CAP` | internal default | Prefix cap for the private F16 scorer used by manual native-proposer diagnostics; zero/empty selects full vocabulary and other values clamp to model vocabulary. A borrowed target W8A16 scorer, including public Generation-2 PARO MTP, always uses full vocabulary and ignores this cap. |
 | `HIPENGINE_MTP_PROPOSER_INDEXED_KV_WRITE` | false | Opt-in indexed (slot-local) proposer KV write path. |
 | `HIPENGINE_MTP_PROPOSER_ROUTER_TOPK_FUSED` | true | Fused router top-k inside the proposer kernel (rollback opt-out). |
@@ -922,6 +925,9 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_GEMMA4_MMPROJ` | unset | Gemma 4 vision-sidecar GGUF path for the live encoder-parity and public image-generation tests. |
 | `HIPENGINE_DMS_CAPTURE_TEST_MODEL` | unset | Compatible GGUF override for live offline DMS capture and public collector lifecycle tests. Each test keeps its own default fixture when unset. |
 | `HIPENGINE_TEST_GGUF_MODEL` | `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` | Dense Qwen hybrid GGUF fixture for `tests/test_live_gguf_singleton_verify_roots.py`. Set it to a locally installed compatible model; missing model or HIP runtime skips the tests. |
+| `HIPENGINE_TEST_QWEN38_GGUF` | unset | Target GGUF for `tests/test_live_qwen35_feature_provider_sessions.py`. Missing target, drafter, or HIP runtime skips the corresponding case. |
+| `HIPENGINE_TEST_EAGLE4_DRAFTER` / `HIPENGINE_TEST_DSPINE_DRAFTER` | unset | Local drafter snapshot directories for the public EAGLE-4/DSpine session-reuse tests. |
+| `HIPENGINE_TEST_DENSE_GGUF_MODEL` | `/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf` | Compatible dense Qwen GGUF fixture for `tests/test_live_qwen35_gguf_mtp_e2e.py`. Overrides only the live-test model path, not runtime admission or dispatch. |
 | `HIPENGINE_TEST_PARO_MODEL` | unset | PARO model directory override for the live PARO tokenizer/EOS tests; falls back to the standard `/models/hipengine/...` candidates. |
 | `HIPENGINE_TEST_PARO_MTP_MODEL` | `/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16` | Packed PARO model directory with BF16 MTP weights for `tests/test_live_paro_mtp_prompt_priming.py`. The test skips when the model or HIP runtime is unavailable. |
 | `HIPENGINE_TEST_QWEN4EXP_GGUF` | `/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL` | Model fixture for the live constrained-chunk admission test; skips when the model or HIP runtime is unavailable. |
@@ -970,6 +976,12 @@ in [`benchmarks/HARNESSES.md`](../benchmarks/HARNESSES.md) for the protocols.
 | `HIPENGINE_DFLASH_CONF_ORACLE_OUT` | unset | Appends the drafter confidence-oracle JSON (per-cycle p1 trace plus summary) to this file. |
 | `HIPENGINE_DFLASH_WHOLE_CYCLE_GATE` | unset | Backward-compat activation of the whole-cycle confidence gate when the CLI flag is absent; a float in `[0, 1]`. |
 | `HIPFIRE_DFLASH_LOOP_BREAK` | unset | Diagnostic early-break for the hipFire DFlash loop driver. |
+
+### Phase-tagged context profile (`muse_glimmer_context_profile.py`)
+
+| Variable | Default | Values / notes |
+| --- | --- | --- |
+| `ROCTX_LIB` | unset | Path to `librocprofiler-sdk-roctx.so`. When set, each draft/verify/inject/AR-step phase is a `<ctx>:<phase>` ROCTx range for `rocprofv3 --marker-trace`; unset keeps phase wall timing only. |
 
 ### IQ/Q3K gate and sweep scripts
 
@@ -1095,6 +1107,11 @@ harnesses read them but do not own them.
 | `AMDGPU_CARD_NAME`, `AMDGPU_CARD_NAME_W7900`, `HIP_VISIBLE_DEVICES_W7900` | TheRock/lab wrapper scripts | Card-name and device-pin locals used by the W7900 wrapper scripts. |
 
 ## Names that are not environment variables
+
+- `Q4_K_M` is a quantization label, not an environment variable. The scanner
+  reads `groups.setdefault(quant, ...)` in `hipengine/runtime/muse_glimmer.py`
+  as an env access and resolves `quant` through an unrelated `quant="Q4_K_M"`
+  default elsewhere in the tree.
 
 - `HIPENGINE_MAPLE_PREFILL_GROUPED_MOE` is retired and ignored. Native
   prefill always uses grouped expert metadata and grouped gate/up/down kernels;

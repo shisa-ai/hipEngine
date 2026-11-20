@@ -1,0 +1,13 @@
+{
+  "image": "fixtures/muse_glimmer/images/shapes_448.png",
+  "bitmap_id": "ecf84d3d24e413962575611765bd6144b993994ada1ea198d942d81fb285c9b3",
+  "nx": 448,
+  "ny": 448,
+  "n_embd": 6656,
+  "chunks": [
+    {"type": "text", "n_tokens": 7, "tokens": [200000, 51212, 544, 3371, 38, 220, 200080]},
+    {"type": "image", "n_tokens": 256, "first_decoder_pos": [0, 0, 0]},
+    {"type": "text", "n_tokens": 1, "tokens": [200081]}
+  ],
+  "n_out": 256
+}

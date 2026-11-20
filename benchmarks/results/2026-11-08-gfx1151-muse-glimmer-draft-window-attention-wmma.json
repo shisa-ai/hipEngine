@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "kind": "muse_glimmer_draft_window_attention_wmma",
+  "status": "retained",
+  "performance_claim": true,
+  "claim_scope": "DFlash draft window attention kernel; non-causal production flash; verify exactness + acceptance preserved",
+  "date": "2026-11-08",
+  "model": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+  "draft": "/models/gguf/Muse-Glimmer-30B-GGUF/dflash-Muse-Glimmer-30B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1151",
+  "host": "zbook / Radeon 8060S (gfx1151), Ryzen AI MAX+ PRO 395",
+  "baseline_commit": "e6a46ba0e708169a10ddbab2c75cd78742ef26b3",
+  "change": "New non-causal windowed WMMA block-flash kernel (muse_glimmer_draft_attention) for the drafter's 4:1 GQA (32Q/8KV, d128): multi-token K/V-tile sharing, WMMA rows pack the GQA Q heads, mask key>position-window with no causal upper bound. Replaces the strict scalar Gemma4 block kernel (whose window>0 path causal-trimmed the block, a latent deviation from DFlash/llama.cpp non-causal intent). TOKENS_PER_BLOCK=1. Draft only proposes; exact verify keeps DFlash IDs == true AR.",
+  "attention_ab": {
+    "method": "back-to-back scalar vs WMMA on identical Q/K/V, filled 2048 window, rocprof kernel time (thermal-controlled); window-bound so representative of 32K/126K",
+    "ms_per_layer_call": {"scalar": 1.44, "wmma": 0.44},
+    "speedup": 3.2,
+    "ms_per_5_layer_cycle": {"scalar_approx": 7.2, "wmma_approx": 2.2},
+    "scalar_baseline_draft_profile_ms_per_cycle": 9.2
+  },
+  "correctness": {
+    "wmma_vs_noncausal_scalar_reference": "cosine 1.000000, maxerr 0.00012 (bf16), argmax match 1.0",
+    "test_gpu_muse_glimmer_draft_attention.py": "5 pass (window boundaries)",
+    "test_live_muse_glimmer_dflash_gpu.py": "2 pass (draft oracle vs llama.cpp + window slice)",
+    "test_live_muse_glimmer_dflash_exactness.py": "2 pass (ten-prompt DFlash IDs == true AR + public surface)",
+    "acceptance_mtpbench_budget4": {"before": 0.430, "after": 0.434, "exact": true}
+  },
+  "budget_sweep_rerun": {
+    "command": "scripts/muse_glimmer_dflash_context_budget_sweep.py --contexts 32768,126000 --budgets 2,3,4,5,6,7",
+    "optimum": "still ~4 (32K b4=18.58 tok/s; 126K b3=14.70/b4=14.54, flat 3-4); acceptance unchanged; exact=True all points",
+    "note": "cycle-cost shift did not move the acceptance-driven optimum; absolute cycle times thermally inflated this session"
+  },
+  "follow_up": "pack 4 Q heads x 4 query rows into the full 16-row WMMA tile (eliminate GQA=4 row waste) or key-split flash-decoding for occupancy",
+  "worklog": "worklog/entries/20261108T201319.751636Z-lhl-muse-glimmer-392318.md",
+  "campaign": "docs/campaigns/MUSE-GLIMMER.md §11.1 (#3 attention half)"
+}

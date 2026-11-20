@@ -13,6 +13,7 @@ from scripts import execution_profile_gguf_int8_direct_prefill_gate as gate
 @pytest.mark.parametrize("inherited", [None, "0", "1"])
 @pytest.mark.parametrize("candidate", ["slot_local_aotriton", "int8_direct_prefill"])
 def test_capture_and_artifact_bind_distinct_declared_arms(monkeypatch, tmp_path, inherited, candidate):
+    import hipengine.models as models
     from hipengine.loading import gguf
     from hipengine.runtime import qwen35_gguf_runner as runner
     from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
@@ -31,7 +32,9 @@ def test_capture_and_artifact_bind_distinct_declared_arms(monkeypatch, tmp_path,
     observed = []
 
     class Session:
-        def __init__(self, *_args, **_kwargs):
+        def __init__(self, *_args, **kwargs):
+            assert kwargs["kv_capability"]["runtime_action"] == "admit"
+            self.int8_kv_no_mirror_qualified = True
             self.runner = SimpleNamespace(backend="hip_gfx1100", target_arch="gfx1100")
 
         def __enter__(self):
@@ -50,7 +53,15 @@ def test_capture_and_artifact_bind_distinct_declared_arms(monkeypatch, tmp_path,
         ))
         return [{"token_id": 1, "logits": [0.0, 1.0]}]
 
-    monkeypatch.setattr(gguf, "scan_gguf", lambda _path: object())
+    monkeypatch.setattr(gguf, "scan_gguf", lambda _path: SimpleNamespace(
+        architecture="qwen35", file_type_name="MOSTLY_Q4_K_M",
+    ))
+    monkeypatch.setattr(gguf, "gguf_execution_fingerprint", lambda _info: "a" * 64)
+    monkeypatch.setattr(models, "resolve_model", lambda _arch: SimpleNamespace(
+        resolve_kv_capability=lambda **_kwargs: SimpleNamespace(
+            runtime_action="admit", as_dict=lambda: {"runtime_action": "admit"},
+        ),
+    ))
     monkeypatch.setattr(Qwen35GGUFTokenizer, "from_gguf_info", lambda _info: object())
     monkeypatch.setattr(runner, "Qwen35GGUFResidentSession", Session)
     monkeypatch.setattr(gate, "build_chat_prompt", lambda *_args: [7] * 613)

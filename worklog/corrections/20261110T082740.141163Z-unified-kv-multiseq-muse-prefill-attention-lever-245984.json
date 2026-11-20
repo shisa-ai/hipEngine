@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261110T082740.141163Z-unified-kv-multiseq-muse-prefill-attention-lever-245984.md",
+  "sha256": "ba2ad79372122dbe4060554324a168014d523e111737f35fd45f2193193f4ff2",
+  "defects": [
+    "missing_required_sections"
+  ],
+  "reason": "Checkpoint committed without the required ## Validation section because the pre-commit check ran before staging; the superseding entry carries the complete record with all required sections.",
+  "base_commit": null,
+  "superseded_by": "worklog/entries/20261110T083012.646038Z-unified-kv-multiseq-muse-prefill-attention-lever-534b51.md"
+}

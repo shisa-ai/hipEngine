@@ -462,10 +462,6 @@ def _bf16_float(bits: np.ndarray) -> np.ndarray:
     return (raw.astype(np.uint32) << 16).view(np.float32)
 
 
-def _max_abs(left: np.ndarray, right: np.ndarray) -> float:
-    return float(np.max(np.abs(np.asarray(left, dtype=np.float64) - np.asarray(right, dtype=np.float64))))
-
-
 def _assert_control_equal(left: bytes, right: bytes, *, label: str) -> None:
     assert left == right, f"{label} bytes changed"
 

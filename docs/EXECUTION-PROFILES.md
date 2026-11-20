@@ -114,6 +114,12 @@ section 2.9 and are not removed by editing this document.
 | `batch_invariant` | RL, evaluations, debugging, reproducible serving | May use any independently validated stable arithmetic, but must preserve the request result across supported batch compositions. The first implementation may alias strict routes. | Fixed-seed repeats are deterministic. | Same fixed-seed request result across physical slots, neighbor prompts, supported widths, admission order, cancellation of peers, and compaction. |
 | `fast` | Opt-in throughput on combinations that register a plan | Exact control/state ownership. The production plan plus any reduced-precision operand route that has not yet been certified against the production envelope. | Same request, seed, resolved variant manifest, and execution schedule are deterministic. | Same as `production`. |
 
+Dense gfx1151 short-context c1 attention binds
+`bf16_context_batch_c1_exact_spans` in strict and
+`bf16_context_batch_threads1024_spans` in production. These owner-local choices
+are recorded in the manifest and take precedence over the unbound thread
+geometry environment control; production's existing arithmetic is unchanged.
+
 `fast` is an owner policy decision dated 2026-10-13. It is the named profile
 a reduced-precision operand route lands in before its production gate, so
 that the work does not live in a set of environment flags. Its first

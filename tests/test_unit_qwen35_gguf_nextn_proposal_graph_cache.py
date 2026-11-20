@@ -205,6 +205,29 @@ def _capture_stub(executor: object, *, fail_first: bool = False) -> list[tuple[i
     return calls
 
 
+def test_nextn_proposal_graph_schedule_drift_retires_old_capture() -> None:
+    executor = _executor()
+    seen = []
+
+    def capture(request_id, slot, budget, *, schedule):
+        seen.append(schedule)
+        return _graph(slot, budget)
+
+    executor._capture_exact_chain_graph = capture
+    first_schedule = ((1280, ("split", 5)),) * 3
+    second_schedule = ((1536, ("split", 6)),) * 3
+    first = executor._proposal_graph(7, 0, 3, schedule=first_schedule)
+    assert executor._proposal_graph(7, 0, 3, schedule=first_schedule) is first
+    second = executor._proposal_graph(7, 0, 3, schedule=second_schedule)
+    assert first is not second
+    assert first.graph_exec == 0
+    assert seen == [first_schedule, second_schedule]
+    assert executor._proposal_graphs.acquire(
+        (0, 3), executor._proposal_graph_binding(slot=0, budget=3, schedule=first_schedule)
+    )[0] is None
+    assert second.graph_exec == 0
+
+
 def test_nextn_proposal_graph_reuses_a_cached_capture() -> None:
     executor = _executor()
     calls = _capture_stub(executor)

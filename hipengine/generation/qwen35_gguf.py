@@ -1459,6 +1459,8 @@ class Qwen35GGUFBringupGenerator:
     # Profile-owned recurrent-state allocation decision. ``None`` keeps the
     # unbound/direct diagnostic environment and backend-package default.
     target_fp16_recurrent_state: bool | None = None
+    # Profile-owned short attention leaf; None keeps unbound diagnostic controls.
+    target_short_c1_attn_variant: str | None = None
     # Profile-owned verifier capture mode. ``None`` keeps the unbound/direct
     # diagnostic environment input, resolved once at session construction.
     target_verifier_prefill_gdn_capture: bool | None = None
@@ -1813,6 +1815,10 @@ class Qwen35GGUFBringupGenerator:
         if requested is None:
             return {}
         return {"target_fp16_recurrent_state": bool(requested)}
+
+    def _target_short_attention_session_kwargs(self) -> dict[str, Any]:
+        requested = getattr(self, "target_short_c1_attn_variant", None)
+        return {} if requested is None else {"target_short_c1_attn_variant": requested}
 
     def _target_verifier_prefill_gdn_capture_session_kwargs(self) -> dict[str, Any]:
         """Carry the owner-bound verifier capture mode into every session."""
@@ -2275,6 +2281,7 @@ class Qwen35GGUFBringupGenerator:
                         getattr(self, "_serving_capacity_bound", None)
                     ),
                     token_embedding_placement="auto",
+                    **self._target_short_attention_session_kwargs(),
                     target_fp16_recurrent_state=getattr(
                         self,
                         "target_fp16_recurrent_state",
@@ -3372,6 +3379,7 @@ class Qwen35GGUFBringupGenerator:
                         else ("eager",)
                     ),
                     **self._prepared_session_kv_kwargs(),
+                    **self._target_short_attention_session_kwargs(),
                     **self._target_verifier_rowtile_session_kwargs(),
                     **self._target_fp16_recurrent_state_session_kwargs(),
                     **self._target_verifier_prefill_gdn_capture_session_kwargs(),
@@ -3568,6 +3576,7 @@ class Qwen35GGUFBringupGenerator:
         pool_name: str,
         use_wmma_prefill: bool | None = None,
         use_gemv_decode: bool | None = _GGUF_PUBLIC_USE_GEMV_DECODE,
+        max_sequence_length: int | None = None,
     ):
         if use_wmma_prefill is None:
             use_wmma_prefill = _resident_session_wmma_prefill_default()
@@ -3575,6 +3584,7 @@ class Qwen35GGUFBringupGenerator:
             session_kwargs: dict[str, Any] = {
                 "backend": self.backend,
                 **self._prepared_session_kv_kwargs(),
+                **self._target_short_attention_session_kwargs(),
                 **self._target_verifier_rowtile_session_kwargs(),
                 **self._target_fp16_recurrent_state_session_kwargs(),
                 **self._target_verifier_prefill_gdn_capture_session_kwargs(),
@@ -3583,6 +3593,8 @@ class Qwen35GGUFBringupGenerator:
                 **self._target_verify_f32_session_kwargs(),
                 **self._target_q4_t16_dual_silu_r28_session_kwargs(),
             }
+            if max_sequence_length is not None:
+                session_kwargs["max_sequence_length"] = int(max_sequence_length)
             if use_wmma_prefill is not None:
                 session_kwargs["use_wmma_prefill"] = bool(use_wmma_prefill)
             if use_gemv_decode is not None:
@@ -3596,11 +3608,13 @@ class Qwen35GGUFBringupGenerator:
             pool_name=pool_name,
             use_wmma_prefill=use_wmma_prefill,
             use_gemv_decode=use_gemv_decode,
+            **({"max_sequence_length": int(max_sequence_length)}
+               if max_sequence_length is not None else {}),
         )
         try:
             self._configure_session(session)
             yield session, reused
-        except Exception:
+        except BaseException:
             session.close()
             raise
         else:
@@ -3794,6 +3808,8 @@ class Qwen35GGUFBringupGenerator:
             self._shared_runner = None
         assets = getattr(self, "_mtp_serving_assets", None)
         self._mtp_serving_assets = None
+        provider = getattr(self, "_speculative_provider", None)
+        self._speculative_provider = None
         # Draft providers borrow the shared NextN block, so it is freed after
         # them and before the target runner whose roots it borrows.
         runtime = getattr(shared_runner, "runtime", None)
@@ -3805,7 +3821,7 @@ class Qwen35GGUFBringupGenerator:
             weight_closers.append(assets.upload_cache.close)
 
         error: BaseException | None = None
-        for resource in (*reversed(sessions), *reversed(drafts), *weight_closers, shared_runner):
+        for resource in (provider, *reversed(sessions), *reversed(drafts), *weight_closers, shared_runner):
             if resource is None:
                 continue
             closer = resource if callable(resource) and not hasattr(resource, "close") else getattr(resource, "close", None)
@@ -3958,9 +3974,50 @@ class Qwen35GGUFBringupGenerator:
     def count_tokens(self, text: str) -> int:
         return len(self.tokenize(text))
 
+    # -- independent speculative provider attachment (e.g. DSpine) ----------
+    @property
+    def supports_speculative(self) -> bool:
+        return getattr(self, "_speculative_provider", None) is not None
+
+    def attach_speculative_provider(self, provider: Any) -> None:
+        """Attach one registry-resolved independent provider (bring-up scope)."""
+        if provider is None:
+            raise TypeError("speculative provider must not be None")
+        for name in ("generate_detailed", "stream_detailed", "capabilities", "close"):
+            if not callable(getattr(provider, name, None)):
+                raise TypeError(f"speculative provider must implement {name}()")
+        if getattr(self, "_speculative_provider", None) is not None:
+            raise RuntimeError("a speculative provider is already attached")
+        self._speculative_provider = provider
+
+    def speculative_capabilities(self) -> dict:
+        provider = getattr(self, "_speculative_provider", None)
+        return {} if provider is None else dict(provider.capabilities())
+
+    def generate_speculative_detailed(self, request: GenerationRequest) -> list[GenerationOutput]:
+        provider = getattr(self, "_speculative_provider", None)
+        if provider is None:
+            raise NotImplementedError("no independent speculative provider is configured")
+        return list(provider.generate_detailed(request))
+
+    def stream_speculative_detailed(self, request: GenerationRequest):
+        provider = getattr(self, "_speculative_provider", None)
+        if provider is None:
+            raise NotImplementedError("no independent speculative provider is configured")
+        yield from provider.stream_detailed(request)
+
+    def create_generic_speculative_child(self, request: GenerationRequest):
+        """Admit one independent-provider child (admission runs no model work)."""
+        provider = getattr(self, "_speculative_provider", None)
+        if provider is None:
+            raise NotImplementedError("no independent speculative provider is configured")
+        factory = getattr(provider, "create_child", None)
+        if not callable(factory):
+            raise NotImplementedError("independent provider has no bounded request lifecycle")
+        return factory(request)
+
     def speculative_provider_capabilities(self):
         """Declare the model-attached NextN provider without engine branching."""
-
         from hipengine.benchmark.provenance import collect_model_identity
         from hipengine.speculative.registry import SpeculativeProviderCapabilities
 
@@ -3981,6 +4038,11 @@ class Qwen35GGUFBringupGenerator:
     def supports_speculative_mtp(self) -> bool:
         """Whether this GGUF inventory has the NextN tensors required for MTP."""
 
+        # An attached independent provider (e.g. DSpine) owns speculative
+        # decoding; route through the bounded generic child path, not the MTP
+        # staged adapter.
+        if getattr(self, "_speculative_provider", None) is not None:
+            return False
         if getattr(self, "dms_config", None) is not None:
             return False
         return _gguf_info_has_mtp_tensors(self.weight_index)
@@ -4228,6 +4290,7 @@ class Qwen35GGUFBringupGenerator:
             "use_wmma_prefill": _resident_session_wmma_prefill_default(),
             "use_gemv_decode": _GGUF_PUBLIC_USE_GEMV_DECODE,
             **self._prepared_session_kv_kwargs(),
+            **self._target_short_attention_session_kwargs(),
             **self._target_verifier_rowtile_session_kwargs(),
             **self._target_fp16_recurrent_state_session_kwargs(),
             **self._target_verifier_prefill_gdn_capture_session_kwargs(),
@@ -4339,6 +4402,7 @@ class Qwen35GGUFBringupGenerator:
                 max_batch_size=native_capacity,
                 backend=self.backend,
                 execution_routes=("eager", "native_rows", "native_graph"),
+                **self._target_short_attention_session_kwargs(),
                 **self._target_verifier_rowtile_session_kwargs(),
                 **self._target_fp16_recurrent_state_session_kwargs(),
                 **self._target_verifier_prefill_gdn_capture_session_kwargs(),
@@ -4859,6 +4923,7 @@ class Qwen35GGUFBringupGenerator:
                 if shared_runner is None:
                     with Qwen35GGUFFullStackRunner(
                         self.model_path,
+                        **self._target_short_attention_session_kwargs(),
                         target_fp16_recurrent_state=getattr(
                             self,
                             "target_fp16_recurrent_state",
@@ -5183,6 +5248,7 @@ class Qwen35GGUFBringupGenerator:
                         shared_runner=shared_runner,
                         use_wmma_prefill=_resident_session_wmma_prefill_default(),
                         use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
+                        **self._target_short_attention_session_kwargs(),
                         **self._target_verifier_rowtile_session_kwargs(),
                         **self._target_fp16_recurrent_state_session_kwargs(),
                         **self._target_verifier_prefill_gdn_capture_session_kwargs(),
@@ -5398,6 +5464,7 @@ class Qwen35GGUFBringupGenerator:
                     shared_runner=shared_runner,
                     use_wmma_prefill=_resident_session_wmma_prefill_default(),
                     use_gemv_decode=_GGUF_PUBLIC_USE_GEMV_DECODE,
+                    **self._target_short_attention_session_kwargs(),
                     **self._target_verifier_rowtile_session_kwargs(),
                     **self._target_fp16_recurrent_state_session_kwargs(),
                     **self._target_verifier_prefill_gdn_capture_session_kwargs(),
@@ -10613,7 +10680,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
     def _acquire_lease(self) -> _GGUFResidentSessionLease:
         if not self._available:
             raise RuntimeError("GGUF resident model runner has no free session")
-        self._prioritize_native_row_leases()
+        Qwen35GGUFResidentModelRunner._prioritize_native_row_leases(self)
         return self._available.pop()
 
     def _packed_execution_owner(

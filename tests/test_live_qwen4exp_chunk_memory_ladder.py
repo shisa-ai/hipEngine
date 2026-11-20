@@ -58,7 +58,9 @@ def test_real_chunk_admission_under_reported_memory_budget(monkeypatch, rung):
         from scripts.qwen4exp_chunk_memory_probe import prepare_lazy_group_risk
         from hipengine.loading.qwen4_exp_scratch import qwen4_exp_wide_f16_activation_nbytes
         from hipengine.runtime import qwen4_exp_runner as runner_module
-        from hipengine.runtime.gguf_linear import wide_f16_activation_workspace
+        from hipengine.runtime.gguf_linear import (
+            Q8DenseWidePolicy, q8_dense_wide_policy, wide_f16_activation_workspace,
+        )
 
         cfg = generator.runner.config
         expected_repair = 4 + 4 * rung * cfg.expert_used_count * max(
@@ -71,10 +73,10 @@ def test_real_chunk_admission_under_reported_memory_budget(monkeypatch, rung):
         # Provision the optional staging owner explicitly; do not depend on
         # whichever execution profile the surrounding test process last bound.
         with monkeypatch.context() as scoped:
-            scoped.setattr(runner_module, '_q8_dense_wide_enabled', lambda: True)
             scoped.setattr(runner_module, 'wide_f16_activation_enabled', lambda default=True: True)
-            with generator.runner._wide_f16_activation_context():
-                assert wide_f16_activation_workspace().nbytes == expected_staging
+            with q8_dense_wide_policy(generator.runner, Q8DenseWidePolicy(True, None)):
+                with generator.runner._wide_f16_activation_context():
+                    assert wide_f16_activation_workspace().nbytes == expected_staging
         assert wide_f16_activation_workspace() is None
         tokens = generator.tokenizer.encode('Describe how rain forms.')
         output = generator.runner.prefill(tokens)

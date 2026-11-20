@@ -398,6 +398,70 @@ reports this under `sampling.speculative`, including pinned target/drafter
 identities, exactness mode, and the D4 `0.9469x` fallback evidence. This is an
 opt-in correctness route, not a throughput claim or automatic/default policy.
 
+Muse Glimmer 30B ships a block-diffusion drafter (DFlash) as a separate
+`dflash-*.gguf` sidecar beside the target artifact. DFlash is a generic
+speculative provider: explicit per request, not a default. An opted-in request
+drafts candidate tokens and verifies them against the target, so its greedy
+output is identical to autoregressive decoding
+(`exactness_mode: target_corrected_greedy`); a request that does not opt in
+decodes autoregressively. Start the server with the provider and its drafter
+pinned, and BF16 KV:
+
+```bash
+hipengine serve \
+  --model /path/to/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf \
+  --served-model-name muse-glimmer \
+  --speculative-provider dflash \
+  --draft-model /path/to/dflash-Muse-Glimmer-30B-Q4_K_M.gguf \
+  --kv-storage bf16
+```
+
+Select DFlash per request with `"speculative": true`, or the object
+`{"enabled": true, "provider": "dflash", "candidate_budget": 4}`:
+
+```bash
+curl http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "muse-glimmer",
+    "messages": [{"role": "user", "content": "Write a haiku about GPU kernels."}],
+    "temperature": 0,
+    "max_tokens": 64,
+    "speculative": true
+  }'
+```
+
+The provider admits one prompt, `n=1`, raw greedy target top-1
+(`temperature=0`), and BF16 KV. Sampled logits, logprobs, grammar-constrained
+decoding, multi-token stop sequences, forced-token queues, and non-BF16 KV fail
+closed before allocation; single-token stops remain supported.
+`--speculative-candidate-budget` sets the draft depth (default 4). Streaming
+(`"stream": true`) is supported and returns the same tokens as the buffered
+response. The response reports the route under
+`hipengine.generation_shape.route`: `speculative` for DFlash, `default` for AR.
+
+`--speculative-mtp-serving` is the native-MTP policy for models that ship an MTP
+head (for example Qwen3.8 Flash-Next); it does not route Muse Glimmer. Use
+`--speculative-provider dflash` for Muse.
+
+The same provider is available from the library API:
+
+```python
+from hipengine import LLM, SamplingParams
+
+llm = LLM(
+    model="/path/to/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+    speculative_provider="dflash",
+    draft_model="/path/to/dflash-Muse-Glimmer-30B-Q4_K_M.gguf",
+    kv_storage="bf16",
+)
+out = llm.generate_speculative_detailed(
+    ["Write a haiku about GPU kernels."],
+    SamplingParams(temperature=0, max_tokens=64),
+)
+print(out[0].text)
+```
+
 Set `HIPENGINE_API_KEY` or pass `--api-key` to require OpenAI-style bearer
 authentication:
 
@@ -568,6 +632,30 @@ least recently used first. `usage.prompt_tokens_details.cached_tokens` and the
 `prefix_cache` diagnostics report each request's reuse; `/v1/hipengine/decode`
 reports cache residency under `prefix_cache`. Set `--prefix-cache off` to
 disable it.
+
+#### Muse Glimmer prefix reuse
+
+Muse Glimmer serves one request at a time from a single resident KV cache, and
+with the default `--prefix-cache radix` that cache is kept between requests. A
+prompt that starts with the cached tokens (for example the next turn of an
+agent conversation, which repeats the earlier turns) prefills only the rest.
+Reuse resumes at the 1,024-token prefill-chunk boundary at or below the end of
+the shared prefix, so at most 1,023 cached tokens are recomputed, and the
+result is bit-identical to a fresh prefill when the reused rows were
+themselves prefilled. Rows written during decode are reused too; they hold the
+same tokens with decode arithmetic. Any other prompt overwrites the cache. AR
+and DFlash requests share the cache; DFlash also needs the drafter to hold the
+same prefix, otherwise it recomputes from the last point where both agree.
+Images end the reusable prefix at their first position.
+`usage.prompt_tokens_details.cached_tokens` reports each request's reuse.
+Set `--prefix-cache off` to prefill every request from scratch.
+
+For debugging at long context, `generator.save_context(directory)` writes the
+cached KV (target, plus the drafter's rows when it holds the same prefix) and
+`generator.load_context(directory)` restores it. A later prompt that starts
+with the snapshot's tokens then skips that prefill. A 256K-token snapshot is
+about 14 GB. `scripts/muse_glimmer_context_profile.py --context-dir DIR` uses
+this to profile long contexts without repeating the prefill.
 
 ## Examples
 

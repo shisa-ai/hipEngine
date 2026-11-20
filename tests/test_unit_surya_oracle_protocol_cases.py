@@ -200,7 +200,9 @@ def test_a_single_page_capture_merges_into_an_existing_oracle(
     writing that subset on its own would delete every committed row.
     """
 
-    original = PROTOCOL_ORACLE.read_text()
+    before = json.loads(PROTOCOL_ORACLE.read_text())
+    before.pop("a4", None)
+    original = json.dumps(before, indent=1)
     oracle = tmp_path / "oracle_fullpage_protocol.json"
     oracle.write_text(original)
     _fake_greedy(monkeypatch)
@@ -219,7 +221,7 @@ def test_a_single_page_capture_merges_into_an_existing_oracle(
     assert merged["a4"]["finish_reason"] == "eos"
     # Rows that were not captured keep their exact serialization, so the
     # committed fixture's bytes are a prefix of the merged file.
-    assert oracle.read_text().startswith(original[:-2]), (
+    assert oracle.read_text().startswith(original.removesuffix("\n}") + ","), (
         "merging reformatted rows it did not capture"
     )
 

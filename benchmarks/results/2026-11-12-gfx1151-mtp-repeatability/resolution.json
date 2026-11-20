@@ -1,0 +1,19 @@
+{
+  "kind": "correctness_regression",
+  "host": "gfx1151",
+  "hardware": "Radeon 8060S",
+  "model": "Qwen3.8-27B UD-Q4_K_M",
+  "profile": "production",
+  "kv": "bf16",
+  "candidate_budget": 3,
+  "workload": "Hash-table warmup followed by heldout_general_ja_speculative, greedy 64-token output, six fresh owners with three repeats each; alternating loop/batched rollback copies",
+  "cause": "Q6 full-GEMM selected a hipBLASLt algorithm by per-owner wall-clock tuning; identical weights and input produced different layer-1 ssm_out projection bytes",
+  "repair": "Select first executable candidate in hipBLASLt heuristic order, without timing; preserve session-owned plans and scratch",
+  "cpu_target": "uv run pytest tests/test_unit_q6_fullgemm_workspace.py -q",
+  "cpu_target_result": "passed; new algorithm-selection tests failed before repair",
+  "gpu_targets": "python -m pytest tests/test_gpu_q6_fullgemm_workspace.py tests/test_live_dense_mtp_fresh_owner_repeatability.py -q",
+  "gpu_environment": "TheRock environment via /tmp/hipengine-repair-run.sh",
+  "gpu_result": "passed on actual implementation, without algorithm-selection monkeypatch",
+  "contracts_checked": ["public output ID repeatability", "speculative control repeatability", "CPU-reference synthetic projection tolerance", "independent owner/stream isolation", "tracked allocation retirement"],
+  "limitations": ["No cross-version hipBLASLt bit-parity claim", "No measured performance delta", "No new arithmetic kernel or execution-profile threshold"]
+}

@@ -1,0 +1,37 @@
+{
+  "artifact": "qwen38-27b-eagle4-ndraft-resweep-post-optimization",
+  "date": "2026-11-09",
+  "hardware": "gfx1151 / Radeon 8060S (ZBook, thermally throttled; diagnostic)",
+  "model": "Qwen3.8-27B-Q4_K_M",
+  "eagle4_draft": "Qwen3.8-27B-EAGLE-4",
+  "protocol": "scripts/qwen38_eagle4_baseline.py --n-draft N --reps 3 --max-new-tokens 25; 10 mtpbench prompts, 25 greedy outputs, each arm vs its own back-to-back AR",
+  "purpose": "Re-sweep n_draft after the graph-verify + device-projection optimizations changed the cost curve (the prior optimum was set pre-optimization).",
+  "results": [
+    {
+      "n_draft": 2,
+      "eagle4_tok_s": 13.895338334365013,
+      "ar_tok_s": 10.635690171343253,
+      "ratio_vs_ar": 1.3064820533983341,
+      "mean_acceptance": 0.6496212121212122,
+      "exact_all": true
+    },
+    {
+      "n_draft": 3,
+      "eagle4_tok_s": 13.571010155092488,
+      "ar_tok_s": 11.30003403510131,
+      "ratio_vs_ar": 1.2009707327373387,
+      "mean_acceptance": 0.5555555555555556,
+      "exact_all": true
+    },
+    {
+      "n_draft": 4,
+      "eagle4_tok_s": 12.841413543467018,
+      "ar_tok_s": 11.313168370438824,
+      "ratio_vs_ar": 1.135085514772456,
+      "mean_acceptance": 0.5007440476190477,
+      "exact_all": true
+    }
+  ],
+  "conclusion": "n_draft=2 remains optimal (1.31x AR, acc 0.650). Deeper drafts decline monotonically (n3 1.20x/0.556, n4 1.14x/0.501): the extra draft-step cost is not amortized because acceptance drops faster. No free n_draft win; the remaining draft lever is the ~39ms draft-chain cost (low-rank full-V head ~63MB/step; quantized drafter weights / hot-vocab head are candidates).",
+  "caveats": "Throttled ZBook diagnostic; AR reference drifted 9.0->11.3 tok/s across runs, so cross-run absolute ratios are not comparable, but the within-sweep monotonic ordering is robust (each arm vs its own AR)."
+}

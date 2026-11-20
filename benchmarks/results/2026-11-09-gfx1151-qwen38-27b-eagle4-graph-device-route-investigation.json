@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_eagle4_graph_device_route_investigation",
+  "status": "relative_measurement_internal",
+  "performance_claim": false,
+  "publishable": false,
+  "note": "Corrected root-cause characterization of the graph-verify device gap. Graph replay device ~125ms (post-draft sync, not a draft confound). The staged full-attention chain (graph's route) is FASTER than the eager short-context shared-cache owner in eager A/B (full_attn 17 vs 41ms; layer_total 66 vs 95ms). So the ~50ms graph-vs-eager gap for the same staged route is NOT route selection; it is unattributed graph-replay overhead / captured-variant difference, pending rocprof per-kernel. Initial 'slower per-row route' hypothesis corrected.",
+  "provenance": {
+    "hipengine_commit": "c29b243e9b7198ada1c53145572579b6cdfa52b5",
+    "git_branch": "qwen38-dspine-eagle4",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "backend": "hip_gfx1151",
+    "command": "/tmp/full_attn_route_ab.py; /tmp/eager_vs_graph_device.py; /tmp/graph_verify_decomp.py (post-draft device_synchronize)",
+    "date": "2026-11-10T00:04:42"
+  },
+  "protocol": {
+    "n_draft": 2,
+    "prompt": "merge_intervals (~100 tokens)",
+    "aggregation": "median per-cycle, sync_stage_timings for eager legs"
+  },
+  "summary": {
+    "graph_replay": {
+      "submit_ms_median": 124.67,
+      "readback_ms_median": 0.29,
+      "post_draft_sync": true
+    },
+    "eager_route_ab": {
+      "shared_cache_owner": {
+        "layer_total_ms": 95.37,
+        "full_attn_ms": 40.94,
+        "linear_attn_ms": 54.84
+      },
+      "staged_chain_forced_views": {
+        "layer_total_ms": 66.26,
+        "full_attn_ms": 17.0,
+        "linear_attn_ms": 49.34
+      }
+    },
+    "unattributed_graph_replay_gap_ms": "~50 (graph 125 vs eager staged 66 + ~5 lm_head)"
+  }
+}

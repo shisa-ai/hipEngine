@@ -81,8 +81,8 @@ __global__ void dense_flash_prefill_kernel(
   extern __shared__ char smem[];
   float* q_s = reinterpret_cast<float*>(smem);
   uint16_t* k_s = reinterpret_cast<uint16_t*>(q_s + kRows * HD);
-  uint16_t* v_s = k_s + kKeyTile * HD;
-  float* p_s = reinterpret_cast<float*>(v_s + kKeyTile * HD);
+  uint16_t* v_s = k_s + kKeyTile * (HD + 2);
+  float* p_s = reinterpret_cast<float*>(v_s + kKeyTile * (HD + 2));
 
   const int tid = threadIdx.x;
   const int warp = tid >> 5;
@@ -119,8 +119,12 @@ __global__ void dense_flash_prefill_kernel(
       const int64_t dim = index % HD;
       const int64_t offset = (kk * num_kv_heads + kv_head) * HD + dim;
       const bool live = kk < keys;
-      k_s[index] = live ? key[offset] : static_cast<uint16_t>(0);
-      v_s[index] = live ? value[offset] : static_cast<uint16_t>(0);
+      // Padded row stride (HD+2): the unpadded 256 B stride put every lane
+      // on one LDS bank group during the per-key dot walks (32-way). Layout
+      // only; arithmetic unchanged.
+      const int64_t sidx = (index / HD) * (HD + 2) + (index % HD);
+      k_s[sidx] = live ? key[offset] : static_cast<uint16_t>(0);
+      v_s[sidx] = live ? value[offset] : static_cast<uint16_t>(0);
     }
     __syncthreads();
 
@@ -144,7 +148,7 @@ __global__ void dense_flash_prefill_kernel(
         float score = -INFINITY;
         if (kk < row_limit) {
           const float* q_row = q_s + r * HD;
-          const uint16_t* k_row = k_s + jj * HD;
+          const uint16_t* k_row = k_s + jj * (HD + 2);
           float dot = 0.0f;
 #pragma unroll
           for (int d = 0; d < HD; ++d) {
@@ -194,7 +198,7 @@ __global__ void dense_flash_prefill_kernel(
 #pragma unroll
       for (int jj = 0; jj < kKeyTile; ++jj) {
         const float p = p_row[jj];
-        const uint16_t* v_row = v_s + jj * HD;
+        const uint16_t* v_row = v_s + jj * (HD + 2);
 #pragma unroll
         for (int t = 0; t < kDimsPerLane; ++t) {
           acc[rr][t] += p * bf16_bits_to_float(v_row[lane + 32 * t]);
@@ -258,7 +262,7 @@ extern "C" int hipengine_dense_flash_prefill_bf16(
   if (tokens > 8) {
     constexpr int kRows = kWarps * 2;
     const size_t shared_bytes = static_cast<size_t>(kRows * 128) * sizeof(float) +
-        static_cast<size_t>(2 * kKeyTile * 128) * sizeof(uint16_t) +
+        static_cast<size_t>(2 * kKeyTile * (128 + 2)) * sizeof(uint16_t) +
         static_cast<size_t>(kRows * kKeyTile) * sizeof(float);
     const dim3 grid(static_cast<unsigned int>(num_heads),
                     static_cast<unsigned int>((tokens + kRows - 1) / kRows));
@@ -268,7 +272,7 @@ extern "C" int hipengine_dense_flash_prefill_bf16(
   } else {
     constexpr int kRows = kWarps;
     const size_t shared_bytes = static_cast<size_t>(kRows * 128) * sizeof(float) +
-        static_cast<size_t>(2 * kKeyTile * 128) * sizeof(uint16_t) +
+        static_cast<size_t>(2 * kKeyTile * (128 + 2)) * sizeof(uint16_t) +
         static_cast<size_t>(kRows * kKeyTile) * sizeof(float);
     const dim3 grid(static_cast<unsigned int>(num_heads),
                     static_cast<unsigned int>((tokens + kRows - 1) / kRows));

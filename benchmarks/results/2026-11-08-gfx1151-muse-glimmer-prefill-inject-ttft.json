@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "kind": "muse_glimmer_prefill_inject_ttft",
+  "status": "retained",
+  "performance_claim": true,
+  "claim_scope": "fresh-conversation drafter-inject TTFT; exactness + acceptance + decode throughput unchanged",
+  "date": "2026-11-08",
+  "model": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+  "draft": "/models/gguf/Muse-Glimmer-30B-GGUF/dflash-Muse-Glimmer-30B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "backend": "hip_gfx1151",
+  "host": "zbook / Radeon 8060S (gfx1151), Ryzen AI MAX+ PRO 395",
+  "baseline_commit": "620a84975372db8472170c9bc22780180508be97",
+  "change": "Drafter inject chunked at block_size=16 with the 8-row exact rowtile (re-read each fc/K/V weight every 8 tokens). Inject owes no bit-exactness (builds draft KV; verify corrects), so it now runs _INJECT_CHUNK=1024 through WMMA prefill projections (weight read amortized over the chunk) with dedicated scratch. Draft block keeps its small-row exact owners.",
+  "inject_timing": {
+    "ms_per_token": {"before": 0.215, "after": 0.076},
+    "speedup": 2.8,
+    "seconds": {"32768": {"before": 7.05, "after": 2.48}, "126000": {"before_extrapolated_from_linear_rate": 27.1, "after_measured": 9.57}},
+    "fc_projection_1024_rows_ms": {"exact_rowtile": 146, "wmma_prefill": 28},
+    "linearity": "rate flat at 1K/8K/32K/126K (no superlinear blowup); old rate measured at 1K/8K/32K pre-change"
+  },
+  "correctness": {
+    "test_live_muse_glimmer_dflash_exactness.py": "2 pass (ten-prompt DFlash IDs == true AR via prefill_with_taps->inject + public surface)",
+    "test_live_muse_glimmer_dflash_gpu.py": "2 pass (draft oracle vs llama.cpp + window slice)",
+    "test_live_muse_glimmer_prefix_cache.py": "4 pass",
+    "acceptance_mtpbench_budget4": {"before": 0.4272, "after": 0.430, "exact": true},
+    "decode_throughput": "unchanged by construction (draft block untouched, acceptance equivalent)"
+  },
+  "memory_note": "_INJECT_CHUNK=1024 adds ~125 MB resident draft scratch; acceptable on the 128 GiB host",
+  "worklog": "worklog/entries/20261108T192501.297591Z-lhl-muse-glimmer-c7a63e.md",
+  "campaign": "docs/campaigns/MUSE-GLIMMER.md §11.1 (#4 TTFT track)"
+}

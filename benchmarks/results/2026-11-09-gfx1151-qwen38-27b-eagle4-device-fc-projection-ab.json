@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_eagle4_device_fc_projection_ab",
+  "status": "relative_measurement_internal",
+  "performance_claim": false,
+  "publishable": false,
+  "note": "Task #25c: device-resident EAGLE-4 committed-aux fc projection replaces the host numpy projection (21.2ms/call, dominant append-phase cost) + aux D2H + feature H2D. Same-process A/B, host path monkeypatched to old D2H+concat+append_committed. Cycle wall -19.1%, device==host output token-identical, acceptance unchanged (lossless). Public surface AR-exact 24/24.",
+  "provenance": {
+    "hipengine_commit": "7128ab437c9701a7f5fe2c770a257dc9a0cf5eb4",
+    "git_branch": "qwen38-dspine-eagle4",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "drafter": "EAGLE-Corp/Qwen3.8-27B-EAGLE4@f58a5985223040552ad404fba98f0dd27f5f676a",
+    "backend": "hip_gfx1151",
+    "hardware": "gfx1151 (Strix Halo)",
+    "command": ".venv/bin/python /tmp/eagle4_projection_ab.py",
+    "date": "2026-11-10T00:29:35"
+  },
+  "protocol": {
+    "n_draft": 2,
+    "max_new_tokens": 64,
+    "runs_per_path": 3,
+    "alternating": true,
+    "graph_cycles": 27,
+    "prompt": "merge_intervals",
+    "temperature": 0
+  },
+  "summary": {
+    "host_projection": {
+      "cycle_wall_ms_mean": 5466.18,
+      "tokens_per_s_mean": 11.71,
+      "accept_per_draft": 1.37
+    },
+    "device_projection": {
+      "cycle_wall_ms_mean": 4423.61,
+      "tokens_per_s_mean": 14.47,
+      "accept_per_draft": 1.37
+    },
+    "cycle_wall_saved_ms": 1042.57,
+    "cycle_wall_saved_pct": 19.1,
+    "device_equals_host_output": true,
+    "append_phase_attribution_ms": {
+      "host_proj": 21.24,
+      "d2h_concat": 1.87,
+      "h2d_feat_embed_pos": 0.68,
+      "dev_qkv_store_finish": 11.07,
+      "append_total": 34.85
+    }
+  },
+  "correctness": {
+    "public_surface_ar_exact": "24/24 tokens",
+    "execution_path": "qwen35_gguf_eagle4_chain_greedy",
+    "unit_tests": "tests/test_gpu_eagle4_device_projection.py (feature parity + AR-exact draft), EAGLE bundle 12 green"
+  }
+}

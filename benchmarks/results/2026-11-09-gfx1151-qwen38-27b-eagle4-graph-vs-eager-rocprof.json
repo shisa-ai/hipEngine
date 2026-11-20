@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_eagle4_graph_vs_eager_rocprof_kernel_attribution",
+  "status": "relative_measurement_internal",
+  "performance_claim": false,
+  "publishable": false,
+  "note": "rocprofv3 per-kernel attribution closes the graph-replay device-gap investigation as a measurement artifact. Graph replay and eager staged-chain verify have identical device kernel time (~120ms); graph issues fewer launches (947 vs 1006). Verify is GEMV-bound (~108ms quantized matmuls for 3 rows). The earlier sync_stage_timings 'layer_total' (66/95ms) undercounts device kernel time and must not be used to claim a graph-vs-eager device gap. Supersedes the '~50ms unattributed gap' framing in worklog 6536ad.",
+  "provenance": {
+    "hipengine_commit": "2307879dd962b73ca1a0759af3442bfbaba60439",
+    "git_branch": "qwen38-dspine-eagle4",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "backend": "hip_gfx1151",
+    "profiler": "rocprofv3 1.3.5",
+    "command": "ROCTX_LIB=librocprofiler-sdk-roctx.so HIPENGINE_COMPILER_VERSION_FILE=/tmp/muse-verify-gemv/compiler_version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --marker-trace --output-format csv -- /tmp/eagle4_graph_rocprof.py; scripts/rocprof_marker_breakdown.py",
+    "date": "2026-11-10T00:12:04"
+  },
+  "protocol": {
+    "n_draft": 2,
+    "cycles_per_range": 6,
+    "prompt": "merge_intervals (~100 tokens)",
+    "post_draft_sync": true
+  },
+  "summary": {
+    "eager_staged": {
+      "wall_ms_per_call": 130.88,
+      "kernels_ms_per_call": 119.09,
+      "launches_per_call": 1006,
+      "gap_ms_per_call": 11.8
+    },
+    "graph_verify": {
+      "wall_ms_per_call": 130.47,
+      "kernels_ms_per_call": 120.97,
+      "launches_per_call": 947,
+      "gap_ms_per_call": 9.5
+    },
+    "top_gemv_kernels_ms": {
+      "q4_k_t16_dense_dual_rowtile_silu": 39.0,
+      "q6_k_t16_qmicro_planar_rowtile_col8": 24.0,
+      "q5_k_t16_dense_rowtile": 11.0,
+      "q4_k_t16_dense_rowtile_residual": 10.0,
+      "q6_k_t16_rowtile_col8": 9.0,
+      "q4_k_t16_dense_rowtile16_w2": 9.0,
+      "q4_k_t16_dense_rowtile": 7.0
+    },
+    "conclusion": "no graph-replay device penalty; verify device floor ~120ms is GEMV-bound"
+  }
+}

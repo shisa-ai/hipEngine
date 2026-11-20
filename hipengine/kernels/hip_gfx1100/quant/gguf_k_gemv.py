@@ -415,13 +415,6 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_dpp_f32(*
     )
 
 
-def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_dpp_f32(*args, **kwargs):
-    """Preserve the parent lane-zero sum with a VALU-only DPP wave reduction."""
-    gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
-        *args, **kwargs, _wave_scale=True, _dpp=True
-    )
-
-
 def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_dpp_k320_full_rows_f32(
     *args, **kwargs
 ):

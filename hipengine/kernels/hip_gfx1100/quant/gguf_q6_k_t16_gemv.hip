@@ -66,6 +66,15 @@ __device__ inline float fp16_bytes_to_float(const uint8_t* ptr) {
   return static_cast<float>(in.f16);
 }
 
+__device__ inline float fp16_bits_to_float(uint16_t bits) {
+  union {
+    uint16_t u16;
+    half_t f16;
+  } in;
+  in.u16 = bits;
+  return static_cast<float>(in.f16);
+}
+
 __device__ inline bool better_pair(
     float value,
     int32_t index,
@@ -1904,8 +1913,22 @@ void q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel(
     const uint8_t* __restrict__ tile =
         tiles + (out_tile * blocks_per_row + blk) * Q6_T16_BLOCK_BYTES;
     const int64_t k_base = blk * QK_K;
-    const int8_t* __restrict__ scales =
-        reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
+    // Hoist the per-column d once per superblock (it does not depend on K) and
+    // read each g16 scale row / qmicro record with wide loads instead of the
+    // per-weight byte loads. Values, the integer coefficient product, the FP32
+    // FMA stream, and the K traversal are unchanged, so every row stays
+    // bit-identical to the planar decode parent.
+    float d[kTileCols];
+    {
+      const uint4 dv = *reinterpret_cast<const uint4*>(
+          tile + Q6_T16_D_OFFSET + col_base * 2);
+      const uint32_t dw[4] = {dv.x, dv.y, dv.z, dv.w};
+#pragma unroll
+      for (int c = 0; c < kTileCols; ++c) {
+        d[c] = fp16_bits_to_float(static_cast<uint16_t>(
+            (dw[c >> 1] >> (16 * (c & 1))) & 0xFFFFu));
+      }
+    }
     for (int k_in_block = tid; k_in_block < QK_K;
          k_in_block += blockDim.x) {
       const int g16 = k_in_block >> 4;
@@ -1918,19 +1941,26 @@ void q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel(
         xr[r] = bf16_bits_to_float(
             x[r * in_features + k_base + k_in_block]);
       }
+      const uint4 scale_vec = *reinterpret_cast<const uint4*>(
+          tile + Q6_T16_SCALE_OFFSET + g16 * T16_COLS);
+      const int8_t* __restrict__ scales =
+          reinterpret_cast<const int8_t*>(&scale_vec);
 #pragma unroll
       for (int local_quartet = 0; local_quartet < kQuartetsPerBlock;
            ++local_quartet) {
         const int col_quartet = (col_base >> 2) + local_quartet;
         const int record_index =
             (subblock * (T16_COLS / 4) + col_quartet) * 8 + pack;
-        const uint8_t* __restrict__ record =
-            tile + Q6_T16_QMICRO_OFFSET +
-            record_index * Q6_T16_QMICRO_RECORD_BYTES;
-        const uint16_t low_pair =
-            static_cast<uint16_t>(record[k4]) |
-            (static_cast<uint16_t>(record[4 + k4]) << 8);
-        const uint8_t high_packed = record[8 + k4];
+        const uint32_t* __restrict__ record =
+            reinterpret_cast<const uint32_t*>(
+                tile + Q6_T16_QMICRO_OFFSET +
+                record_index * Q6_T16_QMICRO_RECORD_BYTES);
+        const uint32_t w0 = record[0];
+        const uint32_t w1 = record[1];
+        const uint32_t w2 = record[2];
+        const uint16_t low_pair = static_cast<uint16_t>(
+            ((w0 >> (8 * k4)) & 0xFFu) | (((w1 >> (8 * k4)) & 0xFFu) << 8));
+        const uint8_t high_packed = static_cast<uint8_t>(w2 >> (8 * k4));
 #pragma unroll
         for (int col4 = 0; col4 < 4; ++col4) {
           const int local_col = local_quartet * 4 + col4;
@@ -1942,11 +1972,8 @@ void q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel(
           const uint8_t high =
               (high_packed >> (2 * col4)) & 0x03u;
           const int q_i = static_cast<int>(low | (high << 4)) - 32;
-          const float d =
-              fp16_bytes_to_float(tile + Q6_T16_D_OFFSET + col * 2);
-          const int scale_i =
-              static_cast<int>(scales[g16 * T16_COLS + col]);
-          const float w = d * static_cast<float>(scale_i * q_i);
+          const int scale_i = static_cast<int>(scales[col]);
+          const float w = d[local_col] * static_cast<float>(scale_i * q_i);
 #pragma unroll
           for (int r = 0; r < ROW_TILE; ++r) {
             acc[r][local_col] += xr[r] * w;

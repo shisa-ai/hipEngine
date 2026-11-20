@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "kind": "muse_glimmer_host_sampler_penalty",
+  "status": "retained",
+  "performance_claim": true,
+  "claim_scope": "host sampler history-penalty CPU cost; bit-identical sampling semantics",
+  "date": "2026-11-08",
+  "model": "host sampler (vocab 201088 probe); applies to sampled AR requests incl. Muse Glimmer",
+  "backend": "cpu (host numpy)",
+  "host": "zbook / Ryzen AI MAX+ PRO 395",
+  "baseline_commit": "3c01b6593a61199fa01c7121049d5ea28ac1c32f",
+  "change": "Incremental RowSamplingState.history_counts (build Counter once, observe() increments; clone rebuilds) replaces the O(prompt+generated) per-token rebuild; _apply_history_penalties vectorized via np.fromiter ids/counts + mask with the frequency term cast to the logits dtype to match the scalar value-based cast. Op order per token unchanged.",
+  "probe": {
+    "command": "scripts/sampler_host_cost_probe.py --lengths 512,32768,131072 --iters 30",
+    "repetition_penalty_ms_per_token": {
+      "before": {"512": 0.27, "32768": 6.29, "131072": 21.51},
+      "after": {"512": 0.19, "32768": 1.02, "131072": 2.93}
+    },
+    "delta_pct_at_131072": -86,
+    "greedy_ms_per_token": 0.18,
+    "top_p_ms_per_token_unchanged": "~5-6 (full-vocab argsort; separate follow-up)"
+  },
+  "correctness": {
+    "test_unit_sampling_history_penalty.py": "4 pass (vectorized penalties bit-identical to scalar reference across rep/presence/frequency combos incl. out-of-vocab ids; incremental counts == full rebuild after observe/clone; cache not shared; neutral no-op)",
+    "sampling_unit_suite": "311 pass (test_unit_sampling, _distribution, _probability_edges, _probability_order, _candidate_order, _rng_checkpoint + new file)"
+  },
+  "worklog": "worklog/entries/20261108T185439.935493Z-lhl-muse-glimmer-c0a41a.md",
+  "campaign": "docs/campaigns/MUSE-GLIMMER.md §11.1 (host sampler track)"
+}

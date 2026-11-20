@@ -334,8 +334,8 @@ def test_draft_operation_set_is_slot_scoped_and_certified(path: Path, monkeypatc
     assert all(record.kernel_layer for record in report.qualified_records)
 
 
-def test_foreign_draft_signature_is_not_silently_certified():
-    """U6 item 2: another artifact's draft layout is not certified by accident."""
+def test_foreign_draft_signature_is_admitted_by_capability():
+    """A different draft layout runs when every owned slot has a consumer."""
 
     from hipengine.loading import qwen35_gguf_admission as admission
 
@@ -346,8 +346,10 @@ def test_foreign_draft_signature_is_not_silently_certified():
     report = admission.preflight_qwen35_gguf_artifact(
         model_map, backend="hip_gfx1100", operations=(draft,), nextn_map=nextn_map
     )
-    assert not report.supported
-    assert not report.plan_contract.is_complete()
+    report.raise_for_errors()
+    assert report.plan_contract.is_complete()
+    assert report.preset is None
+    assert report.covered_slots == len(nextn_map.layer_tensors) + len(nextn_map.nextn_tensors)
 
 
 def test_ud_journal_is_row_capable_across_the_declared_context():

@@ -1133,9 +1133,8 @@ def plan(backend: str, metadata: dict, maps: MappedTensorMaps, *, environ=None) 
         and GGMLQuantizationType(tensor.ggml_type) == GGMLQuantizationType.F32
     )
     statuses = capability_status().get(backend, {})
-    # UD-U1 F5: bind the artifact qualification (pinned plain control /
-    # UD preset / unknown-manifest sentinel) so the reported default can never
-    # claim a plain-certified stamp default for an unqualified manifest.
+    # Mirror the runner: generic layouts use backend defaults, while
+    # specialized presets keep their distinct policy identity.
     from hipengine.loading.qwen35_gguf_admission import (
         qwen35_gguf_artifact_preset_key,
     )

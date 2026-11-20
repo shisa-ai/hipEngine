@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261106T214638.938412Z-lhl-muse-glimmer-3a84c1.md",
+  "sha256": "0cbe71b424fb3cd8e6e990956a37f3a7b09349ddef0cdd2c37f855b5fa91a5c6",
+  "defects": ["abbreviated_base_commit"],
+  "reason": "Entry recorded base_commit as the abbreviated 71ea1bd62; resolved to the full commit hash.",
+  "base_commit": "71ea1bd6267a82c286ca6947594ad4311d627e31",
+  "superseded_by": null
+}

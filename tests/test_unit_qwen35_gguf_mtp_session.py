@@ -47,13 +47,13 @@ def test_mtp_int8_target_policy_registration_keeps_scale_metadata() -> None:
     ("budget", "position", "remaining_decode", "expected", "expected_reason"),
     [
         (1, 1020, 2, True, None),
-        (1, 1021, 2, False, "target_graph_proposal_handoff_boundary_miss"),
+        (1, 1021, 2, True, None),
         (1, 1022, 2, False, "target_graph_context_bucket_miss"),
         (2, 1019, 3, True, None),
-        (2, 1020, 3, False, "target_graph_proposal_handoff_boundary_miss"),
+        (2, 1020, 3, True, None),
         (2, 1021, 3, False, "target_graph_context_bucket_miss"),
         (3, 1018, 4, True, None),
-        (3, 1019, 4, False, "target_graph_proposal_handoff_boundary_miss"),
+        (3, 1019, 4, True, None),
         (3, 1020, 4, False, "target_graph_context_bucket_miss"),
         (3, 1019, 3, False, "target_graph_output_room_miss"),
     ],
@@ -166,7 +166,7 @@ def test_ineligible_cached_target_graph_never_launches_device_proposal() -> None
 @pytest.mark.parametrize("budget", range(1, 8))
 @pytest.mark.parametrize("context_limit", [95, 1023, 1280, 1793])
 @pytest.mark.parametrize("end_delta", [-1, 0, 1])
-def test_device_handoff_boundary_prevents_proposal_submission(
+def test_device_handoff_admits_boundary_and_rejects_overflow(
     budget: int, context_limit: int, end_delta: int,
 ) -> None:
     """The real readiness check runs before the provider can mutate its state."""
@@ -206,7 +206,7 @@ def test_device_handoff_boundary_prevents_proposal_submission(
         return_cycle_logits=False,
     )
 
-    if end_delta < 0:
+    if end_delta <= 0:
         assert proposal is result
         assert launched == [(context, budget)]
         assert verifier.last_device_proposal_fallback_reason is None
@@ -214,8 +214,7 @@ def test_device_handoff_boundary_prevents_proposal_submission(
         assert proposal is None
         assert launched == []
         assert verifier.last_device_proposal_fallback_reason == (
-            "target_graph_proposal_handoff_boundary_miss"
-            if end_delta == 0 else "target_graph_context_bucket_miss"
+            "target_graph_context_bucket_miss"
         )
     assert target.position == position
 

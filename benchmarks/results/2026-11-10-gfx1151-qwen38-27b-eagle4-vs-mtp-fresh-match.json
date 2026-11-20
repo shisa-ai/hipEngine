@@ -1,0 +1,30 @@
+{
+  "artifact": "qwen38-27b-eagle4-vs-mtp-fresh-match",
+  "date": "2026-11-10",
+  "hardware": "gfx1151 / Radeon 8060S (ZBook, thermally throttled; diagnostic). Final validation pending on gfx1151 desktop.",
+  "model": "Qwen3.8-27B-Q4_K_M",
+  "backend": "hip_gfx1151",
+  "protocol": "Back-to-back (not interleaved) fresh runs, reps/runs=3, 10 mtpbench prompts, 25 greedy outputs, each method vs its own concurrent true-AR. Lead accepts multiple back-to-back runs as sufficient for testing.",
+  "commands": [
+    "scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --max-new-tokens 25 --candidate-budgets 3 --runs 3 --warmup --require-cached-build",
+    "scripts/qwen38_eagle4_baseline.py --n-draft 2 --reps 3 --max-new-tokens 25"
+  ],
+  "results": {
+    "mtp_b3": {
+      "decode_tok_s_weighted": 17.54148292948972,
+      "true_ar_tok_s": 10.67346621500325,
+      "ratio_vs_ar": 1.643466384409629,
+      "draft_acceptance": 0.6031746031746031,
+      "ar_exact": true
+    },
+    "eagle4_n2": {
+      "decode_tok_s_median_of_prompts": 16.270877789182663,
+      "true_ar_tok_s": 11.303862092636507,
+      "ratio_vs_ar": 1.4394087309134582,
+      "mean_acceptance": 0.6496212121212122,
+      "ar_exact": true
+    }
+  },
+  "conclusion": "MTP B3 remains the fastest: 17.54 tok/s (1.64x AR) vs EAGLE-4 n2 16.27 tok/s (1.44x AR). MTP leads in both absolute tok/s and ratio. The EAGLE two-stage parallel top-K (391ec1eea) closed EAGLE's gap from the original 0.78x to 1.44x but did not overtake MTP. Both AR-exact.",
+  "caveats": "Back-to-back not interleaved; AR reference drifted slightly (MTP true_AR 10.67, EAGLE AR 11.30 tok/s) so cross-method ratios carry thermal noise; MTP ran in the slightly slower window yet still leads absolute. Aggregation differs (MTP weighted-over-prompts, EAGLE median-of-prompts). Diagnostic on throttled ZBook; final ranking to be confirmed on the gfx1151 desktop platform."
+}

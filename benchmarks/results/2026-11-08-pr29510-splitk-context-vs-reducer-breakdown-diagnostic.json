@@ -1,0 +1,58 @@
+{
+  "probe": "pr29510-splitk-context-vs-reducer-breakdown",
+  "date": "2026-11-08",
+  "status": "diagnostic",
+  "branch": "unified-kv-multiseq",
+  "purpose": "Post-fix rocprofv3 kernel-trace breakdown of split-K batch attention (context kernel vs gate reducer) to decide whether parallelizing the reducer's serial cross-split merge is worth pursuing.",
+  "identity": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "rocm_sdk_package": "10.0.0",
+    "arch": "gfx1151"
+  },
+  "method": "scripts/probe_splitk_rocprof_breakdown.py --case {b8,b6}; 5 warmup + 50 timed calls; rocprofv3 --kernel-trace; per-call = family total / dispatch count",
+  "cases": {
+    "b8": {
+      "contexts": [
+        131072
+      ],
+      "num_splits": 512,
+      "dispatches_per_family": {
+        "context_kernel_us": 55,
+        "reducer_us": 55
+      },
+      "per_call_us": {
+        "context_kernel_us": 2592.0,
+        "reducer_us": 202.8
+      },
+      "share_percent": {
+        "context_kernel_us": 92.7,
+        "reducer_us": 7.3
+      },
+      "kernel_trace_csv_sha256": "24ac504cbaa49263c71c3c3db86c982134dc385dd50f1f9203943858cbceb8d7"
+    },
+    "b6": {
+      "contexts": [
+        131072,
+        1024,
+        1024,
+        1024
+      ],
+      "num_splits": 512,
+      "dispatches_per_family": {
+        "context_kernel_us": 55,
+        "reducer_us": 55
+      },
+      "per_call_us": {
+        "context_kernel_us": 2640.6,
+        "reducer_us": 206.0
+      },
+      "share_percent": {
+        "context_kernel_us": 92.8,
+        "reducer_us": 7.2
+      },
+      "kernel_trace_csv_sha256": "340888c24d1b0dc07b6614558eef894b042f1d752d9dd4d792916ba4c81fa0d8"
+    }
+  },
+  "decision": "Reducer is 7.2-7.3% of attention time; parallel merge ceiling ~3.6% of attention (~1-2% end-to-end at 128K). Skip. Context kernel (92.7%) is bandwidth-bound KV reads; its lever is KV storage size, a separate quality-gated workstream."
+}

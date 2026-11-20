@@ -168,31 +168,34 @@ class Qwen4ExpGRIu8KernelTests(unittest.TestCase):
         self.assertLess(float(np.percentile(rel, 99)), 1e-5)
         self.assertTrue(np.isfinite(got).all())
 
-    def test_route_is_default_off(self):
-        from hipengine.runtime.qwen4_exp_runner import _qwen4_exp_gr_iu8_enabled
+    def test_route_is_owner_bound(self):
+        from hipengine.runtime.qwen4_exp_runner import GRIU8Policy, _qwen4_exp_gr_iu8_enabled
         saved = os.environ.pop("HIPENGINE_QWEN4_EXP_GR_IU8", None)
         try:
             self.assertFalse(_qwen4_exp_gr_iu8_enabled(1024))
             os.environ["HIPENGINE_QWEN4_EXP_GR_IU8"] = "1"
-            self.assertTrue(_qwen4_exp_gr_iu8_enabled(1024))
-            self.assertFalse(_qwen4_exp_gr_iu8_enabled(256))
-            self.assertFalse(_qwen4_exp_gr_iu8_enabled(16))
+            self.assertFalse(_qwen4_exp_gr_iu8_enabled(1024))
+            for rows in (16, 256, 257, 1024):
+                self.assertEqual(_qwen4_exp_gr_iu8_enabled(rows, GRIU8Policy(True, False)), rows > 256)
+                self.assertFalse(_qwen4_exp_gr_iu8_enabled(rows, GRIU8Policy(False, True)))
         finally:
             if saved is None:
                 os.environ.pop("HIPENGINE_QWEN4_EXP_GR_IU8", None)
             else:
                 os.environ["HIPENGINE_QWEN4_EXP_GR_IU8"] = saved
 
-    def test_down_route_is_default_off(self):
+    def test_down_route_is_owner_bound(self):
         from hipengine.runtime.qwen4_exp_runner import (
-            _qwen4_exp_gr_iu8_down_enabled,
+            GRIU8Policy, _qwen4_exp_gr_iu8_down_enabled,
         )
         saved = os.environ.pop("HIPENGINE_QWEN4_EXP_GR_IU8_DOWN", None)
         try:
             self.assertFalse(_qwen4_exp_gr_iu8_down_enabled(1024))
             os.environ["HIPENGINE_QWEN4_EXP_GR_IU8_DOWN"] = "1"
-            self.assertTrue(_qwen4_exp_gr_iu8_down_enabled(1024))
-            self.assertFalse(_qwen4_exp_gr_iu8_down_enabled(256))
+            self.assertFalse(_qwen4_exp_gr_iu8_down_enabled(1024))
+            for rows in (16, 256, 257, 1024):
+                self.assertEqual(_qwen4_exp_gr_iu8_down_enabled(rows, GRIU8Policy(False, True)), rows > 256)
+                self.assertFalse(_qwen4_exp_gr_iu8_down_enabled(rows, GRIU8Policy(True, False)))
         finally:
             if saved is None:
                 os.environ.pop("HIPENGINE_QWEN4_EXP_GR_IU8_DOWN", None)

@@ -4784,6 +4784,29 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
         replace=replace,
     )
+    # Exact weight-amortized row-reuse owner for rows 2-8. Bit-identical to the
+    # dense_single_local32 decode GEMV per row (verified gfx1151); the batched
+    # speculative block verify resolves it through launch_gguf_linear_exact_rows.
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile_gemv_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_qmicro_t16_v1",
+            "dense_rowtile_gemv_bf16_bf16_out",
+        ),
+        gguf_q4_k_qmicro_t16_dense_rowtile_bf16_bf16_out,
+        replace=replace,
+    )
     register(
         KernelKey(
             "hip_gfx1100",
@@ -5044,16 +5067,17 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out,
         replace=replace,
     )
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "linear",
-            "gguf_q5_k_t16_v1",
-            "t16_gemv_rowtile_single_wave_bf16_bf16_out",
-        ),
-        gguf_q5_k_t16_gemv_rowtile_single_wave_bf16_bf16_out,
-        replace=replace,
-    )
+    for _backend in ("hip_gfx1100", "hip_gfx1151"):
+        register(
+            KernelKey(
+                _backend,
+                "linear",
+                "gguf_q5_k_t16_v1",
+                "t16_gemv_rowtile_single_wave_bf16_bf16_out",
+            ),
+            gguf_q5_k_t16_gemv_rowtile_single_wave_bf16_bf16_out,
+            replace=replace,
+        )
     register(
         KernelKey(
             "hip_gfx1100",

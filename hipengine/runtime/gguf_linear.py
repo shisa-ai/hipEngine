@@ -7,7 +7,7 @@ import ctypes
 import os
 import warnings
 from contextvars import ContextVar, Token
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Callable, Iterator, Mapping
 
@@ -350,7 +350,7 @@ _prefill_f16_staging_session_enabled: ContextVar[bool | None] = ContextVar(
 _PREFILL_F16_STAGING_MIN_ROWS = 17
 PREFILL_F16_STAGING_MAX_ROWS = 1024
 _PREFILL_F16_STAGING_QUANTS = frozenset(
-    {"gguf_q4_k_t16_v1", "gguf_q5_k_t16_v1"}
+    {"gguf_q4_k_t16_v1", "gguf_q5_k_t16_v1", "gguf_q6_k_t16_qmicro_planar_v1"}
 )
 _PREFILL_F16_STAGING_SOURCE_VARIANT = "t16_wmma_prefill_bf16_bf16_out"
 PREFILL_F16_STAGING_VARIANT = "t16_wmma_prefill_fp16_in_bf16_out"
@@ -380,6 +380,7 @@ class PrefillF16StagingWorkspace:
 
     ptr: int
     nbytes: int
+    workspace_owner: object | None = None
 
     def __post_init__(self) -> None:
         if int(self.ptr) <= 0 or int(self.nbytes) <= 0:
@@ -397,6 +398,7 @@ def prefill_f16_staging_session(
     *,
     workspace_ptr: int = 0,
     workspace_nbytes: int = 0,
+    workspace_owner: object | None = None,
 ) -> Iterator[None]:
     """Enable F16 staging with one caller-owned bounded device workspace."""
 
@@ -405,6 +407,7 @@ def prefill_f16_staging_session(
         workspace = PrefillF16StagingWorkspace(
             ptr=int(workspace_ptr),
             nbytes=int(workspace_nbytes),
+            workspace_owner=workspace_owner,
         )
     enabled_token = _prefill_f16_staging_session_enabled.set(bool(enabled))
     workspace_token = _prefill_f16_staging_workspace.set(workspace)
@@ -498,6 +501,14 @@ def _launch_prefill_f16_staged(
     )
     stage_kwargs = dict(kwargs)
     stage_kwargs.pop("library", None)
+    workspace = prefill_f16_staging_workspace()
+    owner_type = getattr(sibling, "workspace_owner_type", None)
+    if (
+        workspace is not None
+        and owner_type is not None
+        and isinstance(workspace.workspace_owner, owner_type)
+    ):
+        stage_kwargs["workspace_owner"] = workspace.workspace_owner
     _LAUNCH_ABI["t16"](
         sibling,
         weight,
@@ -1437,6 +1448,9 @@ class _Q8MMQPrefillSession:
     library: ctypes.CDLL | None
     policy: Q8MMQPrefillPolicy
     prepacked_weights: Mapping[tuple[int, int, int], tuple[int, int]] | None = None
+    # The dispatch memo outlives this session. Retain a resource-free identity
+    # there instead of an integer id that a later session can reuse.
+    cache_token: object = field(default_factory=object, init=False, compare=False, repr=False)
 
 
 _q8_mmq_prefill_session: ContextVar[_Q8MMQPrefillSession | None] = ContextVar(
@@ -1454,6 +1468,7 @@ class _Q5RawMMQTargetSession:
     source_layout: bool
     planar_dp4a: bool = False
     planar_library: ctypes.CDLL | None = None
+    cache_token: object = field(default_factory=object, init=False, compare=False, repr=False)
 
 
 _q5_raw_mmq_target_session: ContextVar[_Q5RawMMQTargetSession | None] = (
@@ -1547,6 +1562,7 @@ class F32OrderedPrefillSession:
     activation_bf16_ptr: int = 0
     activation_bf16_nbytes: int = 0
     resident_weight_f32_planes: Mapping[int, Q5F32ResidentPlane] | None = None
+    cache_token: object = field(default_factory=object, init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if not 0 < int(self.min_rows) <= int(self.max_rows):
@@ -1644,6 +1660,7 @@ class T16F16RocblasPrefillSession:
         tuple[str, int, int, str, int],
         Mapping[tuple[int, int], tuple[int, str, bool]],
     ] | None = None
+    cache_token: object = field(default_factory=object, init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if not 1 < int(self.min_rows) <= int(self.max_rows):
@@ -4960,6 +4977,103 @@ def launch_gguf_linear_decode_rows(
         out_ptr + reference_rows * output_stride, remaining, in_features, out_features, kwargs)
 
 
+# Exact row-independent multi-row owners for speculative block verify. Each
+# entry preserves the parent rows=1 decode GEMV reduction bit-for-bit per row:
+# either a registered weight-amortized rowtile sibling (rows 2..max) computes
+# every row with the identical reduction, or the parent kernel is itself
+# row-independent (one independent row per grid slot, reduction unchanged by
+# the row count). Verified bit-identical to per-row decode on gfx1151 for Q4_K
+# T16 (dense_rowtile) and Q5_K/Q6_K T16 (t16_gemv_decode). Keyed by the parent
+# rows=1 registry variant, never by model identity.
+_EXACT_VERIFY_ROWTILE_SIBLING = {
+    "dense_single_local32_bf16_bf16_out": ("dense_rowtile_gemv_bf16_bf16_out", 8),
+    # Q5_K / Q6_K T16 decode parent -> parent-parity rowtile (bit-identical,
+    # weight-amortized). The parent re-reads the weight per row at rows>1
+    # (Q5 head 37ms -> 10ms at rows=8 on gfx1151); the rowtile reads once.
+    "t16_gemv_decode_bf16_bf16_out": ("t16_gemv_rowtile_bf16_bf16_out", 8),
+    "t16_gemv_decode_bf16_f32_out": ("t16_gemv_rowtile_bf16_f32_out", 8),
+}
+_EXACT_VERIFY_ROW_INDEPENDENT = {
+    "t16_gemv_decode_bf16_bf16_out": 64,
+    "t16_gemv_decode_bf16_f32_out": 64,
+}
+
+
+def launch_gguf_linear_exact_rows(
+    weight: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    activation_dtype: str = GGUF_ACTIVATION_BF16,
+    output_dtype: str = GGUF_OUTPUT_BF16,
+    backend: str | None = None,
+    stream: int = 0,
+    runtime=None,
+) -> None:
+    """Batch a verify block with bit-identical per-row decode arithmetic.
+
+    Resolves the rows=1 decode owner, then runs the block through its exact
+    row-independent multi-row form: a registered weight-amortized rowtile
+    sibling (rows 2..8, chunked) or the same row-independent kernel. Any owner
+    without a declared exact multi-row form falls back to sequential rows=1
+    launches, so the result is always bit-identical to AR decode -- never a
+    silently changed arithmetic. This is the projection primitive for the
+    batched-invariant speculative block verify (campaign MUSE-GLIMMER.md P3).
+    """
+    if rows <= 0:
+        raise ValueError("exact verify rows must be positive")
+    common = dict(activation_dtype=activation_dtype, output_dtype=output_dtype,
+                  backend=backend, stream=stream, runtime=runtime)
+    if rows == 1:
+        launch_gguf_linear(weight, x_ptr, out_ptr, 1, in_features, out_features, **common)
+        return
+    parent = resolve_gguf_linear_dispatch(
+        weight, activation_dtype=activation_dtype, output_dtype=output_dtype,
+        backend=backend, rows=1,
+    )
+    in_stride = in_features * (4 if activation_dtype == GGUF_ACTIVATION_F32 else 2)
+    out_stride = out_features * (4 if output_dtype == GGUF_OUTPUT_F32 else 2)
+    kwargs = {"stream": stream, "runtime": runtime}
+    sibling = _EXACT_VERIFY_ROWTILE_SIBLING.get(parent.key.variant)
+    if sibling is not None:
+        rowtile_variant, max_rows = sibling
+        key = KernelKey(parent.key.backend, parent.key.layer, parent.key.quant, rowtile_variant)
+        if is_registered(key):
+            fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+            offset = 0
+            while offset < rows:
+                chunk = min(max_rows, rows - offset)
+                if chunk == 1:
+                    launch_gguf_linear(
+                        weight, x_ptr + offset * in_stride, out_ptr + offset * out_stride,
+                        1, in_features, out_features, **common)
+                else:
+                    _LAUNCH_ABI[parent.abi](
+                        fn, weight, x_ptr + offset * in_stride, out_ptr + offset * out_stride,
+                        chunk, in_features, out_features, kwargs)
+                offset += chunk
+            return
+    row_independent_max = _EXACT_VERIFY_ROW_INDEPENDENT.get(parent.key.variant)
+    if row_independent_max is not None:
+        fn = resolve(backend=parent.key.backend, layer=parent.key.layer,
+                     quant=parent.key.quant, variant=parent.key.variant)
+        offset = 0
+        while offset < rows:
+            chunk = min(row_independent_max, rows - offset)
+            _LAUNCH_ABI[parent.abi](
+                fn, weight, x_ptr + offset * in_stride, out_ptr + offset * out_stride,
+                chunk, in_features, out_features, kwargs)
+            offset += chunk
+        return
+    for offset in range(rows):
+        launch_gguf_linear(
+            weight, x_ptr + offset * in_stride, out_ptr + offset * out_stride,
+            1, in_features, out_features, **common)
+
+
 def _source_f16_span_launch_supported(
     *,
     activation_dtype: str,
@@ -5549,14 +5663,14 @@ def _launch_gguf_linear_impl(
         _q4_pack8_wmma_bulk_raw() != "0",
         registered_variant,
         bool(_native_batch_decode_session_enabled),
-        None if mmq_session is None else id(mmq_session),
-        None if q5_raw_mmq_session is None else id(q5_raw_mmq_session),
-        None if f32_ordered_session is None else id(f32_ordered_session),
+        None if mmq_session is None else mmq_session.cache_token,
+        None if q5_raw_mmq_session is None else q5_raw_mmq_session.cache_token,
+        None if f32_ordered_session is None else f32_ordered_session.cache_token,
         (
             None
             if (t16_f16_session := _t16_f16_rocblas_prefill_session.get())
             is None
-            else id(t16_f16_session)
+            else t16_f16_session.cache_token
         ),
         (
             None
@@ -8103,6 +8217,28 @@ def _resolve_gguf_linear_pair_silu_plan(
         rows=rows,
     )
     if rows != 1:
+        if (
+            _native_batch_decode_session_enabled
+            and {dispatch_a.key.quant, dispatch_b.key.quant}
+            == {"gguf_iq4_xs", "gguf_q4_k_t16_v1"}
+        ):
+            # Mixed verifier rows share one launch but retain scalar projection
+            # reductions and BF16 rounding before SiLU.
+            with native_batch_decode_session(False):
+                scalar_plan = _resolve_gguf_linear_pair_silu_plan(
+                    weight_a, weight_b, rows=1,
+                    in_features=in_features, out_features=out_features,
+                    backend=resolved_backend, use_gemv_decode=True,
+                    use_q4_t16_sidecar=use_q4_t16_sidecar,
+                    use_q4_t16_dual_interleaved=use_q4_t16_dual_interleaved,
+                    registered_decode_variant=None, layer_id=layer_id,
+                    q8_1_workspace_ptr=q8_1_workspace_ptr,
+                    pair_workspace_ptr=pair_workspace_ptr,
+                    pair_workspace_nbytes=pair_workspace_nbytes,
+                    r28_enabled=r28_enabled,
+                )
+            if scalar_plan.operation == "registered_pair":
+                return replace(scalar_plan, rows=rows)
         dense_pair_quant = (
             dispatch_a.key.quant
             if dispatch_a.key.quant == dispatch_b.key.quant
@@ -9693,7 +9829,7 @@ def _resolve_gguf_linear_pair_plan(
             None
             if (source_f16_session := _t16_f16_rocblas_prefill_session.get())
             is None
-            else id(source_f16_session)
+            else source_f16_session.cache_token
         ),
         bool(_native_batch_decode_session_enabled),
         bool(registered_decode_only),

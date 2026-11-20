@@ -5,6 +5,10 @@ from hipengine.speculative.adaptive_budget import (
     AdaptiveBudgetController,
     AdaptiveBudgetDecision,
 )
+from hipengine.speculative.adaptive_depth import (
+    AdaptiveDepthConfig,
+    AdaptiveDepthController,
+)
 from hipengine.speculative.buffers import (
     TargetVerifyBufferOwner,
     TargetVerifyBufferSpec,
@@ -247,6 +251,7 @@ __all__ = [
     "paro_mtp_profiles_registered",
     "register_paro_mtp_gfx1100_profiles",
     "AdaptiveBudgetConfig",
+    "AdaptiveDepthConfig",
     "SpeculativeProviderBudgetAmbiguousError",
     "SpeculativeProviderCapabilities",
     "SpeculativeProviderConfig",
@@ -273,6 +278,7 @@ __all__ = [
     "resolve_speculative_provider_candidate_budget",
     "AdaptiveBudgetController",
     "AdaptiveBudgetDecision",
+    "AdaptiveDepthController",
     "TargetVerifyBufferOwner",
     "TargetVerifyBufferSpec",
     "TargetVerifyScratchHandle",

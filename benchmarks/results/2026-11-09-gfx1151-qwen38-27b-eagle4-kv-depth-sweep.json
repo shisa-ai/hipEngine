@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "kind": "qwen38_27b_eagle4_kv_depth_sweep",
+  "status": "relative_baseline_internal",
+  "performance_claim": false,
+  "publishable": false,
+  "note": "Internal depth sweep after the persistent-KV context drafter (task #23). Single load, 1 rep; optimum-finding run, not a publishable perf claim. EAGLE-4 stays below AR: per-step efficient-head cost grows faster than acceptance.",
+  "provenance": {
+    "hipengine_commit": "abce8e6b161ef94ade94894399269106331ba2fe",
+    "git_branch": "qwen38-dspine-eagle4",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "drafter": "/home/lhl/.cache/huggingface/hub/models--EAGLE-Corp--Qwen3.8-27B-EAGLE4/snapshots/f58a5985223040552ad404fba98f0dd27f5f676a",
+    "backend": "hip_gfx1151",
+    "command": "/tmp/eagle4_depth_sweep.py (single-load sweep over the ten-prompt mtpbench suite; run_eagle4_cycle KV path)",
+    "date": "2026-11-09T22:27:20"
+  },
+  "protocol": {
+    "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite": "mtpbench-code-general-ja (10 prompts)",
+    "max_new_tokens": 25,
+    "n_draft_sweep": [
+      1,
+      2,
+      3,
+      4,
+      6,
+      8
+    ],
+    "reps": 1,
+    "verify": "native KV-cache chain (prefill_context + draft_greedy_chain_cached + append_committed; verify_target_block)",
+    "warmup": "1 discarded prompt",
+    "aggregation": "median EAGLE-4 decode tok/s across the 10 prompts per depth; AR reference deterministic per prompt (single load)"
+  },
+  "summary": {
+    "optimum_n_draft": 2,
+    "optimum_tok_s_median_of_prompts": 10.415730856128665,
+    "optimum_ratio_vs_ar": 0.9299331822354621,
+    "exact_all_depths": true
+  },
+  "rows": [
+    {
+      "n_draft": 1,
+      "tok_s_median": 9.651892671216984,
+      "ratio_vs_ar": 0.8617364820884029,
+      "accepted_per_draft": 0.75,
+      "exact_all": true
+    },
+    {
+      "n_draft": 2,
+      "tok_s_median": 10.415730856128665,
+      "ratio_vs_ar": 0.9299331822354621,
+      "accepted_per_draft": 1.2992424242424243,
+      "exact_all": true
+    },
+    {
+      "n_draft": 3,
+      "tok_s_median": 10.335196385220595,
+      "ratio_vs_ar": 0.9227429353055383,
+      "accepted_per_draft": 1.6666666666666665,
+      "exact_all": true
+    },
+    {
+      "n_draft": 4,
+      "tok_s_median": 10.261524263355486,
+      "ratio_vs_ar": 0.9161653699215646,
+      "accepted_per_draft": 2.0029761904761907,
+      "exact_all": true
+    },
+    {
+      "n_draft": 6,
+      "tok_s_median": 8.038546104882833,
+      "ratio_vs_ar": 0.7176943090327323,
+      "accepted_per_draft": 2.308531746031746,
+      "exact_all": true
+    },
+    {
+      "n_draft": 8,
+      "tok_s_median": 4.591918791689835,
+      "ratio_vs_ar": 0.40997388599095314,
+      "accepted_per_draft": 2.515873015873016,
+      "exact_all": true
+    }
+  ]
+}

@@ -203,6 +203,11 @@ worklog entry. Exported benchmark prose must pass
   Python children and profiler/JIT state propagates into them. Use
   `scripts/mtp_verifier_rocprof.py`, or profile the final
   `mtp_chain_e2e_smoke.py` child after a non-profiled cache warmup.
+- For a speculative cycle, tag phases with ROCTx ranges and attribute kernels
+  per range, at short and long context in one process:
+  `scripts/rocprof_marker_breakdown.py` plus the driver pattern in
+  [`benchmarks/HARNESSES.md`](../benchmarks/HARNESSES.md) "Phase-tagged
+  speculative profiles".
 
 ## 8. Verification tiers
 

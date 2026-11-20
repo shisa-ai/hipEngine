@@ -166,11 +166,14 @@ def test_backend_declarations_are_literally_readable():
         assert backend in declarations
         layers = declarations[backend]
         assert isinstance(layers, frozenset)
-        # The declaration name is a real module constant in each backend
-        # package (the same convention the audit's capability reader uses).
+        # Resolve through the runtime capability owner, including policy-module
+        # declarations, rather than requiring a duplicate package binding.
         module = importlib.import_module(f"hipengine.kernels.{backend}")
+        from hipengine.kernels.backends import backend_package_capability_from_module
         declared = frozenset(
-            getattr(module, GGUF_CONSUMER_LAYER_DECLARATION_NAME, frozenset())
+            backend_package_capability_from_module(
+                module, GGUF_CONSUMER_LAYER_DECLARATION_NAME, frozenset()
+            )
         )
         assert declared == layers
 

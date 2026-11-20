@@ -1,0 +1,91 @@
+{
+ "schema": 1,
+ "kind": "muse_glimmer_hipengine_ar_bench",
+ "status": "diagnostic",
+ "performance_claim": false,
+ "date": "2026-11-10",
+ "model": "/models/gguf/Muse-Glimmer-30B-GGUF/Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf",
+ "quant": "gguf_q4_k_m",
+ "backend": "hip_gfx1151",
+ "timing_boundary": "decode_model_step = sum of synchronized decode_step walls (llama-bench tg boundary); decode = user-facing wall incl greedy argmax; prefill = synchronized session wall",
+ "repeats": 3,
+ "warmup": "32-token and (prefill_chunk + 512)-token prefills, 4 decode steps each",
+ "execution_path": "muse_glimmer_gguf_resident_eager",
+ "rows": [
+  {
+   "prompt_tokens": 512,
+   "gen_tokens": 128,
+   "prefill_tok_s": 558.1951322873599,
+   "decode_tok_s": 12.833531145992893,
+   "decode_model_step_tok_s": 12.834993927178587,
+   "prefill_s_samples": [
+    0.9163259870256297,
+    0.9199137070099823,
+    0.9172419650130905
+   ],
+   "decode_s_samples": [
+    9.976090528012719,
+    9.973872237023897,
+    9.971386775025167
+   ],
+   "decode_model_step_s_samples": [
+    9.974948409828357,
+    9.972735532734077,
+    9.970298606727738
+   ],
+   "prefill_s_median": 0.9172419650130905,
+   "decode_s_median": 9.973872237023897,
+   "decode_model_step_s_median": 9.972735532734077
+  },
+  {
+   "prompt_tokens": 1024,
+   "gen_tokens": 128,
+   "prefill_tok_s": 590.8216320908637,
+   "decode_tok_s": 12.708327624713535,
+   "decode_model_step_tok_s": 12.709762925216479,
+   "prefill_s_samples": [
+    1.7326009040116332,
+    1.7331796000362374,
+    1.7348069429863244
+   ],
+   "decode_s_samples": [
+    10.072135671973228,
+    10.072598178987391,
+    10.07106622500578
+   ],
+   "decode_model_step_s_samples": [
+    10.07099823601311,
+    10.071479751903098,
+    10.069975169142708
+   ],
+   "prefill_s_median": 1.7331796000362374,
+   "decode_s_median": 10.072135671973228,
+   "decode_model_step_s_median": 10.07099823601311
+  },
+  {
+   "prompt_tokens": 4096,
+   "gen_tokens": 128,
+   "prefill_tok_s": 570.4318873353456,
+   "decode_tok_s": 12.621124654768822,
+   "decode_model_step_tok_s": 12.622630258132164,
+   "prefill_s_samples": [
+    7.180524250026792,
+    7.182294120022561,
+    7.179632076993585
+   ],
+   "decode_s_samples": [
+    10.22371268295683,
+    10.14172694599256,
+    10.141005582991056
+   ],
+   "decode_model_step_s_samples": [
+    10.222585597250145,
+    10.140517260064371,
+    10.139823394361883
+   ],
+   "prefill_s_median": 7.180524250026792,
+   "decode_s_median": 10.14172694599256,
+   "decode_model_step_s_median": 10.140517260064371
+  }
+ ]
+}

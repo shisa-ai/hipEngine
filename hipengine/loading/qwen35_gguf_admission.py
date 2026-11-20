@@ -608,48 +608,9 @@ _UD_NEXTN_DRAFT_QTYPES: Mapping[str, Mapping[str, GGMLQuantizationType]] = {
     ),
 }
 
-# Artifact preset-key sentinel bound to manifests that carry no UD admission
-# preset and do not match a pinned qualified plain control.  It never enters
-# preset tables; its only job is to extend the policy identity to a 3-tuple so
-# unknown manifests miss every plain-stamp-keyed policy row and the packaged
-# hot-vocabulary identity, and resolve through the generic strict fallback
-# instead.
+# Legacy policy key accepted by older callers. Admission no longer emits it:
+# unfamiliar manifests use generic policy routing and per-tensor capabilities.
 GGUF_UNQUALIFIED_MANIFEST_PRESET = "gguf-unqualified-manifest"
-
-# Pinned qualified plain-control role-manifest fingerprints (UD-U0/U1
-# evidence; computed on the physical benchmark host from the local artifacts
-# with build_qwen35_gguf_role_manifest over the AR map plus the structural
-# NextN block map when present).  A plain artifact whose manifest matches one
-# of these keeps the historical (geometry, stamp) plain policy identity and
-# the packaged hot-vocabulary identity.  Every OTHER preset-less manifest is
-# an unknown manifest and gets GGUF_UNQUALIFIED_MANIFEST_PRESET: plain-certified
-# arithmetic rows were tuned on these controls, so an unverified file sharing
-# only a stamp must not silently inherit them.
-_PINNED_PLAIN_CONTROL_FINGERPRINTS: frozenset[str] = frozenset(
-    {
-        # /models/gguf/Qwen3.8-27B-Q4_K_M.gguf (hidden 5120, MOSTLY_Q4_K_M,
-        # NextN structural block present).
-        "0b70a3061c99df35c5f1fd7e600fbe2e428a88710f615f246d1407f0e7f62a88",
-        # /models/gguf/Qwen3.8-27B-Q4_K_S.gguf (hidden 5120, MOSTLY_Q4_K_S,
-        # NextN structural block present).
-        "a885f2c48acefe4de83113f1d1511db2fc3f01d9140235cd99a343990f8d8647",
-        # /models/gguf/Qwen3.5-0.8B-Q8_0.gguf (hidden 1024, MOSTLY_Q8_0).
-        "d21530dec88af620099bbcc61bd115762db07b3433913ed6ffd0382d390dc03d",
-        # /models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf (hidden 1024, MOSTLY_Q4_K_M).
-        "84f294df4b948d691d7be0da707721a62b7bbbc9e8e5727feb81d7380297b9b1",
-        # /models/gguf/Qwen3.6-27B-Q4_K_M.gguf (hidden 5120, MOSTLY_Q4_K_M;
-        # shares the Qwen3.8 dense geometry+stamp, so it must stay pinned or
-        # it would silently lose the plain dense policy rows).
-        "a0b9749e2d7bde4b5f633b7b2b92356db746ae2f82c582fefe2ea0778c4a97b3",
-        # /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf (MoE hidden 2048,
-        # MOSTLY_Q4_K_M, NextN structural block present; not a pinned UD
-        # preset — a qualified plain MoE control).
-        "a4d6fd0a9468fc42250c1e459f1913ce1d6e7ad340974277716e2e49252fb0ad",
-        # /models/gguf/Ornith-1.5-35B-A3B-Q4_K_M.gguf (MoE hidden 2048,
-        # MOSTLY_Q4_K_M).
-        "350b6afc6cb4a21eabc600149169cbaab02c0a94f819ba8d2522c62f288acbf8",
-    }
-)
 
 
 def qwen35_gguf_artifact_preset_key_for_report(
@@ -657,19 +618,15 @@ def qwen35_gguf_artifact_preset_key_for_report(
 ) -> str | None:
     """Artifact preset key for one admission report.
 
-    ``None`` means the artifact is a pinned qualified plain control and keeps
-    the historical plain (geometry, stamp) policy identity.  A UD preset key
-    binds when the manifest matches a pinned UD fingerprint.  Everything else
-    is an unknown manifest and receives ``GGUF_UNQUALIFIED_MANIFEST_PRESET``
-    so policy-table consumers and the packaged hot-vocabulary resolver treat
-    it as unqualified instead of inheriting plain-certified behavior.
+    ``None`` selects generic (geometry, stamp) policy routing. Historical UD
+    presets retain their specialized policy identities; absence from a measured
+    manifest list does not disable generic policies. Tensor consumers are
+    checked independently by admission.
     """
 
     if report.preset is not None:
         return report.preset.preset_key
-    if report.manifest_fingerprint in _PINNED_PLAIN_CONTROL_FINGERPRINTS:
-        return None
-    return GGUF_UNQUALIFIED_MANIFEST_PRESET
+    return None
 
 
 def qwen35_gguf_artifact_preset_key(
@@ -697,18 +654,15 @@ def qwen35_gguf_artifact_preset_key(
         )
     if preset is not None:
         return preset.preset_key
-    manifest = build_qwen35_gguf_role_manifest(model_map, nextn_map=nextn_map)
-    if manifest.fingerprint in _PINNED_PLAIN_CONTROL_FINGERPRINTS:
-        return None
-    return GGUF_UNQUALIFIED_MANIFEST_PRESET
+    return None
 
 
 def qwen35_gguf_artifact_identity_from_info(model_info) -> tuple[str, str | None]:
     """Header-only identity shared by profile and runtime policy callers.
 
     The structural NextN map participates exactly as in loader admission.
-    ``None`` is returned only for an actually pinned plain manifest, never
-    because qualification context was absent.
+    ``None`` selects generic policies when no specialized preset applies;
+    the fingerprint remains available for provenance and ownership validation.
     """
     model_map = build_qwen35_gguf_tensor_map(model_info)
     nextn_map = None
@@ -818,10 +772,10 @@ def resolve_qwen35_gguf_artifact_preset(
 ) -> Qwen35GGUFArtifactPreset | None:
     """Resolve the artifact preset from the actual manifest, or ``None``.
 
-    ``None`` means only "no pinned UD manifest", not qualified plain. Callers
-    use ``qwen35_gguf_artifact_preset_key`` to distinguish pinned plain controls
-    from unknown manifests. A matching fingerprint yields the explicit UD
-    preset identity; the stamp is telemetry only.
+    ``None`` means no historical UD preset matches. Generic policy routing
+    remains available and per-tensor admission checks execution capability.
+    A matching fingerprint selects a specialized policy identity; the stamp
+    is telemetry only for this lookup.
     """
 
     manifest = build_qwen35_gguf_role_manifest(model_map, nextn_map=nextn_map)

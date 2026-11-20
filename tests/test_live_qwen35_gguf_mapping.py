@@ -183,11 +183,11 @@ def test_qwen35_08b_dense_q5_qkv_policy_uses_single_t16_resident() -> None:
     assert all(spec.quant_key == "gguf_q5_k_t16_v1" for spec in candidate_qkv)
     assert all(spec.allocation_names == ("tiles",) for spec in candidate_qkv)
     assert all(
-        baseline_by_slot[spec.slot_path].layout == LAYOUT_DENSE_BF16
+        baseline_by_slot[spec.slot_path].layout == LAYOUT_RAW_GGUF
         for spec in candidate_qkv
     )
     assert all(
-        spec.layout == LAYOUT_DENSE_BF16
+        spec.layout == LAYOUT_RAW_GGUF
         for spec in candidate.specs
         if spec.slot_path.endswith(".ssm_out")
     )
@@ -219,11 +219,11 @@ def test_qwen35_08b_dense_q5_ssm_out_policy_uses_single_t16_resident() -> None:
     assert all(spec.quant_key == "gguf_q5_k_t16_v1" for spec in candidate_ssm_out)
     assert all(spec.allocation_names == ("tiles",) for spec in candidate_ssm_out)
     assert all(
-        baseline_by_slot[spec.slot_path].layout == LAYOUT_DENSE_BF16
+        baseline_by_slot[spec.slot_path].layout == LAYOUT_RAW_GGUF
         for spec in candidate_ssm_out
     )
     assert all(
-        spec.layout == LAYOUT_DENSE_BF16
+        spec.layout == LAYOUT_RAW_GGUF
         for spec in candidate.specs
         if spec.slot_path.endswith(".attn_qkv")
         and spec.source.ggml_type_name == "Q5_K"

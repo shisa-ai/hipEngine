@@ -74,7 +74,10 @@ _RAW_DISPATCH_SHA256 = (
     # unchanged: the rowbatch capability read, the in_features multiple, the
     # `prefill_` variant strip, the coltile2_rowbatch16/coltile4_rowbatch8 choice,
     # and the role-variant lookup.
-    "4c41d131adf76ed82199b1fde6b693a43c4ca62ce613048cacd53492aa1a4342"
+    # d31dbe21b adds a retirement guard only when the final selection is a plain
+    # rowbatch slab. H7C role/coltile variants bypass it; their selection and
+    # kernel arithmetic are unchanged and checked below.
+    "3be3ee53e39b01b61bf53eb6a6ce90bc85b35da7520127d1dadcf75fbb4e4970"
 )
 _SELECTION_ARITHMETIC = {
     "bf16_calls": 2,

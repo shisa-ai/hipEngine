@@ -6419,6 +6419,34 @@ def q8_dpp_reduction_enabled(owner: Any, enabled: bool | None):
 
 
 @contextlib.contextmanager
+def q4k_rowtile_enabled(owner: Any, enabled: bool | None):
+    """Bind the diagnostic rowtile override across the service-thread boundary."""
+    if enabled is not None and type(enabled) is not bool:
+        raise TypeError('q4k_rowtile_enabled must be a boolean or None')
+    missing = object()
+    prior = [(target, getattr(target, 'q4k_rowtile_enabled', missing))
+             for target in _q8_mmq_prefill_targets(owner)]
+    try:
+        for target, _ in prior:
+            target.q4k_rowtile_enabled = enabled
+        yield
+    finally:
+        for target, previous in prior:
+            if previous is missing:
+                delattr(target, 'q4k_rowtile_enabled')
+            else:
+                target.q4k_rowtile_enabled = previous
+
+
+def _q4k_rowtile_owner_context(owner: Any):
+    from hipengine.runtime.gguf_linear import q4k_rowtile_session
+
+    enabled = getattr(owner, 'q4k_rowtile_enabled', None)
+    return (contextlib.nullcontext() if enabled is None
+            else q4k_rowtile_session(enabled))
+
+
+@contextlib.contextmanager
 def q8_wave_scale_prefill(runner: Any, enabled: bool):
     """Select the raw Q8 prefill geometry on the diagnostic runner."""
     prior = getattr(runner, "q8_wave_scale_prefill", False)
@@ -12654,6 +12682,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 _q8_wmma_scope_sessions(q8_wmma_scope, self),
                 q8_dense_wide_policy_session(resolve_q8_dense_wide_policy(self)),
                 q8_dpp_reduction_session(resolve_q8_dpp_reduction(self)),
+                _q4k_rowtile_owner_context(self),
                 self._q8_mmq_prefill_context(),
                 self._wide_f16_activation_context(),
                 _qwen4_exp_q8_tile_scope(self),

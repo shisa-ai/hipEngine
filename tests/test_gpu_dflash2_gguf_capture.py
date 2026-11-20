@@ -73,10 +73,20 @@ def test_capture_targets_valid(runtime) -> None:
         _free_buffers(buffers)
 
 
-def test_capture_targets_reject_unknown_depth(runtime) -> None:
+def test_capture_targets_accept_caller_defined_depth(runtime) -> None:
     buffers = _device_buffers(rows=4, hidden_size=5120, depths=(6, 20, 34, 48, 62, 63))
     try:
-        with pytest.raises(ValueError, match="tap depths"):
+        targets = DFlash2HiddenCaptureTargets(hidden_size=5120, rows=4, buffers=buffers)
+        assert set(targets.buffers) == set(buffers)
+    finally:
+        _free_buffers(buffers)
+
+
+@pytest.mark.parametrize("depth", [0, -1])
+def test_capture_targets_reject_nonpositive_depth(runtime, depth) -> None:
+    buffers = _device_buffers(rows=4, hidden_size=5120, depths=(depth,))
+    try:
+        with pytest.raises(ValueError, match="positive post-layer depth"):
             DFlash2HiddenCaptureTargets(hidden_size=5120, rows=4, buffers=buffers)
     finally:
         _free_buffers(buffers)

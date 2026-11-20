@@ -1,0 +1,682 @@
+{
+  "schema": 1,
+  "kind": "qwen38_verifier_width_findings",
+  "status": "diagnostic",
+  "performance_claim": false,
+  "provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 3,
+    "collected_at": "2026-11-12T09:44:22.732174+00:00",
+    "host_name": "zbook",
+    "repo_root": "/home/lhl/hipEngine-main",
+    "hipengine_commit": "8fe2ba4ec7a2c6946e814eca23e0604dfdf9e116",
+    "git_branch": "qwen38-dspine-eagle4",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 5,
+    "dirty": true,
+    "dirty_paths": [],
+    "dirty_path_count": 0,
+    "untracked_paths": [
+      "scripts/qwen38_verifier_width_analyze.py",
+      "scripts/qwen38_verifier_width_profile.py",
+      "tests/test_unit_qwen38_verifier_width_analyze.py",
+      "tests/test_unit_qwen38_verifier_width_profile.py",
+      "worklog/entries/20261112T093754.061585Z-primary-qwen38-verifier-width-dbb8eb.md"
+    ],
+    "execution_affecting_dirty": true,
+    "execution_affecting_paths": [
+      "scripts/qwen38_verifier_width_analyze.py",
+      "scripts/qwen38_verifier_width_profile.py",
+      "tests/test_unit_qwen38_verifier_width_analyze.py",
+      "tests/test_unit_qwen38_verifier_width_profile.py"
+    ],
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "Q4_K_M",
+    "kv_dtype": "bf16",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/qwen38_verifier_width_profile.py",
+      "--contexts",
+      "64,2048",
+      "--repetitions",
+      "6",
+      "--warmups",
+      "2",
+      "--output",
+      "/tmp/qwen38-verifier-width-unprofiled.json"
+    ],
+    "environment": {
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/qwen38-hipcc-version.txt",
+      "HIPENGINE_HIP_ARCH": "gfx1151"
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "build_profile": null,
+    "timing_protocol": "fixed-prefix sync-bounded verify; excludes restore/warmup/prefill",
+    "warmups": 2,
+    "repetitions": 6,
+    "profiler": {
+      "enabled": false
+    }
+  },
+  "profile": {
+    "resolved": "production",
+    "manifest_sha256": "c4a4a342e2243c2dcc430174606dde682393a2bd2e30acc83129027fcf572acc",
+    "manifest": {
+      "kind": "hipengine_execution_profile_manifest",
+      "schema_version": 1,
+      "execution_profile": "production",
+      "backend": "hip_gfx1151",
+      "model": "qwen3_5_gguf",
+      "quant": "gguf_q4_k_m",
+      "kv_policy": "paged_bf16",
+      "graph_policy": "specdec2_eager_c1",
+      "selections": [
+        {
+          "layer": "gdn_chain_recurrent_rmsnorm_gate",
+          "scope": "specdec2_mtp2_target_state_rows",
+          "selected_variant": "bf16_c1_exact_state_rows_tloop",
+          "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_qwen35"
+        },
+        {
+          "layer": "linear",
+          "scope": "specdec2_mtp2_c2_k3_r8_q4_single",
+          "selected_variant": "dense_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "t16_wmma_prefill_smallm_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear",
+          "scope": "specdec2_mtp2_c3_k1_r6_q4_single",
+          "selected_variant": "dense_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "t16_wmma_prefill_smallm_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear",
+          "scope": "specdec2_mtp2_c3_k2_r9_q4_single",
+          "selected_variant": "dense_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "t16_wmma_prefill_smallm_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear",
+          "scope": "specdec2_mtp2_c3_k3_r12_q4_single",
+          "selected_variant": "dense_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "t16_wmma_prefill_smallm_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear_attn_chain_conv_decode",
+          "scope": "specdec2_mtp2_c1",
+          "selected_variant": "bf16_c1_exact_state_rows_tloop",
+          "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+          "evidence_artifact": null,
+          "registry_quant": "gguf_qwen35"
+        },
+        {
+          "layer": "linear_pair_silu",
+          "scope": "specdec2_mtp2_c2_k3_r8_q4_gate_up",
+          "selected_variant": "dense_dual_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear_pair_silu",
+          "scope": "specdec2_mtp2_c3_k1_r6_q4_gate_up",
+          "selected_variant": "dense_dual_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear_pair_silu",
+          "scope": "specdec2_mtp2_c3_k2_r9_q4_gate_up",
+          "selected_variant": "dense_dual_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        },
+        {
+          "layer": "linear_pair_silu",
+          "scope": "specdec2_mtp2_c3_k3_r12_q4_gate_up",
+          "selected_variant": "dense_dual_rowtile_bf16_bf16_out",
+          "strict_fallback_variant": "dense_dual_wmma_prefill_bf16_bf16_out",
+          "evidence_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json",
+          "registry_quant": "gguf_q4_k_t16_v1"
+        }
+      ]
+    }
+  },
+  "session": {
+    "target_verifier_production_q4_rowtile": true,
+    "fp16_recurrent_state": false,
+    "use_wmma_prefill": true,
+    "use_gemv_decode": true,
+    "kv_storage_dtype": "DType.BF16"
+  },
+  "protocol": {
+    "contexts": [
+      64,
+      2048
+    ],
+    "widths": [
+      1,
+      2,
+      3,
+      4,
+      6,
+      8
+    ],
+    "repetitions": 6,
+    "capture_layers": [
+      3,
+      31,
+      59
+    ],
+    "order": "alternating forward/reverse widths",
+    "one_row_route": "eager verifier; native graph only supports 2..8 rows"
+  },
+  "rows": [
+    {
+      "context": 64,
+      "width": 1,
+      "unprofiled_wall_median_ms": 103.060343535617,
+      "profiled_wall_mean_ms": 107.729,
+      "device_mean_ms": 86.615984,
+      "gpu_idle_mean_ms": 21.11334925,
+      "launches": 896.0,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_selected_dual_q8_1x2_dp4a_silu_direct_gemv_kernel<unsigned short, true>((anonymous namespace)::gguf_q8_1_block const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+          "mean_ms": 34.20376225
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 12.43912725
+        },
+        {
+          "name": "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_residual_kernel(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "mean_ms": 10.92340075
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_single_local32_residual_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "mean_ms": 7.542276
+        },
+        {
+          "name": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "mean_ms": 6.84287825
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 5.49264875
+        }
+      ]
+    },
+    {
+      "context": 64,
+      "width": 2,
+      "unprofiled_wall_median_ms": 100.14663147740066,
+      "profiled_wall_mean_ms": 105.729,
+      "device_mean_ms": 97.340905,
+      "gpu_idle_mean_ms": 8.388555,
+      "launches": 898.0,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 33.42083875
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 2, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 12.93750425
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 9.90006725
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 8.087207
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "mean_ms": 7.96658525
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 7.32833475
+        }
+      ]
+    },
+    {
+      "context": 64,
+      "width": 3,
+      "unprofiled_wall_median_ms": 114.72822551149875,
+      "profiled_wall_mean_ms": 116.064,
+      "device_mean_ms": 106.917031,
+      "gpu_idle_mean_ms": 9.14692625,
+      "launches": 947.0,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 34.9350385
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 14.46262575
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 3, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 9.4400115
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "mean_ms": 8.47960225
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 8.1970705
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 7.4845565
+        }
+      ]
+    },
+    {
+      "context": 64,
+      "width": 4,
+      "unprofiled_wall_median_ms": 122.14094947557896,
+      "profiled_wall_mean_ms": 129.103,
+      "device_mean_ms": 119.782854,
+      "gpu_idle_mean_ms": 9.3206265,
+      "launches": 996.0,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 37.32722325
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 4, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 16.0510955
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 12.10718225
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "mean_ms": 9.22929325
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 8.93789225
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 8.670381
+        }
+      ]
+    },
+    {
+      "context": 64,
+      "width": 6,
+      "unprofiled_wall_median_ms": 149.3688760092482,
+      "profiled_wall_mean_ms": 151.714,
+      "device_mean_ms": 141.74374075,
+      "gpu_idle_mean_ms": 9.97030825,
+      "launches": 1126.0,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 44.330218
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 29.51872275
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 6, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 19.61252575
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 12.541243
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 11.17921275
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 6, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "mean_ms": 8.84577075
+        }
+      ]
+    },
+    {
+      "context": 64,
+      "width": 8,
+      "unprofiled_wall_median_ms": 167.8260985063389,
+      "profiled_wall_mean_ms": 178.664,
+      "device_mean_ms": 168.58823725,
+      "gpu_idle_mean_ms": 10.075775,
+      "launches": 1224.0,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 53.046813
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 29.06532825
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 20.901915
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 15.43402125
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 15.27982275
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "mean_ms": 8.955237
+        }
+      ]
+    },
+    {
+      "context": 2048,
+      "width": 1,
+      "unprofiled_wall_median_ms": 107.39760391879827,
+      "profiled_wall_mean_ms": 112.393,
+      "device_mean_ms": 94.62499325,
+      "gpu_idle_mean_ms": 17.7684845,
+      "launches": 896.0,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_selected_dual_q8_1x2_dp4a_silu_direct_gemv_kernel<unsigned short, true>((anonymous namespace)::gguf_q8_1_block const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)",
+          "mean_ms": 33.97168275
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 12.38034
+        },
+        {
+          "name": "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_residual_kernel(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "mean_ms": 10.8600915
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "mean_ms": 8.8986595
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_single_local32_residual_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "mean_ms": 7.5080215
+        },
+        {
+          "name": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "mean_ms": 6.72743225
+        }
+      ]
+    },
+    {
+      "context": 2048,
+      "width": 2,
+      "unprofiled_wall_median_ms": 115.52241060417145,
+      "profiled_wall_mean_ms": 115.191,
+      "device_mean_ms": 107.38359075,
+      "gpu_idle_mean_ms": 7.8075315,
+      "launches": 898.0,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 32.44867475
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "mean_ms": 18.674268
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 2, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 11.601096
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 9.39941075
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "mean_ms": 7.6125885
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 6.6866245
+        }
+      ]
+    },
+    {
+      "context": 2048,
+      "width": 3,
+      "unprofiled_wall_median_ms": 127.25951464381069,
+      "profiled_wall_mean_ms": 129.181,
+      "device_mean_ms": 120.894528,
+      "gpu_idle_mean_ms": 8.28631275,
+      "launches": 947.0,
+      "top_kernels": [
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 32.808934
+        },
+        {
+          "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "mean_ms": 28.24337175
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 3, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 12.2743335
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "mean_ms": 7.8477795
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 3, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 7.47001025
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 3>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 6.707886
+        }
+      ]
+    },
+    {
+      "context": 2048,
+      "width": 4,
+      "unprofiled_wall_median_ms": 144.13322997279465,
+      "profiled_wall_mean_ms": 146.322,
+      "device_mean_ms": 137.66719675,
+      "gpu_idle_mean_ms": 8.65488225,
+      "launches": 996.0,
+      "top_kernels": [
+        {
+          "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "mean_ms": 37.465498
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 33.87868975
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 4, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 13.19219075
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 9.5300385
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)",
+          "mean_ms": 8.4043795
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 7.17262125
+        }
+      ]
+    },
+    {
+      "context": 2048,
+      "width": 6,
+      "unprofiled_wall_median_ms": 177.25452850572765,
+      "profiled_wall_mean_ms": 177.829,
+      "device_mean_ms": 168.243065,
+      "gpu_idle_mean_ms": 9.5854595,
+      "launches": 1126.0,
+      "top_kernels": [
+        {
+          "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "mean_ms": 55.275147
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 36.61513925
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 23.35885475
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 6, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 16.03406025
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 9.93843675
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 9.10018125
+        }
+      ]
+    },
+    {
+      "context": 2048,
+      "width": 8,
+      "unprofiled_wall_median_ms": 213.28241704031825,
+      "profiled_wall_mean_ms": 218.808,
+      "device_mean_ms": 208.907783,
+      "gpu_idle_mean_ms": 9.90031325,
+      "launches": 1224.0,
+      "top_kernels": [
+        {
+          "name": "(anonymous namespace)::qwen35_paged_full_attn_decode_split_k_ctx_tensor_kernel(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, float*, float*, long, long, long, long, long, long, float)",
+          "mean_ms": 71.823037
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 43.83549525
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 23.6093895
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 17.34330425
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "mean_ms": 12.91605175
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "mean_ms": 12.70516475
+        }
+      ]
+    }
+  ],
+  "exact_all": true,
+  "commands": {
+    "unprofiled": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/qwen38_verifier_width_profile.py",
+      "--contexts",
+      "64,2048",
+      "--repetitions",
+      "6",
+      "--warmups",
+      "2",
+      "--output",
+      "/tmp/qwen38-verifier-width-unprofiled.json"
+    ],
+    "profiled": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/qwen38_verifier_width_profile.py",
+      "--contexts",
+      "64,2048",
+      "--repetitions",
+      "4",
+      "--warmups",
+      "2",
+      "--output",
+      "/tmp/qwen38-verifier-width-profiled.json"
+    ],
+    "rocprof": "ROCTX_LIB=\"$(uv run python -c 'from scripts.roctx_discovery import default_sdk; print(default_sdk(profiler_first=True))')\" HIPENGINE_COMPILER_VERSION_FILE=/tmp/qwen38-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --memory-copy-trace --output-format csv -d /tmp/qwen38-verifier-width-trace -o run -- .venv/bin/python scripts/qwen38_verifier_width_profile.py --contexts 64,2048 --repetitions 4 --warmups 2 --output /tmp/qwen38-verifier-width-profiled.json"
+  },
+  "findings": [
+    "Additional rows are not free: width cost increases in warm graph replay with no capture. Equal DSpine throughput at 6/8 rows mixed verifier time and acceptance, so it did not establish a bandwidth floor.",
+    "Q4 gate/up and Q6 projection kernels dominate short-context device time, but other Q4/Q5 projections and recurrent operations also grow with width. This is not a single marginal-row bottleneck.",
+    "At context 2048, the exact scalar split-K attention producer is repeated per row and is the largest width-8 kernel family. It adds a context-dependent component absent from the short-context estimate.",
+    "Width one is eager; graph widths 2..8 remove host submission cost. The one-to-two difference is not a clean arithmetic slope.",
+    "The public production owner selects target_verifier_production_q4_rowtile=true with FP32 recurrent state. This differs from constructing an unbound low-level session and must be held constant in the matched comparison.",
+    "No kernel arithmetic changed. Preserve strict/public defaults; proceed with matched public comparison before allocating a separate attention or projection redesign. The requested profiling step does not by itself justify a new default."
+  ],
+  "historical_reconciliation": {
+    "source": "../2026-11-09-gfx1151-qwen38-27b-dspine-verify-width-resweep.json",
+    "inferred_marginal_cycle_ms_per_added_row": 9.138405531531529,
+    "caveat": "Inferred only from aggregate throughput and mean acceptance, assuming tokens/cycle=1+budget*acceptance; short-output truncation and aggregation prevent treating it as a measured verifier latency."
+  },
+  "limitations": [
+    "zbook/Radeon 8060S thermally variable diagnostic, not the stable-clock desktop lane; absolute times cannot transfer to another host.",
+    "Repeated synthetic prefixes exercise widths, not task quality or full category acceptance. Public ranking is separate.",
+    "Profiled wall and unprofiled wall are separate runs; kernel attribution is not a subtraction from unprofiled times.",
+    "Initial invalid snapshot attempt retained locally only; a targeted CPU regression protects the corrected live-destination/backup contract.",
+    "Unprofiled run predates addition of the completed artifact field only; its exit status, complete row matrix and all exact checks passed."
+  ],
+  "input_sha256": {
+    "unprofiled.json": "790132719136851d03366b0c2432b68e5eebaecbe003c84862f641df86e663d9",
+    "profiled.json": "93a0c49e2b5efec5a9072e36f0243e6d587e511df80e48d4d247f2e5ad8fd5c6",
+    "attribution.json": "1aaddecdfbd23e86f9074d8ef8aa5959a6c954c83f777ca4b4461ba3c856c8ed"
+  }
+}

@@ -732,7 +732,7 @@ def test_owner_keeps_explicit_and_resolved_post_norm_separate() -> None:
     assert capture.boundary_calls[0]["prefill_gdn_capture"] is False
 
 
-def test_owner_capture_offsets_boundary_uses_scratch_row_start_output_uses_start() -> None:
+def test_owner_capture_passes_buffer_for_caller_offset_resolution() -> None:
     owner = _owner()
     capture = _Capture()
     _, ops, _, _ = _run(
@@ -761,10 +761,9 @@ def test_owner_capture_offsets_boundary_uses_scratch_row_start_output_uses_start
     assert boundary["scratch"].key_cache is None
 
     output = capture.output_calls[0]
-    # The output capture receives the buffer; its owner binds the absolute
-    # start offset (8 * 16), not the scratch row start.
+    # The output callback receives the base buffer; the caller must apply the
+    # physical scratch-row offset, independently of the logical position.
     assert output["hidden"] == _Buffer("b", 0xB0)
-    assert output["hidden"].ptr + 8 * 16 == 0xB0 + 128
     assert output["hidden_f32"] is None
     assert output["use_f32_residual"] is False
     assert ops.calls[0]["args"][1] == 0xA0
@@ -1980,12 +1979,31 @@ _CONTROL_TRACE: dict[str, dict[str, object]] = json.loads(
 )
 
 
+@pytest.mark.parametrize("start", [4, 8, 31])
+def test_layer_output_capture_uses_physical_scratch_rows(monkeypatch, start):
+    case = _Case(name="capture-bounds", start=start, rows=3,
+                 hidden_capacity_rows=10, capture_output=(0, 1))
+    captured = _capture_single_trace(monkeypatch, case)
+    offset = start if start + case.rows <= case.hidden_capacity_rows else 0
+    pointers = [event["ptr"] for event in captured["events"]
+                if event["kind"] == "output_capture"]
+    assert pointers == [0xB0 + offset * 16, 0xA0 + offset * 16]
+
+
 @pytest.mark.parametrize("case", _CASES, ids=lambda case: case.name)
 def test_single_verifier_layer_stack_matches_committed_8904_control_trace(
     monkeypatch: pytest.MonkeyPatch, case: _Case
 ) -> None:
     captured = _capture_single_trace(monkeypatch, case)
-    assert captured == _CONTROL_TRACE[case.name]
+    expected = _CONTROL_TRACE[case.name]
+    if case.name == "bulk-r3-capture-offset":
+        # Correct the historical out-of-bounds diagnostic read; computation
+        # and every other control event remain unchanged.
+        expected = json.loads(json.dumps(expected))
+        for event in expected["events"]:
+            if event["kind"] == "output_capture":
+                event["ptr"] -= case.start * 16
+    assert captured == expected
 
 
 class _ExplodingCount:

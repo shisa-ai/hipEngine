@@ -140,6 +140,7 @@ class RowSamplingState:
     _json_object_constraint: JsonObjectConstraintState | None = field(init=False, repr=False)
     _tool_call_constraint: ToolCallConstraintState | None = field(init=False, repr=False)
     _skip_next_selected_token_text: bool = field(default=False, init=False, repr=False)
+    _history_counts_cache: Counter | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.prompt_tokens = tuple(int(token) for token in self.prompt_tokens)
@@ -224,7 +225,16 @@ class RowSamplingState:
         return (*self.prompt_tokens, *tuple(self.generated_tokens))
 
     def history_counts(self) -> Counter[int]:
-        return Counter(int(token) for token in self.history_tokens)
+        # Incremental cache: the prompt is fixed and generated tokens only grow
+        # via observe(), so rebuilding Counter(prompt + generated) every token
+        # (O(history), ~21 ms at 131K) is avoided. Built once on first use, then
+        # maintained by observe(). Callers must treat the result as read-only.
+        counts = self._history_counts_cache
+        if counts is None:
+            counts = Counter(int(token) for token in self.prompt_tokens)
+            counts.update(int(token) for token in self.generated_tokens)
+            self._history_counts_cache = counts
+        return counts
 
     def random_unit(self) -> float:
         value = float(self._rng.random())
@@ -234,6 +244,8 @@ class RowSamplingState:
     def observe(self, token_id: int) -> None:
         token = int(token_id)
         self.generated_tokens.append(token)
+        if self._history_counts_cache is not None:
+            self._history_counts_cache[token] += 1
         self.step_index += 1
         self._skip_next_selected_token_text = False
         if self.thinking_budget is not None:
@@ -1217,6 +1229,84 @@ def _process_row(
     )
 
 
+def _partial_top_p_support(
+    scaled: np.ndarray,
+    *,
+    top_p: float,
+    min_p: float,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Top-p support without a full-vocabulary sort, or ``None`` to fall back.
+
+    Adaptive top-K partitioning selects a superset of the retained prefix,
+    which is then sorted exactly (score descending, lower-ID on ties). The
+    softmax normalization sums exp in canonical token-ID order instead of the
+    legacy score-sorted order: per-token probabilities differ only at ulp
+    level, which can shift a top-p boundary or a seeded draw in rare boundary
+    cases. The production contract is bounded drift plus same-build
+    determinism (EXECUTION-PROFILES), not cross-version bit stability.
+
+    A mass probe bails out to the legacy full-sort path when the retained
+    support is a large fraction of the vocabulary (flat distributions), where
+    repeated partitioning costs more than one sort.
+    """
+
+    finite_ids = np.flatnonzero(np.isfinite(scaled)).astype(np.int64, copy=False)
+    if finite_ids.size == 0:
+        raise ValueError("sampling filters removed all finite logits")
+    scores = scaled[finite_ids]
+    max_value = float(np.max(scores))
+    exp_all = np.exp(scores - max_value, dtype=np.float64)
+    total = float(exp_all.sum())
+    if not math.isfinite(total) or total <= 0.0:
+        raise ValueError("softmax probabilities are not normalizable")
+    n = scores.size
+    k = min(n, 1024)
+    part = None
+    if k < n:
+        part = np.argpartition(-scores, k - 1)[:k]
+        mass = float(exp_all[part].sum()) / total
+        while mass < top_p:
+            if mass < 0.5 * top_p or k >= n // 4:
+                # Large support: one full sort beats repeated partitioning.
+                return None
+            k = min(n, k * 4)
+            if k >= n:
+                break
+            part = np.argpartition(-scores, k - 1)[:k]
+            mass = float(exp_all[part].sum()) / total
+    if k >= n:
+        sel_probs_all = exp_all / total
+        order = np.lexsort((finite_ids, -sel_probs_all))
+        sel_ids = finite_ids[order]
+        sel_probs = sel_probs_all[order]
+    else:
+        threshold = float(np.min(scores[part]))
+        # Include the complete tie group at the partition boundary so the
+        # selected set is a true prefix-superset of the full sort.
+        sel = np.flatnonzero(scores >= threshold)
+        sel_probs_raw = exp_all[sel] / total
+        # Order by probability (not logit) so float32 shift-rounding
+        # probability ties fall back to lower-ID order, matching the legacy
+        # filter semantics and its RNG map.
+        order = np.lexsort((finite_ids[sel], -sel_probs_raw))
+        sel_ids = finite_ids[sel][order]
+        sel_probs = sel_probs_raw[order]
+    cum = np.cumsum(sel_probs)
+    keep = max(1, min(int(np.searchsorted(cum, top_p, side="left")) + 1, sel_ids.size))
+    retained_ids = sel_ids[:keep]
+    retained_probs = sel_probs[:keep]
+    if min_p > 0.0:
+        threshold_p = float(sel_probs[0]) * min_p
+        mask = retained_probs >= threshold_p
+        if np.any(mask):
+            retained_ids = retained_ids[mask]
+            retained_probs = retained_probs[mask]
+        else:
+            retained_ids = retained_ids[:1]
+            retained_probs = retained_probs[:1]
+    return retained_ids.astype(np.int64, copy=False), retained_probs.astype(np.float64, copy=False)
+
+
 def processed_support(
     processed: np.ndarray,
     params: Any,
@@ -1226,14 +1316,27 @@ def processed_support(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return ``(retained_ids, normalized_probs)`` for a processed logits row.
 
-    This is the exact support ``select_token`` samples from: temperature scaling,
-    top-k, softmax, top-p/min-p filtering, and renormalization.
+    This is the support ``select_token`` samples from: temperature scaling,
+    top-k, softmax, top-p/min-p filtering, and renormalization. The top-p-only
+    path uses partial selection with canonical-ID-order softmax normalization
+    (ulp-level drift vs the legacy full-sort order, same-build deterministic);
+    all other paths retain the legacy full-sort arithmetic.
     """
 
     if not float(temperature) > 0.0:
         raise ValueError("processed_support requires a positive temperature")
     scaled = processed / float(temperature)
     top_k = int(getattr(params, "top_k", 0))
+    top_p = float(getattr(params, "top_p", 1.0))
+    min_p = float(getattr(params, "min_p", 0.0))
+    if token_allowed is None and top_k == 0 and 0.0 < top_p < 1.0:
+        partial = _partial_top_p_support(scaled, top_p=top_p, min_p=min_p)
+        if partial is not None:
+            retained_ids, retained_probs = partial
+            probs_sum = float(retained_probs.sum())
+            if not math.isfinite(probs_sum) or probs_sum <= 0.0:
+                raise ValueError("sampling probabilities are not normalizable")
+            return retained_ids, retained_probs / probs_sum
     candidate_ids = (
         _constraint_candidate_ids(scaled, token_allowed, limit=top_k)
         if token_allowed is not None
@@ -1246,8 +1349,8 @@ def processed_support(
     retained_ids, retained_probs = _apply_probability_filters(
         candidate_ids,
         candidate_probs,
-        top_p=float(getattr(params, "top_p", 1.0)),
-        min_p=float(getattr(params, "min_p", 0.0)),
+        top_p=top_p,
+        min_p=min_p,
     )
     probs_sum = float(retained_probs.sum())
     if not math.isfinite(probs_sum) or probs_sum <= 0.0:
@@ -1535,25 +1638,41 @@ def _apply_logit_bias(logits: np.ndarray, pairs: tuple[tuple[int, float], ...]) 
 
 
 def _apply_history_penalties(logits: np.ndarray, params: Any, state: RowSamplingState) -> None:
-    counts = state.history_counts()
-    if not counts:
-        return
     repetition_penalty = float(getattr(params, "repetition_penalty", 1.0))
     presence_penalty = float(getattr(params, "presence_penalty", 0.0))
     frequency_penalty = float(getattr(params, "frequency_penalty", 0.0))
+    # Neutral penalties touch no logit; skip the O(prompt + generated) history
+    # count, which costs ~11 ms per token at a 126K prompt.
+    if repetition_penalty == 1.0 and presence_penalty == 0.0 and frequency_penalty == 0.0:
+        return
+    counts = state.history_counts()
+    if not counts:
+        return
     vocab = int(logits.size)
-    for token_id, count in counts.items():
-        if token_id < 0 or token_id >= vocab:
-            continue
-        if repetition_penalty != 1.0:
-            if logits[token_id] < 0.0:
-                logits[token_id] *= repetition_penalty
-            else:
-                logits[token_id] /= repetition_penalty
-        if presence_penalty != 0.0:
-            logits[token_id] -= presence_penalty
-        if frequency_penalty != 0.0:
-            logits[token_id] -= frequency_penalty * int(count)
+    # Vectorized over the unique in-vocab history tokens (the per-token Python
+    # loop was O(unique) interpreter overhead). The element-wise op order matches
+    # the scalar path exactly: repetition (sign-dependent mul/div), then presence
+    # subtract, then frequency*count subtract, each in the logits dtype.
+    all_ids = np.fromiter(counts.keys(), dtype=np.int64, count=len(counts))
+    in_vocab = (all_ids >= 0) & (all_ids < vocab)
+    ids = all_ids[in_vocab]
+    if ids.size == 0:
+        return
+    vals = logits[ids]
+    if repetition_penalty != 1.0:
+        negative = vals < 0.0
+        vals[negative] *= repetition_penalty
+        vals[~negative] /= repetition_penalty
+    if presence_penalty != 0.0:
+        vals -= presence_penalty
+    if frequency_penalty != 0.0:
+        # counts.values() iterates in the same order as counts.keys(); the same
+        # mask keeps ids and counts aligned. Cast the frequency term to the logits
+        # dtype before subtracting, matching the scalar path's value-based cast of
+        # the Python float (a float32 array -= a float64 array rounds differently).
+        all_counts = np.fromiter(counts.values(), dtype=np.float64, count=len(counts))
+        vals -= (frequency_penalty * all_counts[in_vocab]).astype(vals.dtype)
+    logits[ids] = vals
 
 
 def _apply_suppression_processors(logits: np.ndarray, params: Any, state: RowSamplingState) -> None:
@@ -1763,10 +1882,38 @@ def _apply_probability_filters(
         # Preserve the sort's independent output ownership as well as values.
         sorted_ids = token_ids.copy()
         sorted_probs = probs.copy()
-    else:
+    elif np.any(probs[:-1] < probs[1:]) or int(token_ids.max()) > np.iinfo(np.uint32).max:
+        # Non-monotonic input, or IDs too wide for the packed tie keys: keep
+        # the full general sort.
         order = np.lexsort((token_ids, -probs))
         sorted_ids = token_ids[order]
         sorted_probs = probs[order]
+    else:
+        # Softmax is monotonic, so a broken order here is only new
+        # equal-probability groups (float32 shift rounding in _softmax) whose
+        # IDs are not ascending. Repair just those groups to lower-ID order:
+        # bit-identical to the full lexsort without re-sorting the vocabulary.
+        sorted_ids = token_ids.copy()
+        sorted_probs = probs.copy()
+        ties = sorted_probs[:-1] == sorted_probs[1:]
+        if np.any(ties):
+            members = np.empty(sorted_ids.size, dtype=np.bool_)
+            members[0] = False
+            members[1:] = ties
+            members[:-1] |= ties
+            positions = np.flatnonzero(members)
+            groups = np.cumsum(np.r_[True, ~ties], dtype=np.uint64)
+            keys = (groups[positions] << np.uint64(32)) | sorted_ids[positions].astype(np.uint64)
+            sorted_ids[positions] = sorted_ids[positions][np.argsort(keys)]
+        if not np.all(
+            (sorted_probs[:-1] > sorted_probs[1:])
+            | ((sorted_probs[:-1] == sorted_probs[1:]) & (sorted_ids[:-1] <= sorted_ids[1:]))
+        ):
+            # Safety net for inputs the monotonic assumption does not cover
+            # (e.g. NaN probabilities): fall back to the general sort.
+            order = np.lexsort((token_ids, -probs))
+            sorted_ids = token_ids[order]
+            sorted_probs = probs[order]
     if sorted_ids.size == 0:
         return sorted_ids, sorted_probs
 

@@ -203,6 +203,74 @@ selection, compare against registered scalar/singleton/add controls, and verify
 cleanup. See the cumulative-prefill worklog entries for migration evidence.
 This remaining backend dependency does not restrict runtime admission.
 
+### R0523 — DSpine drafter Q8_0 quantization rollback control
+
+Owner: `hipengine/runtime/dspine.py`.
+
+Scope: `HIPENGINE_DSPINE_DRAFTER_Q8` (default on); the BF16 fallback branch in
+`DFlash2NativeDrafter._dense_proj` and the per-layer Q8_0 tile upload in
+`DSpineNativeDrafter.__init__`.
+
+The DSpine forward is bandwidth-bound; quantizing gate/up/down/o to Q8_0 T16
+tiles and running the row-tiled Q8 WMMA prefill cuts the forward 44.8->17.4 ms
+(2.57x) and the matched full-mtpbench decode 12.43->14.05 tok/s (+13%), AR-exact,
+acceptance preserved (0.513->0.520). v_proj stays BF16 (the Q8 kernel is slower
+at out_features=1024). The control defaults on (production behavior) and exists
+only as a drafter-precision rollback lever.
+
+Done when: the Q8 drafter path is the validated default across admitted DSpine
+configurations and a precision rollback is no longer required, or the control is
+folded into a general drafter-quantization setting if extended to DFlash2/EAGLE.
+**Clearing action:** run `scripts/qwen38_dspine_baseline.py --candidate-budget 5
+--gpu-refine --reps 3 --max-new-tokens 25` with the control unset, confirm
+AR-exact output and acceptance, then remove the env read and the BF16 fallback
+branch.
+
+### R0524 — DFlash2 drafter Q8_0 quantization rollback control
+
+Owner: `hipengine/speculative/dflash2_native.py`.
+
+Scope: `HIPENGINE_DFLASH2_DRAFTER_Q8` (default on); the BF16 fallback branch in
+`DFlash2NativeDrafter._dense_proj` and the per-layer Q8_0 tile upload in
+`DFlash2NativeDrafter.__init__`.
+
+Companion to R0523 (DSpine). Quantizing gate/up/down/o to Q8_0 T16 tiles and
+running the row-tiled Q8 WMMA prefill lifts the matched full-mtpbench DFlash2 B3
+decode 9.89->10.83 tok/s (+9.5%), AR-exact, acceptance unchanged (2.319). v and
+the conv projections stay BF16 (Q8 is slower at small out_features). The control
+defaults on (production behavior) and exists only as a drafter-precision
+rollback lever.
+
+Done when: the Q8 drafter path is the validated default across admitted DFlash2
+configurations and a precision rollback is no longer required, or the control is
+folded into a general drafter-quantization setting.
+**Clearing action:** run `scripts/qwen38_dflash2_baseline.py --block-size 3
+--reps 3 --max-new-tokens 25` with the control unset, confirm AR-exact output and
+acceptance, then remove the env read and the BF16 fallback branch.
+
+### R0525 — EAGLE-4 drafter Q8_0 quantization rollback control
+
+Owner: `hipengine/runtime/eagle4.py`.
+
+Scope: `HIPENGINE_EAGLE4_DRAFTER_Q8` (default on); the BF16 fallback branch in
+`DFlash2NativeDrafter._dense_proj` and the Q8_0 tile upload in
+`EAGLE4NativeDrafter.__init__`.
+
+Companion to R0523/R0524. Quantizing the bf16 FFN/attention projections (gate/
+up/down/o/v) + fc to Q8_0 T16 tiles cuts the device-resident draft chain (n2)
+13.23->8.46 ms (1.56x) and the matched full-mtpbench EAGLE-4 n2 decode
+16.33->17.99 tok/s (+10.2%), AR-exact, acceptance unchanged (0.650). q/k and the
+full-V efficient head stay f32/BF16; the small efficient-head down_proj (out=128)
+stays BF16. The control defaults on (production behavior) and exists only as a
+drafter-precision rollback lever.
+
+Done when: the Q8 drafter path is the validated default across admitted EAGLE-4
+configurations and a precision rollback is no longer required, or the control is
+folded into a general drafter-quantization setting.
+**Clearing action:** run `scripts/qwen38_eagle4_baseline.py --n-draft 2 --reps 3
+--max-new-tokens 25` with the control unset, confirm AR-exact output and
+acceptance, then remove the env read and the BF16 fallback branch.
+
 ### R0217 — PM4 diagnostic controls and transport rollback
 
 Owner: `scripts/pm4_graph_bench.py`.
@@ -1165,12 +1233,12 @@ infer a current speed result or disable the route from the old timing.
 neighboring c3/c5 and unrelated c8/c13; dense Qwen3.8-27B-Q4_K_M, BF16 KV, greedy,
 strict): every width is route-clean and deterministic except c4, which shows an
 intermittent packed-decode nondeterminism (1 divergence in 18 runs) — filed as
-R0523. rocprofv3 graph-mode cache-only census collected for c1+c2 and c1+c4
+the local c4 correctness investigation (R0523). rocprofv3 graph-mode cache-only census collected for c1+c2 and c1+c4
 (capture excluded, one steady replay); both c2 and c4 close (the c2 dense-down
 census filter was corrected to count the col8_residual variant). Prerequisite test
 bundles green. See
 [`worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md`](../worklog/entries/20261110T221602.442597Z-lhl-r0387-packed-step-c4-nondeterminism-15b932.md)
-and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-r0387-*`. The c4 correctness issue is closed under R0523.
+and `benchmarks/results/2026-11-10-w7900-qwen38-27b-q4km-r0387-*`. The c4 correctness issue is closed; see [the repair record](../worklog/entries/20261119T222435.493300Z-lhl-r0523-compact-q4-c4-0854fc.md).
 
 Done when: inspect `scripts/server_f1_concurrency_bench.py --help`, then collect matched
 current c1/c2/c4 and neighboring/unrelated logical-width requests on one gfx1100 host with model,
@@ -1403,6 +1471,61 @@ the lever and migrate its A/B callers (`scripts/gemma4_mmq_arm_attribution.py`,
 `scripts/gemma4_mmq_prefill_length_probe.py`, `scripts/gemma4_mmq_default_route_check.py`,
 the row-invariance GPU tests) to the exact `HIPENGINE_GEMMA4_MOE_PREFILL=grouped` pin.
 This is switch retirement, not reconsideration of the default-on decision.
+
+### R0519 — Decide the compensated Gemma WMMA candidate independently of selectors
+
+Owner: `hipengine/kernels/hip_gfx1100/gemma4/gemma4_experts.py`.
+
+Scope: `wmma_plain`; `HIPENGINE_GEMMA4_MOE_PREFILL`.
+
+**gfx1151 measurement (2026-11-08):** the lead chose promotion, but its 2.7x premise is stale.
+Same-process public `LLM.generate` prefill on the UD-Q4_K_XL artifact: the production default
+(fused T16 WMMA `gate_up_fused_t16`/`down_t16`) runs 1640/2106/1989 tok/s at 256/1024/2048
+tokens; `HIPENGINE_GEMMA4_MOE_PREFILL=wmma` runs 480/504/486 tok/s and never reaches a
+compensated WMMA owner on the T16-converted layout (route counts show `selected_gemv`).
+Promotion was not applied; the lead re-decides between retiring and repairing the candidate.
+
+Done when: Deferred candidate decision: evaluate the compensated route under the current applicable
+execution-profile contract, then promote, repair or retire its Gemma wiring. The old absolute-tail
+discussion is historical evidence, not permission to weaken the current gate or to change unrelated
+defaults. Preserve exact comparison modes, independently useful kernels and current automatic
+dispatch. If retiring candidate modes, inventory their harness callers and remove only
+candidate-specific wiring/tests after preserving the required comparisons.
+
+### R0521 — Revisit backend-specific decode graph engagement separately from telemetry
+
+Owner: `hipengine/runtime/gemma4_decode_graph.py`.
+
+Scope: `gemma4_decode_graph.py`, `_CAPTURE_MAX_KEYS`, `GEMMA4_DECODE_GRAPH_CAPTURE_MAX_KEYS`,
+`launched_fallbacks`.
+
+Done when: Deferred optimization decision: reduce capture/replay overhead or remeasure the crossover on
+each affected physical host before changing its policy. Compare public decode with graph selection
+confirmed, including capture amortization, short and long requests, and contexts on both sides of
+the threshold. Preserve replay parity and request/resource lifetime checks.
+
+Retire graph rollback and fallback telemetry separately only when no supported fallback or
+diagnostic caller remains. Preserve backend independence; broader engagement on one host does not
+establish another host’s crossover.
+
+### R0003 — Choose a DMS layout that preserves interior-expiry semantics
+
+Owner: `hipengine/kvcache/dms.py`.
+
+Scope: `build_dms_live_mask`.
+
+**Deferred design decision:** choose between a prefix-only head-advance fast path with interior
+compaction, or a layout that separately represents retained history and the expiring window. The
+latter requires coordinated attention-reader, allocator, snapshot, prefix-cache and speculative
+rollback changes; neither may silently discard non-evictable history. Account for reserved extent
+bounds and wrap/rebase behavior before changing `base_offsets`.
+
+Done when: cover interior expiry, prefix expiry, no expiry, mixed heads, capacity boundaries
+and repeated wrap/rebase against the host oracle. Run `tests/test_gpu_dms_append_decode_hip.py`,
+INT8 device-payload, compact-attention, prefix and transaction tests, then public DMS generation
+including continuation and rejected speculative suffixes. Profile the selected route before claiming
+an append-cost improvement. Keep the existing race-safe staging until its data movement is replaced
+safely.
 
 ### R0011 — Define bounded generic-provider child ownership
 
@@ -1711,7 +1834,7 @@ graph-pointer, lifecycle, cancellation, pressure, SLO and production load. Only 
 registered packages migrate may compatibility fixtures retire. Registered strict/unfused/serial
 numerical fallbacks remain independent of allocator cleanup.
 
-### R0523 — Closed: intermittent c4 packed-decode nondeterminism
+### R0523-C4 — Closed: intermittent gfx1100 c4 packed-decode nondeterminism
 
 Owner: `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip`.
 
