@@ -1,0 +1,265 @@
+{
+  "host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "workload": "Qwen3.8-27B-Q4_K_M; strict greedy packed HTTP bursts, BF16 KV, 512 inputs/128 outputs. Matched diagnostic sets prompt[-1] = token_id + 1 for every prompt and HIPENGINE_GGUF_DECODE_GRAPH=0. The default-policy harness uses distinct prompts.",
+  "runs": {
+    "paired_baseline": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 refactor-gfx1100/bench_r0523_allplus1.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-27b-q4km --correctness-profile strict --hipengine-route-expectation native --hipengine-kv-storage bf16 --hipengine-top-k 1 --memory-domain vram --concurrencies 1,4 --live-concurrency 4 --measured-runs 30 --json /tmp/refactor-gfx1100/r0523-pair2-perf.json",
+      "packet_status": "failed_gate",
+      "created_at": "2026-11-20T03:49:11.808322+00:00",
+      "exact_rows": 120,
+      "total_rows": 120,
+      "repeat_passed": true,
+      "paths": [
+        "gguf_packed_ar_server_decode"
+      ],
+      "median_aggregate_output_tok_s": 54.320704665882744
+    },
+    "adjacent": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 refactor-gfx1100/bench_r0523_allplus1.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-27b-q4km --correctness-profile strict --hipengine-route-expectation native --hipengine-kv-storage bf16 --hipengine-top-k 1 --memory-domain vram --concurrencies 1,4 --live-concurrency 4 --measured-runs 30 --json /tmp/refactor-gfx1100/r0387-adjacent-perf.json",
+      "packet_status": "failed_gate",
+      "created_at": "2026-11-20T13:04:54.965680+00:00",
+      "exact_rows": 120,
+      "total_rows": 120,
+      "repeat_passed": true,
+      "paths": [
+        "gguf_packed_ar_server_decode"
+      ],
+      "median_aggregate_output_tok_s": 57.042241126427186
+    },
+    "producer": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 refactor-gfx1100/bench_r0523_allplus1.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-27b-q4km --correctness-profile strict --hipengine-route-expectation native --hipengine-kv-storage bf16 --hipengine-top-k 1 --memory-domain vram --concurrencies 1,4 --live-concurrency 4 --measured-runs 30 --work-dir /tmp/refactor-gfx1100/r0387-adjacent-producer-server --json /tmp/refactor-gfx1100/r0387-adjacent-producer-trace.json",
+      "packet_status": "failed_gate",
+      "created_at": "2026-11-20T13:15:49.850380+00:00",
+      "exact_rows": 120,
+      "total_rows": 120,
+      "repeat_passed": true,
+      "paths": [
+        "gguf_packed_ar_server_decode"
+      ],
+      "equal_input_launches_lower_bound": 245760
+    },
+    "default_policy": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-27b-q4km --correctness-profile strict --hipengine-route-expectation native --hipengine-kv-storage bf16 --hipengine-top-k 1 --memory-domain vram --concurrencies 1,4 --live-concurrency 4 --measured-runs 30 --json /tmp/refactor-gfx1100/r0387-adjacent-clear.json",
+      "packet_status": "accepted_backend_packet",
+      "created_at": "2026-11-20T13:26:37.040349+00:00",
+      "exact_rows": 120,
+      "total_rows": 120,
+      "repeat_passed": true,
+      "paths": [
+        "gguf_packed_ar_server_decode"
+      ],
+      "median_aggregate_output_tok_s": 56.64228667319746
+    }
+  },
+  "profile_before": {
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+      "scripts/gguf_packed_ar_rocprof.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--decode-mode",
+      "eager",
+      "--packed-concurrency",
+      "4",
+      "--prompt-length",
+      "512",
+      "--prompt-token-id",
+      "9707",
+      "--expected-token-id",
+      "9707",
+      "--compiler-version-file",
+      "/tmp/refactor-gfx1100/hipcc-version.txt",
+      "--raw-root",
+      "/tmp/refactor-gfx1100/r0387-pair2-profile-eager",
+      "--out",
+      "/tmp/refactor-gfx1100/r0387-pair2-profile-eager.json"
+    ],
+    "workload": {
+      "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "quant": "Q4_K_M",
+      "kv_dtype": "bf16",
+      "backend": "hip_gfx1100",
+      "prompt_tokens_per_row": 512,
+      "profiled_decode_transitions": 1,
+      "c1_rows": 1,
+      "c4_rows": 4,
+      "physical_bucket_width": 4,
+      "active_mask": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "c1_decode_mode": "eager",
+      "c4_decode_mode": "eager",
+      "submission_transport": "hipgraph",
+      "sampling": "greedy_top1",
+      "speculative_decode": false
+    },
+    "timeline": {
+      "marker_wall_ns": 44866380,
+      "kernel_sum_ns": 39924075,
+      "kernel_interval_union_ns": 39924075,
+      "uncovered_ns": 4942305,
+      "kernel_count": 845,
+      "hip_api_calls": 1687,
+      "hip_api_time_ns": 17147099,
+      "memory_copy_ops": 0,
+      "memory_copy_time_ns": 0
+    },
+    "top_three": [
+      {
+        "kernel": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+        "dispatches": 64,
+        "total_duration_ns": 15553890,
+        "launch_shapes": [
+          {
+            "count": 64,
+            "grid": [
+              139264,
+              2,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 120,
+            "scratch_bytes": 0,
+            "lds_bytes": 512
+          }
+        ]
+      },
+      {
+        "kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+        "dispatches": 64,
+        "total_duration_ns": 7314403,
+        "launch_shapes": [
+          {
+            "count": 32,
+            "grid": [
+              81920,
+              1,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 72,
+            "scratch_bytes": 0,
+            "lds_bytes": 512
+          },
+          {
+            "count": 24,
+            "grid": [
+              163840,
+              1,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 72,
+            "scratch_bytes": 0,
+            "lds_bytes": 512
+          },
+          {
+            "count": 8,
+            "grid": [
+              16384,
+              1,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 72,
+            "scratch_bytes": 0,
+            "lds_bytes": 512
+          }
+        ]
+      },
+      {
+        "kernel": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+        "dispatches": 104,
+        "total_duration_ns": 4272412,
+        "launch_shapes": [
+          {
+            "count": 48,
+            "grid": [
+              24576,
+              1,
+              1
+            ],
+            "workgroup": [
+              32,
+              1,
+              1
+            ],
+            "vgpr": 144,
+            "scratch_bytes": 0,
+            "lds_bytes": 0
+          },
+          {
+            "count": 24,
+            "grid": [
+              40960,
+              1,
+              1
+            ],
+            "workgroup": [
+              32,
+              1,
+              1
+            ],
+            "vgpr": 144,
+            "scratch_bytes": 0,
+            "lds_bytes": 0
+          },
+          {
+            "count": 16,
+            "grid": [
+              20480,
+              1,
+              1
+            ],
+            "workgroup": [
+              32,
+              1,
+              1
+            ],
+            "vgpr": 144,
+            "scratch_bytes": 0,
+            "lds_bytes": 0
+          },
+          {
+            "count": 16,
+            "grid": [
+              49152,
+              1,
+              1
+            ],
+            "workgroup": [
+              32,
+              1,
+              1
+            ],
+            "vgpr": 144,
+            "scratch_bytes": 0,
+            "lds_bytes": 0
+          }
+        ]
+      }
+    ]
+  }
+}

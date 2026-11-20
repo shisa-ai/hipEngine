@@ -3924,9 +3924,12 @@ void q4_k_t16_dense_dual_rowtile_silu_gemv_kernel(
   const int tid = threadIdx.x;
   const int wave = tid >> 5;
   const int lane = tid & 31;
-  const int64_t out_group = blockIdx.x;
+  // Put the two independent row pairs for a weight tile next to one another.
+  const bool paired = ROW_TILE == 2 && gridDim.y == 2;
+  const int64_t linear_group = blockIdx.x + static_cast<int64_t>(blockIdx.y) * gridDim.x;
+  const int64_t out_group = paired ? linear_group / 2 : blockIdx.x;
   const uint8_t* __restrict__ tiles = wave == 0 ? tiles_a : tiles_b;
-  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * ROW_TILE;
+  const int64_t row_base = paired ? (linear_group % 2) * ROW_TILE : 0;
   x += row_base * in_features;
   out += row_base * out_features;
   float acc[ROW_TILE][kTileCols];
