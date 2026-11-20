@@ -156,10 +156,16 @@ Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
 
 Scope: `_small_b_rowtile_chunks`.
 
-Done when: Dependency: defaults-only gfx1100 and gfx1151 direct/server refreshes. **Clearing action:**
-exercise `LLM.generate()` and `hipengine serve` on both backends, trace Q6 root row chunks at eight
-requests and a non-divisible packed width, and compare logits/output and cleanup with the registered
-R4 composition.
+The gfx1100 defaults-only direct and HTTP checks are complete. Both exercised the
+planar Q6 root at eight requests and a non-divisible packed width; outputs matched
+the registered four-row composition and allocations returned to baseline. The
+same width-eight Japanese translation case disagreed with autoregressive decode
+under both chunk policies; investigate that separately under R0509. See the
+[gfx1100 validation record](../worklog/entries/20261120T192048.812558Z-lhl-gfx1100-planar-q6-chunks-d4b9e8.md).
+
+Done when: exercise `LLM.generate()` and `hipengine serve` on gfx1151 with default
+policy. Trace Q6 root chunks at eight requests and a non-divisible packed width,
+and compare logits/output and cleanup with the registered four-row composition.
 
 ### R0213 — Mirrored INT8 fallback migration and validation
 
