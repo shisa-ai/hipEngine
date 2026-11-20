@@ -1150,33 +1150,6 @@ role-policy and dense-metadata contracts; then GPU global/SWA parity across part
 and verifier cases plus public `LLM.generate()` at short, boundary-neighbor and unrelated lengths.
 Confirm selected variants, append ordering, state/output equality and cleanup.
 
-### R0385 — Observed target/proposal sentinel crossing repair
-
-Owner: `hipengine/runtime/qwen35_gguf_mtp.py`.
-
-Scope: `test_dense_q4_k_m_mtp_crosses_1024_via_prelaunch_eager_fallback`,
-`tests/test_live_qwen35_gguf_mtp_e2e.py`, `target_graph_proposal_handoff_boundary_miss`.
-
-**Remaining repair:** reproduce the original crossing in an isolated process on a compatible, idle
-device; trace proposal payload publication, stream order, Conv/GDN scratch and target/journal
-ownership. Because the recorded failure can corrupt later GPU work, do not unskip it in a shared
-broad-suite process. A failing reproduction must retire before any following health check or reset;
-coordinate recovery if the device remains unhealthy.
-
-Done when: run the isolated regression at
-`tests/test_live_qwen35_gguf_mtp_e2e.py::test_dense_q4_k_m_mtp_crosses_1024_via_prelaunch_eager_fallback`
-against the original local model and both sides of 1024, plus unrelated contexts and
-B1–B7, before removing the handoff guard. The parent process runs the original guarded body in a
-bounded child and starts a fresh-process health request only after that child exits successfully;
-failure or timeout exits the test session before any following GPU case. Compare host/device proposals, every acceptance
-prefix, payload validity, Conv/GDN/KV/cursors, next-cycle continuity, reset, cancellation and
-teardown; follow it with a fresh-process health request. Then run the complete MTP E2E,
-long-context, lifecycle/API/load packet and an actual `LLM.generate()` request confirming the
-intended path. The long-context harness's host-proposal mode alone cannot certify device handoff.
-Keep `tests/test_unit_qwen35_gguf_mtp_session.py` boundary/submission checks,
-`tests/test_live_gguf_native_spec_cycle.py` launch/binding checks and the delayed metadata-upload
-test in `tests/test_live_qwen35_gguf_nextn_provider.py`.
-
 ### R0387 — Dense gfx1100 packed-step profiling follow-up
 
 Owner: `hipengine/runtime/gguf_linear.py`.
