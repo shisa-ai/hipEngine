@@ -713,16 +713,18 @@ request-local package floor. The batch-route gate now uses that scope without mo
 these environment values and reports scoped policy separately from ambient metadata.
 Preserve per-lane fallback kernels, backend defaults and the separate request-local
 small-row scope.
-The three packed width scopes now use context-local token/reset storage rather than
-process globals; overlapping-thread and nested-failure tests cover isolation. Local
-public C8 MoE generation confirms all three package-floor scopes engage and restore
-with clean tracked allocation teardown. This does not complete reader migration or
-the full callable/neighbor-width matrix below. **Clearing
-action:** run `tests/test_unit_qwen35_gguf_compact_moe_gemv_routing.py` and
-`tests/test_unit_execution_profile_gguf_batch_route_gate.py`; migrate the gate and `docs/ENVS.md`
-with any reader removal. A runtime migration also needs the primitive pair-reuse parity tests and
-public C8 MoE generation on both intended backends, with selected callables, neighboring/non-C8
-widths and cleanup recorded. A release-window deadline alone cannot replace these contracts.
+The packed-width scopes are context-local. On the W7900, public production generation
+on Qwen3.6-35B-A3B-UD-Q4_K_M at request widths 3, 7, 8 and 9 matched greedy tokens
+with package defaults, forced on and forced off, and returned tracked allocations to
+baseline. Direct callable tracing confirmed Q4 gate/up at physical width eight and
+Q6 down with the explicit opt-in. This model has no Q5_K down experts; the Q5_K leaf
+passed primitive parity, but a public Q5_K trace needs a compatible checkpoint.
+
+**Clearing action:** run `tests/test_unit_qwen35_gguf_compact_moe_gemv_routing.py`
+and `tests/test_unit_execution_profile_gguf_batch_route_gate.py` with reader removal;
+migrate the gate metadata and `docs/ENVS.md` together. Preserve the remaining
+model-backed Q5_K check and the gfx1151 callable, neighbor-width, parity and cleanup
+matrix before removing any shared reader.
 
 ### R0313 / R0314 / R0315 / R0316 / R0318 / R0320 — Laguna legacy MMQ selector migration
 
