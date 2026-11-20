@@ -1012,13 +1012,17 @@ def _run_dense_mtp_context_crossing() -> None:
             int(record["root_position"]) + int(record["budget"]) + 1 > 1023
             for record in context_misses
         )
-        assert all(
-            not record["target_native_graph_submitted"]
-            and not record["proposal_target_device_chained"]
-            and record["device_proposal_fallback_reason"]
-            == "target_graph_context_bucket_miss"
+        unexpected_handoffs = [
+            {key: record[key] for key in (
+                "root_position", "budget", "target_native_graph_submitted",
+                "proposal_target_device_chained", "device_proposal_fallback_reason",
+            )}
             for record in context_misses
-        )
+            if record["target_native_graph_submitted"]
+            or record["proposal_target_device_chained"]
+            or record["device_proposal_fallback_reason"] != "target_graph_context_bucket_miss"
+        ]
+        assert not unexpected_handoffs, unexpected_handoffs
 
         target.reset()
         health = target.prefill(seed, use_bulk=False, return_logits=False)
