@@ -1747,7 +1747,7 @@ numerical fallbacks remain independent of allocator cleanup.
 
 Owner: `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip`.
 
-The gfx1100 compact Q4 gate/up kernel now gives each of four packed rows its own workgroup within one launch. See the [reproduction, fix and clearing results](../worklog/entries/20261119T222435.493300Z-lhl-r0523-compact-q4-c4-0854fc.md).
+The gfx1100 compact Q4 gate/up kernel processes four packed rows as two independent pairs within one launch. See the [original reproduction and fix](../worklog/entries/20261119T222435.493300Z-lhl-r0523-compact-q4-c4-0854fc.md) and the [paired-row correctness and throughput checks](../worklog/entries/20261120T042222.058783Z-lhl-r0523-paired-gate-up-f4bcac.md).
 
 Original investigation and clearing criteria:
 

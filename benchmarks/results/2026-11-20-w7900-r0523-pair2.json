@@ -1,0 +1,56 @@
+{
+  "host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "model": "Qwen3.8-27B-Q4_K_M",
+  "workload": "Strict, BF16 KV, 512 inputs and 128 greedy outputs per request. Matched duplicate-prompt HTTP bursts disable graph replay and use prompt[-1] = token_id + 1 for every row. Only default_policy uses distinct prompts and the unmodified harness; do not compare producer-instrumented timings.",
+  "runs": {
+    "corrected_baseline": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 refactor-gfx1100/bench_r0523_allplus1.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-27b-q4km --correctness-profile strict --hipengine-route-expectation native --hipengine-kv-storage bf16 --hipengine-top-k 1 --memory-domain vram --concurrencies 1,4 --live-concurrency 4 --measured-runs 30 --json /tmp/refactor-gfx1100/r0523-perf-after-grid-row.json",
+      "created_at": "2026-11-19T22:12:07.604336+00:00",
+      "packet_status": "failed_gate",
+      "paths": [
+        "gguf_packed_ar_server_decode"
+      ],
+      "exact_rows": 120,
+      "measured_rows": 120,
+      "repeat_determinism": true,
+      "median_aggregate_http_output_tok_s": 45.588094747422375
+    },
+    "paired_tiles": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 refactor-gfx1100/bench_r0523_allplus1.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-27b-q4km --correctness-profile strict --hipengine-route-expectation native --hipengine-kv-storage bf16 --hipengine-top-k 1 --memory-domain vram --concurrencies 1,4 --live-concurrency 4 --measured-runs 30 --json /tmp/refactor-gfx1100/r0523-pair2-perf.json",
+      "created_at": "2026-11-20T03:49:11.808322+00:00",
+      "packet_status": "failed_gate",
+      "paths": [
+        "gguf_packed_ar_server_decode"
+      ],
+      "exact_rows": 120,
+      "measured_rows": 120,
+      "repeat_determinism": true,
+      "median_aggregate_http_output_tok_s": 54.320704665882744
+    },
+    "producer_check": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 refactor-gfx1100/bench_r0523_allplus1.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-27b-q4km --correctness-profile strict --hipengine-route-expectation native --hipengine-kv-storage bf16 --hipengine-top-k 1 --memory-domain vram --concurrencies 1,4 --live-concurrency 4 --measured-runs 30 --work-dir /tmp/refactor-gfx1100/r0523-pair2-producer-server --json /tmp/refactor-gfx1100/r0523-pair2-producer-trace.json",
+      "created_at": "2026-11-20T04:00:36.413807+00:00",
+      "packet_status": "failed_gate",
+      "paths": [
+        "gguf_packed_ar_server_decode"
+      ],
+      "exact_rows": 120,
+      "measured_rows": 120,
+      "repeat_determinism": true,
+      "verified_equal_input_launches_lower_bound": 245760
+    },
+    "default_policy": {
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen38-27b-q4km --correctness-profile strict --hipengine-route-expectation native --hipengine-kv-storage bf16 --hipengine-top-k 1 --memory-domain vram --concurrencies 1,4 --live-concurrency 4 --measured-runs 30 --json /tmp/refactor-gfx1100/r0523-pair2-clear.json",
+      "created_at": "2026-11-20T04:11:38.579623+00:00",
+      "packet_status": "accepted_backend_packet",
+      "paths": [
+        "gguf_packed_ar_server_decode"
+      ],
+      "exact_rows": 120,
+      "measured_rows": 120,
+      "repeat_determinism": true,
+      "median_aggregate_http_output_tok_s": 54.23407673355772
+    }
+  }
+}

@@ -7840,7 +7840,8 @@ int launch_q4_dense_dual_rowtile_silu(
     return hipErrorInvalidValue;
   }
   const dim3 block(64);
-  const dim3 grid(static_cast<unsigned int>(out_features / 8), rows == 4 ? 4 : 1);
+  // Reuse decoded weights within a pair without sharing the four-row accumulator.
+  const dim3 grid(static_cast<unsigned int>(out_features / 8), rows == 4 ? 2 : 1);
 #define Q4_T16_DENSE_DUAL_ROWTILE_CASE(N, TILE)                                   \
   case N:                                                                    \
     hipLaunchKernelGGL(                                                       \
@@ -7854,7 +7855,7 @@ int launch_q4_dense_dual_rowtile_silu(
   switch (rows) {
     Q4_T16_DENSE_DUAL_ROWTILE_CASE(2, 2);
     Q4_T16_DENSE_DUAL_ROWTILE_CASE(3, 3);
-    Q4_T16_DENSE_DUAL_ROWTILE_CASE(4, 1);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(4, 2);
     Q4_T16_DENSE_DUAL_ROWTILE_CASE(5, 5);
     Q4_T16_DENSE_DUAL_ROWTILE_CASE(6, 6);
     Q4_T16_DENSE_DUAL_ROWTILE_CASE(7, 7);
