@@ -1317,14 +1317,17 @@ Public dense and DMS pressure checks exercise real 512-token reuse, speculative 
 and zero tracked allocations after close. Fresh/resumed INT8 token differences disappear
 when both paths select direct-INT8 prefill; default fresh prefill uses a transient BF16
 oracle instead. This diagnostic does not change the arithmetic default or establish its
-numerical quality. The separate Japanese AR/speculative mismatch reproduces with caching
-off, strict mode, and BF16 KV; it remains an unresolved server parity-gate failure.
+numerical quality. On gfx1100, the separate eight-request Japanese translation
+mismatch traced to the grouped planar-Q6 hipBLASLt prefill projection, not to
+checkpoint restore. The [scoped repair](../worklog/entries/20261121T032539.131734Z-lhl-r0509-packed-q6-prefill-2ccb11.md)
+restores parity across the canonical seven- and eight-request HTTP suite. The
+post-fix compact-INT8 radix gate also passed all four categories with 512-token
+prefix hits, speculative cycles and matching prefix-reusing AR outputs.
 
-Done when: Keep the rollback until shared accounting and coordinated eviction are tested. Run
-`scripts/int8_mtp_prefix_gate.py` against a radix-enabled server: require real prefix hits, compact
-INT8, speculative cycles and parity with the same prefix-reusing AR route. A cache miss or AR-only
-response is not a pass. Include budget pressure, overwrite, target eviction and shutdown release
-tests.
+Done when: decide whether to retain the explicit entry-cap and zero-disable
+controls across supported backends. Before removing either control, run the
+same-route server parity gate on each affected backend and preserve shared
+budget pressure, overwrite, target eviction and shutdown-release coverage.
 
 ### R0515 — Decide retirement of the Gemma 4 gate/up MMQ rollback
 
