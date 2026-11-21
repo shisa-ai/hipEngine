@@ -77,6 +77,9 @@ class Inkling2TextReference:
     def project_many(self, names, hidden):
         return tuple(self.project(name, hidden) for name in names)
 
+    def project_groups(self, groups):
+        return tuple(self.project_many(names, hidden) for names, hidden in groups)
+
     def session(self, capacity: int) -> Inkling2TextSession:
         return Inkling2TextSession(self, capacity)
 
@@ -298,8 +301,8 @@ class Inkling2TextSession:
 
         attn_prefix = f"layers.{visit.weight_layer}.attn."
 
-        def linear_many(names, x):
-            return self.model.project_many((attn_prefix + name for name in names), x)
+        def names_in_layer(names):
+            return tuple(attn_prefix + name for name in names)
 
         def kv_taps(name, dynamic=None):
             conv = f"{name}_sconv."
@@ -308,21 +311,19 @@ class Inkling2TextSession:
             dynamic = dynamic.reshape(*leading, nkv, 1, ksize)
             return (weight(conv + "static_w").T.reshape(nkv, dim, ksize) + dynamic).reshape(*leading, -1, ksize)
 
-        def project_kv(name, x):
-            projection = f"w{name}_dv.weight"
-            if visit.is_local:
-                return linear(projection, x), kv_taps(name)
-            y, dynamic = linear_many((projection, f"{name}_sconv.weight_proj"), x)
-            return y, kv_taps(name, dynamic)
-
         query_names = ("wq_du.weight", "wr_du.weight", "attn_sink_proj.weight", "gate_attn.weight")
+        key_names, value_names = ("wk_dv.weight",), ("wv_dv.weight",)
+        dynamic = not visit.is_local
         if visit.is_local and qi is ki and qi is vi:
-            q, rel, sink, gate, k, v = linear_many((*query_names, "wk_dv.weight", "wv_dv.weight"), qi)
+            q, rel, sink, gate, k, v = self.model.project_many(names_in_layer((*query_names, *key_names, *value_names)), qi)
             kt, vt = kv_taps("k"), kv_taps("v")
         else:
-            q, rel, sink, gate = linear_many(query_names, qi)
-            (k, kt), (v, vt) = project_kv("k", ki), project_kv("v", vi)
-        dynamic = not visit.is_local
+            if dynamic:
+                key_names += ("k_sconv.weight_proj",)
+                value_names += ("v_sconv.weight_proj",)
+            (q, rel, sink, gate), (k, *kd), (v, *vd) = self.model.project_groups(
+                ((names_in_layer(query_names), qi), (names_in_layer(key_names), ki), (names_in_layer(value_names), vi)))
+            kt, vt = kv_taps("k", *kd), kv_taps("v", *vd)
         if self.convolution is None:
             k = self._conv_rows(visit, "k", k, kt, dynamic=dynamic)
             v = self._conv_rows(visit, "v", v, vt, dynamic=dynamic)

@@ -80,40 +80,53 @@ class Inkling2DeviceDense:
 
     def project_many(self, names, hidden: np.ndarray, *, native_bf16=None, pinned=False):
         """Share transfers for projections that consume the same FP32 input."""
-        names = tuple(names)
-        if not names:
-            raise ValueError("Inkling 2 projection group must not be empty")
+        return self.project_groups(((names, hidden),), native_bf16=native_bf16, pinned=pinned)[0]
+
+    def project_groups(self, groups, *, native_bf16=None, pinned=False):
+        """Exchange independent inputs and results together, preserving projection order."""
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling 2 dense residency is closed")
-            if hidden.ndim not in (1, 2) or not all(hidden.shape):
-                raise ValueError("Inkling 2 dense projection expects a vector or row matrix")
-            matrices = [self._matrix(name, None, preserve_bf16=native_bf16 is not None) for name in names]
-            if any(hidden.shape[-1] != n for _, (_, n), _ in matrices):
-                raise ValueError("Inkling 2 grouped dense projection input width differs from its matrices")
-            x = np.ascontiguousarray(hidden, dtype=np.float32)
-            widths = [m for _, (m, _), _ in matrices]
-            rows = 1 if x.ndim == 1 else x.shape[0]
-            y = np.empty(rows * sum(widths), dtype=np.float32)
-            inp = self._scratch("_input", x.nbytes)
-            out = self._scratch("_output", y.nbytes)
-            with self._transfer.exchange(inp.ptr, out.ptr, x, y, pinned=pinned):
-                offset = 0
-                for weight, (m, n), bf16 in matrices:
-                    dst = out.ptr + offset * y.itemsize
-                    if bf16:
-                        native_bf16(inp.ptr, weight.ptr, dst, rows, n, m, runtime=self._runtime)
-                    elif x.ndim == 1:
-                        self._blas.sgemv_rowmajor_nt(inp.ptr, weight.ptr, dst, in_features=n, out_features=m)
-                    else:
-                        self._blas.sgemm_rowmajor_nt(inp.ptr, weight.ptr, dst, rows=rows, in_features=n, out_features=m)
-                    offset += rows * m
+            plans = []
+            output_count = 0
+            for names, hidden in groups:
+                if hidden.ndim not in (1, 2) or not all(hidden.shape):
+                    raise ValueError("Inkling 2 dense projection expects a vector or row matrix")
+                matrices = [self._matrix(name, None, preserve_bf16=native_bf16 is not None) for name in names]
+                if not matrices:
+                    raise ValueError("Inkling 2 projection group must not be empty")
+                if any(hidden.shape[-1] != n for _, (_, n), _ in matrices):
+                    raise ValueError("Inkling 2 grouped dense projection input width differs from its matrices")
+                x = np.ascontiguousarray(hidden, dtype=np.float32)
+                rows = 1 if x.ndim == 1 else x.shape[0]
+                plans.append((x, rows, matrices))
+                output_count += rows * sum(m for _, (m, _), _ in matrices)
+            if not plans:
+                raise ValueError("Inkling 2 projection groups must not be empty")
+            inputs = plans[0][0] if len(plans) == 1 else np.concatenate([x.ravel() for x, _, _ in plans])
+            output = np.empty(output_count, dtype=np.float32)
+            inp = self._scratch("_input", inputs.nbytes)
+            out = self._scratch("_output", output.nbytes)
+            input_offset = output_offset = 0
             results = []
-            offset = 0
-            for width in widths:
-                end = offset + rows * width
-                results.append(y[offset:end].reshape(*x.shape[:-1], width))
-                offset = end
+            with self._transfer.exchange(inp.ptr, out.ptr, inputs, output, pinned=pinned):
+                for x, rows, matrices in plans:
+                    src = inp.ptr + input_offset
+                    group = []
+                    for weight, (m, n), bf16 in matrices:
+                        dst = out.ptr + output_offset * output.itemsize
+                        if bf16:
+                            native_bf16(src, weight.ptr, dst, rows, n, m, runtime=self._runtime)
+                        elif x.ndim == 1:
+                            self._blas.sgemv_rowmajor_nt(src, weight.ptr, dst, in_features=n, out_features=m)
+                        else:
+                            self._blas.sgemm_rowmajor_nt(src, weight.ptr, dst, rows=rows,
+                                                        in_features=n, out_features=m)
+                        end = output_offset + rows * m
+                        group.append(output[output_offset:end].reshape(*x.shape[:-1], m))
+                        output_offset = end
+                    results.append(tuple(group))
+                    input_offset += x.nbytes
             return tuple(results)
 
     def close(self):

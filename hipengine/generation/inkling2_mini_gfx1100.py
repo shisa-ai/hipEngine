@@ -42,13 +42,14 @@ def _native_head(owner):
 
 
 def _fp32_dense(owner):
-    return owner.project, owner.project_many
+    return owner.project, owner.project_many, owner.project_groups
 
 
 def _native_dense(owner):
     launch = partial(dense_gemv_f32_bf16w_f32_out, threads=64)
     return (partial(owner.project, native_bf16=launch, pinned=True),
-            partial(owner.project_many, native_bf16=launch, pinned=True))
+            partial(owner.project_many, native_bf16=launch, pinned=True),
+            partial(owner.project_groups, native_bf16=launch, pinned=True))
 
 
 def _host_experts(owner):
@@ -69,7 +70,7 @@ def _bind_profile(generator, profile):
     generator.model.project_logits = partial(
         bind(_HEAD, generator._dense), "unembed.weight", limit=generator.model.config["unpadded_vocab_size"],
     )
-    generator.model.project, generator.model.project_many = bind(_DENSE, generator._dense)
+    generator.model.project, generator.model.project_many, generator.model.project_groups = bind(_DENSE, generator._dense)
     generator.model.feed_experts_group = bind(_EXPERTS, generator._experts)
 
 
@@ -157,6 +158,7 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
             self._dense = dense
             self.model.project = dense.project
             self.model.project_many = dense.project_many
+            self.model.project_groups = dense.project_groups
             self.model.project_expert = experts.project
             self.model.project_experts_group = experts.project_group
             self._block_attention = owned.enter_context(Inkling2DeviceBlockAttention(runtime=runtime, launch=block_attn))
