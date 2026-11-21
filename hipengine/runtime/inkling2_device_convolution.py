@@ -5,8 +5,8 @@ from math import sqrt
 
 import numpy as np
 
-from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import free, malloc
+from hipengine.loading.inkling2_activation_transfer import Inkling2ActivationTransfer
 
 
 class Inkling2DeviceConvolution:
@@ -18,6 +18,9 @@ class Inkling2DeviceConvolution:
         self.histories = {}
         self.closed = False
         with ExitStack() as owner:
+            self.transfer = Inkling2ActivationTransfer(runtime)
+            owner.callback(self.transfer.close)
+
             def allocate(size):
                 buf = malloc(size, runtime=runtime)
                 owner.callback(free, buf, runtime=runtime)
@@ -49,11 +52,9 @@ class Inkling2DeviceConvolution:
         used = channels * (1 + self.width)
         self.staging[:channels] = x
         self.staging[channels:used].reshape(channels, self.width)[...] = taps
-        copy = self.rt.memcpy
-        copy(self.input, self.staging.ctypes.data, used * out.itemsize, HipMemcpyKind.HOST_TO_DEVICE)
         scale = 1 / sqrt((2 if dynamic else 1) * self.width + 1)
-        self.launch(history.ptr, self.input, self.input + out.nbytes, self.out, channels, self.width, scale)
-        copy(out.ctypes.data, self.out, out.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+        with self.transfer.exchange(self.input, self.out, self.staging[:used], out, pinned=True):
+            self.launch(history.ptr, self.input, self.input + out.nbytes, self.out, channels, self.width, scale)
         return out
 
     def close(self):

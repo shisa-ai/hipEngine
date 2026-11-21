@@ -24,6 +24,7 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
     nq, nk, dim, extent = 6, 2, 128 if capacity != 9 else 65, 17
     runtime = get_hip_runtime()
     copies = []
+    exchanges = []
 
     class TracedRuntime:
         def __getattr__(self, name):
@@ -32,6 +33,14 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
         def memcpy(self, dst, src, size, kind):
             copies.append(kind)
             runtime.memcpy(dst, src, size, kind)
+
+        def memcpy_async(self, dst, src, size, kind, stream):
+            exchanges.append(kind)
+            runtime.memcpy_async(dst, src, size, kind, stream)
+
+        def stream_synchronize(self, stream):
+            exchanges.append("wait")
+            runtime.stream_synchronize(stream)
 
     geometry = [(capacity, nq, nk, dim, extent)]
     split_rows = []
@@ -64,11 +73,11 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
             ref = np.einsum("ht,thd->hd", p[:, :-1], vr)
             original = strict.step(0, pos, q, k, v, bias, sink)
             copies.clear()
+            exchanges.clear()
             out = owner.step(0, pos, q, k, v, bias, sink, undo=undo if pos >= 3 else None)
             if pos:
-                assert [kind for kind in copies if kind != HipMemcpyKind.DEVICE_TO_DEVICE] == [
-                    HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST,
-                ]
+                assert all(kind == HipMemcpyKind.DEVICE_TO_DEVICE for kind in copies)
+            assert exchanges == [HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST, "wait"]
             if pos >= 3:
                 replay.append((pos, (q, k, v, bias, sink), out))
             np.testing.assert_array_equal(out.view(np.uint32), original.view(np.uint32))

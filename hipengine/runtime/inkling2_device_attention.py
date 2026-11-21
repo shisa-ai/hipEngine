@@ -10,6 +10,7 @@ from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import free, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.kvcache.spans import KVLiveSpans
+from hipengine.loading.inkling2_activation_transfer import Inkling2ActivationTransfer
 
 
 # A second launch starts paying for itself at 16 live positions on gfx1100.
@@ -31,6 +32,8 @@ class Inkling2DeviceAttention:
         self.closed = False
         with ExitStack() as owner:
             self.owner = owner
+            self.transfer = Inkling2ActivationTransfer(runtime)
+            owner.callback(self.transfer.close)
             scratch_values = 2 + max(nq * (d + e + 1) + 2 * nk * d for _, nq, nk, d, e in self.geometry)
             self.staging = np.empty(scratch_values, dtype=np.float32)
             self.scratch = self._allocate(self.staging.nbytes)
@@ -94,16 +97,15 @@ class Inkling2DeviceAttention:
             end = cursor + array.size
             self.staging[cursor:end].reshape(array.shape)[...] = array
             cursor = end
-        self.rt.memcpy(self.scratch, self.staging.ctypes.data, cursor * 4, HipMemcpyKind.HOST_TO_DEVICE)
         q_ptr, key_ptr, value_ptr, bias_ptr, sink_ptr = ptrs
-        self.write(key_ptr, value_ptr, keys, values, spans, nk * d)
         args = (q_ptr, keys, values, bias_ptr, sink_ptr, self.out, spans, nq, nk, d, extent)
-        if use_split:
-            self.split(*args, self.scores, live)
-        else:
-            self.launch(*args)
         out = np.empty((nq, d), dtype=np.float32)
-        self.rt.memcpy(out.ctypes.data, self.out, out.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+        with self.transfer.exchange(self.scratch, self.out, self.staging[:cursor], out, pinned=True):
+            self.write(key_ptr, value_ptr, keys, values, spans, nk * d)
+            if use_split:
+                self.split(*args, self.scores, live)
+            else:
+                self.launch(*args)
         self.positions[visit] = position + 1
         return out
 

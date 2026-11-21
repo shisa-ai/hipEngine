@@ -20,13 +20,19 @@ def test_device_short_convolution_preserves_separate_visit_histories(monkeypatch
 
     runtime = get_hip_runtime()
     copies = []
-    memcpy = type(runtime).memcpy
+    memcpy = type(runtime).memcpy_async
+    synchronize = type(runtime).stream_synchronize
 
-    def record_copy(self, dst, src, size, kind):
+    def record_copy(self, dst, src, size, kind, stream):
         copies.append(kind)
-        return memcpy(self, dst, src, size, kind)
+        return memcpy(self, dst, src, size, kind, stream)
 
-    monkeypatch.setattr(type(runtime), "memcpy", record_copy)
+    def record_wait(self, stream):
+        copies.append("wait")
+        return synchronize(self, stream)
+
+    monkeypatch.setattr(type(runtime), "memcpy_async", record_copy)
+    monkeypatch.setattr(type(runtime), "stream_synchronize", record_wait)
     owner = Inkling2DeviceConvolution(runtime=runtime, launch=launch_short_conv, channels=195, width=4)
     refs = [_VisitState(None, None), _VisitState(None, None)]
     rng = np.random.default_rng(52)
@@ -39,7 +45,7 @@ def test_device_short_convolution_preserves_separate_visit_histories(monkeypatch
                 ref = refs[visit].convolve(name, x, taps, dynamic=bool(visit))
                 copies.clear()
                 gpu = owner.step(visit, name, x, taps, dynamic=bool(visit))
-                assert copies == [HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST]
+                assert copies == [HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST, "wait"]
                 np.testing.assert_allclose(gpu, ref, rtol=1e-6, atol=1e-6)
                 assert np.argmax(gpu) == np.argmax(ref)
                 rp = np.exp(ref.astype(np.float64) - np.max(ref))
