@@ -12,6 +12,7 @@ from hipengine.loading.safetensors import load_weight_index
 def test_checkpoint_expert_slices_and_gate_up_rows(tmp_path):
     tensors = {
         "embed.weight": ("BF16", np.array([[0x3F80, 0xBF80], [0x4000, 0]], dtype="<u2")),
+        "large.weight": ("BF16", np.full((257, 129), 0x3f80, dtype="<u2")),
         "layers.0.mlp.experts.w13_weight": ("U8", np.stack([
             np.full((2, 8), 0x11, dtype=np.uint8), np.full((2, 8), 0x22, dtype=np.uint8),
         ])),
@@ -30,7 +31,14 @@ def test_checkpoint_expert_slices_and_gate_up_rows(tmp_path):
     (tmp_path / "model.safetensors").write_bytes(struct.pack("<Q", len(data)) + data + b"".join(parts))
     (tmp_path / "config.json").write_text("{}")
     weights = Inkling2TextWeights(load_weight_index(tmp_path))
-    np.testing.assert_array_equal(weights.dense("embed.weight", 1), [2.0, 0.0])
+    embedding = weights.dense("embed.weight")
+    assert weights.dense("embed.weight") is embedding
+    assert not embedding.flags.writeable
+    selected = weights.dense("embed.weight", 1)
+    assert np.shares_memory(embedding, selected)
+    np.testing.assert_array_equal(selected, [2.0, 0.0])
+    np.testing.assert_array_equal(weights.dense("large.weight", 17), np.ones(129, dtype=np.float32))
+    assert weights.dense("large.weight") is not weights.dense("large.weight")
     assert not weights.raw("embed.weight").flags.writeable
     np.testing.assert_array_equal(weights.expert(0, "w13", 0), np.full((2, 16), 0.25))
     np.testing.assert_array_equal(weights.expert(0, "w13", 1), np.ones((2, 16)))

@@ -11,6 +11,8 @@ from hipengine.loading.safetensors import WeightIndex, _parse_safetensors_header
 from hipengine.quant.inkling2_experts import decode_mxfp8_expert, decode_nvfp4_expert
 
 _STORAGE = {"BF16": "<u2", "F32": "<f4", "U8": "u1", "F8_E4M3": "u1"}
+# Cache small host-side coefficients, not full projection or embedding matrices.
+_MAX_CACHED_F32_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +36,7 @@ class Inkling2TextWeights:
         self._headers = {p: _parse_safetensors_header_and_data_start(p) for p in index.shards}
         self._file_sizes = {p: p.stat().st_size for p in index.shards}
         self._mapped: dict[str, np.ndarray] = {}
+        self._small_dense: dict[str, np.ndarray] = {}
 
     def _info(self, name):
         return self._index.tensors[f"{self._prefix}{name}"]
@@ -53,10 +56,19 @@ class Inkling2TextWeights:
         return self._mapped[name]
 
     def dense(self, name: str, selector=...) -> np.ndarray:
+        cached = self._small_dense.get(name)
+        if cached is not None:
+            return cached if selector is ... else cached[selector]
         dtype = self._info(name).dtype
         if dtype not in ("BF16", "F32"):
             raise ValueError(f"Inkling 2 dense tensor {name} requires BF16 or F32, got {dtype}")
-        data = self.raw(name)[selector]
+        raw = self.raw(name)
+        if dtype == "BF16" and raw.size <= _MAX_CACHED_F32_BYTES // 4:
+            widened = (raw.astype(np.uint32) << 16).view(np.float32)
+            widened.setflags(write=False)
+            cached = self._small_dense.setdefault(name, widened)
+            return cached if selector is ... else cached[selector]
+        data = raw[selector]
         if dtype == "BF16":
             return (data.astype(np.uint32) << 16).view(np.float32)
         return np.asarray(data)
