@@ -173,15 +173,20 @@ Owner: `hipengine/kvcache/dense.py`.
 
 Scope: `tests/test_unit_qwen38_int8_kv_capability.py`; `tests/test_unit_qwen35_gguf_int8_kv_policy.py`; `tests/test_unit_gguf_packed_verify_layout.py`.
 
-Done when: Dependency: finish the remaining replacement validation and migrate actual mirror consumers, not
-implement row-batched attention again. **Clearing action:** exercise public direct and mirrored
-requests on both HIP backends with short, long, shifted and ragged allocations, cancellation,
-refill, resource rejection and cleanup; record selected storage/attention sources and actual
-persistent/transient ownership. Use the current planner to price these cases rather than reusing old
-capacity ceilings. Migrate or explicitly retire remaining mirrored callers before removing its
-allocation/copy/dispatch code. Run `tests/test_unit_qwen38_int8_kv_capability.py`,
-`tests/test_unit_qwen35_gguf_int8_kv_policy.py`, `tests/test_unit_gguf_packed_verify_layout.py` and
-`tests/test_unit_gguf_int8_mtp.py` alongside that public validation.
+The gfx1100 public lifecycle check passed on Qwen3.8-27B-Q4_K_M with compact
+INT8 and a diagnostic mirror control. `LLM.generate_detailed()` reported
+`int8_direct` without persistent mirrors and `bf16_mirror` with real mirror
+allocations. Short ragged prompts, a 1153-token prompt and a shifted continuation
+with 512 reused tokens produced matching greedy IDs. Both arms passed
+cancellation, refill, named capacity refusal, recovery and allocation teardown.
+The capability, policy, packed layout and INT8 MTP host bundle and four live
+page/split transition cases passed.
+
+Done when: validate the corresponding public lifecycle on gfx1151, then migrate
+or explicitly retire the remaining shared mirror consumers before removing their
+allocation, copy and attention dispatch code. The scratch planner, resumed
+prefill, packed verifier state transfer and full-attention cache binding still
+consume mirror state; the gfx1100 comparison does not retire any of them.
 
 ### R0214/R0215 / R0378 — Cumulative-semantic rollback-control migration
 
