@@ -58,7 +58,7 @@ def _layer_outer_session(monkeypatch, *, capacity: int = 73_728):
         runtime=SimpleNamespace(),
         backend="hip_gfx1100",
         dms_prefill_mode="layer_outer",
-        _dms_prefill_oracle_pair=None,
+        _dms_prefill_oracle_lease=None,
         _dms_layer_outer_pack=None,
     )
     session.scratch = SimpleNamespace(max_positions=capacity)
@@ -93,7 +93,7 @@ def test_full_attention_scratch_uses_shared_oracle(monkeypatch) -> None:
     layer_scratch = session._full_attention_prefill_scratch_for_layer(
         bulk_scratch, layer_id=3
     )
-    key_cache, value_cache = session._dms_prefill_oracle_pair
+    key_cache, value_cache = session._dms_prefill_oracle_lease.buffers
     assert layer_scratch is not bulk_scratch
     assert layer_scratch.block_size == 256
     assert layer_scratch.key_cache is key_cache
@@ -125,9 +125,9 @@ def test_oracle_has_one_transient_lease_owner(monkeypatch):
 def test_oracle_release_and_pack_sink_fail_closed(monkeypatch) -> None:
     session = _layer_outer_session(monkeypatch)
     session._dms_layer_outer_oracle_pair()
-    assert session._dms_prefill_oracle_pair is not None
+    assert session._dms_prefill_oracle_lease is not None
     session._release_dms_prefill_oracle()
-    assert session._dms_prefill_oracle_pair is None
+    assert session._dms_prefill_oracle_lease is None
     # Release is idempotent.
     session._release_dms_prefill_oracle()
     with pytest.raises(RuntimeError, match="pack sink"):
@@ -151,7 +151,7 @@ def test_oracle_release_drains_both_planes_once_on_failure(monkeypatch, failed_r
     with pytest.raises(RuntimeError, match=f'{first} release failed') as caught:
         session._release_dms_prefill_oracle()
     assert calls == [value, key]
-    assert session._dms_prefill_oracle_pair is None
+    assert session._dms_prefill_oracle_lease is None
     session._release_dms_prefill_oracle()
     assert calls == [value, key]
     if failed_role == 'both':

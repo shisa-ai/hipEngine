@@ -13555,7 +13555,6 @@ class Qwen35GGUFResidentSession:
     # release, so a bind failure cannot strand the pages.
     _dms_pending_allocation: object | None = field(default=None, init=False, repr=False)
     _dms_prefill_oracle_lease: object | None = field(default=None, init=False, repr=False)
-    _dms_prefill_oracle_pair: tuple[DeviceBuffer, DeviceBuffer] | None = field(default=None, init=False, repr=False)
     _dms_layer_outer_pack: tuple[object, _ExternalDMSDevicePrefillCollector, int] | None = field(default=None, init=False, repr=False)
     _dms_decode_projector: object | None = field(default=None, init=False, repr=False)
     _dms_decode_decisions: DeviceBuffer | None = field(default=None, init=False, repr=False)
@@ -14738,8 +14737,9 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident session is closed")
         if self.dms_prefill_mode != "layer_outer":
             raise RuntimeError("the DMS prefill oracle requires layer_outer mode")
-        if self._dms_prefill_oracle_pair is not None:
-            return self._dms_prefill_oracle_pair
+        lease = self._dms_prefill_oracle_lease
+        if lease is not None:
+            return lease.buffers
         cfg = self.runner.weights.config
         nbytes = (
             int(self.scratch.max_positions)
@@ -14750,22 +14750,17 @@ class Qwen35GGUFResidentSession:
         runtime = self.runtime or get_hip_runtime()
         from hipengine.runtime.dms_prefill_oracle import DMSPrefillOracleLease
 
-        self._dms_prefill_oracle_lease = DMSPrefillOracleLease.acquire(
+        lease = DMSPrefillOracleLease.acquire(
             nbytes, runtime=runtime, allocate=malloc, release=free,
         )
-        self._dms_prefill_oracle_pair = self._dms_prefill_oracle_lease.buffers
-        return self._dms_prefill_oracle_pair
+        self._dms_prefill_oracle_lease = lease
+        return lease.buffers
 
     def _release_dms_prefill_oracle(self) -> None:
-        if self._dms_prefill_oracle_pair is None:
+        lease = self._dms_prefill_oracle_lease
+        if lease is None:
             return
         runtime = self.runtime or get_hip_runtime()
-        from hipengine.runtime.dms_prefill_oracle import DMSPrefillOracleLease
-
-        lease = getattr(self, "_dms_prefill_oracle_lease", None)
-        if lease is None:
-            lease = DMSPrefillOracleLease(self._dms_prefill_oracle_pair)
-        self._dms_prefill_oracle_pair = None
         self._dms_prefill_oracle_lease = None
         lease.close(runtime=runtime, release=free)
 

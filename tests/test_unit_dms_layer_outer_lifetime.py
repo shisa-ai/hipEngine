@@ -127,7 +127,7 @@ def _layer_outer_dms_session(
         dms_backend_factory=lambda **kwargs: backend,
         dms_metadata_source=None,
         _dms_source=_dms_source(tokens=tokens),
-        _dms_prefill_oracle_pair=None,
+        _dms_prefill_oracle_lease=None,
         _dms_layer_outer_pack=None,
         _dms_cache_layers={},
         _dms_backend=None,

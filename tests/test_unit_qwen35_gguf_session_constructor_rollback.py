@@ -726,7 +726,7 @@ def _new_dms_session(controller: _Controller):
         _dms_decode_logits=None,
         _dms_dense_prefill_pool=None,
         _dms_pending_allocation=None,
-        _dms_prefill_oracle_pair=None,
+        _dms_prefill_oracle_lease=None,
     )
     session.scratch = SimpleNamespace(max_positions=256)
     session.create_device_kv_pool = lambda **kwargs: controller.pool

@@ -44,7 +44,7 @@ def test_exact_budget_reserves_same_capacity_and_packs_in_one_trunk(monkeypatch,
     def final_pack(*a, **kw):
         events.append("restore_final")
         assert session._bulk_prefill_scratch is None
-        assert session._dms_prefill_oracle_pair is None
+        assert session._dms_prefill_oracle_lease is None
         np.testing.assert_array_equal(kw["eviction"], decisions)
         return original_finalize(*a, **kw)
 
@@ -129,7 +129,7 @@ def test_one_pass_failure_closes_unpublished_store_and_pack_state(monkeypatch, f
         )
     assert backend.closed and session._dms_backend is None
     assert session._dms_layer_outer_pack is None
-    assert session._dms_prefill_oracle_pair is None
+    assert session._dms_prefill_oracle_lease is None
     assert collector._closed
 
 
