@@ -619,12 +619,13 @@ class LLM:
         from hipengine.generation import GenerationOutput
 
         generator = self._get_text_generator()
-        detailed = getattr(generator, "generate_multimodal_detailed", None)
-        if not callable(detailed):
-            raise NotImplementedError("multimodal generation is not supported")
         params = sampling_params or SamplingParams()
-        if params.speculative_mtp:
-            raise NotImplementedError('multimodal speculative MTP generation is not implemented')
+        hook = "generate_multimodal_speculative_mtp_detailed" if params.speculative_mtp else "generate_multimodal_detailed"
+        detailed = getattr(generator, hook, None)
+        if not callable(detailed):
+            if params.speculative_mtp:
+                raise NotImplementedError("multimodal speculative MTP generation is not implemented")
+            raise NotImplementedError("multimodal generation is not supported")
         request = _generation_request((str(prompt),), params)
         output = detailed(str(prompt), image, request)
         return output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output))
