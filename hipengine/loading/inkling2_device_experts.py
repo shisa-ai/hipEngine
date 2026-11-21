@@ -139,7 +139,7 @@ class Inkling2DeviceExperts:
             block = self._block_scratch = capacity, staging, active, projection
         return block[1:]
 
-    def feed_forward(self, layer, experts, mix, hidden, gate_cap, up_cap):
+    def feed_forward(self, layer, experts, mix, hidden, gate_cap, up_cap, *, transform_output=None):
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling 2 expert residency is closed")
@@ -173,6 +173,8 @@ class Inkling2DeviceExperts:
                               count, down.rows, down.columns, down.columns, nvfp4=down.outer_scales is not None,
                               tokens=tokens)
                 self._pointwise(output, mix_ptr, inputs, count, down.rows, tokens=tokens)
+                if transform_output is not None:
+                    transform_output(inputs, result.shape)
             return result
 
     def close(self):

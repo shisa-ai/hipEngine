@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import partial
 from math import sqrt
 
 import numpy as np
@@ -260,6 +261,11 @@ class Inkling2TextSession:
             taps = get(name + ".weight")[:, 0, ::-1]
             return self._conv_rows(visit, name, x, taps)
 
+        def device_conv(name):
+            taps = get(name + ".weight")[:, 0, ::-1]
+            return partial(self.convolution.apply_static, visit.state_slot, name, taps,
+                           position=self.position, undo=self._undo)
+
         a = _read_blocks(w.dense(f"attn_res.attn_queries.{layer - 1}"), blocks, h) if layer else h
         inputs = (a, a, a) if a.ndim == h.ndim else np.moveaxis(a, -2, 0)
         norm_names = ("attn_norm",) * 3 if visit.is_local else ("q_input_norm", "k_input_norm", "v_input_norm")
@@ -274,13 +280,7 @@ class Inkling2TextSession:
         if self.convolution is None:
             a = static_conv("attn_sconv", project("attn.wo_ud.weight", a))
         else:
-            taps = get("attn_sconv.weight")[:, 0, ::-1]
-
-            def convolve_projection(ptr, shape):
-                self.convolution.apply_static(visit.state_slot, "attn_sconv", taps, ptr, shape,
-                                              position=self.position, undo=self._undo)
-
-            a = self.model.project(prefix + "attn.wo_ud.weight", a, transform_output=convolve_projection)
+            a = self.model.project(prefix + "attn.wo_ud.weight", a, transform_output=device_conv("attn_sconv"))
         if layer % c["n_layers_per_attn_res_block"] == 0:
             blocks.append(h)
         else:
@@ -290,18 +290,23 @@ class Inkling2TextSession:
             m, = merge_controllers((m,), ("mlp",), (messages[..., 3, :],))
         normalized = norm(m, "mlp_norm")
 
+        feed_group = self.model.feed_experts_group
+        convolve_on_device = feed_group is not None and self.convolution is not None
+        if convolve_on_device:
+            feed_group = partial(feed_group, transform_output=device_conv("mlp_sconv"))
+
         def feed(x):
             return routed_feed_forward(w, layer, x, top_k=c["num_experts_per_tok"],
                                        route_scale=c["route_scale"], gate_cap=c["mlp_gate_softcap"],
                                        up_cap=c["mlp_up_softcap"], project=self.model.project_expert,
                                        project_dense=self.model.project, project_group=self.model.project_experts_group,
-                                       feed_group=self.model.feed_experts_group)
+                                       feed_group=feed_group)
 
-        if normalized.ndim == 1 or self.model.feed_experts_group is not None:
+        if normalized.ndim == 1 or feed_group is not None:
             m = feed(normalized)
         else:
             m = np.stack([feed(row) for row in normalized])
-        return a + static_conv("mlp_sconv", m)
+        return a + (m if convolve_on_device else static_conv("mlp_sconv", m))
 
     def _conv_rows(self, visit, name, x, taps, *, dynamic=False):
         if x.ndim == 1:

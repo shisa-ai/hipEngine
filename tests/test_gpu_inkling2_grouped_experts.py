@@ -1,4 +1,5 @@
 import ctypes
+from contextlib import closing
 from types import SimpleNamespace
 
 import numpy as np
@@ -20,6 +21,8 @@ def test_grouped_projection_matches_singletons(nvfp4, wave_rows, monkeypatch):
     from hipengine.kernels.hip_gfx1100.quant.inkling2_experts import (
         launch_expert_pointwise, launch_grouped_experts, launch_inkling2_expert, launch_wave_grouped_experts,
     )
+    from hipengine.kernels.hip_gfx1100.quant.inkling2_short_conv import launch_short_conv
+    from hipengine.runtime.inkling2_device_convolution import Inkling2DeviceConvolution
 
     if resolve_backend("auto", execution_device=True) != "hip_gfx1100":
         pytest.skip("test requires gfx1100")
@@ -93,3 +96,20 @@ def test_grouped_projection_matches_singletons(nvfp4, wave_rows, monkeypatch):
                 packed = owner.feed_forward(0, choices, mixes, block, 4, 6)
                 assert exchanges == expected_exchange
                 np.testing.assert_array_equal(packed.view(np.uint32), independent.view(np.uint32))
+
+            taps = rng.standard_normal((cols, 3), dtype=np.float32)
+
+            def convolution():
+                return closing(Inkling2DeviceConvolution(runtime=runtime, launch=launch_short_conv,
+                                                         channels=cols, width=3))
+
+            with convolution() as separate, convolution() as chained:
+                expected = np.stack([separate.step(0, "mlp", row, taps) for row in packed])
+
+                def convolve(ptr, shape):
+                    chained.apply_static(0, "mlp", taps, ptr, shape)
+
+                exchanges.clear()
+                actual = owner.feed_forward(0, choices, mixes, block, 4, 6, transform_output=convolve)
+                assert exchanges == expected_exchange
+                np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
