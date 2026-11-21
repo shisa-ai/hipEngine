@@ -9,12 +9,18 @@ __device__ float inkling_e4m3(uint8_t x) {
     return x & 128 ? -a : a;
 }
 
+__device__ __forceinline__ float inkling_e2m1(unsigned q) {
+    const unsigned mag = q & 7;
+    // Nonzero levels occupy consecutive FP32 half-exponent steps, except 0.5.
+    const unsigned bits = mag ? (mag + 252 - (mag == 1)) << 22 : 0;
+    return __uint_as_float(bits | ((q & 8) << 28));
+}
+
 template <bool NVFP4>
 __device__ __forceinline__ float inkling_expert_value(const uint8_t* w, const uint8_t* s, int col, float outer) {
     if constexpr (NVFP4) {
-        const float levels[8] = {0, 0.5f, 1, 1.5f, 2, 3, 4, 6};
-        const int q = (w[col / 2] >> ((col & 1) * 4)) & 15;
-        const float a = (q & 8 ? -levels[q & 7] : levels[q & 7]) * inkling_e4m3(s[col / 16]);
+        const unsigned q = (w[col / 2] >> ((col & 1) * 4)) & 15;
+        const float a = inkling_e2m1(q) * inkling_e4m3(s[col / 16]);
         return a * outer;
     } else {
         const int scale = s[col / 32];
