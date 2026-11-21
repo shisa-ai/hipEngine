@@ -31,6 +31,7 @@ class Inkling2DSpark:
         index = load_weight_index(draft_path)
         self.cfg = index.config["mtp_config"]
         self.target = model
+        self.kv_factory = None
         self.weights = Inkling2TextWeights(index, namespace="")
         self.taps = tuple(self.cfg["target_layer_ids"])
         if (self.cfg["markov_head_type"] != "rnn_hidden" or self.cfg.get("q_bias") or self.cfg.get("o_bias")
@@ -65,12 +66,18 @@ class Inkling2DSparkSession:
         cfg = model.cfg
         self.capacity = capacity
         shape = (cfg["num_key_value_heads"], cfg["head_dim"])
+        self.kv = model.kv_factory(capacity, cfg) if model.kv_factory is not None else None
         self.keys = []
         self.values = []
-        for layer in range(cfg["num_hidden_layers"]):
-            length = min(capacity, cfg["sliding_window_size"]) if layer in cfg["local_layer_ids"] else capacity
-            self.keys.append(np.empty((length, *shape), dtype=np.float32))
-            self.values.append(np.empty_like(self.keys[-1]))
+        if self.kv is None:
+            for layer in range(cfg["num_hidden_layers"]):
+                length = min(capacity, cfg["sliding_window_size"]) if layer in cfg["local_layer_ids"] else capacity
+                self.keys.append(np.empty((length, *shape), dtype=np.float32))
+                self.values.append(np.empty_like(self.keys[-1]))
+
+    def close(self):
+        if self.kv is not None:
+            self.kv.close()
 
     def append(self, features):
         """Project one committed token's target taps, preserving their logical order."""
@@ -80,15 +87,20 @@ class Inkling2DSparkSession:
         read, eps = m.weights.dense, c["rms_norm_eps"]
         mixed = m.fuse @ np.stack([features[i] for i in m.taps])
         cos, sin = rope_tables_neox(np.array([self.position]), c["head_dim"], c["rope_theta"])
-        for layer, (keys, values) in enumerate(zip(self.keys, self.values)):
+        shape = (c["num_key_value_heads"], c["head_dim"])
+        for layer in range(c["num_hidden_layers"]):
             prefix = f"layers.{layer}."
             context = _rms(mixed[layer], eps) * read(prefix + "dflare_norm.weight")
             a = prefix + "self_attn."
-            k = m.project(a + "k_proj_ctx.weight", context).reshape(keys.shape[1:])
+            k = m.project(a + "k_proj_ctx.weight", context).reshape(shape)
             k = _rms(k, eps) * read(a + "k_norm_ctx.weight")
-            slot = self.position % len(keys)
-            keys[slot] = apply_rope_neox(k[None], cos, sin)[0]
-            values[slot] = m.project(a + "v_proj_ctx.weight", context).reshape(keys.shape[1:])
+            k = apply_rope_neox(k[None], cos, sin)[0]
+            v = m.project(a + "v_proj_ctx.weight", context).reshape(shape)
+            if self.kv is None:
+                slot = self.position % len(self.keys[layer])
+                self.keys[layer][slot], self.values[layer][slot] = k, v
+            else:
+                self.kv.append(layer, self.position, k, v)
         self.context = _rms(mixed[-1], eps) * read("markov_head.dflare_norm.weight")
         self.position += 1
 
@@ -105,7 +117,7 @@ class Inkling2DSparkSession:
         h = np.vstack((first, np.broadcast_to(read("mask_embed"), (count, first.size))))
         nh, nk, dim = (c[k] for k in ("num_attention_heads", "num_key_value_heads", "head_dim"))
         cos, sin = rope_tables_neox(np.arange(self.position, self.position + len(h)), dim, c["rope_theta"])
-        for layer, (keys, values) in enumerate(zip(self.keys, self.values)):
+        for layer in range(c["num_hidden_layers"]):
             prefix = f"layers.{layer}."
             a = prefix + "self_attn."
             x = _rms(h, eps) * read(prefix + "input_layernorm.weight")
@@ -116,10 +128,14 @@ class Inkling2DSparkSession:
             k = apply_rope_neox(_rms(k, eps) * read(a + "k_norm.weight"), cos, sin)
             # All draft rows see the entire noise block and the same target prefix window.
             start = 0 if layer not in c["local_layer_ids"] else max(0, self.position - c["sliding_window_size"] + 1)
-            slots = np.arange(start, self.position) % len(keys)
-            k = np.concatenate((keys[slots], k), axis=0)
-            v = np.concatenate((values[slots], v), axis=0)
-            out = m.attend(q, k, v).reshape(len(h), nh * dim)
+            if self.kv is None:
+                slots = np.arange(start, self.position) % len(self.keys[layer])
+                k = np.concatenate((self.keys[layer][slots], k), axis=0)
+                v = np.concatenate((self.values[layer][slots], v), axis=0)
+                out = m.attend(q, k, v)
+            else:
+                out = self.kv.attend(layer, start, self.position, q, k, v)
+            out = out.reshape(len(h), nh * dim)
             h = h + m.project(a + "o_proj.weight", out)
             x = _rms(h, eps) * read(prefix + "post_attention_layernorm.weight")
             g = m.project(prefix + "mlp.gate_proj.weight", x)

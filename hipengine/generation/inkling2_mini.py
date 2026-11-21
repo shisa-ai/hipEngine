@@ -131,21 +131,28 @@ class Inkling2ReferenceGenerator:
         raise_if_generation_deadline_expired(request)
         capacity = len(ids) + request.max_tokens - 1
         session = self.model.session(capacity) if request.max_tokens else None
+        draft = None
         try:
-            return self._generate_row_with_session(request, row, ids, session, capacity,
+            if session is not None and drafter is not None:
+                draft = drafter.session(capacity)
+            return self._generate_row_with_session(request, row, ids, session, draft,
                                                    image_start=image_start, features=features, drafter=drafter)
         finally:
-            close = getattr(session, "close", None)
-            if callable(close):
-                close()
+            try:
+                close = getattr(draft, "close", None)
+                if callable(close):
+                    close()
+            finally:
+                close = getattr(session, "close", None)
+                if callable(close):
+                    close()
 
-    def _generate_row_with_session(self, request, row, ids, session, capacity, *, image_start, features, drafter):
+    def _generate_row_with_session(self, request, row, ids, session, draft, *, image_start, features, drafter):
         generated = []
         reason, eos, stop_sequence, mode = "length", None, (), None
         proposed = accepted = 0
         candidates = deque()
         if session is not None:
-            draft = drafter.session(capacity) if drafter is not None else None
             taps = frozenset(drafter.taps) if draft is not None else ()
 
             def advance(token, **options):

@@ -16,6 +16,7 @@ from hipengine.models.inkling2_mini import INKLING2_MINI
 from hipengine.runtime.inkling2_device_attention import Inkling2DeviceAttention
 from hipengine.runtime.inkling2_device_block_attention import Inkling2DeviceBlockAttention
 from hipengine.runtime.inkling2_device_convolution import Inkling2DeviceConvolution
+from hipengine.runtime.inkling2_device_draft_kv import Inkling2DeviceDraftKV
 
 
 class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
@@ -81,7 +82,9 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
                     draft.weights, runtime=self._runtime, blas=self._blas, lock=self._blas_lock,
                 ))
                 draft.project = dense.project
-                draft.attend = self._block_attention
+                draft.kv_factory = lambda capacity, cfg: Inkling2DeviceDraftKV(
+                    capacity, cfg, runtime=self._runtime, attend=self._block_attention,
+                )
                 self._draft = draft
             return self._draft
 
