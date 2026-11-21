@@ -123,8 +123,8 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
                          variant="default")
         grouped = resolve(backend=_BACKEND, layer="inkling2_expert_projection", quant=INKLING2_MINI.default_quant,
                           variant="grouped_wave_rows")
-        paired = resolve(backend=_BACKEND, layer="inkling2_expert_projection", quant=INKLING2_MINI.default_quant,
-                         variant="paired")
+        tiled = resolve(backend=_BACKEND, layer="inkling2_expert_projection", quant=INKLING2_MINI.default_quant,
+                        variant="tiled")
         pointwise = resolve(backend=_BACKEND, layer="inkling2_expert_pointwise", quant=INKLING2_MINI.default_quant,
                             variant="default")
         conv = resolve(backend="hip_gfx1100", layer="inkling2_short_conv", quant=INKLING2_MINI.default_quant,
@@ -166,7 +166,7 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
             experts = owned.enter_context(Inkling2DeviceExperts(
                 weights, (v.weight_layer for v in self.model.plan.visits), runtime=runtime, launch=launch,
                 grouped=grouped, max_selected=cfg["num_experts_per_tok"], pointwise=pointwise,
-                expand_nvfp4_scales=True, paired=paired,
+                expand_nvfp4_scales=True, tiled=tiled,
             ))
             self._experts = experts
             self._dense = dense

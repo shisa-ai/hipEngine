@@ -26,27 +26,30 @@ class _ResidentBank:
     expanded_scales: bool = False
 
 
-def _pair_routes(ids):
-    """Build (expert, flat route, optional second route) records."""
+def _tile_routes(ids, width):
+    """Build fixed-width records of same-expert routes, padded with -1."""
     flat = ids.ravel()
     ordered = np.argsort(flat, kind="stable").astype(np.int32)
     experts = flat[ordered]
     i = np.arange(flat.size, dtype=np.int32)
     starts = np.maximum.accumulate(np.where(np.r_[True, experts[1:] != experts[:-1]], i, 0))
-    first = i[(i - starts) % 2 == 0]
-    following = np.minimum(first + 1, len(i) - 1)
-    second = np.where((following != first) & (experts[following] == experts[first]), ordered[following], -1)
-    return np.column_stack((experts[first], ordered[first], second))
+    first = i[(i - starts) % width == 0]
+    locations = first[:, None] + np.arange(width, dtype=np.int32)
+    safe = np.minimum(locations, len(i) - 1)
+    routes = np.where((locations == safe) & (experts[safe] == experts[first, None]), ordered[safe], -1)
+    return np.column_stack((experts[first], routes))
 
 
 class Inkling2DeviceExperts:
     """Own packed banks and synchronized FP32 projection scratch on one device."""
 
     def __init__(self, weights, layers, *, runtime, launch, grouped=None, max_selected=1, pointwise=None,
-                 expand_nvfp4_scales=False, paired=None):
+                 expand_nvfp4_scales=False, tiled=None, tile_width=4):
+        if tile_width not in (2, 4):
+            raise ValueError("Inkling 2 expert tile width must be 2 or 4")
         self._expand_nvfp4_scales = expand_nvfp4_scales
         self._pointwise = pointwise
-        self._paired = paired
+        self._tiled, self._tile_width = tiled, tile_width
         self._runtime = runtime
         self._launch = launch
         self._grouped = grouped
@@ -149,7 +152,7 @@ class Inkling2DeviceExperts:
         if block is None or tokens > block[0]:
             # Geometric growth bounds the temporary allocation count when block widths vary.
             capacity = min(65535, 1 << (tokens - 1).bit_length())
-            extra = 3 * self._max_selected if self._paired is not None else 0
+            extra = 5 * self._max_selected if self._tiled is not None else 0
             staging = np.empty((self._staging.size + extra) * capacity, dtype=np.float32)
             active = self._allocate(staging.nbytes)
             projection = self._allocate(self._output.nbytes * capacity)
@@ -178,12 +181,13 @@ class Inkling2DeviceExperts:
                 raise ValueError("invalid Inkling 2 device expert feed-forward geometry")
             host, device_input, device_output = self._feed_scratch(tokens)
             count = ids.shape[-1]
-            # Reserve pairing for prompt-sized blocks; short verification blocks keep the existing launch.
-            pairs = _pair_routes(ids) if self._paired is not None and tokens >= 16 and ids.size <= 65535 else None
+            # Reserve weight-sharing tiles for prompt blocks; short verification is unchanged.
+            tile_width = self._tile_width
+            tiles = _tile_routes(ids, tile_width) if self._tiled is not None and tokens >= 16 and ids.size <= 65535 else None
             header = 2 * ids.size
-            if pairs is not None:
-                host[header:header + pairs.size].view(np.int32)[:] = pairs.ravel()
-            input_start = header + (0 if pairs is None else pairs.size)
+            if tiles is not None:
+                host[header:header + tiles.size].view(np.int32)[:] = tiles.ravel()
+            input_start = header + (0 if tiles is None else tiles.size)
             stage = host[:input_start + hidden.size]
             stage[:ids.size].view(np.int32)[:] = ids.ravel()
             stage[ids.size:header].reshape(mix.shape)[...] = mix
@@ -197,10 +201,10 @@ class Inkling2DeviceExperts:
                 args = (bank.weights.ptr, bank.scales.ptr, inputs, output)
                 geometry = (bank.device_outer, count, bank.rows, bank.columns, stride)
                 modes = dict(nvfp4=bank.outer_scales is not None, expanded_scales=bank.expanded_scales)
-                if pairs is None:
+                if tiles is None:
                     self._grouped(*args, base, *geometry, tokens=tokens, **modes)
                 else:
-                    self._paired(*args, base + 2 * ids.nbytes, *geometry, pairs=len(pairs), **modes)
+                    self._tiled(*args, base + 2 * ids.nbytes, *geometry, tiles=len(tiles), tile_width=tile_width, **modes)
 
             with self._transfer.exchange(base, inputs, stage, result, pinned=True):
                 launch(gate, 0)

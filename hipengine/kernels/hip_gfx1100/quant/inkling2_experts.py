@@ -51,19 +51,19 @@ def launch_grouped_experts(w, s, x, out, ids, outer, count, rows, columns, strid
 
 
 @lru_cache(maxsize=1)
-def _paired_symbol():
-    fn = _expert_library().hipengine_inkling2_paired_experts
-    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int] * 7
+def _tiled_symbol():
+    fn = _expert_library().hipengine_inkling2_tiled_experts
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int] * 8
     fn.restype = ctypes.c_int
     return fn
 
 
-def launch_paired_experts(w, s, x, out, pairs_ptr, outer, count, rows, columns, stride, *,
-                          nvfp4, pairs, expanded_scales=False):
-    status = _paired_symbol()(w, s, x, out, pairs_ptr, outer, count, rows, columns, stride, nvfp4,
-                              expanded_scales, pairs)
+def launch_tiled_experts(w, s, x, out, routes, outer, count, rows, columns, stride, *,
+                         nvfp4, tiles, tile_width, expanded_scales=False):
+    status = _tiled_symbol()(w, s, x, out, routes, outer, count, rows, columns, stride, nvfp4,
+                             expanded_scales, tiles, tile_width)
     if status != HIP_SUCCESS:
-        raise HipError(f"Inkling 2 paired expert projection failed with HIP status {status}")
+        raise HipError(f"Inkling 2 tiled expert projection failed with HIP status {status}")
 
 
 @lru_cache(maxsize=1)
@@ -85,5 +85,5 @@ launch_wave_grouped_experts = partial(launch_grouped_experts, wave_rows=True)
 register(KernelKey("hip_gfx1100", "inkling2_expert_projection", "inkling2_mixed", "grouped_wave_rows"),
          launch_wave_grouped_experts)
 register(KernelKey("hip_gfx1100", "inkling2_expert_projection", "inkling2_mixed", "grouped"), launch_grouped_experts)
-register(KernelKey("hip_gfx1100", "inkling2_expert_projection", "inkling2_mixed", "paired"), launch_paired_experts)
+register(KernelKey("hip_gfx1100", "inkling2_expert_projection", "inkling2_mixed", "tiled"), launch_tiled_experts)
 register(KernelKey("hip_gfx1100", "inkling2_expert_projection", "inkling2_mixed", "default"), launch_inkling2_expert)

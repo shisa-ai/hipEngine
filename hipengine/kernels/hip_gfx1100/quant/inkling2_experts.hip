@@ -164,22 +164,26 @@ extern "C" int hipengine_inkling2_grouped_expert_projection(
     return hipGetLastError();
 }
 
-template <bool NVFP4, bool WIDENED>
-__global__ void inkling2_expert_projection_paired(const uint8_t* w, const uint8_t* s, const float* x,
-                                                  float* out, const int32_t* pairs, const float* outers,
-                                                  int count, int rows, int cols, int input_stride) {
+template <bool NVFP4, bool WIDENED, int Tile>
+__global__ void inkling2_expert_projection_tiled(const uint8_t* w, const uint8_t* s, const float* x,
+                                                 float* out, const int32_t* routes, const float* outers,
+                                                 int count, int rows, int cols, int input_stride) {
     const int row = 4 * blockIdx.x + threadIdx.x / 32;
     if (row >= rows) return;
-    const int32_t* item = pairs + 3 * blockIdx.y;
-    const int expert = item[0], first = item[1], second = item[2];
+    const int32_t* item = routes + (Tile + 1) * blockIdx.y;
+    const int expert = item[0];
     const size_t physical = size_t(expert) * rows + row;
     w += physical * (NVFP4 ? cols / 2 : cols);
     s += physical * (cols / (NVFP4 ? 16 : 32)) * (WIDENED ? 2 : 1);
     const float outer = NVFP4 ? outers[expert] : 1.0f;
-    const float* x0 = x + (input_stride ? size_t(first) * input_stride : size_t(first / count) * cols);
-    const float* x1 = second < 0 ? x0 : x + (input_stride ? size_t(second) * input_stride : size_t(second / count) * cols);
+    const float* inputs[Tile];
+    float accum[Tile][4] = {};
+    #pragma unroll
+    for (int t = 0; t < Tile; ++t) {
+        const int route = item[t + 1] < 0 ? item[1] : item[t + 1];
+        inputs[t] = x + (input_stride ? size_t(route) * input_stride : size_t(route / count) * cols);
+    }
     const int lane = threadIdx.x % 32;
-    float a[4] = {}, b[4] = {};
     const int full = cols / 128 * 128;
     int col = lane;
     for (; col < full; col += 128) {
@@ -187,8 +191,8 @@ __global__ void inkling2_expert_projection_paired(const uint8_t* w, const uint8_
         for (int i = 0; i < 4; ++i) {
             const int c = col + 32 * i;
             const float value = inkling_expert_value<NVFP4, WIDENED>(w, s, c, outer);
-            a[i] = fmaf(value, x0[c], a[i]);
-            b[i] = fmaf(value, x1[c], b[i]);
+            #pragma unroll
+            for (int t = 0; t < Tile; ++t) accum[t][i] = fmaf(value, inputs[t][c], accum[t][i]);
         }
     }
     #pragma unroll
@@ -196,37 +200,46 @@ __global__ void inkling2_expert_projection_paired(const uint8_t* w, const uint8_
         const int c = col + 32 * i;
         if (c >= cols) continue;
         const float value = inkling_expert_value<NVFP4, WIDENED>(w, s, c, outer);
-        a[i] = fmaf(value, x0[c], a[i]);
-        b[i] = fmaf(value, x1[c], b[i]);
+        #pragma unroll
+        for (int t = 0; t < Tile; ++t) accum[t][i] = fmaf(value, inputs[t][c], accum[t][i]);
     }
-    float left = (a[0] + a[2]) + (a[1] + a[3]), right = (b[0] + b[2]) + (b[1] + b[3]);
     #pragma unroll
-    for (int offset = 16; offset > 0; offset /= 2) {
-        left += __shfl_down(left, offset, 32);
-        right += __shfl_down(right, offset, 32);
-    }
-    if (lane == 0) {
-        out[size_t(first) * rows + row] = left;
-        if (second >= 0) out[size_t(second) * rows + row] = right;
+    for (int t = 0; t < Tile; ++t) {
+        float sum = (accum[t][0] + accum[t][2]) + (accum[t][1] + accum[t][3]);
+        #pragma unroll
+        for (int offset = 16; offset > 0; offset /= 2) sum += __shfl_down(sum, offset, 32);
+        if (lane == 0 && item[t + 1] >= 0) out[size_t(item[t + 1]) * rows + row] = sum;
     }
 }
 
-extern "C" int hipengine_inkling2_paired_experts(
-    const uint8_t* w, const uint8_t* s, const float* x, float* out, const int32_t* pairs, const float* outers,
-    int count, int rows, int cols, int input_stride, int nvfp4, int widened, int group_pairs) {
-    if (!w || !s || !x || !out || !pairs || (nvfp4 && !outers) || count <= 0 || rows <= 0 ||
-        cols <= 0 || cols % (nvfp4 ? 16 : 32) || (input_stride != 0 && input_stride != cols) ||
-        (widened && !nvfp4) || group_pairs <= 0 || group_pairs > 65535) return hipErrorInvalidValue;
-    const dim3 grid(1 + (rows - 1) / 4, group_pairs);
-    if (widened) {
-        hipLaunchKernelGGL((inkling2_expert_projection_paired<true, true>), grid, dim3(128), 0, 0,
-                           w, s, x, out, pairs, outers, count, rows, cols, input_stride);
-    } else if (nvfp4) {
-        hipLaunchKernelGGL((inkling2_expert_projection_paired<true, false>), grid, dim3(128), 0, 0,
-                           w, s, x, out, pairs, outers, count, rows, cols, input_stride);
+template <bool NVFP4, bool WIDENED>
+static void launch_tiled_experts(const uint8_t* w, const uint8_t* s, const float* x, float* out,
+                                const int32_t* routes, const float* outers, int count, int rows, int cols,
+                                int input_stride, int tiles, int tile_width) {
+    const dim3 grid(1 + (rows - 1) / 4, tiles);
+    if (tile_width == 4) {
+        hipLaunchKernelGGL((inkling2_expert_projection_tiled<NVFP4, WIDENED, 4>), grid, dim3(128), 0, 0,
+                           w, s, x, out, routes, outers, count, rows, cols, input_stride);
     } else {
-        hipLaunchKernelGGL((inkling2_expert_projection_paired<false, false>), grid, dim3(128), 0, 0,
-                           w, s, x, out, pairs, outers, count, rows, cols, input_stride);
+        hipLaunchKernelGGL((inkling2_expert_projection_tiled<NVFP4, WIDENED, 2>), grid, dim3(128), 0, 0,
+                           w, s, x, out, routes, outers, count, rows, cols, input_stride);
+    }
+}
+
+extern "C" int hipengine_inkling2_tiled_experts(
+    const uint8_t* w, const uint8_t* s, const float* x, float* out, const int32_t* routes, const float* outers,
+    int count, int rows, int cols, int input_stride, int nvfp4, int widened, int tiles, int tile_width) {
+    if (!w || !s || !x || !out || !routes || (nvfp4 && !outers) || count <= 0 || rows <= 0 ||
+        cols <= 0 || cols % (nvfp4 ? 16 : 32) || (input_stride != 0 && input_stride != cols) ||
+        (widened && !nvfp4) || tiles <= 0 || tiles > 65535 || (tile_width != 2 && tile_width != 4)) {
+        return hipErrorInvalidValue;
+    }
+    if (widened) {
+        launch_tiled_experts<true, true>(w, s, x, out, routes, outers, count, rows, cols, input_stride, tiles, tile_width);
+    } else if (nvfp4) {
+        launch_tiled_experts<true, false>(w, s, x, out, routes, outers, count, rows, cols, input_stride, tiles, tile_width);
+    } else {
+        launch_tiled_experts<false, false>(w, s, x, out, routes, outers, count, rows, cols, input_stride, tiles, tile_width);
     }
     return hipGetLastError();
 }
