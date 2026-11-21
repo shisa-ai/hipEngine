@@ -16,6 +16,7 @@ def test_device_dense_vector_and_block_match_cpu():
     from hipengine.core.hip import get_hip_runtime
     from hipengine.core.rocblas import Rocblas
     from hipengine.kernels.backends import resolve_backend
+    from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_f32_bf16w_f32_out
 
     if resolve_backend("auto", execution_device=True) != "hip_gfx1100":
         pytest.skip("test requires gfx1100")
@@ -31,10 +32,20 @@ def test_device_dense_vector_and_block_match_cpu():
 
     blas = Rocblas.load()
     try:
-        with Inkling2DeviceDense(SimpleNamespace(dense=dense), runtime=get_hip_runtime(), blas=blas) as owner:
+        bits = (matrix.view(np.uint32) >> 16).astype(np.uint16)
+        widened = (bits.astype(np.uint32) << 16).view(np.float32)
+        weights = SimpleNamespace(dense=dense, native_bf16=lambda name, selector: bits[selector] if name == "head" else None)
+        with Inkling2DeviceDense(weights, runtime=get_hip_runtime(), blas=blas) as owner:
             np.testing.assert_allclose(owner.project("head", rows[0], limit=12), matrix[:12] @ rows[0], atol=1e-5)
             np.testing.assert_allclose(owner.project("head", rows, limit=12), rows @ matrix[:12].T, atol=1e-5)
             assert reads == ["head"]
+            for x in (rows[0], rows):
+                native = owner.project("head", x, limit=12, native_bf16=dense_gemv_f32_bf16w_f32_out)
+                np.testing.assert_allclose(native, x @ widened[:12].T, atol=1e-5)
+                # Native reads must not expand the original bits when the strict FP32 copy already exists.
+                assert reads == ["head"]
+            np.testing.assert_array_equal(owner.project("other", rows, native_bf16=dense_gemv_f32_bf16w_f32_out),
+                                          owner.project("other", rows))
             for x in (rows[0], rows):
                 names = ("head", "small", "other", "smaller")
                 expected = tuple(owner.project(name, x) for name in names)

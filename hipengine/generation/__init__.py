@@ -167,6 +167,7 @@ def register_builtin_generators() -> None:
     # a prior LLM lifecycle test cannot make later profile resolution depend on
     # collection order.
     from hipengine.generation.gemma4_profiles import register_gemma4_gguf_profiles
+    from hipengine.generation.inkling2_mini_gfx1100 import register_inkling2_gfx1100_profiles
     from hipengine.generation.llama_dense_profiles import register_llama_dense_profiles
     from hipengine.generation.qwen35_dense_gfx1100_profiles import (
         register_qwen36_dense_gguf_gfx1100_profiles,
@@ -185,6 +186,7 @@ def register_builtin_generators() -> None:
     )
 
     register_gemma4_gguf_profiles()
+    register_inkling2_gfx1100_profiles()
     register_llama_dense_profiles()
     register_qwen36_dense_gguf_gfx1100_profiles()
     register_qwen36_moe_gguf_gfx1100_profiles()

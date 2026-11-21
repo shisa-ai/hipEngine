@@ -61,6 +61,10 @@ class Inkling2TextWeights:
             return (data.astype(np.uint32) << 16).view(np.float32)
         return np.asarray(data)
 
+    def native_bf16(self, name: str, selector=...) -> np.ndarray | None:
+        """Return original BF16 bits without a conversion; F32 stays F32."""
+        return self.raw(name)[selector] if self._info(name).dtype == "BF16" else None
+
     def expert_bank(self, layer: int, projection: str) -> Inkling2ExpertBank:
         prefix = f"layers.{layer}.mlp.experts.{projection}_weight"
         weight_info = self._info(prefix)

@@ -18,6 +18,21 @@ def test_original_architecture_resolves_to_cpu_reference_factory():
     assert factory is Inkling2ReferenceGenerator
 
 
+def test_gfx1100_vocabulary_profiles_resolve_native_and_strict():
+    from hipengine.execution_profiles import resolve_default_execution_profile, resolve_runtime_profile
+
+    register_builtin_generators()
+    model = resolve_model("Inkling2LoopForConditionalGeneration")
+    key = dict(model=model.name, backend="hip_gfx1100", quant=model.default_quant)
+    assert resolve_default_execution_profile(**key) == "production"
+    native = resolve_runtime_profile(**key, profile="production")
+    strict = resolve_runtime_profile(**key, profile="strict")
+    assert not native.fell_back_to_strict
+    assert native.manifest["selections"][0]["selected_variant"] == "native_bf16"
+    assert native.manifest["selections"][0]["strict_fallback_variant"] == "fp32_rocblas"
+    assert strict.manifest["selections"][0]["selected_variant"] == "fp32_rocblas"
+
+
 def test_cpu_reference_generation_uses_shared_sampler_and_enforces_context():
     class Session:
         def step(self, token, *, logits=True):

@@ -11,7 +11,7 @@ from hipengine.core.memory import free, malloc
 
 
 class Inkling2DeviceDense:
-    """Own lazily uploaded FP32 matrices and synchronous projection scratch."""
+    """Own lazily uploaded dense matrices and synchronous FP32 activation scratch."""
 
     def __init__(self, weights, *, runtime, blas, lock=None):
         self._weights = weights
@@ -22,10 +22,13 @@ class Inkling2DeviceDense:
         self._input = self._output = None
         self._closed = False
 
-    def _matrix(self, name, limit):
-        key = name, limit
+    def _matrix(self, name, limit, *, preserve_bf16=False):
+        key = name, limit, preserve_bf16
         if key not in self._matrices:
-            host = np.ascontiguousarray(self._weights.dense(name, slice(limit)), dtype=np.float32)
+            selector = slice(limit)
+            bits = self._weights.native_bf16(name, selector) if preserve_bf16 else None
+            host = (np.ascontiguousarray(bits) if bits is not None else
+                    np.ascontiguousarray(self._weights.dense(name, selector), dtype=np.float32))
             if host.ndim != 2 or not all(host.shape):
                 raise ValueError(f"Inkling 2 dense weight {name} is not a nonempty matrix")
             buf = malloc(host.nbytes, runtime=self._runtime)
@@ -34,7 +37,7 @@ class Inkling2DeviceDense:
             except BaseException:
                 free(buf, runtime=self._runtime)
                 raise
-            self._matrices[key] = buf, host.shape
+            self._matrices[key] = buf, host.shape, bits is not None
         return self._matrices[key]
 
     def _scratch(self, name, nbytes):
@@ -48,13 +51,13 @@ class Inkling2DeviceDense:
         setattr(self, name, buf)
         return buf
 
-    def project(self, name: str, hidden: np.ndarray, *, limit: int | None = None) -> np.ndarray:
+    def project(self, name: str, hidden: np.ndarray, *, limit: int | None = None, native_bf16=None) -> np.ndarray:
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling 2 dense residency is closed")
             if hidden.ndim not in (1, 2) or not all(hidden.shape):
                 raise ValueError("Inkling 2 dense projection expects a vector or row matrix")
-            weight, (outputs, inputs) = self._matrix(name, limit)
+            weight, (outputs, inputs), bf16 = self._matrix(name, limit, preserve_bf16=native_bf16 is not None)
             if hidden.shape[-1] != inputs:
                 raise ValueError(f"Inkling 2 dense projection {name} expects {inputs} input values per row")
             x = np.ascontiguousarray(hidden, dtype=np.float32)
@@ -62,7 +65,10 @@ class Inkling2DeviceDense:
             inp = self._scratch("_input", x.nbytes)
             out = self._scratch("_output", y.nbytes)
             self._runtime.memcpy(inp.ptr, x.ctypes.data, x.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
-            if x.ndim == 1:
+            if bf16:
+                rows = 1 if x.ndim == 1 else x.shape[0]
+                native_bf16(inp.ptr, weight.ptr, out.ptr, rows, inputs, outputs, runtime=self._runtime)
+            elif x.ndim == 1:
                 self._blas.sgemv_rowmajor_nt(inp.ptr, weight.ptr, out.ptr, in_features=inputs, out_features=outputs)
             else:
                 self._blas.sgemm_rowmajor_nt(inp.ptr, weight.ptr, out.ptr, rows=x.shape[0],
@@ -81,10 +87,10 @@ class Inkling2DeviceDense:
             if hidden.ndim not in (1, 2) or not all(hidden.shape):
                 raise ValueError("Inkling 2 dense projection expects a vector or row matrix")
             matrices = [self._matrix(name, None) for name in names]
-            if any(hidden.shape[-1] != n for _, (_, n) in matrices):
+            if any(hidden.shape[-1] != n for _, (_, n), _ in matrices):
                 raise ValueError("Inkling 2 grouped dense projection input width differs from its matrices")
             x = np.ascontiguousarray(hidden, dtype=np.float32)
-            widths = [m for _, (m, _) in matrices]
+            widths = [m for _, (m, _), _ in matrices]
             rows = 1 if x.ndim == 1 else x.shape[0]
             y = np.empty(rows * sum(widths), dtype=np.float32)
             inp = self._scratch("_input", x.nbytes)
@@ -92,7 +98,7 @@ class Inkling2DeviceDense:
             copy = self._runtime.memcpy
             copy(inp.ptr, x.ctypes.data, x.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
             offset = 0
-            for weight, (m, n) in matrices:
+            for weight, (m, n), _ in matrices:
                 dst = out.ptr + offset * y.itemsize
                 if x.ndim == 1:
                     self._blas.sgemv_rowmajor_nt(inp.ptr, weight.ptr, dst, in_features=n, out_features=m)

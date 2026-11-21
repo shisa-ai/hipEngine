@@ -70,6 +70,9 @@ class Inkling2TextReference:
         weight = self.weights.dense(name) if limit is None else self.weights.dense(name, slice(limit))
         return hidden @ weight.T
 
+    def project_logits(self, hidden):
+        return self.project("unembed.weight", hidden, limit=self.config["unpadded_vocab_size"])
+
     def project_many(self, names, hidden):
         return tuple(self.project(name, hidden) for name in names)
 
@@ -211,7 +214,7 @@ class Inkling2TextSession:
             capture(len(self.model.plan.visits), h)
         if not logits:
             return None
-        raw = self.model.project("unembed.weight", h, limit=c["unpadded_vocab_size"])
+        raw = self.model.project_logits(h)
         cap = c["final_logit_softcapping"]
         return cap * np.tanh(raw / cap)
 

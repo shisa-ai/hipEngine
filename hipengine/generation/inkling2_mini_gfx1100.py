@@ -1,15 +1,20 @@
 """gfx1100 Inkling 2 generator with HIP projections and host sequence state."""
 
 from contextlib import ExitStack
+from functools import partial
 from threading import Lock
 
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.rocblas import Rocblas
+from hipengine.execution_profiles import (
+    RuntimeProfileKey, RuntimeProfilePlan, VariantSelection, register_runtime_profile_plan, registered_runtime_profile_keys,
+)
 from hipengine.generation.inkling2_mini import Inkling2ReferenceGenerator
 from hipengine.generation.registry import register_text_generator
 from hipengine.kernels.hip_gfx1100.attention import inkling2_block_attention, inkling2_target_attention  # noqa: F401
+from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_f32_bf16w_f32_out
 from hipengine.kernels.hip_gfx1100.quant import inkling2_experts, inkling2_short_conv  # noqa: F401
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import KernelKey, is_registered, register, resolve
 from hipengine.loading.inkling2_device_dense import Inkling2DeviceDense
 from hipengine.loading.inkling2_device_experts import Inkling2DeviceExperts
 from hipengine.models.inkling2_mini import INKLING2_MINI
@@ -17,6 +22,48 @@ from hipengine.runtime.inkling2_device_attention import Inkling2DeviceAttention
 from hipengine.runtime.inkling2_device_block_attention import Inkling2DeviceBlockAttention
 from hipengine.runtime.inkling2_device_convolution import Inkling2DeviceConvolution
 from hipengine.runtime.inkling2_device_draft_kv import Inkling2DeviceDraftKV
+
+
+_BACKEND = "hip_gfx1100"
+_HEAD = "inkling2_vocabulary_projection"
+_HEAD_EVIDENCE = "worklog/entries/20261121T084738.426332Z-lhl-inkling2-mini-d38a06.md"
+
+
+def _fp32_head(owner):
+    return owner.project
+
+
+def _native_head(owner):
+    return partial(owner.project, native_bf16=dense_gemv_f32_bf16w_f32_out)
+
+
+def _bind_head(generator, profile):
+    selection, = profile.manifest["selections"]
+    projection = resolve(backend=_BACKEND, layer=_HEAD, quant=INKLING2_MINI.default_quant,
+                         variant=selection["selected_variant"])(generator._dense)
+    generator.model.project_logits = partial(
+        projection, "unembed.weight", limit=generator.model.config["unpadded_vocab_size"],
+    )
+
+
+def register_inkling2_gfx1100_profiles():
+    model, quant = INKLING2_MINI.name, INKLING2_MINI.default_quant
+    for variant, projection in (("fp32_rocblas", _fp32_head), ("native_bf16", _native_head)):
+        key = KernelKey(_BACKEND, _HEAD, quant, variant)
+        if not is_registered(key):
+            register(key, projection)
+    registered = registered_runtime_profile_keys()
+    for profile, variant, fallback in (
+        ("strict", "fp32_rocblas", None), ("production", "native_bf16", "fp32_rocblas"),
+    ):
+        if RuntimeProfileKey(model, _BACKEND, quant, profile) not in registered:
+            register_runtime_profile_plan(
+                model=model, backend=_BACKEND, quant=quant, profile=profile,
+                plan=RuntimeProfilePlan(
+                    selections=(VariantSelection(_HEAD, "checkpoint_bf16_head", variant, fallback, _HEAD_EVIDENCE),),
+                    kv_policy="fp32", graph_policy="eager", binder=_bind_head,
+                ),
+            )
 
 
 class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
@@ -60,6 +107,7 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
                 weights, (v.weight_layer for v in self.model.plan.visits), runtime=runtime, launch=launch,
                 grouped=grouped, max_selected=cfg["num_experts_per_tok"],
             ))
+            self._dense = dense
             self.model.project = dense.project
             self.model.project_many = dense.project_many
             self.model.project_expert = experts.project
@@ -98,5 +146,5 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
         self._owned.close()
 
 
-register_text_generator(model=INKLING2_MINI.name, backend="hip_gfx1100", quant=INKLING2_MINI.default_quant,
+register_text_generator(model=INKLING2_MINI.name, backend=_BACKEND, quant=INKLING2_MINI.default_quant,
                         factory=Inkling2Gfx1100Generator)
