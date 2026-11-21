@@ -80,6 +80,24 @@ def test_q4_k_dequantizes_one_superblock_scale_group() -> None:
     np.testing.assert_allclose(out[0, 32:], 0.0)
 
 
+def test_nvfp4_dequantizes_split_nibbles_and_unsigned_scales() -> None:
+    first = [0x38, 0x01, 0x7F, 0xC0] + [0xE1] * 8 + [0x72] * 8 + [0x0D] * 8 + [0xF8] * 8
+    second = [0x00, 0x7E, 0x30, 0x40] + [0x0D] * 8 + [0x71] * 8 + [0x21] * 8 + [0x43] * 8
+    packed = np.asarray(first + second, dtype=np.uint8).reshape(1, 1, 72)
+    out = dequantize_gguf_data(packed, GGMLQuantizationType.NVFP4)
+
+    assert out.dtype == np.float32
+    assert out.shape == (1, 1, 128)
+    expected = np.asarray(
+        [0.5] * 8 + [-4.0] * 8 + [2**-9] * 8 + [6 * 2**-9] * 8
+        + [-0.0] * 8 + [0.0] * 16 + [-12.0] * 8
+        + [-0.0] * 8 + [0.0] * 8 + [224.0] * 8 + [2688.0] * 8
+        + [0.25] * 8 + [0.5] * 8 + [3.0] * 8 + [4.0] * 8,
+        dtype=np.float32,
+    )
+    np.testing.assert_array_equal(out[0, 0].view(np.uint32), expected.view(np.uint32))
+
+
 def test_target_local_model_tensor_types_have_fallback_dequant_support() -> None:
     for qtype in (
         GGMLQuantizationType.F32,
@@ -92,5 +110,6 @@ def test_target_local_model_tensor_types_have_fallback_dequant_support() -> None
         GGMLQuantizationType.Q6_K,
         GGMLQuantizationType.IQ4_XS,
         GGMLQuantizationType.MXFP4,
+        GGMLQuantizationType.NVFP4,
     ):
         assert dequantization_supported(qtype), qtype.name

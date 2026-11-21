@@ -290,7 +290,7 @@ GGUF_QUANT_LAYOUTS: dict[GGMLQuantizationType, GGUFQuantLayout] = {
         GGMLQuantizationType.MXFP4, 32, 1 + 16, "uint8_blocks", dequant_supported=True
     ),
     GGMLQuantizationType.NVFP4: _layout(
-        GGMLQuantizationType.NVFP4, 64, 4 + 32, "uint8_blocks"
+        GGMLQuantizationType.NVFP4, 64, 4 + 32, "uint8_blocks", dequant_supported=True
     ),
     GGMLQuantizationType.Q1_0: _layout(
         GGMLQuantizationType.Q1_0, 128, 2 + 16, "uint8_blocks"
@@ -871,6 +871,21 @@ def _dequant_mxfp4_blocks(blocks: np.ndarray) -> np.ndarray:
     return d * qs.astype(np.float32)
 
 
+def _dequant_nvfp4_blocks(blocks: np.ndarray) -> np.ndarray:
+    scales, packed = _split(blocks, [4])
+    exponent = ((scales >> 3) & 15).astype(np.int32)
+    fraction = (scales & 7).astype(np.float32) * np.float32(0.125)
+    # GGML ignores the scale sign bit and treats 0x7f as zero. Its FP4
+    # lookup stores twice the E2M1 values, so halve the scale here.
+    d = np.ldexp(fraction + (exponent != 0), np.maximum(exponent, 1) - 8)
+    d[scales == 0x7F] = 0
+    # Each 16-value group stores its first eight codes in the low nibbles.
+    packed = packed.reshape(-1, 4, 8)
+    codes = np.concatenate((packed & 15, packed >> 4), axis=-1)
+    kvalues = np.asarray(_MXFP4_KVALUES, dtype=np.float32)
+    return (d[..., None] * kvalues[codes]).reshape(-1, 64)
+
+
 _DEQUANT_BLOCKS: dict[GGMLQuantizationType, Callable[[np.ndarray], np.ndarray]] = {
     GGMLQuantizationType.Q4_0: _dequant_q4_0_blocks,
     GGMLQuantizationType.Q4_1: _dequant_q4_1_blocks,
@@ -888,6 +903,7 @@ _DEQUANT_BLOCKS: dict[GGMLQuantizationType, Callable[[np.ndarray], np.ndarray]] 
     GGMLQuantizationType.IQ4_NL: _dequant_iq4_nl_blocks,
     GGMLQuantizationType.IQ4_XS: _dequant_iq4_xs_blocks,
     GGMLQuantizationType.MXFP4: _dequant_mxfp4_blocks,
+    GGMLQuantizationType.NVFP4: _dequant_nvfp4_blocks,
 }
 
 
