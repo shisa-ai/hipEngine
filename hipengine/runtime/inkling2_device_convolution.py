@@ -23,8 +23,8 @@ class Inkling2DeviceConvolution:
                 owner.callback(free, buf, runtime=runtime)
                 return buf.ptr
 
-            self.x = allocate(channels * 4)
-            self.taps = allocate(channels * width * 4)
+            self.staging = np.empty(channels * (1 + width), dtype=np.float32)
+            self.input = allocate(self.staging.nbytes)
             self.out = allocate(channels * 4)
             self.owner = owner.pop_all()
 
@@ -36,24 +36,23 @@ class Inkling2DeviceConvolution:
             raise ValueError("Inkling 2 convolution input and taps do not match session geometry")
         key = visit, name
         if key not in self.histories:
-            shape = channels, self.width
             buf = malloc(channels * self.width * 4, runtime=self.rt)
             self.owner.callback(free, buf, runtime=self.rt)
             self.rt.memset(buf.ptr, 0, buf.nbytes)
             self.histories[key] = buf
         history = self.histories[key]
+        out = np.empty(channels, dtype=np.float32)
+        if history.nbytes != channels * self.width * out.itemsize:
+            raise ValueError("Inkling 2 convolution history geometry changed")
         if undo is not None:
             undo.device(position, self.rt, history.ptr, history.nbytes)
-        x = np.ascontiguousarray(x, dtype=np.float32)
-        taps = np.ascontiguousarray(taps, dtype=np.float32)
-        out = np.empty_like(x)
-        if history.nbytes != taps.nbytes:
-            raise ValueError("Inkling 2 convolution history geometry changed")
+        used = channels * (1 + self.width)
+        self.staging[:channels] = x
+        self.staging[channels:used].reshape(channels, self.width)[...] = taps
         copy = self.rt.memcpy
-        copy(self.x, x.ctypes.data, x.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
-        copy(self.taps, taps.ctypes.data, taps.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+        copy(self.input, self.staging.ctypes.data, used * out.itemsize, HipMemcpyKind.HOST_TO_DEVICE)
         scale = 1 / sqrt((2 if dynamic else 1) * self.width + 1)
-        self.launch(history.ptr, self.x, self.taps, self.out, channels, self.width, scale)
+        self.launch(history.ptr, self.input, self.input + out.nbytes, self.out, channels, self.width, scale)
         copy(out.ctypes.data, self.out, out.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
         return out
 

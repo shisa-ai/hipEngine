@@ -7,18 +7,27 @@ from hipengine.runtime.inkling2_device_convolution import Inkling2DeviceConvolut
 from hipengine.runtime.inkling2_mini_reference import _VisitState
 
 
-def test_device_short_convolution_preserves_separate_visit_histories():
+def test_device_short_convolution_preserves_separate_visit_histories(monkeypatch):
     try:
         ctypes.CDLL("libamdhip64.so")
     except OSError as exc:
         pytest.skip(f"HIP unavailable: {exc}")
-    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
     from hipengine.kernels.backends import resolve_backend
     if resolve_backend("auto", execution_device=True) != "hip_gfx1100":
         pytest.skip("test requires gfx1100")
     from hipengine.kernels.hip_gfx1100.quant.inkling2_short_conv import launch_short_conv
 
-    owner = Inkling2DeviceConvolution(runtime=get_hip_runtime(), launch=launch_short_conv, channels=195, width=4)
+    runtime = get_hip_runtime()
+    copies = []
+    memcpy = type(runtime).memcpy
+
+    def record_copy(self, dst, src, size, kind):
+        copies.append(kind)
+        return memcpy(self, dst, src, size, kind)
+
+    monkeypatch.setattr(type(runtime), "memcpy", record_copy)
+    owner = Inkling2DeviceConvolution(runtime=runtime, launch=launch_short_conv, channels=195, width=4)
     refs = [_VisitState(None, None), _VisitState(None, None)]
     rng = np.random.default_rng(52)
     try:
@@ -26,9 +35,11 @@ def test_device_short_convolution_preserves_separate_visit_histories():
             visit = i % 2
             for name in ("k", "v"):
                 x = rng.standard_normal(193, dtype=np.float32)
-                taps = rng.standard_normal((193, 4), dtype=np.float32)
+                taps = rng.standard_normal((193, 4), dtype=np.float32)[:, ::-1]
                 ref = refs[visit].convolve(name, x, taps, dynamic=bool(visit))
+                copies.clear()
                 gpu = owner.step(visit, name, x, taps, dynamic=bool(visit))
+                assert copies == [HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST]
                 np.testing.assert_allclose(gpu, ref, rtol=1e-6, atol=1e-6)
                 assert np.argmax(gpu) == np.argmax(ref)
                 rp = np.exp(ref.astype(np.float64) - np.max(ref))
