@@ -70,6 +70,36 @@ class Inkling2DeviceDense:
             self._runtime.memcpy(y.ctypes.data, out.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
             return y
 
+    def project_pair(self, first: str, second: str, hidden: np.ndarray):
+        """Share transfers while preserving each FP32 BLAS call's geometry."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling 2 dense residency is closed")
+            if hidden.ndim not in (1, 2) or not all(hidden.shape):
+                raise ValueError("Inkling 2 dense projection expects a vector or row matrix")
+            matrices = [self._matrix(name, None) for name in (first, second)]
+            if any(hidden.shape[-1] != n for _, (_, n) in matrices):
+                raise ValueError("Inkling 2 paired dense projection input width differs from its matrices")
+            x = np.ascontiguousarray(hidden, dtype=np.float32)
+            widths = [m for _, (m, _) in matrices]
+            rows = 1 if x.ndim == 1 else x.shape[0]
+            y = np.empty(rows * sum(widths), dtype=np.float32)
+            inp = self._scratch("_input", x.nbytes)
+            out = self._scratch("_output", y.nbytes)
+            copy = self._runtime.memcpy
+            copy(inp.ptr, x.ctypes.data, x.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+            offset = 0
+            for weight, (m, n) in matrices:
+                dst = out.ptr + offset * y.itemsize
+                if x.ndim == 1:
+                    self._blas.sgemv_rowmajor_nt(inp.ptr, weight.ptr, dst, in_features=n, out_features=m)
+                else:
+                    self._blas.sgemm_rowmajor_nt(inp.ptr, weight.ptr, dst, rows=rows, in_features=n, out_features=m)
+                offset += rows * m
+            copy(y.ctypes.data, out.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+            split = rows * widths[0]
+            return y[:split].reshape(*x.shape[:-1], widths[0]), y[split:].reshape(*x.shape[:-1], widths[1])
+
     def close(self):
         with self._lock:
             self._closed = True

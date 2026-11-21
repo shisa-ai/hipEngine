@@ -61,6 +61,7 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
                 grouped=grouped, max_selected=cfg["num_experts_per_tok"],
             ))
             self.model.project = dense.project
+            self.model.project_pair = dense.project_pair
             self.model.project_expert = experts.project
             self.model.project_experts_group = experts.project_group
             self._block_attention = owned.enter_context(Inkling2DeviceBlockAttention(runtime=runtime, launch=block_attn))

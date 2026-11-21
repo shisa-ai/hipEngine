@@ -70,6 +70,9 @@ class Inkling2TextReference:
         weight = self.weights.dense(name) if limit is None else self.weights.dense(name, slice(limit))
         return hidden @ weight.T
 
+    def project_pair(self, first, second, hidden):
+        return self.project(first, hidden), self.project(second, hidden)
+
     def session(self, capacity: int) -> Inkling2TextSession:
         return Inkling2TextSession(self, capacity)
 
@@ -227,7 +230,8 @@ class Inkling2TextSession:
         def merge(x, name, message):
             ctl = f"controllers.{name}."
             z = project(ctl + "down_weight", np.concatenate((_rms(x, eps), _rms(message, eps)), axis=-1))
-            return (1 - np.tanh(project(ctl + "forget_weight", z))) * x + np.tanh(project(ctl + "gain_weight", z)) * message
+            forget, gain = self.model.project_pair(prefix + ctl + "forget_weight", prefix + ctl + "gain_weight", z)
+            return (1 - np.tanh(forget)) * x + np.tanh(gain) * message
 
         def norm(x, name):
             return _rms(x, eps) * get(name + ".weight")
