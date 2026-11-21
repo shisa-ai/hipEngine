@@ -1695,6 +1695,17 @@ and replace DMS transient ownership before removing unused legacy factories, chu
 identity branches. Keep same-arena checks until snapshot restore proves equivalent ownership;
 missing benchmark coverage is not a refusal reason.
 
+gfx1100 baseline: ordinary BF16 and compact INT8 public requests grow the pool
+under a small initial page floor. Ordinary compact INT8 and DMS compact INT8
+both exercise 512-token prefix reuse, cancellation, refill and clean teardown.
+The non-VMM BF16 comparison grows separate physical chunks, but each request
+still receives pages from one chunk. This is deliberate containment, not a
+cross-chunk addressing result. The first remaining consumer boundary is
+`Qwen35GGUFResidentSession.bind_device_kv_allocation()`: it materializes one
+backing's base pointers and a chunk-relative logical block table. Do not relax
+`GlobalDeviceKVPool._allocate_within_one_chunk()` before that consumer and its
+append/decode leaves can bind the page views.
+
 Done when: `uv run pytest tests/test_unit_kvcache_global_device_pool.py
 tests/test_unit_gguf_vmm_kv_pool.py tests/test_unit_gguf_global_pool_growth.py
 tests/test_unit_gguf_device_kv_binding.py tests/test_unit_gguf_prefix_cache_runner.py -q`. Then
