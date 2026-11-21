@@ -288,25 +288,38 @@ class Inkling2TextSession:
         def linear(name, x):
             return project("attn." + name, x)
 
-        def project_kv(name, x):
-            y = linear(f"w{name}_dv.weight", x)
+        attn_prefix = f"layers.{visit.weight_layer}.attn."
+
+        def linear_many(names, x):
+            return self.model.project_many((attn_prefix + name for name in names), x)
+
+        def convolve_kv(name, y, dynamic=None):
             conv = f"{name}_sconv."
-            if visit.is_local:
+            if dynamic is None:
                 taps = weight(conv + "weight")[:, 0, ::-1]
             else:
-                dynamic = linear(conv + "weight_proj", x).reshape(*leading, nkv, 1, ksize)
+                dynamic = dynamic.reshape(*leading, nkv, 1, ksize)
                 taps = (weight(conv + "static_w").T.reshape(nkv, dim, ksize) + dynamic).reshape(*leading, -1, ksize)
-            return self._conv_rows(visit, name, y, taps, dynamic=not visit.is_local).reshape(*leading, nkv, dim)
+            return self._conv_rows(visit, name, y, taps, dynamic=dynamic is not None).reshape(*leading, nkv, dim)
 
-        attn_prefix = f"layers.{visit.weight_layer}.attn."
-        q, rel, sink, gate = self.model.project_many(
-            (attn_prefix + name for name in ("wq_du.weight", "wr_du.weight", "attn_sink_proj.weight", "gate_attn.weight")),
-            qi,
-        )
+        def project_kv(name, x):
+            projection = f"w{name}_dv.weight"
+            if visit.is_local:
+                return convolve_kv(name, linear(projection, x))
+            y, dynamic = linear_many((projection, f"{name}_sconv.weight_proj"), x)
+            return convolve_kv(name, y, dynamic)
+
+        query_names = ("wq_du.weight", "wr_du.weight", "attn_sink_proj.weight", "gate_attn.weight")
+        if visit.is_local and qi is ki and qi is vi:
+            q, rel, sink, gate, k, v = linear_many((*query_names, "wk_dv.weight", "wv_dv.weight"), qi)
+            k, v = convolve_kv("k", k), convolve_kv("v", v)
+        else:
+            q, rel, sink, gate = linear_many(query_names, qi)
+            k, v = project_kv("k", ki), project_kv("v", vi)
         q = q.reshape(*leading, nh, dim)
         q = _clip(q * weight("q_l2_clip.scale"), c["qk_l2_clip_threshold"])
-        key = _clip(project_kv("k", ki), c["qk_l2_clip_threshold"])
-        value = _rms(project_kv("v", vi), c["rms_norm_eps"])
+        key = _clip(k, c["qk_l2_clip_threshold"])
+        value = _rms(v, c["rms_norm_eps"])
         rel = rel.reshape(*leading, nh, -1)
         rel = _clip(rel * weight("rel_l2_clip.scale"), c["rel_l2_clip_threshold"])
         if not visit.is_local:
