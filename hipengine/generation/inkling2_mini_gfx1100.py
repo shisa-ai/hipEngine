@@ -77,7 +77,7 @@ def _bind_profile(generator, profile):
      model.project_device) = bind(_DENSE, generator._dense)
     model.feed_experts_group = bind(_EXPERTS, generator._experts)
     # Bound the activation and relative-bias scratch; strict keeps its serial traversal.
-    generator.prefill_block_width = 64 if model.feed_experts_group is not None else 1
+    generator.prefill_block_width = 256 if model.feed_experts_group is not None else 1
 
 
 def register_inkling2_gfx1100_profiles():
