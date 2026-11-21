@@ -85,6 +85,22 @@ def launch_cache_write(key, value, keys, values, spans: KVLiveSpans, width):
         raise HipError(f"Inkling 2 target KV write failed with HIP status {status}")
 
 
+@lru_cache(maxsize=1)
+def _build_block():
+    fn = _library().hipengine_inkling2_target_attention_block
+    fn.argtypes = [ctypes.c_void_p] * 13 + [ctypes.c_int] * 6
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def launch_attention_block(q, k, v, bias, sink, out, spans, nq, nk, dim, extent, block_k, block_v, rows):
+    status = _build_block()(q, k, v, bias, sink, out, *_span_pointers(spans), block_k, block_v,
+                            nq, nk, dim, extent, rows, spans.max_live_count)
+    if status != HIP_SUCCESS:
+        raise HipError(status, "Inkling 2 block attention launch failed")
+
+
+register(KernelKey("hip_gfx1100", "inkling2_target_attention", "inkling2_mixed", "block"), launch_attention_block)
 register(KernelKey("hip_gfx1100", "inkling2_target_kv_write", "inkling2_mixed", "default"), launch_cache_write)
 register(KernelKey("hip_gfx1100", "inkling2_target_attention", "inkling2_mixed", "default"), launch_target_attention)
 register(KernelKey("hip_gfx1100", "inkling2_target_attention", "inkling2_mixed", "tiled"), launch_tiled_attention)

@@ -1,6 +1,7 @@
 """Per-visit device KV state for Inkling 2 target attention."""
 
 from contextlib import ExitStack
+from dataclasses import replace
 
 import numpy as np
 
@@ -18,9 +19,10 @@ _SPLIT_MIN_LIVE = 16
 
 
 class Inkling2DeviceAttention:
-    def __init__(self, *, runtime, launch, write, geometry, split=None, device=None):
+    def __init__(self, *, runtime, launch, write, geometry, split=None, block=None, device=None):
         self.rt, self.launch, self.write = runtime, launch, write
-        self.split = split
+        self.split, self.block = split, block
+        self._block_scratch = None
         self.scores = 0
         self.device = Device("hip") if device is None else device
         self.geometry = tuple(geometry)  # (capacity, query heads, KV heads, head width, bias extent) by state slot
@@ -121,8 +123,56 @@ class Inkling2DeviceAttention:
         self.positions[visit] = position + 1
         return out
 
+    def step_block(self, visit, position, q, key, value, bias, sink, *, undo=None):
+        if self.closed:
+            raise RuntimeError("Inkling 2 attention state is closed")
+        if position != self.positions.get(visit, 0):
+            raise ValueError("Inkling 2 attention position must advance in order")
+        cap, nq, nk, d, extent = self.geometry[visit]
+        rows = len(q)
+        expected = ((rows, nq, d), (rows, nk, d), (rows, nk, d), (rows, nq, extent), (rows, nq))
+        arrays = q, key, value, bias, sink
+        if not 0 < rows <= 65535 or tuple(a.shape for a in arrays) != expected:
+            raise ValueError("invalid Inkling 2 attention block input shapes")
+        if self.block is None or undo is not None:
+            return np.stack([self.step(visit, position + i, *a, undo=undo)
+                             for i, a in enumerate(zip(*arrays, strict=True))])
+        if visit not in self.banks:
+            self.banks[visit] = self._make_bank(cap, nk, d)
+        keys, values, spans = self.banks[visit]
+        host = np.empty(2 + sum(a.size for a in arrays), dtype=np.float32)
+        host[:2].view(np.int32)[:] = (min(position + rows, cap), position)
+        result = np.empty((rows, nq, d), dtype=np.float32)
+        need = host.nbytes + result.nbytes
+        scratch = self._block_scratch
+        if scratch is None or scratch.nbytes < need:
+            self._close_block_scratch()
+            self._block_scratch = scratch = malloc(1 << (need - 1).bit_length(), runtime=self.rt)
+        inp, out = scratch.ptr, scratch.ptr + host.nbytes
+        ptrs, cursor = [], 2
+        for a in arrays:
+            ptrs.append(inp + cursor * host.itemsize)
+            end = cursor + a.size
+            host[cursor:end].reshape(a.shape)[...] = a
+            cursor = end
+        query, block_k, block_v, rel, sinks = ptrs
+        spans = replace(spans, live_counts=Tensor(inp, (1,), DType.INT32, self.device),
+                        row_positions=Tensor(inp + 4, (1,), DType.INT32, self.device))
+        with self.transfer.exchange(inp, out, host, result, pinned=True):
+            self.block(query, keys, values, rel, sinks, out, spans, nq, nk, d, extent, block_k, block_v, rows)
+        self.positions[visit] = position + rows
+        return result
+
+    def _close_block_scratch(self):
+        if self._block_scratch is not None:
+            free(self._block_scratch, runtime=self.rt)
+            self._block_scratch = None
+
     def close(self):
         self.closed = True
-        self.owner.close()
-        self.banks.clear()
-        self.positions.clear()
+        try:
+            self._close_block_scratch()
+        finally:
+            self.owner.close()
+            self.banks.clear()
+            self.positions.clear()

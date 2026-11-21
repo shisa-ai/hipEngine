@@ -1,9 +1,41 @@
 import ctypes
+from contextlib import closing
 
 import numpy as np
 import pytest
 
 from hipengine.runtime.inkling2_device_attention import Inkling2DeviceAttention
+
+
+@pytest.mark.parametrize("capacity", [3, 17, 49])
+def test_committed_attention_block_sees_causal_kv_before_ring_commit(capacity):
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP unavailable: {exc}")
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.backends import resolve_backend
+    from hipengine.kernels.hip_gfx1100.attention import inkling2_target_attention as attn
+
+    if resolve_backend("auto", execution_device=True) != "hip_gfx1100":
+        pytest.skip("test requires gfx1100")
+    nq, nk, dim, extent = 4, 2, 67, 15
+    rng = np.random.default_rng(48)
+    n = capacity + 13
+    args = [rng.standard_normal((n, *shape), dtype=np.float32) for shape in
+            ((nq, dim), (nk, dim), (nk, dim), (nq, extent), (nq,))]
+    owner = dict(runtime=get_hip_runtime(), geometry=[(capacity, nq, nk, dim, extent)],
+                 launch=attn.launch_tiled_attention, write=attn.launch_cache_write, split=attn.launch_split_attention)
+    with (
+        closing(Inkling2DeviceAttention(**owner)) as serial,
+        closing(Inkling2DeviceAttention(**owner, block=attn.launch_attention_block)) as batch,
+    ):
+        reference = np.stack([serial.step(0, i, *row) for i, row in enumerate(zip(*args, strict=True))])
+        actual = []
+        for i, j in ((0, 2), (2, capacity + 6), (capacity + 6, n - 1)):
+            actual.extend(batch.step_block(0, i, *(a[i:j] for a in args)))
+        actual.append(batch.step(0, n - 1, *(a[-1] for a in args)))
+        np.testing.assert_array_equal(np.asarray(actual).view(np.uint32), reference.view(np.uint32))
 
 
 @pytest.mark.parametrize("capacity", [3, 9, 33])

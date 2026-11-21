@@ -397,7 +397,10 @@ class Inkling2TextSession:
         gain = _sigmoid(gate)
         if attention_project is not None:
             return attention_project(pos, q, key, value, bias, sink, gain)
-        if batch:
+        if batch and self.attention is not None:
+            y = self.attention.step_block(visit.state_slot, pos, q, key, value, bias, sink, undo=self._undo)
+            y = y.reshape(len(q), -1)
+        elif batch:
             y = np.stack([self._attend(visit, s, pos + i, *args)
                           for i, args in enumerate(zip(q, key, value, bias, sink))])
         else:

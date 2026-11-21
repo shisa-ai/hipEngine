@@ -137,6 +137,8 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
                        variant="tiled")
         split = resolve(backend=_BACKEND, layer="inkling2_target_attention", quant=INKLING2_MINI.default_quant,
                         variant="split")
+        batch_attn = resolve(backend=_BACKEND, layer="inkling2_target_attention", quant=INKLING2_MINI.default_quant,
+                             variant="block")
         cache_write = resolve(backend=_BACKEND, layer="inkling2_target_kv_write", quant=INKLING2_MINI.default_quant,
                               variant="default")
         cfg = self.model.config
@@ -145,7 +147,8 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
         visits = sorted(self.model.plan.visits, key=lambda v: v.state_slot)
 
         def attention_factory(capacity):
-            return Inkling2DeviceAttention(runtime=runtime, launch=attn, split=split, write=cache_write, geometry=[
+            return Inkling2DeviceAttention(runtime=runtime, launch=attn, split=split, block=batch_attn,
+                                           write=cache_write, geometry=[
                 (min(capacity, cfg["sliding_window_size"]) if v.is_local else capacity,
                  *self.model.head_shape(v), cfg["sliding_window_size"] if v.is_local else cfg["rel_extent"])
                 for v in visits

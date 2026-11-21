@@ -72,17 +72,26 @@ __global__ void inkling2_target_attention(const float* q, const float* k, const 
     }
 }
 
+template <bool Block>
 __global__ void inkling2_target_attention_tiled(
     const float* q, const float* k, const float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
-    const int32_t* row, const float* gain, int nq, int nk, int dim, int extent) {
+    const int32_t* row, const float* gain, int nq, int nk, int dim, int extent,
+    const float* block_k, const float* block_v, int capacity) {
     constexpr int tile = 16;
     const int tid = threadIdx.x;
     const int lane = tid % 32;
     const int wave = tid / 32;
     const int head = blockIdx.x;
     const int kh = head / (nq / nk);
-    const int live = *count, position = *row;
+    const int position = *row + (Block ? blockIdx.y : 0);
+    const int live = Block ? min(*count, position + 1) : *count;
+    if constexpr (Block) {
+        q += size_t(blockIdx.y) * nq * dim;
+        bias += size_t(blockIdx.y) * nq * extent;
+        sink += size_t(blockIdx.y) * nq;
+        out += size_t(blockIdx.y) * nq * dim;
+    }
     q += head * dim;
     bias += head * extent;
     __shared__ float score[tile], previous[tile], current[tile];
@@ -93,11 +102,18 @@ __global__ void inkling2_target_attention_tiled(
         const int n = min(tile, live - start);
         for (int j = wave; j < n; j += 4) {
             const int i = start + j;
-            const int lag = position - positions[i];
-            const bool active = !evicted[i] && lag >= 0;
-            if (lane == 0) physical[j] = active ? offsets[i] : -1;
+            int staged = -1;
+            if constexpr (Block) {
+                const int newest = position % capacity;
+                const int lag = i <= newest ? newest - i : newest + capacity - i;
+                staged = position - lag - *row;
+            }
+            const int lag = staged >= 0 ? position - *row - staged : position - positions[i];
+            const bool active = !evicted[i] && lag >= 0 && (!Block || lag < capacity);
+            if (lane == 0) physical[j] = active ? (staged >= 0 ? capacity + staged : offsets[i]) : -1;
             if (!active) continue;
-            const float* key = k + (size_t(offsets[i]) * nk + kh) * dim;
+            const float* key = staged >= 0 ? block_k + (size_t(staged) * nk + kh) * dim
+                                           : k + (size_t(offsets[i]) * nk + kh) * dim;
             float part[4];
             #pragma unroll
             for (int g = 0; g < 4; ++g) {
@@ -125,8 +141,10 @@ __global__ void inkling2_target_attention_tiled(
         if (tid < dim) {
             for (int j = 0; j < n; ++j) {
                 if (physical[j] < 0) continue;
-                const size_t base = (size_t(physical[j]) * nk + kh) * dim;
-                acc = acc * previous[j] + current[j] * v[base + tid];
+                const bool staged = Block && physical[j] >= capacity;
+                const int offset = staged ? physical[j] - capacity : physical[j];
+                const size_t base = (size_t(offset) * nk + kh) * dim;
+                acc = acc * previous[j] + current[j] * (staged ? block_v : v)[base + tid];
             }
         }
         __syncthreads();
@@ -145,8 +163,47 @@ extern "C" int hipengine_inkling2_target_attention_tiled(
     const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
     const int32_t* row, const float* gain, int nq, int nk, int dim, int extent) {
     if (nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 || extent <= 0) return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_target_attention_tiled, dim3(nq), dim3(128), 0, 0,
-                       q, k, v, bias, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim, extent);
+    hipLaunchKernelGGL(inkling2_target_attention_tiled<false>, dim3(nq), dim3(128), 0, 0,
+                       q, k, v, bias, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim, extent,
+                       nullptr, nullptr, 0);
+    return hipGetLastError();
+}
+
+__global__ void inkling2_target_cache_commit_block(
+    const float* key, const float* value, float* keys, float* values,
+    const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
+    const int32_t* row, int capacity, int width, int first) {
+    const int i = first + blockIdx.y;
+    const int position = *row + i;
+    const int slot = position % capacity;
+    if (slot >= *count || evicted[slot]) return;
+    const int ch = blockIdx.x * blockDim.x + threadIdx.x;
+    if (ch < width) {
+        const size_t src = size_t(i) * width + ch;
+        const size_t dst = size_t(offsets[slot]) * width + ch;
+        keys[dst] = key[src];
+        values[dst] = value[src];
+    }
+    if (ch == 0) positions[slot] = position;
+}
+
+extern "C" int hipengine_inkling2_target_attention_block(
+    const float* q, float* k, float* v, const float* bias, const float* sink, float* out,
+    const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
+    const int32_t* row, const float* block_k, const float* block_v,
+    int nq, int nk, int dim, int extent, int rows, int capacity) {
+    if (nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 || extent <= 0 ||
+        rows <= 0 || rows > 65535 || capacity <= 0) return hipErrorInvalidValue;
+    hipLaunchKernelGGL(inkling2_target_attention_tiled<true>, dim3(nq, rows), dim3(128), 0, 0,
+                       q, k, v, bias, sink, out, offsets, count, positions, evicted, row, nullptr, nq, nk, dim, extent,
+                       block_k, block_v, capacity);
+    const hipError_t status = hipGetLastError();
+    if (status != hipSuccess) return status;
+    const int width = nk * dim;
+    const int committed = rows < capacity ? rows : capacity;
+    hipLaunchKernelGGL(inkling2_target_cache_commit_block, dim3(1 + (width - 1) / 256, committed), dim3(256), 0, 0,
+                       block_k, block_v, k, v, offsets, count, positions, evicted, row, capacity, width,
+                       rows - committed);
     return hipGetLastError();
 }
 
