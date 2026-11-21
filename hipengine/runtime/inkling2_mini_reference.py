@@ -27,8 +27,8 @@ def _softmax(x):
     return p / p.sum(axis=-1, keepdims=True)
 
 
-def _read_blocks(query, blocks, partial):
-    values = _rms(np.stack((*blocks, partial), axis=-2))
+def _read_blocks(query, normalized_blocks, partial):
+    values = np.stack((*normalized_blocks, _rms(np.ascontiguousarray(partial))), axis=-2)
     if partial.ndim == 1:
         return _softmax((query @ values.T) / sqrt(partial.size)) @ values
     if query.ndim == 1:
@@ -282,7 +282,7 @@ class Inkling2TextSession:
         else:
             a = self.model.project(prefix + "attn.wo_ud.weight", a, transform_output=device_conv("attn_sconv"))
         if layer % c["n_layers_per_attn_res_block"] == 0:
-            blocks.append(h)
+            blocks.append(_rms(np.ascontiguousarray(h)))
         else:
             a = h + a
         m = _read_blocks(w.dense(f"attn_res.mlp_queries.{layer}"), blocks, a)

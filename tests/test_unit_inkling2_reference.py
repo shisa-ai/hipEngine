@@ -1,7 +1,9 @@
+from math import sqrt
+
 import numpy as np
 import pytest
 
-from hipengine.runtime.inkling2_mini_reference import Inkling2TextReference
+from hipengine.runtime.inkling2_mini_reference import Inkling2TextReference, _read_blocks, _rms, _softmax
 
 
 class TinyWeights:
@@ -52,6 +54,27 @@ def _config():
         "num_experts_per_tok": 1, "route_scale": 8, "mlp_gate_softcap": 4, "mlp_up_softcap": 25,
         "unpadded_vocab_size": 2, "vocab_size": 3, "final_logit_softcapping": 30,
     }}
+
+
+@pytest.mark.parametrize("shape", [(65,), (3, 2048)])
+@pytest.mark.parametrize("queries", [None, 4])
+def test_read_blocks_reuses_completed_norms_without_rounding_changes(shape, queries):
+    rng = np.random.default_rng(8)
+    blocks = [rng.standard_normal(shape, dtype=np.float32) for _ in range(5)]
+    partial = rng.standard_normal(shape, dtype=np.float32)
+    width = shape[-1]
+    query = rng.standard_normal((width,) if queries is None else (queries, width), dtype=np.float32)
+    values = _rms(np.stack((*blocks, partial), axis=-2))
+    if partial.ndim == 1:
+        expected = _softmax((query @ values.T) / sqrt(width)) @ values
+    elif query.ndim == 1:
+        scores = values @ query / sqrt(width)
+        expected = np.einsum("bp,bpd->bd", _softmax(scores), values)
+    else:
+        scores = query @ values.swapaxes(-1, -2) / sqrt(width)
+        expected = _softmax(scores) @ values
+    actual = _read_blocks(query, [_rms(block) for block in blocks], partial)
+    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
 
 
 def test_reference_decodes_causally_with_separate_local_and_loop_states():
