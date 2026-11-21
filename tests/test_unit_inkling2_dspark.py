@@ -1,5 +1,7 @@
-import numpy as np
+from contextlib import contextmanager
 from types import SimpleNamespace
+
+import numpy as np
 
 from hipengine.generation import GenerationRequest
 from hipengine.generation.inkling2_mini import Inkling2ReferenceGenerator
@@ -53,3 +55,48 @@ def test_serial_verification_drops_failed_suffix_and_only_commits_target_tokens(
     seen.clear()
     baseline, = gen.generate_detailed(request)
     assert baseline.generated_token_ids == output.generated_token_ids
+
+
+def test_packed_verifier_commits_matching_prefix_and_emits_replacement_once():
+    target_tokens, draft_tokens, commits = [], [], []
+
+    def scores(token):
+        result = np.full(8, -10, dtype=np.float32)
+        result[token + 1] = 10
+        return result
+
+    class Target:
+        def step(self, token, *, logits=True, capture=None):
+            target_tokens.append(token)
+            if capture is not None:
+                capture(0, token)
+            return scores(token) if logits else None
+
+        @contextmanager
+        def provisional_block(self, tokens, *, capture):
+            capture(0, np.array(tokens))
+
+            def keep(n):
+                commits.append(n)
+                target_tokens.extend(tokens[:n])
+
+            yield np.stack([scores(token) for token in tokens]), keep
+
+    gen = Inkling2ReferenceGenerator.__new__(Inkling2ReferenceGenerator)
+    gen.packed_verification = True
+    gen.model = SimpleNamespace(session=lambda _: Target())
+    gen.max_sequence_length, gen.eos_token_id = 8, 7
+    gen.detokenize = str
+    draft = SimpleNamespace(append=lambda f: draft_tokens.append(f[0]),
+                            propose=lambda anchor, n: ((2, 5, 5) if anchor == 1 else (4, 5, 6))[:n])
+    drafter = SimpleNamespace(taps=(0,), cfg={"block_size": 4}, session=lambda _: draft)
+    request = GenerationRequest(prompts=((0,),), max_tokens=5, temperature=0, top_p=1, ignore_eos=False)
+    output, = gen._generate_batch(request, drafter=drafter)
+    assert output.generated_token_ids == (1, 2, 3, 4, 5)
+    assert commits == [2, 2]
+    assert target_tokens == [0, 1, 2, 3, 4]
+    assert draft_tokens == [0, 1, 2]
+    assert output.telemetry.diagnostics["speculative_mtp"] == {
+        "provider": "dspark", "verification": "packed_target", "proposed_tokens": 5,
+        "accepted_tokens": 3, "target_blocks": 2,
+    }

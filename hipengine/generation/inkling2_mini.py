@@ -23,6 +23,7 @@ from hipengine.runtime.inkling2_mini_vision import Inkling2VisionReference
 
 
 class Inkling2ReferenceGenerator:
+    packed_verification = False
     def __init__(self, *, model_path, weight_index, model_plugin, max_sequence_length=None):
         self.model = Inkling2TextReference(weight_index.config, Inkling2TextWeights(weight_index))
         self.tokenizer = Tokenizer.from_file(str(weight_index.model_path / "tokenizer.json"))
@@ -150,8 +151,24 @@ class Inkling2ReferenceGenerator:
     def _generate_row_with_session(self, request, row, ids, session, draft, *, image_start, features, drafter):
         generated = []
         reason, eos, stop_sequence, mode = "length", None, (), None
-        proposed = accepted = 0
+        proposed = accepted = blocks = 0
+        packed = draft is not None and self.packed_verification
         candidates = deque()
+
+        def emit(sampled):
+            nonlocal reason, eos, stop_sequence, mode
+            token = sampled.token_id
+            generated.append(token)
+            mode = str(sampled.mode.value)
+            if token in request.stop_token_ids or (not request.ignore_eos and token == request.eos_token_id):
+                reason, eos = "stop", token
+                return True
+            stop_sequence = next((seq for seq in request.stop_token_sequences
+                                  if tuple(generated[-len(seq):]) == seq), ())
+            if stop_sequence:
+                reason = "stop"
+                return True
+            return len(generated) == request.max_tokens
         if session is not None:
             taps = frozenset(drafter.taps) if draft is not None else ()
 
@@ -175,7 +192,11 @@ class Inkling2ReferenceGenerator:
                     options["embedding"] = features[i - image_start]
                 logits = advance(token, **options)
             state = RowSamplingState(prompt_tokens=ids, seed=row_seed_for_index(request, row), row_index=row)
-            for i in range(request.max_tokens):
+            if packed:
+                proposed, accepted, blocks = self._verify_packed(
+                    session, draft, drafter, request, state, logits, taps, generated, emit,
+                )
+            for i in range(0 if packed else request.max_tokens):
                 raise_if_generation_deadline_expired(request)
                 sampled = select_token(logits, request, state)
                 token = sampled.token_id
@@ -184,15 +205,7 @@ class Inkling2ReferenceGenerator:
                         accepted += 1
                     else:
                         candidates.clear()
-                generated.append(token)
-                mode = str(sampled.mode.value)
-                if token in request.stop_token_ids or (not request.ignore_eos and token == request.eos_token_id):
-                    reason, eos = "stop", token
-                    break
-                stop_sequence = next((seq for seq in request.stop_token_sequences
-                                      if tuple(generated[-len(seq):]) == seq), ())
-                if stop_sequence:
-                    reason = "stop"
+                if emit(sampled):
                     break
                 remaining = request.max_tokens - i - 1
                 if remaining:
@@ -203,8 +216,10 @@ class Inkling2ReferenceGenerator:
                     logits = advance(token)
         telemetry = None if drafter is None else GenerationTelemetry(
             decode_state=DecodeState(prompt_tokens=len(ids), generated_tokens=len(generated)),
-            diagnostics={"speculative_mtp": {"provider": "dspark", "verification": "serial_target",
-                                             "proposed_tokens": proposed, "accepted_tokens": accepted}},
+            diagnostics={"speculative_mtp": {"provider": "dspark",
+                                             "verification": "packed_target" if packed else "serial_target",
+                                             "proposed_tokens": proposed, "accepted_tokens": accepted,
+                                             **({"target_blocks": blocks} if packed else {})}},
         )
         return GenerationOutput(
             self.detokenize(generated), generated_token_ids=tuple(generated), prompt_tokens=len(ids), telemetry=telemetry,
@@ -212,6 +227,52 @@ class Inkling2ReferenceGenerator:
                                          length_limit=request.max_tokens if reason == "length" else None,
                                          sampler_mode=mode, phase="decode"),
         )
+
+    @staticmethod
+    def _verify_packed(session, draft, drafter, request, state, logits, taps, generated, emit):
+        proposed = accepted = blocks = 0
+        depth = drafter.cfg["block_size"] - 1
+
+        def sample(scores):
+            raise_if_generation_deadline_expired(request)
+            return select_token(scores, request, state)
+
+        pending = sample(logits)
+        while not emit(pending):
+            anchor = pending.token_id
+            remaining = request.max_tokens - len(generated)
+            candidates = draft.propose(anchor, min(depth, remaining))
+            proposed += len(candidates)
+            # The last output token does not need to be forwarded into the cache.
+            tokens = (anchor, *candidates[:remaining - 1])
+            captured = {}
+
+            def capture(boundary, hidden):
+                if boundary in taps:
+                    captured[boundary] = hidden
+
+            matched = 0
+            done = False
+            with session.provisional_block(tokens, capture=capture) as (scores, keep):
+                blocks += 1
+                for i, candidate in enumerate(candidates):
+                    pending = sample(scores[i])
+                    if pending.token_id != candidate:
+                        break
+                    matched += 1
+                    if emit(pending):
+                        done = True
+                        break
+                else:
+                    pending = sample(scores[matched])
+                committed = min(len(tokens), 1 + matched)
+                keep(committed)
+            accepted += matched
+            if done:
+                break
+            for i in range(committed):
+                draft.append({boundary: hidden[i] for boundary, hidden in captured.items()})
+        return proposed, accepted, blocks
 
 
 register_text_generator(model=INKLING2_MINI.name, backend="cpu_reference", quant=INKLING2_MINI.default_quant,

@@ -20,6 +20,7 @@ from hipengine.runtime.inkling2_device_draft_kv import Inkling2DeviceDraftKV
 
 
 class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
+    packed_verification = True
     def __init__(self, *, model_path, weight_index, model_plugin, max_sequence_length=None):
         super().__init__(model_path=model_path, weight_index=weight_index, model_plugin=model_plugin,
                          max_sequence_length=max_sequence_length)
