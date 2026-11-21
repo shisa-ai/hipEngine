@@ -12,9 +12,15 @@ from hipengine.core.tensor import Tensor
 from hipengine.kvcache.spans import KVLiveSpans
 
 
+# A second launch starts paying for itself at 16 live positions on gfx1100.
+_SPLIT_MIN_LIVE = 16
+
+
 class Inkling2DeviceAttention:
-    def __init__(self, *, runtime, launch, write, geometry, device=None):
+    def __init__(self, *, runtime, launch, write, geometry, split=None, device=None):
         self.rt, self.launch, self.write = runtime, launch, write
+        self.split = split
+        self.scores = 0
         self.device = Device("hip") if device is None else device
         self.geometry = tuple(geometry)  # (capacity, query heads, KV heads, head width, bias extent) by state slot
         self.banks = {}
@@ -63,9 +69,13 @@ class Inkling2DeviceAttention:
         if position != self.positions.get(visit, 0):
             raise ValueError("Inkling 2 attention position must advance in order")
         cap, nq, nk, d, extent = self.geometry[visit]
+        live = min(position + 1, cap)
+        use_split = self.split is not None and live >= _SPLIT_MIN_LIVE
         expected = ((nq, d), (nk, d), (nk, d), (nq, extent), (nq,))
         if tuple(a.shape for a in (q, key, value, bias, sink)) != expected:
             raise ValueError("invalid Inkling 2 attention input shapes")
+        if use_split and not self.scores:
+            self.scores = self._allocate(4 * max(capacity * heads for capacity, heads, *_ in self.geometry))
         if visit not in self.banks:
             self.banks[visit] = self._make_bank(cap, nk, d)
         keys, values, spans = self.banks[visit]
@@ -76,7 +86,7 @@ class Inkling2DeviceAttention:
                 for ptr in (keys, values):
                     undo.device(position, self.rt, ptr + slot * nk * d * 4, nk * d * 4)
                 undo.device(position, self.rt, spans.token_positions.ptr + slot * 4, 4)
-        self.staging[:2].view(np.int32)[:] = (min(position + 1, cap), position)
+        self.staging[:2].view(np.int32)[:] = (live, position)
         ptrs = []
         cursor = 2
         for array in (q, key, value, bias, sink):
@@ -87,7 +97,11 @@ class Inkling2DeviceAttention:
         self.rt.memcpy(self.scratch, self.staging.ctypes.data, cursor * 4, HipMemcpyKind.HOST_TO_DEVICE)
         q_ptr, key_ptr, value_ptr, bias_ptr, sink_ptr = ptrs
         self.write(key_ptr, value_ptr, keys, values, spans, nk * d)
-        self.launch(q_ptr, keys, values, bias_ptr, sink_ptr, self.out, spans, nq, nk, d, extent)
+        args = (q_ptr, keys, values, bias_ptr, sink_ptr, self.out, spans, nq, nk, d, extent)
+        if use_split:
+            self.split(*args, self.scores, live)
+        else:
+            self.launch(*args)
         out = np.empty((nq, d), dtype=np.float32)
         self.rt.memcpy(out.ctypes.data, self.out, out.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
         self.positions[visit] = position + 1

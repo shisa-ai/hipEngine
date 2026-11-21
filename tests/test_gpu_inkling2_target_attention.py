@@ -15,7 +15,7 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
     from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
     from hipengine.kernels.backends import resolve_backend
     from hipengine.kernels.hip_gfx1100.attention.inkling2_target_attention import (
-        launch_cache_write, launch_target_attention, launch_tiled_attention,
+        launch_cache_write, launch_split_attention, launch_target_attention, launch_tiled_attention,
     )
     from hipengine.runtime.inkling2_undo import Inkling2UndoJournal
 
@@ -34,8 +34,14 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
             runtime.memcpy(dst, src, size, kind)
 
     geometry = [(capacity, nq, nk, dim, extent)]
+    split_rows = []
+
+    def split(*args):
+        split_rows.append(args[-1])
+        launch_split_attention(*args)
+
     owner = Inkling2DeviceAttention(runtime=TracedRuntime(), launch=launch_tiled_attention, write=launch_cache_write,
-                                    geometry=geometry)
+                                    geometry=geometry, split=split)
     strict = Inkling2DeviceAttention(runtime=runtime, launch=launch_target_attention, write=launch_cache_write,
                                      geometry=geometry)
     rng = np.random.default_rng(14)
@@ -71,6 +77,10 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
             rp = np.exp(ref - ref.max(axis=-1, keepdims=True)); rp /= rp.sum(axis=-1, keepdims=True)
             gp = np.exp(out.astype(np.float64) - out.max(axis=-1, keepdims=True)); gp /= gp.sum(axis=-1, keepdims=True)
             assert np.max(np.sum(rp * (np.log(rp) - np.log(gp)), axis=-1)) <= 0.05
+        if capacity >= 16:
+            assert {16, 17, capacity} <= set(split_rows)
+        else:
+            assert not split_rows and owner.scores == 0
         undo.finish(3)
         for pos, args, expected in replay:
             np.testing.assert_array_equal(owner.step(0, pos, *args).view(np.uint32), expected.view(np.uint32))

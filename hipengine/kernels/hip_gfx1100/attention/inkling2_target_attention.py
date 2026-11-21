@@ -59,6 +59,26 @@ def launch_tiled_attention(*args):
     _launch_attention("hipengine_inkling2_target_attention_tiled", *args)
 
 
+@lru_cache(maxsize=1)
+def _build_split():
+    path = Path(__file__).with_name("inkling2_split_attention.hip")
+    lib = build_hip(sources=[path], family="inkling2_split_attention", profile="decode",
+                    output_name="inkling2_split_attention.so")
+    fn = lib.hipengine_inkling2_split_attention
+    fn.argtypes = [ctypes.c_void_p] * 12 + [ctypes.c_int] * 5
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def launch_split_attention(q, keys, values, bias, sink, out, spans, nq, nk, dim, extent, scores, live):
+    if not scores or not 0 < live <= spans.max_live_count:
+        raise ValueError("invalid Inkling 2 split attention score scratch or live span count")
+    status = _build_split()(q, keys, values, bias, sink, out, *_span_pointers(spans),
+                            scores, nq, nk, dim, extent, live)
+    if status != HIP_SUCCESS:
+        raise HipError(status, "Inkling 2 split attention launch failed")
+
+
 def launch_cache_write(key, value, keys, values, spans: KVLiveSpans, width):
     status = _build_cache_write()(key, value, keys, values, *_span_pointers(spans), spans.max_live_count, width)
     if status != HIP_SUCCESS:
@@ -68,3 +88,4 @@ def launch_cache_write(key, value, keys, values, spans: KVLiveSpans, width):
 register(KernelKey("hip_gfx1100", "inkling2_target_kv_write", "inkling2_mixed", "default"), launch_cache_write)
 register(KernelKey("hip_gfx1100", "inkling2_target_attention", "inkling2_mixed", "default"), launch_target_attention)
 register(KernelKey("hip_gfx1100", "inkling2_target_attention", "inkling2_mixed", "tiled"), launch_tiled_attention)
+register(KernelKey("hip_gfx1100", "inkling2_target_attention", "inkling2_mixed", "split"), launch_split_attention)
