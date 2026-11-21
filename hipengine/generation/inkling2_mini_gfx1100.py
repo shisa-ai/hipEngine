@@ -84,13 +84,15 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
         )
         attn = resolve(backend="hip_gfx1100", layer="inkling2_target_attention", quant=INKLING2_MINI.default_quant,
                        variant="default")
+        cache_write = resolve(backend=_BACKEND, layer="inkling2_target_kv_write", quant=INKLING2_MINI.default_quant,
+                              variant="default")
         cfg = self.model.config
         block_attn = resolve(backend="hip_gfx1100", layer="inkling2_block_attention", quant=INKLING2_MINI.default_quant,
                              variant="default")
         visits = sorted(self.model.plan.visits, key=lambda v: v.state_slot)
 
         def attention_factory(capacity):
-            return Inkling2DeviceAttention(runtime=runtime, launch=attn, geometry=[
+            return Inkling2DeviceAttention(runtime=runtime, launch=attn, write=cache_write, geometry=[
                 (min(capacity, cfg["sliding_window_size"]) if v.is_local else capacity,
                  *self.model.head_shape(v), cfg["sliding_window_size"] if v.is_local else cfg["rel_extent"])
                 for v in visits

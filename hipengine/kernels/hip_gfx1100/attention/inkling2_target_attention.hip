@@ -1,6 +1,31 @@
 #include <hip/hip_runtime.h>
 #include <stdint.h>
 
+__global__ void inkling2_target_cache_write(
+    const float* key, const float* value, float* keys, float* values,
+    const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
+    const int32_t* row, int capacity, int width) {
+    const int slot = *row % capacity;
+    if (slot >= *count || evicted[slot]) return;
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < width) {
+        const size_t dst = size_t(offsets[slot]) * width + idx;
+        keys[dst] = key[idx];
+        values[dst] = value[idx];
+    }
+    if (idx == 0) positions[slot] = *row;
+}
+
+extern "C" int hipengine_inkling2_target_cache_write(
+    const float* key, const float* value, float* keys, float* values,
+    const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
+    const int32_t* row, int capacity, int width) {
+    if (capacity <= 0 || width <= 0) return hipErrorInvalidValue;
+    hipLaunchKernelGGL(inkling2_target_cache_write, dim3(1 + (width - 1) / 256), dim3(256), 0, 0,
+                       key, value, keys, values, offsets, count, positions, evicted, row, capacity, width);
+    return hipGetLastError();
+}
+
 __global__ void inkling2_target_attention(const float* q, const float* k, const float* v,
                                            const float* bias, const float* sink, float* out,
                                            const int32_t* offsets, const int32_t* count,

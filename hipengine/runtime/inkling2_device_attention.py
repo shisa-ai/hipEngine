@@ -13,8 +13,8 @@ from hipengine.kvcache.spans import KVLiveSpans
 
 
 class Inkling2DeviceAttention:
-    def __init__(self, *, runtime, launch, geometry, device=None):
-        self.rt, self.launch = runtime, launch
+    def __init__(self, *, runtime, launch, write, geometry, device=None):
+        self.rt, self.launch, self.write = runtime, launch, write
         self.device = Device("hip") if device is None else device
         self.geometry = tuple(geometry)  # (capacity, query heads, KV heads, head width, bias extent) by state slot
         self.banks = {}
@@ -25,11 +25,10 @@ class Inkling2DeviceAttention:
         self.closed = False
         with ExitStack() as owner:
             self.owner = owner
-            self.q = self._allocate(4 * max(nq * d for _, nq, _, d, _ in self.geometry))
-            self.bias = self._allocate(4 * max(nq * e for _, nq, _, _, e in self.geometry))
-            self.sink = self._allocate(4 * max(nq for _, nq, _, _, _ in self.geometry))
+            scratch_values = 2 + max(nq * (d + e + 1) + 2 * nk * d for _, nq, nk, d, e in self.geometry)
+            self.staging = np.empty(scratch_values, dtype=np.float32)
+            self.scratch = self._allocate(self.staging.nbytes)
             self.out = self._allocate(4 * max(nq * d for _, nq, _, d, _ in self.geometry))
-            self.meta = self._allocate(8)
             self.owner = owner.pop_all()
 
     def _allocate(self, size):
@@ -50,11 +49,11 @@ class Inkling2DeviceAttention:
         self.rt.memset(evicted, 0, cap)
         return keys, values, KVLiveSpans(
             base_offsets=Tensor(offsets, (cap,), DType.INT32, self.device),
-            live_counts=Tensor(self.meta, (1,), DType.INT32, self.device),
+            live_counts=Tensor(self.scratch, (1,), DType.INT32, self.device),
             max_live_count=cap,
             token_positions=Tensor(positions, (cap,), DType.INT32, self.device),
             evict_mask=Tensor(evicted, (cap,), DType.BOOL, self.device),
-            row_positions=Tensor(self.meta + 4, (1,), DType.INT32, self.device),
+            row_positions=Tensor(self.scratch + 4, (1,), DType.INT32, self.device),
             storage_dtype=DType.FP32,
         )
 
@@ -77,14 +76,18 @@ class Inkling2DeviceAttention:
                 for ptr in (keys, values):
                     undo.device(position, self.rt, ptr + slot * nk * d * 4, nk * d * 4)
                 undo.device(position, self.rt, spans.token_positions.ptr + slot * 4, 4)
-        self._upload(keys + slot * nk * d * 4, key, np.float32)
-        self._upload(values + slot * nk * d * 4, value, np.float32)
-        self._upload(spans.token_positions.ptr + slot * 4, [position], np.int32)
-        self._upload(self.meta, [min(position + 1, cap), position], np.int32)
-        self._upload(self.q, q, np.float32)
-        self._upload(self.bias, bias, np.float32)
-        self._upload(self.sink, sink, np.float32)
-        self.launch(self.q, keys, values, self.bias, self.sink, self.out, spans, nq, nk, d, extent)
+        self.staging[:2].view(np.int32)[:] = (min(position + 1, cap), position)
+        ptrs = []
+        cursor = 2
+        for array in (q, key, value, bias, sink):
+            ptrs.append(self.scratch + cursor * 4)
+            end = cursor + array.size
+            self.staging[cursor:end].reshape(array.shape)[...] = array
+            cursor = end
+        self.rt.memcpy(self.scratch, self.staging.ctypes.data, cursor * 4, HipMemcpyKind.HOST_TO_DEVICE)
+        q_ptr, key_ptr, value_ptr, bias_ptr, sink_ptr = ptrs
+        self.write(key_ptr, value_ptr, keys, values, spans, nk * d)
+        self.launch(q_ptr, keys, values, bias_ptr, sink_ptr, self.out, spans, nq, nk, d, extent)
         out = np.empty((nq, d), dtype=np.float32)
         self.rt.memcpy(out.ctypes.data, self.out, out.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
         self.positions[visit] = position + 1
