@@ -54,7 +54,7 @@ class Inkling2DeviceDense:
         return buf
 
     def project(self, name: str, hidden: np.ndarray, *, limit: int | None = None, native_bf16=None,
-                pinned=False) -> np.ndarray:
+                pinned=False, transform_output=None) -> np.ndarray:
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling 2 dense residency is closed")
@@ -68,14 +68,10 @@ class Inkling2DeviceDense:
             inp = self._scratch("_input", x.nbytes)
             out = self._scratch("_output", y.nbytes)
             with self._transfer.exchange(inp.ptr, out.ptr, x, y, pinned=pinned):
-                if bf16:
-                    rows = 1 if x.ndim == 1 else x.shape[0]
-                    native_bf16(inp.ptr, weight.ptr, out.ptr, rows, inputs, outputs, runtime=self._runtime)
-                elif x.ndim == 1:
-                    self._blas.sgemv_rowmajor_nt(inp.ptr, weight.ptr, out.ptr, in_features=inputs, out_features=outputs)
-                else:
-                    self._blas.sgemm_rowmajor_nt(inp.ptr, weight.ptr, out.ptr, rows=x.shape[0],
-                                                in_features=inputs, out_features=outputs)
+                self._launch_projection(inp.ptr, out.ptr, 1 if x.ndim == 1 else x.shape[0], x.ndim,
+                                        (weight, (outputs, inputs), bf16), native_bf16)
+                if transform_output is not None:
+                    transform_output(out.ptr, y.shape)
             return y
 
     def project_many(self, names, hidden: np.ndarray, *, native_bf16=None, pinned=False):

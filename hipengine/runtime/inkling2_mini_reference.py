@@ -270,7 +270,17 @@ class Inkling2TextSession:
                 inputs, ("attn", "k", "v"), tuple(messages[..., i, :] for i in range(3)))
             q, k, v = (norm(x, name) for x, name in zip(merged, norm_names, strict=True))
 
-        a = static_conv("attn_sconv", self._attention(visit, self.states[visit.state_slot], get, project, q, k, v))
+        a = self._attention(visit, self.states[visit.state_slot], get, q, k, v)
+        if self.convolution is None:
+            a = static_conv("attn_sconv", project("attn.wo_ud.weight", a))
+        else:
+            taps = get("attn_sconv.weight")[:, 0, ::-1]
+
+            def convolve_projection(ptr, shape):
+                self.convolution.apply_static(visit.state_slot, "attn_sconv", taps, ptr, shape,
+                                              position=self.position, undo=self._undo)
+
+            a = self.model.project(prefix + "attn.wo_ud.weight", a, transform_output=convolve_projection)
         if layer % c["n_layers_per_attn_res_block"] == 0:
             blocks.append(h)
         else:
@@ -299,7 +309,7 @@ class Inkling2TextSession:
         return np.stack([self._convolve(visit, name, row, taps[i] if dynamic else taps, dynamic=dynamic, offset=i)
                          for i, row in enumerate(x)])
 
-    def _attention(self, visit, s, get, project, qi, ki, vi):
+    def _attention(self, visit, s, get, qi, ki, vi):
         c = self.model.config
         nh, nkv, dim = self.model.head_shape(visit)
         ksize = c["sconv_kernel_size"]
@@ -309,9 +319,6 @@ class Inkling2TextSession:
 
         def weight(name):
             return get("attn." + name)
-
-        def linear(name, x):
-            return project("attn." + name, x)
 
         attn_prefix = f"layers.{visit.weight_layer}.attn."
 
@@ -371,7 +378,7 @@ class Inkling2TextSession:
                           for i, args in enumerate(zip(q, key, value, bias, sink))])
         else:
             y = self._attend(visit, s, pos, q, key, value, bias, sink)
-        return linear("wo_ud.weight", y * _sigmoid(gate))
+        return y * _sigmoid(gate)
 
     def _attend(self, visit, s, pos, q, key, value, bias, sink):
         if self.attention is not None:
