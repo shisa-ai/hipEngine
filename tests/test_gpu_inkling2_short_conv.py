@@ -51,6 +51,41 @@ def test_static_block_convolution_uses_one_launch_and_preserves_history():
         free(stage, runtime=runtime)
 
 
+@pytest.mark.parametrize("dynamic", [False, True])
+def test_kv_block_convolution_matches_scalar_across_chunks(dynamic):
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP unavailable: {exc}")
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.backends import resolve_backend
+    from hipengine.kernels.hip_gfx1100.quant import inkling2_short_conv as conv
+
+    if resolve_backend("auto", execution_device=True) != "hip_gfx1100":
+        pytest.skip("test requires gfx1100")
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(21)
+    xs = [rng.standard_normal((11, 137), dtype=np.float32) for _ in range(2)]
+    ts = [rng.standard_normal(((11,) if dynamic else ()) + (137, 3), dtype=np.float32)[..., ::-1]
+          for _ in range(2)]
+    owner = dict(runtime=runtime, launch=conv.launch_short_conv, channels=137, width=3)
+    with (
+        closing(Inkling2DeviceConvolution(**owner)) as serial,
+        closing(Inkling2DeviceConvolution(**owner, launch_block=conv.launch_short_conv_block)) as batch,
+    ):
+        expected, actual = [], []
+        for i in range(11):
+            expected.append(serial.step_kv(0, *(x[i] for x in xs), *(t[i] if dynamic else t for t in ts),
+                                           dynamic=dynamic, position=i))
+        for i, j in ((0, 2), (2, 9), (9, 10)):
+            result = batch.step_kv(0, *(x[i:j] for x in xs), *(t[i:j] if dynamic else t for t in ts),
+                                   dynamic=dynamic, position=i)
+            actual.extend(zip(*result, strict=True))
+        actual.append(batch.step_kv(0, *(x[-1] for x in xs), *(t[-1] if dynamic else t for t in ts),
+                                    dynamic=dynamic, position=10))
+        np.testing.assert_array_equal(np.asarray(actual).view(np.uint32), np.asarray(expected).view(np.uint32))
+
+
 @pytest.mark.parametrize("paired", [False, True])
 def test_device_short_convolution_preserves_separate_visit_histories(monkeypatch, paired):
     try:

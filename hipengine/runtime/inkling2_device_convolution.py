@@ -18,6 +18,7 @@ class Inkling2DeviceConvolution:
         self.channels, self.width = channels, width
         self.histories = {}
         self.static_taps = {}
+        self._block_scratch = None
         self.closed = False
         with ExitStack() as owner:
             self.transfer = Inkling2ActivationTransfer(runtime)
@@ -75,6 +76,15 @@ class Inkling2DeviceConvolution:
         return out
 
     def step_kv(self, visit, k, v, kt, vt, *, dynamic=False, position=0, undo=None):
+        if k.ndim == 2:
+            if k.shape != v.shape or not len(k):
+                raise ValueError("Inkling 2 K/V convolution block shapes differ or are empty")
+            if undo is None and self.launch_block is not None:
+                return self._step_kv_block(visit, k, v, kt, vt, dynamic)
+            pair = [self.step_kv(visit, kr, vr, kt[i] if dynamic else kt, vt[i] if dynamic else vt,
+                                 dynamic=dynamic, position=position + i, undo=undo)
+                    for i, (kr, vr) in enumerate(zip(k, v, strict=True))]
+            return tuple(np.stack(rows) for rows in zip(*pair, strict=True))
         kh = self._history(visit, "k", k.shape, kt)
         vh = self._history(visit, "v", v.shape, vt)
         self._snapshot(kh, position, undo)
@@ -89,6 +99,36 @@ class Inkling2DeviceConvolution:
             self.launch(kh.ptr, self.input, self.input + kbytes, self.out, k.size, self.width, scale)
             self.launch(vh.ptr, vptr, vptr + v.size * out.itemsize, self.out + kbytes, v.size, self.width, scale)
         return out[:k.size], out[k.size:]
+
+    def _step_kv_block(self, visit, k, v, kt, vt, dynamic):
+        rows, channels = k.shape
+        tap_shape = ((rows,) if dynamic else ()) + (channels, self.width)
+        if kt.shape != tap_shape or vt.shape != tap_shape:
+            raise ValueError("Inkling 2 K/V convolution block taps do not match its geometry")
+        kh = self._history(visit, "k", (channels,), kt[0] if dynamic else kt)
+        vh = self._history(visit, "v", (channels,), vt[0] if dynamic else vt)
+        active = np.concatenate((k.ravel(), kt.ravel(), v.ravel(), vt.ravel()), dtype=np.float32)
+        result = np.empty((2, rows, channels), dtype=np.float32)
+        need = active.nbytes + result.nbytes
+        scratch = self._block_scratch
+        if scratch is None or scratch.nbytes < need:
+            self._close_block_scratch()
+            self._block_scratch = scratch = malloc(1 << (need - 1).bit_length(), runtime=self.rt)
+        inp, out = scratch.ptr, scratch.ptr + active.nbytes
+        row_bytes = rows * channels * active.itemsize
+        vptr = inp + row_bytes + kt.size * active.itemsize
+        scale = self._scale(dynamic)
+        with self.transfer.exchange(inp, out, active, result, pinned=True):
+            self.launch_block(kh.ptr, inp, inp + row_bytes, out, channels, self.width, scale, rows,
+                              dynamic_taps=dynamic)
+            self.launch_block(vh.ptr, vptr, vptr + row_bytes, out + row_bytes, channels, self.width, scale, rows,
+                              dynamic_taps=dynamic)
+        return result[0], result[1]
+
+    def _close_block_scratch(self):
+        if self._block_scratch is not None:
+            free(self._block_scratch, runtime=self.rt)
+            self._block_scratch = None
 
     def apply_static(self, visit, name, taps, ptr, shape, *, position=0, undo=None):
         """Convolve a device buffer in place using immutable taps for this visit."""
@@ -116,6 +156,9 @@ class Inkling2DeviceConvolution:
 
     def close(self):
         self.closed = True
-        self.owner.close()
-        self.histories.clear()
-        self.static_taps.clear()
+        try:
+            self._close_block_scratch()
+        finally:
+            self.owner.close()
+            self.histories.clear()
+            self.static_taps.clear()

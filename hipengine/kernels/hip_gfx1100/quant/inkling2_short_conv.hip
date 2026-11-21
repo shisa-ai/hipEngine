@@ -18,22 +18,26 @@ __global__ void inkling2_short_conv(float* history, const float* input, const fl
 }
 
 __global__ void inkling2_short_conv_block(float* history, const float* input, const float* taps,
-                                         float* output, int channels, int width, float scale, int rows) {
+                                         float* output, int channels, int width, float scale, int rows,
+                                         size_t tap_stride) {
     const int ch = blockIdx.x * blockDim.x + threadIdx.x;
     if (ch >= channels) return;
     for (int row = 0; row < rows; ++row) {
         const size_t offset = size_t(row) * channels;
-        convolve_channel(history, input + offset, taps, output + offset, ch, width, scale);
+        convolve_channel(history, input + offset, taps + size_t(row) * tap_stride,
+                         output + offset, ch, width, scale);
     }
 }
 
 extern "C" int hipengine_inkling2_short_conv_block(float* history, const float* input, const float* taps,
-                                                  float* output, int channels, int width, float scale, int rows) {
+                                                  float* output, int channels, int width, float scale, int rows,
+                                                  int dynamic_taps) {
     if (!history || !input || !taps || !output || channels <= 0 || width <= 0 || rows <= 0) {
         return hipErrorInvalidValue;
     }
     hipLaunchKernelGGL(inkling2_short_conv_block, dim3((channels - 1) / 128 + 1), dim3(128), 0, 0,
-                       history, input, taps, output, channels, width, scale, rows);
+                       history, input, taps, output, channels, width, scale, rows,
+                       dynamic_taps ? size_t(channels) * width : 0);
     return hipGetLastError();
 }
 

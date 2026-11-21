@@ -375,12 +375,6 @@ class Inkling2TextSession:
         if self.convolution is None:
             k = self._conv_rows(visit, "k", k, kt, dynamic=dynamic)
             v = self._conv_rows(visit, "v", v, vt, dynamic=dynamic)
-        elif batch:
-            pair = [self.convolution.step_kv(visit.state_slot, kr, vr, kt[i] if dynamic else kt,
-                                             vt[i] if dynamic else vt, dynamic=dynamic,
-                                             position=pos + i, undo=self._undo)
-                    for i, (kr, vr) in enumerate(zip(k, v))]
-            k, v = (np.stack(rows) for rows in zip(*pair))
         else:
             k, v = self.convolution.step_kv(visit.state_slot, k, v, kt, vt,
                                             dynamic=dynamic, position=pos, undo=self._undo)

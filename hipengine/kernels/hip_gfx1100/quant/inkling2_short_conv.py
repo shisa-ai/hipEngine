@@ -21,7 +21,7 @@ def _symbol(block):
     launch = lib.hipengine_inkling2_short_conv_block if block else lib.hipengine_inkling2_short_conv
     launch.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int, ctypes.c_int, ctypes.c_float]
     if block:
-        launch.argtypes += [ctypes.c_int]
+        launch.argtypes += [ctypes.c_int, ctypes.c_int]
     launch.restype = ctypes.c_int
     return launch
 
@@ -32,8 +32,8 @@ def launch_short_conv(history, x, taps, out, channels, width, scale):
         raise HipError(f"Inkling 2 short convolution failed with HIP status {status}")
 
 
-def launch_short_conv_block(history, x, taps, out, channels, width, scale, rows):
-    status = _symbol(True)(history, x, taps, out, channels, width, scale, rows)
+def launch_short_conv_block(history, x, taps, out, channels, width, scale, rows, *, dynamic_taps=False):
+    status = _symbol(True)(history, x, taps, out, channels, width, scale, rows, dynamic_taps)
     if status != HIP_SUCCESS:
         raise HipError(f"Inkling 2 block short convolution failed with HIP status {status}")
 
