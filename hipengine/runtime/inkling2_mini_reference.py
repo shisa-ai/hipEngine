@@ -54,6 +54,7 @@ class Inkling2TextReference:
         self.weights = weights
         self.plan = Inkling2VisitPlan.from_config(config)
         self.project_expert = None
+        self.convolution_factory = None
 
     def project(self, name, hidden, *, limit=None):
         weight = self.weights.dense(name) if limit is None else self.weights.dense(name, slice(limit))
@@ -75,6 +76,16 @@ class Inkling2TextSession:
         self.capacity = capacity
         self.position = 0
         self.states = tuple(self._new_state(v) for v in sorted(model.plan.visits, key=lambda v: v.state_slot))
+        self.convolution = model.convolution_factory() if model.convolution_factory is not None else None
+
+    def close(self):
+        if self.convolution is not None:
+            self.convolution.close()
+
+    def _convolve(self, visit, name, x, taps, *, dynamic=False):
+        if self.convolution is not None:
+            return self.convolution.step(visit.state_slot, name, x, taps, dynamic=dynamic)
+        return self.states[visit.state_slot].convolve(name, x, taps, dynamic=dynamic)
 
     def _new_state(self, visit):
         _, nkv, dim = self.model.head_shape(visit)
@@ -129,7 +140,6 @@ class Inkling2TextSession:
         c, w = self.model.config, self.model.weights
         layer = visit.weight_layer
         prefix = f"layers.{layer}."
-        s = self.states[visit.state_slot]
         eps = c["rms_norm_eps"]
 
         def get(name):
@@ -148,7 +158,7 @@ class Inkling2TextSession:
 
         def static_conv(name, x):
             taps = get(name + ".weight")[:, 0, ::-1]
-            return s.convolve(name, x, taps)
+            return self._convolve(visit, name, x, taps)
 
         a = _read_blocks(w.dense(f"attn_res.attn_queries.{layer - 1}"), blocks, h) if layer else h
         inputs = (a, a, a) if a.ndim == 1 else a
@@ -159,7 +169,7 @@ class Inkling2TextSession:
             q, k, v = (norm(x if messages is None else merge(x, name, messages[i]), norm_names[i])
                        for i, (x, name) in enumerate(zip(inputs, ("attn", "k", "v"))))
 
-        a = static_conv("attn_sconv", self._attention(visit, s, get, project, q, k, v))
+        a = static_conv("attn_sconv", self._attention(visit, self.states[visit.state_slot], get, project, q, k, v))
         if layer % c["n_layers_per_attn_res_block"] == 0:
             blocks.append(h)
         else:
@@ -192,7 +202,7 @@ class Inkling2TextSession:
             else:
                 dynamic = linear(conv + "weight_proj", x).reshape(nkv, 1, ksize)
                 taps = (weight(conv + "static_w").T.reshape(nkv, dim, ksize) + dynamic).reshape(-1, ksize)
-            return s.convolve(name, y, taps, dynamic=not visit.is_local).reshape(nkv, dim)
+            return self._convolve(visit, name, y, taps, dynamic=not visit.is_local).reshape(nkv, dim)
 
         q = linear("wq_du.weight", qi).reshape(nh, dim)
         q = _clip(q * weight("q_l2_clip.scale"), c["qk_l2_clip_threshold"])
