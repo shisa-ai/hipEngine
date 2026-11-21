@@ -234,11 +234,31 @@ class Inkling2TextSession:
         def project(name, x):
             return self.model.project(prefix + name, x)
 
+        def controller_input(x, message):
+            return np.concatenate((_rms(x, eps), _rms(message, eps)), axis=-1)
+
+        def blend(x, message, forget, gain):
+            return (1 - np.tanh(forget)) * x + np.tanh(gain) * message
+
         def merge(x, name, message):
             ctl = f"controllers.{name}."
-            z = project(ctl + "down_weight", np.concatenate((_rms(x, eps), _rms(message, eps)), axis=-1))
+            z = project(ctl + "down_weight", controller_input(x, message))
             forget, gain = self.model.project_many((prefix + ctl + "forget_weight", prefix + ctl + "gain_weight"), z)
-            return (1 - np.tanh(forget)) * x + np.tanh(gain) * message
+            return blend(x, message, forget, gain)
+
+        def merge_attention(inputs):
+            controllers = tuple(f"{prefix}controllers.{name}." for name in ("attn", "k", "v"))
+            incoming = tuple(messages[..., i, :] for i in range(len(controllers)))
+            reduced = self.model.project_groups(
+                ((ctl + "down_weight",), controller_input(x, message))
+                for ctl, x, message in zip(controllers, inputs, incoming, strict=True)
+            )
+            controls = self.model.project_groups(
+                ((ctl + "forget_weight", ctl + "gain_weight"), z)
+                for ctl, (z,) in zip(controllers, reduced, strict=True)
+            )
+            return tuple(blend(x, message, forget, gain)
+                         for x, message, (forget, gain) in zip(inputs, incoming, controls, strict=True))
 
         def norm(x, name):
             return _rms(x, eps) * get(name + ".weight")
@@ -253,8 +273,8 @@ class Inkling2TextSession:
         if messages is None and visit.is_local:
             q, k, v = (norm(a, "attn_norm"),) * 3
         else:
-            q, k, v = (norm(x if messages is None else merge(x, name, messages[..., i, :]), norm_names[i])
-                       for i, (x, name) in enumerate(zip(inputs, ("attn", "k", "v"))))
+            merged = inputs if messages is None else merge_attention(inputs)
+            q, k, v = (norm(x, name) for x, name in zip(merged, norm_names, strict=True))
 
         a = static_conv("attn_sconv", self._attention(visit, self.states[visit.state_slot], get, project, q, k, v))
         if layer % c["n_layers_per_attn_res_block"] == 0:
