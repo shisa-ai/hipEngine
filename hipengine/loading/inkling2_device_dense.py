@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from threading import Lock
 
 import numpy as np
@@ -73,6 +74,26 @@ class Inkling2DeviceDense:
                 if transform_output is not None:
                     transform_output(out.ptr, y.shape)
             return y
+
+    @contextmanager
+    def project_device(self, name, width, *, native_bf16=None, transform_output=None):
+        """Borrow projection scratch until the input owner downloads the result."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling 2 dense residency is closed")
+            matrix = self._matrix(name, None, preserve_bf16=native_bf16 is not None)
+            outputs, inputs = matrix[1]
+            if width != inputs:
+                raise ValueError(f"Inkling 2 dense projection {name} expects {inputs} input values per row")
+            result = np.empty(outputs, dtype=np.float32)
+            out = self._scratch("_output", result.nbytes)
+
+            def consume(ptr):
+                self._launch_projection(ptr, out.ptr, 1, 1, matrix, native_bf16)
+                if transform_output is not None:
+                    transform_output(out.ptr, result.shape)
+
+            yield out.ptr, result, consume
 
     def project_many(self, names, hidden: np.ndarray, *, native_bf16=None, pinned=False):
         """Share transfers for projections that consume the same FP32 input."""

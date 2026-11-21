@@ -67,6 +67,7 @@ class Inkling2TextReference:
         self.feed_experts_group = None
         self.convolution_factory = None
         self.attention_factory = None
+        self.project_device = None
 
     def project(self, name, hidden, *, limit=None):
         weight = self.weights.dense(name) if limit is None else self.weights.dense(name, slice(limit))
@@ -276,11 +277,20 @@ class Inkling2TextSession:
                 inputs, ("attn", "k", "v"), tuple(messages[..., i, :] for i in range(3)))
             q, k, v = (norm(x, name) for x, name in zip(merged, norm_names, strict=True))
 
-        a = self._attention(visit, self.states[visit.state_slot], get, q, k, v)
-        if self.convolution is None:
-            a = static_conv("attn_sconv", project("attn.wo_ud.weight", a))
-        else:
-            a = self.model.project(prefix + "attn.wo_ud.weight", a, transform_output=device_conv("attn_sconv"))
+        attention_project = None
+        if q.ndim == 1 and self.model.project_device is not None and self.attention is not None and self.convolution is not None:
+            def attention_project(pos, q, k, v, bias, sink, gain):
+                with self.model.project_device(prefix + "attn.wo_ud.weight", gain.size,
+                                               transform_output=device_conv("attn_sconv")) as projection:
+                    return self.attention.step(visit.state_slot, pos, q, k, v, bias, sink,
+                                               undo=self._undo, gain=gain, projection=projection)
+
+        a = self._attention(visit, self.states[visit.state_slot], get, q, k, v, attention_project=attention_project)
+        if attention_project is None:
+            if self.convolution is None:
+                a = static_conv("attn_sconv", project("attn.wo_ud.weight", a))
+            else:
+                a = self.model.project(prefix + "attn.wo_ud.weight", a, transform_output=device_conv("attn_sconv"))
         if layer % c["n_layers_per_attn_res_block"] == 0:
             blocks.append(_rms(np.ascontiguousarray(h)))
         else:
@@ -314,7 +324,7 @@ class Inkling2TextSession:
         return np.stack([self._convolve(visit, name, row, taps[i] if dynamic else taps, dynamic=dynamic, offset=i)
                          for i, row in enumerate(x)])
 
-    def _attention(self, visit, s, get, qi, ki, vi):
+    def _attention(self, visit, s, get, qi, ki, vi, *, attention_project=None):
         c = self.model.config
         nh, nkv, dim = self.model.head_shape(visit)
         ksize = c["sconv_kernel_size"]
@@ -378,12 +388,15 @@ class Inkling2TextSession:
 
         extent = c["sliding_window_size"] if visit.is_local else c["rel_extent"]
         bias = (rel @ weight("rel_logits_proj.proj"))[..., :extent]
+        gain = _sigmoid(gate)
+        if attention_project is not None:
+            return attention_project(pos, q, key, value, bias, sink, gain)
         if batch:
             y = np.stack([self._attend(visit, s, pos + i, *args)
                           for i, args in enumerate(zip(q, key, value, bias, sink))])
         else:
             y = self._attend(visit, s, pos, q, key, value, bias, sink)
-        return y * _sigmoid(gate)
+        return y * gain
 
     def _attend(self, visit, s, pos, q, key, value, bias, sink):
         if self.attention is not None:

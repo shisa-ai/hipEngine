@@ -132,6 +132,18 @@ __global__ void inkling2_target_attention_tiled(
     if (tid < dim) out[head * dim + tid] = acc / final_denom;
 }
 
+__global__ void inkling2_attention_gate(float* out, const float* gate, int width) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < width) out[i] = __fmul_rn(out[i], gate[i]);
+}
+
+extern "C" int hipengine_inkling2_attention_gate(float* out, const float* gate, int width) {
+    if (!out || !gate || width <= 0) return hipErrorInvalidValue;
+    hipLaunchKernelGGL(inkling2_attention_gate, dim3(1 + (width - 1) / 256), dim3(256), 0, 0,
+                       out, gate, width);
+    return hipGetLastError();
+}
+
 extern "C" int hipengine_inkling2_target_attention_tiled(
     const float* q, const float* k, const float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,

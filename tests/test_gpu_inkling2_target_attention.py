@@ -15,7 +15,7 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
     from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
     from hipengine.kernels.backends import resolve_backend
     from hipengine.kernels.hip_gfx1100.attention.inkling2_target_attention import (
-        launch_cache_write, launch_split_attention, launch_target_attention, launch_tiled_attention,
+        launch_attention_gate, launch_cache_write, launch_split_attention, launch_target_attention, launch_tiled_attention,
     )
     from hipengine.runtime.inkling2_undo import Inkling2UndoJournal
 
@@ -53,6 +53,8 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
                                     geometry=geometry, split=split)
     strict = Inkling2DeviceAttention(runtime=runtime, launch=launch_target_attention, write=launch_cache_write,
                                      geometry=geometry)
+    gated = Inkling2DeviceAttention(runtime=runtime, launch=launch_tiled_attention, write=launch_cache_write,
+                                    geometry=geometry, split=launch_split_attention, gate=launch_attention_gate)
     rng = np.random.default_rng(14)
     keys, values, replay = [], [], []
     undo = Inkling2UndoJournal()
@@ -72,6 +74,9 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
             p /= p.sum(axis=1, keepdims=True)
             ref = np.einsum("ht,thd->hd", p[:, :-1], vr)
             original = strict.step(0, pos, q, k, v, bias, sink)
+            gain = np.linspace(-0.25, 1, nq * dim, dtype=np.float32)
+            gated_out = gated.step(0, pos, q, k, v, bias, sink, gain=gain)
+            np.testing.assert_array_equal(gated_out.view(np.uint32), (original * gain.reshape(nq, dim)).view(np.uint32))
             copies.clear()
             exchanges.clear()
             out = owner.step(0, pos, q, k, v, bias, sink, undo=undo if pos >= 3 else None)
@@ -96,5 +101,6 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
     finally:
         undo.finish(3)
         strict.close()
+        gated.close()
         owner.close()
     assert not owner.banks

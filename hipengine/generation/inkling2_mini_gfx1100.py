@@ -42,7 +42,7 @@ def _native_head(owner):
 
 
 def _fp32_dense(owner):
-    return owner.project, owner.project_many, owner.project_groups, owner.project_chains
+    return owner.project, owner.project_many, owner.project_groups, owner.project_chains, owner.project_device
 
 
 def _native_dense(owner):
@@ -50,7 +50,8 @@ def _native_dense(owner):
     return (partial(owner.project, native_bf16=launch, pinned=True),
             partial(owner.project_many, native_bf16=launch, pinned=True),
             partial(owner.project_groups, native_bf16=launch, pinned=True),
-            partial(owner.project_chains, native_bf16=launch, pinned=True))
+            partial(owner.project_chains, native_bf16=launch, pinned=True),
+            partial(owner.project_device, native_bf16=launch))
 
 
 def _host_experts(owner):
@@ -72,7 +73,8 @@ def _bind_profile(generator, profile):
         bind(_HEAD, generator._dense), "unembed.weight", limit=generator.model.config["unpadded_vocab_size"],
     )
     model = generator.model
-    model.project, model.project_many, model.project_groups, model.project_chains = bind(_DENSE, generator._dense)
+    (model.project, model.project_many, model.project_groups, model.project_chains,
+     model.project_device) = bind(_DENSE, generator._dense)
     generator.model.feed_experts_group = bind(_EXPERTS, generator._experts)
 
 
@@ -133,13 +135,15 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
                         variant="split")
         cache_write = resolve(backend=_BACKEND, layer="inkling2_target_kv_write", quant=INKLING2_MINI.default_quant,
                               variant="default")
+        gate = resolve(backend=_BACKEND, layer="inkling2_attention_gate", quant=INKLING2_MINI.default_quant,
+                       variant="default")
         cfg = self.model.config
         block_attn = resolve(backend="hip_gfx1100", layer="inkling2_block_attention", quant=INKLING2_MINI.default_quant,
                              variant="default")
         visits = sorted(self.model.plan.visits, key=lambda v: v.state_slot)
 
         def attention_factory(capacity):
-            return Inkling2DeviceAttention(runtime=runtime, launch=attn, split=split, write=cache_write, geometry=[
+            return Inkling2DeviceAttention(runtime=runtime, launch=attn, split=split, write=cache_write, gate=gate, geometry=[
                 (min(capacity, cfg["sliding_window_size"]) if v.is_local else capacity,
                  *self.model.head_shape(v), cfg["sliding_window_size"] if v.is_local else cfg["rel_extent"])
                 for v in visits
@@ -162,6 +166,7 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
             self.model.project_many = dense.project_many
             self.model.project_groups = dense.project_groups
             self.model.project_chains = dense.project_chains
+            self.model.project_device = dense.project_device
             self.model.project_expert = experts.project
             self.model.project_experts_group = experts.project_group
             self._block_attention = owned.enter_context(Inkling2DeviceBlockAttention(runtime=runtime, launch=block_attn))

@@ -18,9 +18,9 @@ _SPLIT_MIN_LIVE = 16
 
 
 class Inkling2DeviceAttention:
-    def __init__(self, *, runtime, launch, write, geometry, split=None, device=None):
+    def __init__(self, *, runtime, launch, write, geometry, split=None, gate=None, device=None):
         self.rt, self.launch, self.write = runtime, launch, write
-        self.split = split
+        self.split, self.gate = split, gate
         self.scores = 0
         self.device = Device("hip") if device is None else device
         self.geometry = tuple(geometry)  # (capacity, query heads, KV heads, head width, bias extent) by state slot
@@ -34,7 +34,8 @@ class Inkling2DeviceAttention:
             self.owner = owner
             self.transfer = Inkling2ActivationTransfer(runtime)
             owner.callback(self.transfer.close)
-            scratch_values = 2 + max(nq * (d + e + 1) + 2 * nk * d for _, nq, nk, d, e in self.geometry)
+            q_copies = 1 if gate is None else 2
+            scratch_values = 2 + max(nq * (q_copies * d + e + 1) + 2 * nk * d for _, nq, nk, d, e in self.geometry)
             self.staging = np.empty(scratch_values, dtype=np.float32)
             self.scratch = self._allocate(self.staging.nbytes)
             self.out = self._allocate(4 * max(nq * d for _, nq, _, d, _ in self.geometry))
@@ -66,7 +67,7 @@ class Inkling2DeviceAttention:
             storage_dtype=DType.FP32,
         )
 
-    def step(self, visit, position, q, key, value, bias, sink, *, undo=None):
+    def step(self, visit, position, q, key, value, bias, sink, *, undo=None, gain=None, projection=None):
         if self.closed:
             raise RuntimeError("Inkling 2 attention state is closed")
         if position != self.positions.get(visit, 0):
@@ -77,6 +78,8 @@ class Inkling2DeviceAttention:
         expected = ((nq, d), (nk, d), (nk, d), (nq, extent), (nq,))
         if tuple(a.shape for a in (q, key, value, bias, sink)) != expected:
             raise ValueError("invalid Inkling 2 attention input shapes")
+        if gain is not None and (self.gate is None or gain.shape != (nq * d,)):
+            raise ValueError("invalid Inkling 2 attention gain or unavailable device gate")
         if use_split and not self.scores:
             self.scores = self._allocate(4 * max(capacity * heads for capacity, heads, *_ in self.geometry))
         if visit not in self.banks:
@@ -98,14 +101,25 @@ class Inkling2DeviceAttention:
             self.staging[cursor:end].reshape(array.shape)[...] = array
             cursor = end
         q_ptr, key_ptr, value_ptr, bias_ptr, sink_ptr = ptrs
+        if gain is not None:
+            gain_ptr = self.scratch + cursor * 4
+            self.staging[cursor:cursor + gain.size] = gain
+            cursor += gain.size
         args = (q_ptr, keys, values, bias_ptr, sink_ptr, self.out, spans, nq, nk, d, extent)
-        out = np.empty((nq, d), dtype=np.float32)
-        with self.transfer.exchange(self.scratch, self.out, self.staging[:cursor], out, pinned=True):
+        if projection is None:
+            dst, out, consume = self.out, np.empty((nq, d), dtype=np.float32), None
+        else:
+            dst, out, consume = projection
+        with self.transfer.exchange(self.scratch, dst, self.staging[:cursor], out, pinned=True):
             self.write(key_ptr, value_ptr, keys, values, spans, nk * d)
             if use_split:
                 self.split(*args, self.scores, live)
             else:
                 self.launch(*args)
+            if gain is not None:
+                self.gate(self.out, gain_ptr, gain.size)
+            if consume is not None:
+                consume(self.out)
         self.positions[visit] = position + 1
         return out
 
