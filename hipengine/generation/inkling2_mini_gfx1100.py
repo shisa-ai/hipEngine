@@ -82,8 +82,8 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
             runtime=runtime, launch=conv, channels=self.model.config["hidden_size"],
             width=self.model.config["sconv_kernel_size"],
         )
-        attn = resolve(backend="hip_gfx1100", layer="inkling2_target_attention", quant=INKLING2_MINI.default_quant,
-                       variant="default")
+        attn = resolve(backend=_BACKEND, layer="inkling2_target_attention", quant=INKLING2_MINI.default_quant,
+                       variant="tiled")
         cache_write = resolve(backend=_BACKEND, layer="inkling2_target_kv_write", quant=INKLING2_MINI.default_quant,
                               variant="default")
         cfg = self.model.config

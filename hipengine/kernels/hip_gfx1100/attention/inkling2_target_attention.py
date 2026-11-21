@@ -17,9 +17,9 @@ def _library():
                      profile="decode", output_name="inkling2_target_attention.so")
 
 
-@lru_cache(maxsize=1)
-def _build():
-    fn = _library().hipengine_inkling2_target_attention
+@lru_cache(maxsize=2)
+def _build(symbol):
+    fn = getattr(_library(), symbol)
     fn.argtypes = [ctypes.c_void_p] * 11 + [ctypes.c_int] * 4
     fn.restype = ctypes.c_int
     return fn
@@ -45,10 +45,18 @@ def _span_pointers(spans: KVLiveSpans):
     return tuple(x.ptr for x in t)
 
 
-def launch_target_attention(q, keys, values, bias, sink, out, spans: KVLiveSpans, nq, nk, dim, extent):
-    status = _build()(q, keys, values, bias, sink, out, *_span_pointers(spans), nq, nk, dim, extent)
+def _launch_attention(symbol, q, keys, values, bias, sink, out, spans: KVLiveSpans, nq, nk, dim, extent):
+    status = _build(symbol)(q, keys, values, bias, sink, out, *_span_pointers(spans), nq, nk, dim, extent)
     if status != HIP_SUCCESS:
         raise HipError(f"Inkling 2 target attention failed with HIP status {status}")
+
+
+def launch_target_attention(*args):
+    _launch_attention("hipengine_inkling2_target_attention", *args)
+
+
+def launch_tiled_attention(*args):
+    _launch_attention("hipengine_inkling2_target_attention_tiled", *args)
 
 
 def launch_cache_write(key, value, keys, values, spans: KVLiveSpans, width):
@@ -59,3 +67,4 @@ def launch_cache_write(key, value, keys, values, spans: KVLiveSpans, width):
 
 register(KernelKey("hip_gfx1100", "inkling2_target_kv_write", "inkling2_mixed", "default"), launch_cache_write)
 register(KernelKey("hip_gfx1100", "inkling2_target_attention", "inkling2_mixed", "default"), launch_target_attention)
+register(KernelKey("hip_gfx1100", "inkling2_target_attention", "inkling2_mixed", "tiled"), launch_tiled_attention)

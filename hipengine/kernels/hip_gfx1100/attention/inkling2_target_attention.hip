@@ -68,6 +68,80 @@ __global__ void inkling2_target_attention(const float* q, const float* k, const 
     if (lane < dim) out[head * dim + lane] = acc / factors[0];
 }
 
+__global__ void inkling2_target_attention_tiled(
+    const float* q, const float* k, const float* v, const float* bias, const float* sink, float* out,
+    const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
+    const int32_t* row, int nq, int nk, int dim, int extent) {
+    constexpr int tile = 16;
+    const int tid = threadIdx.x;
+    const int lane = tid % 32;
+    const int wave = tid / 32;
+    const int head = blockIdx.x;
+    const int kh = head / (nq / nk);
+    const int live = *count, position = *row;
+    q += head * dim;
+    bias += head * extent;
+    __shared__ float score[tile], previous[tile], current[tile];
+    __shared__ int physical[tile];
+    __shared__ float final_denom;
+    float hi = sink[head], denom = 1.0f, acc = 0.0f;
+    for (int start = 0; start < live; start += tile) {
+        const int n = min(tile, live - start);
+        for (int j = wave; j < n; j += 4) {
+            const int i = start + j;
+            const int lag = position - positions[i];
+            const bool active = !evicted[i] && lag >= 0;
+            if (lane == 0) physical[j] = active ? offsets[i] : -1;
+            if (!active) continue;
+            const float* key = k + (size_t(offsets[i]) * nk + kh) * dim;
+            float part[4];
+            #pragma unroll
+            for (int g = 0; g < 4; ++g) {
+                const int col = lane + 32 * g;
+                part[g] = col < dim ? __fmul_rn(q[col], key[col]) : 0.0f;
+            }
+            // Match the strict 128-way tree: combine +64, then +32, then the wave.
+            float sum = (part[0] + part[2]) + (part[1] + part[3]);
+            #pragma unroll
+            for (int offset = 16; offset > 0; offset /= 2) sum += __shfl_down(sum, offset, 32);
+            if (lane == 0) score[j] = sum * rsqrtf(float(dim)) + (lag < extent ? bias[lag] : 0.0f);
+        }
+        __syncthreads();
+        if (tid == 0) {
+            for (int j = 0; j < n; ++j) {
+                if (physical[j] < 0) continue;
+                const float next = fmaxf(hi, score[j]);
+                previous[j] = expf(hi - next);
+                current[j] = expf(score[j] - next);
+                denom = denom * previous[j] + current[j];
+                hi = next;
+            }
+        }
+        __syncthreads();
+        if (tid < dim) {
+            for (int j = 0; j < n; ++j) {
+                if (physical[j] < 0) continue;
+                const size_t base = (size_t(physical[j]) * nk + kh) * dim;
+                acc = acc * previous[j] + current[j] * v[base + tid];
+            }
+        }
+        __syncthreads();
+    }
+    if (tid == 0) final_denom = denom;
+    __syncthreads();
+    if (tid < dim) out[head * dim + tid] = acc / final_denom;
+}
+
+extern "C" int hipengine_inkling2_target_attention_tiled(
+    const float* q, const float* k, const float* v, const float* bias, const float* sink, float* out,
+    const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
+    const int32_t* row, int nq, int nk, int dim, int extent) {
+    if (nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 || extent <= 0) return hipErrorInvalidValue;
+    hipLaunchKernelGGL(inkling2_target_attention_tiled, dim3(nq), dim3(128), 0, 0,
+                       q, k, v, bias, sink, out, offsets, count, positions, evicted, row, nq, nk, dim, extent);
+    return hipGetLastError();
+}
+
 extern "C" int hipengine_inkling2_target_attention(const float* q, const float* k, const float* v,
                                                    const float* bias, const float* sink, float* out,
                                                    const int32_t* offsets, const int32_t* count,
