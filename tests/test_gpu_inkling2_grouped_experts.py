@@ -9,12 +9,12 @@ from hipengine.loading.inkling2_mini import Inkling2ExpertBank
 
 
 @pytest.mark.parametrize("nvfp4", [False, True])
-def test_grouped_projection_matches_singletons(nvfp4):
+def test_grouped_projection_matches_singletons(nvfp4, monkeypatch):
     try:
         ctypes.CDLL("libamdhip64.so")
     except OSError as exc:
         pytest.skip(f"HIP unavailable: {exc}")
-    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
     from hipengine.kernels.backends import resolve_backend
     from hipengine.kernels.hip_gfx1100.quant.inkling2_experts import launch_grouped_experts, launch_inkling2_expert
 
@@ -29,11 +29,23 @@ def test_grouped_projection_matches_singletons(nvfp4):
     bank = Inkling2ExpertBank(values, scales, amax, 1.3 if nvfp4 else None)
     source = SimpleNamespace(expert_bank=lambda *_: bank)
     ids = np.array([12, 5, 3, 9, 1, 0, 7, 6])
-    with Inkling2DeviceExperts(source, [0], runtime=get_hip_runtime(), launch=launch_inkling2_expert,
+    runtime = get_hip_runtime()
+    copies = []
+    memcpy = type(runtime).memcpy
+
+    def record_copy(self, dst, src, size, kind):
+        copies.append(kind)
+        return memcpy(self, dst, src, size, kind)
+
+    monkeypatch.setattr(type(runtime), "memcpy", record_copy)
+    with Inkling2DeviceExperts(source, [0], runtime=runtime, launch=launch_inkling2_expert,
                               grouped=launch_grouped_experts, max_selected=len(ids)) as owner:
-        x = rng.standard_normal((len(ids), cols), dtype=np.float32)
-        for shared in (True, False):
-            reference = np.stack([owner.project(0, 'w13', int(e), x[0] if shared else x[i])
-                                  for i, e in enumerate(ids)])
-            actual = owner.project_group(0, 'w13', ids, x[0] if shared else x)
-            np.testing.assert_array_equal(actual.view(np.uint32), reference.view(np.uint32))
+        for selected in (ids, ids[::2]):
+            x = rng.standard_normal((len(selected), cols), dtype=np.float32)
+            for shared in (True, False):
+                reference = np.stack([owner.project(0, "w13", int(e), x[0] if shared else x[i])
+                                      for i, e in enumerate(selected)])
+                copies.clear()
+                actual = owner.project_group(0, "w13", selected, x[0] if shared else x)
+                assert copies == [HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST]
+                np.testing.assert_array_equal(actual.view(np.uint32), reference.view(np.uint32))

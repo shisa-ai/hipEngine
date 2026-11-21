@@ -42,9 +42,12 @@ class Inkling2DeviceExperts:
                 raise ValueError("Inkling 2 expert residency requires at least one layer")
             if not 1 <= max_selected <= 65535:
                 raise ValueError("Inkling 2 selected expert scratch width is invalid")
-            self._input = self._allocate(4 * max_selected * max(bank.columns for bank in layout.values()))
+            input_values = max_selected * max(bank.columns for bank in layout.values())
+            if grouped is not None:
+                input_values += max_selected
+            self._staging = np.empty(input_values, dtype=np.float32) if grouped is not None else None
+            self._input = self._allocate(4 * input_values)
             self._output = self._allocate(4 * max_selected * max(bank.values.shape[1] for bank in layout.values()))
-            self._ids = self._allocate(4 * max_selected) if grouped is not None else None
             for key, bank in layout.items():
                 self._banks[key] = self._upload(bank)
         except BaseException:
@@ -102,13 +105,15 @@ class Inkling2DeviceExperts:
                 raise ValueError("invalid Inkling 2 selected expert IDs")
             if hidden.shape not in ((bank.columns,), (count, bank.columns)):
                 raise ValueError("invalid Inkling 2 grouped expert input geometry")
-            x = np.ascontiguousarray(hidden, dtype=np.float32)
             y = np.empty((count, bank.rows), dtype=np.float32)
+            staging = self._staging[:count + hidden.size]
+            staging[:count].view(np.int32)[:] = ids
+            staging[count:].reshape(hidden.shape)[...] = hidden
             copy = self._runtime.memcpy
-            copy(self._ids.ptr, ids.ctypes.data, ids.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
-            copy(self._input.ptr, x.ctypes.data, x.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
-            self._grouped(bank.weights.ptr, bank.scales.ptr, self._input.ptr, self._output.ptr, self._ids.ptr,
-                          bank.device_outer, count, bank.rows, bank.columns, bank.columns if x.ndim == 2 else 0,
+            copy(self._input.ptr, staging.ctypes.data, staging.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+            self._grouped(bank.weights.ptr, bank.scales.ptr, self._input.ptr + ids.nbytes, self._output.ptr,
+                          self._input.ptr, bank.device_outer, count, bank.rows, bank.columns,
+                          bank.columns if hidden.ndim == 2 else 0,
                           nvfp4=bank.outer_scales is not None)
             copy(y.ctypes.data, self._output.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
             return y
