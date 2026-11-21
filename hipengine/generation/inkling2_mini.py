@@ -24,6 +24,7 @@ from hipengine.runtime.inkling2_mini_vision import Inkling2VisionReference
 
 class Inkling2ReferenceGenerator:
     packed_verification = False
+    prefill_block_width = 1
     def __init__(self, *, model_path, weight_index, model_plugin, max_sequence_length=None):
         self.model = Inkling2TextReference(weight_index.config, Inkling2TextWeights(weight_index))
         self.tokenizer = Tokenizer.from_file(str(weight_index.model_path / "tokenizer.json"))
@@ -185,12 +186,30 @@ class Inkling2ReferenceGenerator:
                 draft.append(captured)
                 return result
 
-            for i, token in enumerate(ids):
+            # The text block API accepts token IDs, not image embeddings.
+            width = self.prefill_block_width if features is None else 1
+            for start in range(0, len(ids), width):
                 raise_if_generation_deadline_expired(request)
-                options = {"logits": i == len(ids) - 1}
-                if features is not None and 0 <= i - image_start < len(features):
-                    options["embedding"] = features[i - image_start]
-                logits = advance(token, **options)
+                block = ids[start:start + width]
+                final = start + len(block) == len(ids)
+                if len(block) == 1:
+                    options = {"logits": final}
+                    if features is not None and 0 <= start - image_start < len(features):
+                        options["embedding"] = features[start - image_start]
+                    logits = advance(block[0], **options)
+                elif draft is None:
+                    logits = session.prefill_block(block, logits=final)
+                else:
+                    captured = {}
+
+                    def capture_block(boundary, hidden):
+                        if boundary in taps:
+                            captured[boundary] = hidden
+
+                    logits = session.prefill_block(block, logits=final, capture=capture_block)
+                    for i in range(len(block)):
+                        raise_if_generation_deadline_expired(request)
+                        draft.append({boundary: hidden[i] for boundary, hidden in captured.items()})
             state = RowSamplingState(prompt_tokens=ids, seed=row_seed_for_index(request, row), row_index=row)
             if packed:
                 proposed, accepted, blocks = self._verify_packed(

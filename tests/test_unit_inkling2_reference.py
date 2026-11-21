@@ -116,6 +116,31 @@ def test_layer_major_block_matches_serial_logits_taps_and_followup():
     np.testing.assert_allclose(a.step(0), b.step(0), rtol=1e-6, atol=1e-6)
 
 
+def test_prefill_block_keeps_state_and_only_projects_final_row():
+    model = Inkling2TextReference(_config(), TinyWeights())
+    serial, packed = model.session(8), model.session(8)
+    tokens = (0, 1, 2, 0, 1)
+    for token in tokens:
+        expected = serial.step(token)
+    project = model.project_logits
+    shapes = []
+
+    def track(x):
+        shapes.append(x.shape)
+        return project(x)
+
+    model.project_logits = track
+    assert packed.prefill_block(tokens[:3], logits=False) is None
+    assert not shapes
+    taps = {}
+    actual = packed.prefill_block(tokens[3:], capture=lambda i, h: taps.update({i: h.copy()}))
+    assert shapes == [(2,)]
+    assert all(hidden.shape == (2, 2) for hidden in taps.values())
+    assert packed.position == serial.position == len(tokens)
+    np.testing.assert_allclose(actual, expected, atol=1e-6)
+    np.testing.assert_allclose(packed.step(0), serial.step(0), atol=1e-6)
+
+
 @pytest.mark.parametrize("keep", [0, 1, 3])
 def test_provisional_block_rolls_back_rejected_suffix_across_multiple_wraps(keep):
     model = Inkling2TextReference(_config(), TinyWeights())

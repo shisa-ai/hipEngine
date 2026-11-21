@@ -65,3 +65,26 @@ def test_cpu_reference_generation_uses_shared_sampler_and_enforces_context():
     req = GenerationRequest(prompts=((2, 0),), max_tokens=3, temperature=0, top_p=1, ignore_eos=False)
     with pytest.raises(ValueError, match="context"):
         gen.generate_detailed(req)
+
+
+@pytest.mark.parametrize("length", [1, 3, 4, 8])
+def test_enabled_prefill_chunks_prompt_and_requests_only_last_logits(length):
+    calls = []
+
+    def run(tokens, logits):
+        calls.append((tuple(tokens), logits))
+        return np.array([0, 9, 1], dtype=np.float32) if logits else None
+
+    session = SimpleNamespace(step=lambda token, *, logits: run([token], logits),
+                              prefill_block=lambda tokens, *, logits: run(tokens, logits))
+    gen = Inkling2ReferenceGenerator.__new__(Inkling2ReferenceGenerator)
+    gen.prefill_block_width = 3
+    gen.model = SimpleNamespace(session=lambda capacity: session)
+    gen.tokenizer = SimpleNamespace(decode=lambda ids, **_: "".join(map(str, ids)))
+    gen.max_sequence_length = length + 1
+    gen.eos_token_id = 1
+    ids = tuple(range(length))
+    req = GenerationRequest(prompts=(ids,), max_tokens=1, temperature=0, top_p=1, ignore_eos=False)
+    output, = gen.generate_detailed(req)
+    assert output.generated_token_ids == (1,)
+    assert calls == [(ids[i:i + 3], i + 3 >= length) for i in range(0, length, 3)]

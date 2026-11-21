@@ -153,7 +153,14 @@ class Inkling2TextSession:
         return self._forward(h, 1, logits=logits, capture=capture)
 
     def step_block(self, tokens, *, capture=None):
-        """Append a nonempty token block in one layer-major forward pass."""
+        """Append a nonempty token block and project every row for verification."""
+        return self._step_block(tokens, logits=True, capture=capture, last_only=False)
+
+    def prefill_block(self, tokens, *, logits=True, capture=None):
+        """Commit a prompt block, projecting only the last row if requested."""
+        return self._step_block(tokens, logits=logits, capture=capture, last_only=True)
+
+    def _step_block(self, tokens, *, logits, capture, last_only):
         tokens = tuple(tokens)
         if not tokens or self.position + len(tokens) > self.capacity:
             raise ValueError("Inkling 2 block exceeds session capacity or is empty")
@@ -161,7 +168,7 @@ class Inkling2TextSession:
         if any(not 0 <= token < c["vocab_size"] for token in tokens):
             raise ValueError("Inkling 2 block contains an out-of-range token")
         h = _rms(w.dense("embed.weight", list(tokens)), c["rms_norm_eps"]) * w.dense("embed_norm.weight")
-        return self._forward(h, len(tokens), logits=True, capture=capture)
+        return self._forward(h, len(tokens), logits=logits, capture=capture, last_only=last_only)
 
     @contextmanager
     def provisional_block(self, tokens, *, capture=None):
@@ -192,7 +199,7 @@ class Inkling2TextSession:
                 self._undo = None
                 self.position = start + retained
 
-    def _forward(self, h, width, *, logits, capture):
+    def _forward(self, h, width, *, logits, capture, last_only=False):
         c, w = self.model.config, self.model.weights
         blocks = []
         loop_start = c["loop_config"]["core_start"]
@@ -218,9 +225,14 @@ class Inkling2TextSession:
         self.position += width
         if not logits and capture is None:
             return None
+        if last_only and capture is None:
+            h = h[-1]
+            blocks = [block[-1] for block in blocks]
         h = _rms(_read_blocks(w.dense("attn_res.output_query"), blocks, h), c["rms_norm_eps"]) * w.dense("norm.weight")
         if capture is not None:
             capture(len(self.model.plan.visits), h)
+            if last_only:
+                h = h[-1]
         if not logits:
             return None
         raw = self.model.project_logits(h)
