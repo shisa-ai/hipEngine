@@ -5,6 +5,7 @@ Uses decoded expert weights; does not simulate quantized activations.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from math import sqrt
 
@@ -13,6 +14,7 @@ import numpy as np
 from hipengine.kernels.cpu_reference.inkling2_mini import _sigmoid, routed_feed_forward
 from hipengine.loading.inkling2_mini import Inkling2TextWeights
 from hipengine.models.inkling2_mini import Inkling2Visit, Inkling2VisitPlan
+from hipengine.runtime.inkling2_undo import Inkling2UndoJournal
 
 
 def _rms(x, eps=1e-6):
@@ -82,6 +84,7 @@ class Inkling2TextSession:
         self.model = model
         self.capacity = capacity
         self.position = 0
+        self._undo = None
         self.attention = model.attention_factory(capacity) if model.attention_factory is not None else None
         try:
             self.states = tuple(self._new_state(v) for v in sorted(model.plan.visits, key=lambda v: v.state_slot))
@@ -99,10 +102,19 @@ class Inkling2TextSession:
             if self.attention is not None:
                 self.attention.close()
 
-    def _convolve(self, visit, name, x, taps, *, dynamic=False):
+    def _convolve(self, visit, name, x, taps, *, dynamic=False, offset=0):
+        position = self.position + offset
         if self.convolution is not None:
-            return self.convolution.step(visit.state_slot, name, x, taps, dynamic=dynamic)
-        return self.states[visit.state_slot].convolve(name, x, taps, dynamic=dynamic)
+            return self.convolution.step(visit.state_slot, name, x, taps, dynamic=dynamic,
+                                         position=position, undo=self._undo)
+        state = self.states[visit.state_slot]
+        if self._undo is not None:
+            history = state.conv.get(name)
+            if history is None:
+                self._undo.before(position, state.conv.pop, name, None)
+            else:
+                self._undo.host(position, history)
+        return state.convolve(name, x, taps, dynamic=dynamic)
 
     def _new_state(self, visit):
         if self.attention is not None:
@@ -134,6 +146,35 @@ class Inkling2TextSession:
             raise ValueError("Inkling 2 block contains an out-of-range token")
         h = _rms(w.dense("embed.weight", list(tokens)), c["rms_norm_eps"]) * w.dense("embed_norm.weight")
         return self._forward(h, len(tokens), logits=True, capture=capture)
+
+    @contextmanager
+    def provisional_block(self, tokens, *, capture=None):
+        """Stage a block and commit only the prefix selected by the verifier."""
+        if self._undo is not None:
+            raise RuntimeError("Inkling 2 already has a provisional block")
+        tokens = tuple(tokens)
+        start = self.position
+        retained = 0
+        journal = self._undo = Inkling2UndoJournal()
+
+        def keep(count):
+            nonlocal retained
+            if not isinstance(count, int) or not 0 <= count <= len(tokens):
+                raise ValueError("invalid Inkling 2 accepted block prefix")
+            retained = count
+
+        try:
+            scores = self.step_block(tokens, capture=capture)
+            yield scores, keep
+        except BaseException:
+            retained = 0
+            raise
+        finally:
+            try:
+                journal.finish(start + retained)
+            finally:
+                self._undo = None
+                self.position = start + retained
 
     def _forward(self, h, width, *, logits, capture):
         c, w = self.model.config, self.model.weights
@@ -225,7 +266,7 @@ class Inkling2TextSession:
     def _conv_rows(self, visit, name, x, taps, *, dynamic=False):
         if x.ndim == 1:
             return self._convolve(visit, name, x, taps, dynamic=dynamic)
-        return np.stack([self._convolve(visit, name, row, taps[i] if dynamic else taps, dynamic=dynamic)
+        return np.stack([self._convolve(visit, name, row, taps[i] if dynamic else taps, dynamic=dynamic, offset=i)
                          for i, row in enumerate(x)])
 
     def _attention(self, visit, s, get, project, qi, ki, vi):
@@ -278,11 +319,14 @@ class Inkling2TextSession:
 
     def _attend(self, visit, s, pos, q, key, value, bias, sink):
         if self.attention is not None:
-            return self.attention.step(visit.state_slot, pos, q, key, value, bias, sink).reshape(-1)
+            return self.attention.step(visit.state_slot, pos, q, key, value, bias, sink, undo=self._undo).reshape(-1)
         nh, nkv, dim = self.model.head_shape(visit)
         extent = bias.shape[-1]
         capacity = len(s.keys)
         slot = pos % capacity
+        if self._undo is not None and pos >= capacity:
+            self._undo.host(pos, s.keys[slot])
+            self._undo.host(pos, s.values[slot])
         s.keys[slot], s.values[slot] = key, value
         distances = (slot - np.arange(min(pos + 1, capacity))) % capacity
         used = distances.size

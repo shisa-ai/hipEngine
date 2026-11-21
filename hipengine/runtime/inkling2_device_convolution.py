@@ -28,7 +28,7 @@ class Inkling2DeviceConvolution:
             self.out = allocate(channels * 4)
             self.owner = owner.pop_all()
 
-    def step(self, visit, name, x, taps, *, dynamic=False):
+    def step(self, visit, name, x, taps, *, dynamic=False, position=0, undo=None):
         if self.closed:
             raise RuntimeError("Inkling 2 convolution state is closed")
         channels = x.size
@@ -42,6 +42,8 @@ class Inkling2DeviceConvolution:
             self.rt.memset(buf.ptr, 0, buf.nbytes)
             self.histories[key] = buf
         history = self.histories[key]
+        if undo is not None:
+            undo.device(position, self.rt, history.ptr, history.nbytes)
         x = np.ascontiguousarray(x, dtype=np.float32)
         taps = np.ascontiguousarray(taps, dtype=np.float32)
         out = np.empty_like(x)

@@ -58,7 +58,7 @@ class Inkling2DeviceAttention:
             storage_dtype=DType.FP32,
         )
 
-    def step(self, visit, position, q, key, value, bias, sink):
+    def step(self, visit, position, q, key, value, bias, sink, *, undo=None):
         if self.closed:
             raise RuntimeError("Inkling 2 attention state is closed")
         if position != self.positions.get(visit, 0):
@@ -71,6 +71,12 @@ class Inkling2DeviceAttention:
             self.banks[visit] = self._make_bank(cap, nk, d)
         keys, values, spans = self.banks[visit]
         slot = position % cap
+        if undo is not None:
+            undo.before(position, self.positions.__setitem__, visit, position)
+            if position >= cap:
+                for ptr in (keys, values):
+                    undo.device(position, self.rt, ptr + slot * nk * d * 4, nk * d * 4)
+                undo.device(position, self.rt, spans.token_positions.ptr + slot * 4, 4)
         self._upload(keys + slot * nk * d * 4, key, np.float32)
         self._upload(values + slot * nk * d * 4, value, np.float32)
         self._upload(spans.token_positions.ptr + slot * 4, [position], np.int32)

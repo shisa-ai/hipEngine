@@ -91,3 +91,32 @@ def test_layer_major_block_matches_serial_logits_taps_and_followup():
         np.testing.assert_allclose(got, np.stack([t[boundary] for t in per_token]), rtol=1e-6, atol=1e-6)
     assert a.position == b.position == 4
     np.testing.assert_allclose(a.step(0), b.step(0), rtol=1e-6, atol=1e-6)
+
+
+@pytest.mark.parametrize("keep", [0, 1, 3])
+def test_provisional_block_rolls_back_rejected_suffix_across_multiple_wraps(keep):
+    model = Inkling2TextReference(_config(), TinyWeights())
+    serial, packed = model.session(10), model.session(10)
+    for token in (0, 1, 1):
+        serial.step(token)
+        packed.step(token)
+    proposed = (1, 0, 1, 1, 1)
+    with packed.provisional_block(proposed) as (logits, accept):
+        assert len(logits) == len(proposed)
+        accept(keep)
+    for token in proposed[:keep]:
+        serial.step(token)
+    assert serial.position == packed.position == 3 + keep
+    np.testing.assert_allclose(serial.step(0), packed.step(0), atol=1e-6)
+
+
+def test_provisional_block_failure_discards_even_selected_prefix():
+    model = Inkling2TextReference(_config(), TinyWeights())
+    reference, packed = model.session(6), model.session(6)
+    with pytest.raises(RuntimeError, match="rejected transaction"):
+        with packed.provisional_block((1, 0, 1)) as (_, accept):
+            accept(2)
+            raise RuntimeError("rejected transaction")
+    assert packed.position == 0
+    assert all(not visit.conv for visit in packed.states)
+    np.testing.assert_array_equal(reference.step(0), packed.step(0))
