@@ -53,6 +53,11 @@ class Inkling2TextReference:
         self.config = config["text_config"]
         self.weights = weights
         self.plan = Inkling2VisitPlan.from_config(config)
+        self.project_expert = None
+
+    def project(self, name, hidden, *, limit=None):
+        weight = self.weights.dense(name) if limit is None else self.weights.dense(name, slice(limit))
+        return hidden @ weight.T
 
     def session(self, capacity: int) -> Inkling2TextSession:
         return Inkling2TextSession(self, capacity)
@@ -116,7 +121,7 @@ class Inkling2TextSession:
             capture(len(self.model.plan.visits), h)
         if not logits:
             return None
-        raw = w.dense("unembed.weight", slice(c["unpadded_vocab_size"])) @ h
+        raw = self.model.project("unembed.weight", h, limit=c["unpadded_vocab_size"])
         cap = c["final_logit_softcapping"]
         return cap * np.tanh(raw / cap)
 
@@ -130,10 +135,13 @@ class Inkling2TextSession:
         def get(name):
             return w.dense(prefix + name)
 
+        def project(name, x):
+            return self.model.project(prefix + name, x)
+
         def merge(x, name, message):
             ctl = f"controllers.{name}."
-            z = get(ctl + "down_weight") @ np.concatenate((_rms(x, eps), _rms(message, eps)))
-            return (1 - np.tanh(get(ctl + "forget_weight") @ z)) * x + np.tanh(get(ctl + "gain_weight") @ z) * message
+            z = project(ctl + "down_weight", np.concatenate((_rms(x, eps), _rms(message, eps))))
+            return (1 - np.tanh(project(ctl + "forget_weight", z))) * x + np.tanh(project(ctl + "gain_weight", z)) * message
 
         def norm(x, name):
             return _rms(x, eps) * get(name + ".weight")
@@ -151,7 +159,7 @@ class Inkling2TextSession:
             q, k, v = (norm(x if messages is None else merge(x, name, messages[i]), norm_names[i])
                        for i, (x, name) in enumerate(zip(inputs, ("attn", "k", "v"))))
 
-        a = static_conv("attn_sconv", self._attention(visit, s, get, q, k, v))
+        a = static_conv("attn_sconv", self._attention(visit, s, get, project, q, k, v))
         if layer % c["n_layers_per_attn_res_block"] == 0:
             blocks.append(h)
         else:
@@ -160,10 +168,11 @@ class Inkling2TextSession:
         if messages is not None:
             m = merge(m, "mlp", messages[3])
         m = routed_feed_forward(w, layer, norm(m, "mlp_norm"), top_k=c["num_experts_per_tok"],
-                                route_scale=c["route_scale"], gate_cap=c["mlp_gate_softcap"], up_cap=c["mlp_up_softcap"])
+                                route_scale=c["route_scale"], gate_cap=c["mlp_gate_softcap"], up_cap=c["mlp_up_softcap"],
+                                project=self.model.project_expert, project_dense=self.model.project)
         return a + static_conv("mlp_sconv", m)
 
-    def _attention(self, visit, s, get, qi, ki, vi):
+    def _attention(self, visit, s, get, project, qi, ki, vi):
         c = self.model.config
         nh, nkv, dim = self.model.head_shape(visit)
         ksize = c["sconv_kernel_size"]
@@ -172,21 +181,24 @@ class Inkling2TextSession:
         def weight(name):
             return get("attn." + name)
 
+        def linear(name, x):
+            return project("attn." + name, x)
+
         def project_kv(name, x):
-            y = weight(f"w{name}_dv.weight") @ x
+            y = linear(f"w{name}_dv.weight", x)
             conv = f"{name}_sconv."
             if visit.is_local:
                 taps = weight(conv + "weight")[:, 0, ::-1]
             else:
-                dynamic = (weight(conv + "weight_proj") @ x).reshape(nkv, 1, ksize)
+                dynamic = linear(conv + "weight_proj", x).reshape(nkv, 1, ksize)
                 taps = (weight(conv + "static_w").T.reshape(nkv, dim, ksize) + dynamic).reshape(-1, ksize)
             return s.convolve(name, y, taps, dynamic=not visit.is_local).reshape(nkv, dim)
 
-        q = (weight("wq_du.weight") @ qi).reshape(nh, dim)
+        q = linear("wq_du.weight", qi).reshape(nh, dim)
         q = _clip(q * weight("q_l2_clip.scale"), c["qk_l2_clip_threshold"])
         key = _clip(project_kv("k", ki), c["qk_l2_clip_threshold"])
         value = _rms(project_kv("v", vi), c["rms_norm_eps"])
-        rel = (weight("wr_du.weight") @ qi).reshape(nh, -1)
+        rel = linear("wr_du.weight", qi).reshape(nh, -1)
         rel = _clip(rel * weight("rel_l2_clip.scale"), c["rel_l2_clip_threshold"])
         if not visit.is_local:
             scale = 1 + c["log_scaling_alpha"] * np.log(max(1, (pos + 1) / c["log_scaling_n_floor"]))
@@ -203,7 +215,7 @@ class Inkling2TextSession:
         extent = c["sliding_window_size"] if visit.is_local else c["rel_extent"]
         near = distances < extent
         scores[:, near] += (rel @ weight("rel_logits_proj.proj"))[:, distances[near]]
-        sink = weight("attn_sink_proj.weight") @ qi
+        sink = linear("attn_sink_proj.weight", qi)
         p = _softmax(np.concatenate((scores, sink[:, None]), axis=-1))[:, :used]
         y = np.einsum("kgt,tkd->kgd", p.reshape(nkv, groups, used), s.values[:used]).reshape(-1)
-        return weight("wo_ud.weight") @ (y * _sigmoid(weight("gate_attn.weight") @ qi))
+        return linear("wo_ud.weight", y * _sigmoid(linear("gate_attn.weight", qi)))

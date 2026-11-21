@@ -10,13 +10,14 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
 
 
 def routed_feed_forward(weights, layer: int, hidden: np.ndarray, *, top_k: int,
-                        route_scale: float, gate_cap: float, up_cap: float, project=None) -> np.ndarray:
+                        route_scale: float, gate_cap: float, up_cap: float, project=None, project_dense=None) -> np.ndarray:
     """One token, with FP32 routing and accumulation."""
     if project is None:
         def project(layer, stem, expert, x):
             return weights.expert(layer, stem, expert) @ x
     prefix = f"layers.{layer}.mlp.gate."
-    scores = _sigmoid(weights.dense(prefix + "weight") @ hidden)
+    name = prefix + "weight"
+    scores = _sigmoid(weights.dense(name) @ hidden if project_dense is None else project_dense(name, hidden))
     if not 1 <= top_k <= scores.size:
         raise ValueError(f"invalid Inkling 2 top-k: {top_k} for {scores.size} experts")
     ranking = scores + weights.dense(prefix + "bias")
