@@ -55,6 +55,7 @@ class Inkling2TextReference:
         self.plan = Inkling2VisitPlan.from_config(config)
         self.project_expert = None
         self.convolution_factory = None
+        self.attention_factory = None
 
     def project(self, name, hidden, *, limit=None):
         weight = self.weights.dense(name) if limit is None else self.weights.dense(name, slice(limit))
@@ -75,12 +76,22 @@ class Inkling2TextSession:
         self.model = model
         self.capacity = capacity
         self.position = 0
-        self.states = tuple(self._new_state(v) for v in sorted(model.plan.visits, key=lambda v: v.state_slot))
-        self.convolution = model.convolution_factory() if model.convolution_factory is not None else None
+        self.attention = model.attention_factory(capacity) if model.attention_factory is not None else None
+        try:
+            self.states = tuple(self._new_state(v) for v in sorted(model.plan.visits, key=lambda v: v.state_slot))
+            self.convolution = model.convolution_factory() if model.convolution_factory is not None else None
+        except BaseException:
+            if self.attention is not None:
+                self.attention.close()
+            raise
 
     def close(self):
-        if self.convolution is not None:
-            self.convolution.close()
+        try:
+            if self.convolution is not None:
+                self.convolution.close()
+        finally:
+            if self.attention is not None:
+                self.attention.close()
 
     def _convolve(self, visit, name, x, taps, *, dynamic=False):
         if self.convolution is not None:
@@ -88,6 +99,8 @@ class Inkling2TextSession:
         return self.states[visit.state_slot].convolve(name, x, taps, dynamic=dynamic)
 
     def _new_state(self, visit):
+        if self.attention is not None:
+            return _VisitState(None, None)
         _, nkv, dim = self.model.head_shape(visit)
         cap = min(self.capacity, self.model.config["sliding_window_size"]) if visit.is_local else self.capacity
         return _VisitState(np.empty((cap, nkv, dim), np.float32), np.empty((cap, nkv, dim), np.float32))
@@ -215,6 +228,13 @@ class Inkling2TextSession:
             q *= scale
             rel *= scale
 
+        extent = c["sliding_window_size"] if visit.is_local else c["rel_extent"]
+        bias = (rel @ weight("rel_logits_proj.proj"))[:, :extent]
+        sink = linear("attn_sink_proj.weight", qi)
+        if self.attention is not None:
+            y = self.attention.step(visit.state_slot, pos, q, key, value, bias, sink).reshape(-1)
+            return linear("wo_ud.weight", y * _sigmoid(linear("gate_attn.weight", qi)))
+
         capacity = len(s.keys)
         slot = pos % capacity
         s.keys[slot], s.values[slot] = key, value
@@ -222,10 +242,8 @@ class Inkling2TextSession:
         used = distances.size
         groups = nh // nkv
         scores = np.einsum("kgd,tkd->kgt", q.reshape(nkv, groups, dim), s.keys[:used]).reshape(nh, used) / sqrt(dim)
-        extent = c["sliding_window_size"] if visit.is_local else c["rel_extent"]
         near = distances < extent
-        scores[:, near] += (rel @ weight("rel_logits_proj.proj"))[:, distances[near]]
-        sink = linear("attn_sink_proj.weight", qi)
+        scores[:, near] += bias[:, distances[near]]
         p = _softmax(np.concatenate((scores, sink[:, None]), axis=-1))[:, :used]
         y = np.einsum("kgt,tkd->kgd", p.reshape(nkv, groups, used), s.values[:used]).reshape(-1)
         return linear("wo_ud.weight", y * _sigmoid(linear("gate_attn.weight", qi)))

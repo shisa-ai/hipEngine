@@ -7,11 +7,13 @@ from hipengine.core.hip import get_hip_runtime
 from hipengine.core.rocblas import Rocblas
 from hipengine.generation.inkling2_mini import Inkling2ReferenceGenerator
 from hipengine.generation.registry import register_text_generator
+from hipengine.kernels.hip_gfx1100.attention import inkling2_target_attention  # noqa: F401
 from hipengine.kernels.hip_gfx1100.quant import inkling2_experts, inkling2_short_conv  # noqa: F401
 from hipengine.kernels.registry import resolve
 from hipengine.loading.inkling2_device_dense import Inkling2DeviceDense
 from hipengine.loading.inkling2_device_experts import Inkling2DeviceExperts
 from hipengine.models.inkling2_mini import INKLING2_MINI
+from hipengine.runtime.inkling2_device_attention import Inkling2DeviceAttention
 from hipengine.runtime.inkling2_device_convolution import Inkling2DeviceConvolution
 
 
@@ -28,6 +30,19 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
             runtime=runtime, launch=conv, channels=self.model.config["hidden_size"],
             width=self.model.config["sconv_kernel_size"],
         )
+        attn = resolve(backend="hip_gfx1100", layer="inkling2_target_attention", quant=INKLING2_MINI.default_quant,
+                       variant="default")
+        cfg = self.model.config
+        visits = sorted(self.model.plan.visits, key=lambda v: v.state_slot)
+
+        def attention_factory(capacity):
+            return Inkling2DeviceAttention(runtime=runtime, launch=attn, geometry=[
+                (min(capacity, cfg["sliding_window_size"]) if v.is_local else capacity,
+                 *self.model.head_shape(v), cfg["sliding_window_size"] if v.is_local else cfg["rel_extent"])
+                for v in visits
+            ])
+
+        self.model.attention_factory = attention_factory
         weights = self.model.weights
         with ExitStack() as owned:
             blas = Rocblas.load()
