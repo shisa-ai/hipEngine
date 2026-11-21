@@ -381,6 +381,7 @@ class PrefillF16StagingWorkspace:
     ptr: int
     nbytes: int
     workspace_owner: object | None = None
+    multiple_sequences: bool = False
 
     def __post_init__(self) -> None:
         if int(self.ptr) <= 0 or int(self.nbytes) <= 0:
@@ -399,6 +400,7 @@ def prefill_f16_staging_session(
     workspace_ptr: int = 0,
     workspace_nbytes: int = 0,
     workspace_owner: object | None = None,
+    multiple_sequences: bool = False,
 ) -> Iterator[None]:
     """Enable F16 staging with one caller-owned bounded device workspace."""
 
@@ -408,6 +410,7 @@ def prefill_f16_staging_session(
             ptr=int(workspace_ptr),
             nbytes=int(workspace_nbytes),
             workspace_owner=workspace_owner,
+            multiple_sequences=multiple_sequences,
         )
     enabled_token = _prefill_f16_staging_session_enabled.set(bool(enabled))
     workspace_token = _prefill_f16_staging_workspace.set(workspace)
@@ -488,6 +491,13 @@ def _launch_prefill_f16_staged(
         quant=key.quant,
         variant=key.variant,
     )
+    workspace = prefill_f16_staging_workspace()
+    if (
+        workspace is not None
+        and workspace.multiple_sequences
+        and getattr(sibling, "requires_single_prefill_sequence", False)
+    ):
+        return False
     count = int(rows) * int(in_features)
     stage_ptr = _prefill_f16_stage_ptr(count)
     if stage_ptr <= 0:
@@ -501,7 +511,6 @@ def _launch_prefill_f16_staged(
     )
     stage_kwargs = dict(kwargs)
     stage_kwargs.pop("library", None)
-    workspace = prefill_f16_staging_workspace()
     owner_type = getattr(sibling, "workspace_owner_type", None)
     if (
         workspace is not None

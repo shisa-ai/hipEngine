@@ -18622,7 +18622,7 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("resident staging workspace is undersized")
         return buffer
 
-    def _prefill_f16_staging_context(self):
+    def _prefill_f16_staging_context(self, *, multiple_sequences: bool = False):
         """Bind the B2 F16 cast workspace to this resident session."""
 
         if not bool(self.use_prefill_f16_staging):
@@ -18638,6 +18638,7 @@ class Qwen35GGUFResidentSession:
             workspace_ptr=int(buffer.ptr),
             workspace_nbytes=int(buffer.nbytes),
             workspace_owner=self._prefill_fullgemm_workspace,
+            multiple_sequences=multiple_sequences,
         )
 
     def _wide_f16_activation_context(self):
@@ -18941,7 +18942,7 @@ class Qwen35GGUFResidentSession:
         )
 
     @contextmanager
-    def _prefill_route_sessions(self):
+    def _prefill_route_sessions(self, *, multiple_sequences: bool = False):
         """Bind the route scopes shared by ordinary and packed prefill.
 
         Entry-specific Q8/pack8 and library-backed scopes stay with their
@@ -18954,7 +18955,7 @@ class Qwen35GGUFResidentSession:
             q4_t16_unequal_pair_prefill_session(
                 _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
             ),
-            self._prefill_f16_staging_context(),
+            self._prefill_f16_staging_context(multiple_sequences=multiple_sequences),
             self._wide_f16_activation_context(),
             self._q6_integer_mmq_context(),
             self._iq_dense_mmq_context(),
@@ -22590,7 +22591,7 @@ class Qwen35GGUFResidentSession:
             # Keep the common prefill route owner inside graph/flush guards.
             # Verification never enters this prompt-only scope; ordinary-only
             # Q8/pack8 controls remain at the ordinary prefill entry.
-            with self._prefill_route_sessions():
+            with self._prefill_route_sessions(multiple_sequences=len(session_tuple) > 1):
                 return self._prefill_batch_native_impl(
                     prompt_token_ids,
                     sessions=sessions,

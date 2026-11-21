@@ -936,6 +936,9 @@ def _launch_q6_fullgemm(
 
 # Dispatch passes owned scratch only to registered callables declaring it.
 gguf_q6_k_t16_qmicro_planar_fullgemm_fp16_in_bf16_out.workspace_owner_type = Q6FullGemmWorkspace
+# hipBLASLt's result can depend on a row's placement in the packed matrix.
+# Keep this implementation for single-request prefill, not a shared slab.
+gguf_q6_k_t16_qmicro_planar_fullgemm_fp16_in_bf16_out.requires_single_prefill_sequence = True
 
 
 def register_gguf_q6_k_f16_rocblas_prefill_kernels(

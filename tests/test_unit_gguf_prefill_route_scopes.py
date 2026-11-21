@@ -49,7 +49,7 @@ def test_common_prefill_scopes_enter_in_order_and_unwind(monkeypatch, fail_at):
         ("q6", "_q6_integer_mmq_context"),
         ("iq", "_iq_dense_mmq_context"),
     ):
-        setattr(session, method, lambda name=name: scope(name))
+        setattr(session, method, lambda name=name, **kwargs: scope(name))
 
     def execute():
         with session._prefill_route_sessions():
@@ -134,7 +134,8 @@ def test_packed_prefill_common_scope_is_inside_guards_and_before_release(monkeyp
     session._release_int8_prefill_oracles_after_call = lambda sessions: events.append("release")
 
     @contextmanager
-    def common():
+    def common(*, multiple_sequences):
+        assert multiple_sequences
         events.append("enter")
         try:
             yield
@@ -149,7 +150,7 @@ def test_packed_prefill_common_scope_is_inside_guards_and_before_release(monkeyp
 
     def execute(prompts, **kwargs):
         assert events == ["invalidate", "flush", "enter"]
-        assert prompts == [[10, 11]]
+        assert prompts == [[10, 11], [12]]
         events.append("execute")
         if fail:
             raise RuntimeError("injected prefill failure")
@@ -158,7 +159,7 @@ def test_packed_prefill_common_scope_is_inside_guards_and_before_release(monkeyp
     session._prefill_batch_native_impl = execute
     if fail:
         with pytest.raises(RuntimeError, match="injected prefill"):
-            session.prefill_batch_native([[10, 11]])
+            session.prefill_batch_native([[10, 11], [12]], sessions=(session, object()))
     else:
-        assert session.prefill_batch_native([[10, 11]]) == ["result"]
+        assert session.prefill_batch_native([[10, 11], [12]], sessions=(session, object())) == ["result"]
     assert events == ["invalidate", "flush", "enter", "execute", "exit", "release"]

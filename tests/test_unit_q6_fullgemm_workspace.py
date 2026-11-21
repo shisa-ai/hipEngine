@@ -236,6 +236,39 @@ def test_staging_passes_owner_only_to_declaring_kernel(rig, monkeypatch):
     assert calls == [None, owner]
 
 
+def test_packed_staging_declines_position_dependent_sibling(rig, monkeypatch):
+    from hipengine.runtime import gguf_linear as gl
+    from hipengine.kernels.hip_gfx1100.fused import gguf_ops
+
+    calls = []
+    def sibling(*args, **kwargs):
+        calls.append('launch')
+
+    sibling.requires_single_prefill_sequence = True
+    monkeypatch.setattr(gl, 'is_registered', lambda key: True)
+    monkeypatch.setattr(gl, 'resolve', lambda **kw: sibling)
+    monkeypatch.setattr(gl, 'linear_weight_pointers', lambda abi, weight: (2,))
+    monkeypatch.setattr(gguf_ops, 'gguf_cast_bf16_to_f16', lambda *a, **kw: calls.append('cast'))
+
+    def launch_staged():
+        return gl._launch_prefill_f16_staged(
+            None, object(), 1, 3, 8, 256, 16, {'runtime': rig.runtime},
+            backend='test', quant='test', layer='linear', runtime=rig.runtime,
+        )
+
+    with gl.prefill_f16_staging_session(workspace_ptr=400, workspace_nbytes=4096):
+        with gl.prefill_f16_staging_session(
+            workspace_ptr=400, workspace_nbytes=4096, multiple_sequences=True,
+        ):
+            assert not launch_staged()
+            assert not calls
+            sibling.requires_single_prefill_sequence = False
+            assert launch_staged()
+        sibling.requires_single_prefill_sequence = True
+        assert launch_staged()
+    assert calls == ['cast', 'launch', 'cast', 'launch']
+
+
 def test_failed_plan_sync_retains_unpublished_resources_until_close(rig, monkeypatch):
     owner = q6.Q6FullGemmWorkspace()
     original = rig.runtime.stream_synchronize
