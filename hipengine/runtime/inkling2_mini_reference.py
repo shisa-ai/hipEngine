@@ -301,33 +301,44 @@ class Inkling2TextSession:
         def linear_many(names, x):
             return self.model.project_many((attn_prefix + name for name in names), x)
 
-        def convolve_kv(name, y, dynamic=None):
+        def kv_taps(name, dynamic=None):
             conv = f"{name}_sconv."
             if dynamic is None:
-                taps = weight(conv + "weight")[:, 0, ::-1]
-            else:
-                dynamic = dynamic.reshape(*leading, nkv, 1, ksize)
-                taps = (weight(conv + "static_w").T.reshape(nkv, dim, ksize) + dynamic).reshape(*leading, -1, ksize)
-            return self._conv_rows(visit, name, y, taps, dynamic=dynamic is not None).reshape(*leading, nkv, dim)
+                return weight(conv + "weight")[:, 0, ::-1]
+            dynamic = dynamic.reshape(*leading, nkv, 1, ksize)
+            return (weight(conv + "static_w").T.reshape(nkv, dim, ksize) + dynamic).reshape(*leading, -1, ksize)
 
         def project_kv(name, x):
             projection = f"w{name}_dv.weight"
             if visit.is_local:
-                return convolve_kv(name, linear(projection, x))
+                return linear(projection, x), kv_taps(name)
             y, dynamic = linear_many((projection, f"{name}_sconv.weight_proj"), x)
-            return convolve_kv(name, y, dynamic)
+            return y, kv_taps(name, dynamic)
 
         query_names = ("wq_du.weight", "wr_du.weight", "attn_sink_proj.weight", "gate_attn.weight")
         if visit.is_local and qi is ki and qi is vi:
             q, rel, sink, gate, k, v = linear_many((*query_names, "wk_dv.weight", "wv_dv.weight"), qi)
-            k, v = convolve_kv("k", k), convolve_kv("v", v)
+            kt, vt = kv_taps("k"), kv_taps("v")
         else:
             q, rel, sink, gate = linear_many(query_names, qi)
-            k, v = project_kv("k", ki), project_kv("v", vi)
+            (k, kt), (v, vt) = project_kv("k", ki), project_kv("v", vi)
+        dynamic = not visit.is_local
+        if self.convolution is None:
+            k = self._conv_rows(visit, "k", k, kt, dynamic=dynamic)
+            v = self._conv_rows(visit, "v", v, vt, dynamic=dynamic)
+        elif batch:
+            pair = [self.convolution.step_kv(visit.state_slot, kr, vr, kt[i] if dynamic else kt,
+                                             vt[i] if dynamic else vt, dynamic=dynamic,
+                                             position=pos + i, undo=self._undo)
+                    for i, (kr, vr) in enumerate(zip(k, v))]
+            k, v = (np.stack(rows) for rows in zip(*pair))
+        else:
+            k, v = self.convolution.step_kv(visit.state_slot, k, v, kt, vt,
+                                            dynamic=dynamic, position=pos, undo=self._undo)
         q = q.reshape(*leading, nh, dim)
         q = _clip(q * weight("q_l2_clip.scale"), c["qk_l2_clip_threshold"])
-        key = _clip(k, c["qk_l2_clip_threshold"])
-        value = _rms(v, c["rms_norm_eps"])
+        key = _clip(k.reshape(*leading, nkv, dim), c["qk_l2_clip_threshold"])
+        value = _rms(v.reshape(*leading, nkv, dim), c["rms_norm_eps"])
         rel = rel.reshape(*leading, nh, -1)
         rel = _clip(rel * weight("rel_l2_clip.scale"), c["rel_l2_clip_threshold"])
         if not visit.is_local:

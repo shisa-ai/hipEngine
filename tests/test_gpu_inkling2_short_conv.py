@@ -7,7 +7,8 @@ from hipengine.runtime.inkling2_device_convolution import Inkling2DeviceConvolut
 from hipengine.runtime.inkling2_mini_reference import _VisitState
 
 
-def test_device_short_convolution_preserves_separate_visit_histories(monkeypatch):
+@pytest.mark.parametrize("paired", [False, True])
+def test_device_short_convolution_preserves_separate_visit_histories(monkeypatch, paired):
     try:
         ctypes.CDLL("libamdhip64.so")
     except OSError as exc:
@@ -39,13 +40,17 @@ def test_device_short_convolution_preserves_separate_visit_histories(monkeypatch
     try:
         for i in range(12):
             visit = i % 2
-            for name in ("k", "v"):
-                x = rng.standard_normal(193, dtype=np.float32)
-                taps = rng.standard_normal((193, 4), dtype=np.float32)[:, ::-1]
-                ref = refs[visit].convolve(name, x, taps, dynamic=bool(visit))
-                copies.clear()
-                gpu = owner.step(visit, name, x, taps, dynamic=bool(visit))
-                assert copies == [HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST, "wait"]
+            inputs = [rng.standard_normal(193, dtype=np.float32) for _ in range(2)]
+            taps = [rng.standard_normal((193, 4), dtype=np.float32)[:, ::-1] for _ in range(2)]
+            copies.clear()
+            if paired:
+                actual = owner.step_kv(visit, *inputs, *taps, dynamic=bool(visit))
+            else:
+                actual = tuple(owner.step(visit, name, x, t, dynamic=bool(visit))
+                               for name, x, t in zip(("k", "v"), inputs, taps, strict=True))
+            assert copies == [HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST, "wait"] * (1 if paired else 2)
+            for name, x, t, gpu in zip(("k", "v"), inputs, taps, actual, strict=True):
+                ref = refs[visit].convolve(name, x, t, dynamic=bool(visit))
                 np.testing.assert_allclose(gpu, ref, rtol=1e-6, atol=1e-6)
                 assert np.argmax(gpu) == np.argmax(ref)
                 rp = np.exp(ref.astype(np.float64) - np.max(ref))
