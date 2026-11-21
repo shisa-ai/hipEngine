@@ -10,8 +10,11 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
 
 
 def routed_feed_forward(weights, layer: int, hidden: np.ndarray, *, top_k: int,
-                        route_scale: float, gate_cap: float, up_cap: float) -> np.ndarray:
-    """One token, with decoded expert weights and FP32 accumulation."""
+                        route_scale: float, gate_cap: float, up_cap: float, project=None) -> np.ndarray:
+    """One token, with FP32 routing and accumulation."""
+    if project is None:
+        def project(layer, stem, expert, x):
+            return weights.expert(layer, stem, expert) @ x
     prefix = f"layers.{layer}.mlp.gate."
     scores = _sigmoid(weights.dense(prefix + "weight") @ hidden)
     if not 1 <= top_k <= scores.size:
@@ -23,9 +26,9 @@ def routed_feed_forward(weights, layer: int, hidden: np.ndarray, *, top_k: int,
     mix *= route_scale / (mix.sum() + np.float32(1e-20))
     result = np.zeros_like(hidden, dtype=np.float32)
     for expert, factor in zip(ids.tolist(), mix):
-        paired = weights.expert(layer, "w13", expert) @ hidden
+        paired = project(layer, "w13", expert, hidden)
         gate, up = paired[0::2], paired[1::2]
         activation = (gate_cap * np.tanh(gate / gate_cap) * _sigmoid(gate)
                       * up_cap * np.tanh(up / up_cap))
-        result += factor * (weights.expert(layer, "w2", expert) @ activation)
+        result += factor * project(layer, "w2", expert, activation)
     return result

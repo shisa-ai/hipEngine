@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from math import prod
 
 import numpy as np
@@ -10,6 +11,18 @@ from hipengine.loading.safetensors import WeightIndex, _parse_safetensors_header
 from hipengine.quant.inkling2_experts import decode_mxfp8_expert, decode_nvfp4_expert
 
 _STORAGE = {"BF16": "<u2", "F32": "<f4", "U8": "u1", "F8_E4M3": "u1"}
+
+
+@dataclass(frozen=True, slots=True)
+class Inkling2ExpertBank:
+    values: np.ndarray
+    scales: np.ndarray
+    amax: np.ndarray | None = None
+    denominator: float | None = None
+
+    @property
+    def columns(self) -> int:
+        return self.values.shape[2] * (2 if self.amax is not None else 1)
 
 
 class Inkling2TextWeights:
@@ -48,7 +61,7 @@ class Inkling2TextWeights:
             return (data.astype(np.uint32) << 16).view(np.float32)
         return np.asarray(data)
 
-    def expert(self, layer: int, projection: str, expert: int) -> np.ndarray:
+    def expert_bank(self, layer: int, projection: str) -> Inkling2ExpertBank:
         prefix = f"layers.{layer}.mlp.experts.{projection}_weight"
         weight_info = self._info(prefix)
         scale_info = self._info(prefix + "_scale")
@@ -58,11 +71,24 @@ class Inkling2TextWeights:
         if (len(weight_info.shape) != 3 or len(scale_info.shape) != 3
                 or weight_info.shape[:2] != scale_info.shape[:2]):
             raise ValueError(f"incompatible Inkling 2 expert bank shape for {prefix}")
-        if not 0 <= expert < weight_info.shape[0]:
-            raise IndexError(f"Inkling 2 expert index out of range: {expert}")
-        values, scales = self.raw(prefix)[expert], self.raw(prefix + "_scale")[expert]
+        values, scales = self.raw(prefix), self.raw(prefix + "_scale")
+        block_bytes = 8 if weight_info.dtype == "U8" else 32
+        if values.shape[-1] != scales.shape[-1] * block_bytes:
+            raise ValueError(f"incompatible Inkling 2 expert block geometry for {prefix}")
         if weight_info.dtype == "U8":
-            amax = self.dense(prefix + "_amax", expert)
-            denominator = self.dense(prefix + "_outer_scale_denominator", 0)
-            return decode_nvfp4_expert(values, scales, amax=amax, denominator=denominator)
+            amax = self.dense(prefix + "_amax")
+            denominator = float(self.dense(prefix + "_outer_scale_denominator", 0))
+            if (amax.shape != (values.shape[0],) or not np.isfinite(amax).all() or np.any(amax < 0)
+                    or not np.isfinite(denominator) or denominator <= 0):
+                raise ValueError(f"invalid NVFP4 expert outer scales for {prefix}")
+            return Inkling2ExpertBank(values, scales, amax, denominator)
+        return Inkling2ExpertBank(values, scales)
+
+    def expert(self, layer: int, projection: str, expert: int) -> np.ndarray:
+        bank = self.expert_bank(layer, projection)
+        if not 0 <= expert < bank.values.shape[0]:
+            raise IndexError(f"Inkling 2 expert index out of range: {expert}")
+        values, scales = bank.values[expert], bank.scales[expert]
+        if bank.amax is not None:
+            return decode_nvfp4_expert(values, scales, amax=bank.amax[expert], denominator=bank.denominator)
         return decode_mxfp8_expert(values, scales)
