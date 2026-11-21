@@ -51,6 +51,22 @@ def launch_grouped_experts(w, s, x, out, ids, outer, count, rows, columns, strid
 
 
 @lru_cache(maxsize=1)
+def _paired_symbol():
+    fn = _expert_library().hipengine_inkling2_paired_experts
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int] * 7
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def launch_paired_experts(w, s, x, out, pairs_ptr, outer, count, rows, columns, stride, *,
+                          nvfp4, pairs, expanded_scales=False):
+    status = _paired_symbol()(w, s, x, out, pairs_ptr, outer, count, rows, columns, stride, nvfp4,
+                              expanded_scales, pairs)
+    if status != HIP_SUCCESS:
+        raise HipError(f"Inkling 2 paired expert projection failed with HIP status {status}")
+
+
+@lru_cache(maxsize=1)
 def _pointwise_symbol():
     fn = _expert_library().hipengine_inkling2_expert_pointwise
     fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int] * 2 + [ctypes.c_float] * 2 + [ctypes.c_int]
@@ -69,4 +85,5 @@ launch_wave_grouped_experts = partial(launch_grouped_experts, wave_rows=True)
 register(KernelKey("hip_gfx1100", "inkling2_expert_projection", "inkling2_mixed", "grouped_wave_rows"),
          launch_wave_grouped_experts)
 register(KernelKey("hip_gfx1100", "inkling2_expert_projection", "inkling2_mixed", "grouped"), launch_grouped_experts)
+register(KernelKey("hip_gfx1100", "inkling2_expert_projection", "inkling2_mixed", "paired"), launch_paired_experts)
 register(KernelKey("hip_gfx1100", "inkling2_expert_projection", "inkling2_mixed", "default"), launch_inkling2_expert)

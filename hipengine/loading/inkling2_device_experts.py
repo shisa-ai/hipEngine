@@ -26,13 +26,27 @@ class _ResidentBank:
     expanded_scales: bool = False
 
 
+def _pair_routes(ids):
+    """Build (expert, flat route, optional second route) records."""
+    flat = ids.ravel()
+    ordered = np.argsort(flat, kind="stable").astype(np.int32)
+    experts = flat[ordered]
+    i = np.arange(flat.size, dtype=np.int32)
+    starts = np.maximum.accumulate(np.where(np.r_[True, experts[1:] != experts[:-1]], i, 0))
+    first = i[(i - starts) % 2 == 0]
+    following = np.minimum(first + 1, len(i) - 1)
+    second = np.where((following != first) & (experts[following] == experts[first]), ordered[following], -1)
+    return np.column_stack((experts[first], ordered[first], second))
+
+
 class Inkling2DeviceExperts:
     """Own packed banks and synchronized FP32 projection scratch on one device."""
 
     def __init__(self, weights, layers, *, runtime, launch, grouped=None, max_selected=1, pointwise=None,
-                 expand_nvfp4_scales=False):
+                 expand_nvfp4_scales=False, paired=None):
         self._expand_nvfp4_scales = expand_nvfp4_scales
         self._pointwise = pointwise
+        self._paired = paired
         self._runtime = runtime
         self._launch = launch
         self._grouped = grouped
@@ -135,7 +149,8 @@ class Inkling2DeviceExperts:
         if block is None or tokens > block[0]:
             # Geometric growth bounds the temporary allocation count when block widths vary.
             capacity = min(65535, 1 << (tokens - 1).bit_length())
-            staging = np.empty(self._staging.size * capacity, dtype=np.float32)
+            extra = 3 * self._max_selected if self._paired is not None else 0
+            staging = np.empty((self._staging.size + extra) * capacity, dtype=np.float32)
             active = self._allocate(staging.nbytes)
             projection = self._allocate(self._output.nbytes * capacity)
             if block is not None:
@@ -163,22 +178,34 @@ class Inkling2DeviceExperts:
                 raise ValueError("invalid Inkling 2 device expert feed-forward geometry")
             host, device_input, device_output = self._feed_scratch(tokens)
             count = ids.shape[-1]
-            stage = host[:2 * ids.size + hidden.size]
+            # Reserve pairing for prompt-sized blocks; short verification blocks keep the existing launch.
+            pairs = _pair_routes(ids) if self._paired is not None and tokens >= 16 and ids.size <= 65535 else None
+            header = 2 * ids.size
+            if pairs is not None:
+                host[header:header + pairs.size].view(np.int32)[:] = pairs.ravel()
+            input_start = header + (0 if pairs is None else pairs.size)
+            stage = host[:input_start + hidden.size]
             stage[:ids.size].view(np.int32)[:] = ids.ravel()
-            stage[ids.size:2 * ids.size].reshape(mix.shape)[...] = mix
-            stage[2 * ids.size:].reshape(hidden.shape)[...] = hidden
+            stage[ids.size:header].reshape(mix.shape)[...] = mix
+            stage[input_start:].reshape(hidden.shape)[...] = hidden
             base, output = device_input.ptr, device_output.ptr
             mix_ptr = base + ids.nbytes
-            inputs = mix_ptr + ids.nbytes
+            inputs = base + input_start * host.itemsize
             result = np.empty(hidden.shape, dtype=np.float32)
+
+            def launch(bank, stride):
+                args = (bank.weights.ptr, bank.scales.ptr, inputs, output)
+                geometry = (bank.device_outer, count, bank.rows, bank.columns, stride)
+                modes = dict(nvfp4=bank.outer_scales is not None, expanded_scales=bank.expanded_scales)
+                if pairs is None:
+                    self._grouped(*args, base, *geometry, tokens=tokens, **modes)
+                else:
+                    self._paired(*args, base + 2 * ids.nbytes, *geometry, pairs=len(pairs), **modes)
+
             with self._transfer.exchange(base, inputs, stage, result, pinned=True):
-                self._grouped(gate.weights.ptr, gate.scales.ptr, inputs, output, base, gate.device_outer,
-                              count, gate.rows, gate.columns, 0, nvfp4=gate.outer_scales is not None, tokens=tokens,
-                              expanded_scales=gate.expanded_scales)
+                launch(gate, 0)
                 self._pointwise(output, 0, inputs, count, down.columns, gate_cap, up_cap, tokens=tokens)
-                self._grouped(down.weights.ptr, down.scales.ptr, inputs, output, base, down.device_outer,
-                              count, down.rows, down.columns, down.columns, nvfp4=down.outer_scales is not None,
-                              tokens=tokens, expanded_scales=down.expanded_scales)
+                launch(down, down.columns)
                 self._pointwise(output, mix_ptr, inputs, count, down.rows, tokens=tokens)
                 if transform_output is not None:
                     transform_output(inputs, result.shape)

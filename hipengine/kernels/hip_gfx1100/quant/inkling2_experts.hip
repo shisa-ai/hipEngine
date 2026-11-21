@@ -164,6 +164,73 @@ extern "C" int hipengine_inkling2_grouped_expert_projection(
     return hipGetLastError();
 }
 
+template <bool NVFP4, bool WIDENED>
+__global__ void inkling2_expert_projection_paired(const uint8_t* w, const uint8_t* s, const float* x,
+                                                  float* out, const int32_t* pairs, const float* outers,
+                                                  int count, int rows, int cols, int input_stride) {
+    const int row = 4 * blockIdx.x + threadIdx.x / 32;
+    if (row >= rows) return;
+    const int32_t* item = pairs + 3 * blockIdx.y;
+    const int expert = item[0], first = item[1], second = item[2];
+    const size_t physical = size_t(expert) * rows + row;
+    w += physical * (NVFP4 ? cols / 2 : cols);
+    s += physical * (cols / (NVFP4 ? 16 : 32)) * (WIDENED ? 2 : 1);
+    const float outer = NVFP4 ? outers[expert] : 1.0f;
+    const float* x0 = x + (input_stride ? size_t(first) * input_stride : size_t(first / count) * cols);
+    const float* x1 = second < 0 ? x0 : x + (input_stride ? size_t(second) * input_stride : size_t(second / count) * cols);
+    const int lane = threadIdx.x % 32;
+    float a[4] = {}, b[4] = {};
+    const int full = cols / 128 * 128;
+    int col = lane;
+    for (; col < full; col += 128) {
+        #pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            const int c = col + 32 * i;
+            const float value = inkling_expert_value<NVFP4, WIDENED>(w, s, c, outer);
+            a[i] = fmaf(value, x0[c], a[i]);
+            b[i] = fmaf(value, x1[c], b[i]);
+        }
+    }
+    #pragma unroll
+    for (int i = 0; i < 4; ++i) {
+        const int c = col + 32 * i;
+        if (c >= cols) continue;
+        const float value = inkling_expert_value<NVFP4, WIDENED>(w, s, c, outer);
+        a[i] = fmaf(value, x0[c], a[i]);
+        b[i] = fmaf(value, x1[c], b[i]);
+    }
+    float left = (a[0] + a[2]) + (a[1] + a[3]), right = (b[0] + b[2]) + (b[1] + b[3]);
+    #pragma unroll
+    for (int offset = 16; offset > 0; offset /= 2) {
+        left += __shfl_down(left, offset, 32);
+        right += __shfl_down(right, offset, 32);
+    }
+    if (lane == 0) {
+        out[size_t(first) * rows + row] = left;
+        if (second >= 0) out[size_t(second) * rows + row] = right;
+    }
+}
+
+extern "C" int hipengine_inkling2_paired_experts(
+    const uint8_t* w, const uint8_t* s, const float* x, float* out, const int32_t* pairs, const float* outers,
+    int count, int rows, int cols, int input_stride, int nvfp4, int widened, int group_pairs) {
+    if (!w || !s || !x || !out || !pairs || (nvfp4 && !outers) || count <= 0 || rows <= 0 ||
+        cols <= 0 || cols % (nvfp4 ? 16 : 32) || (input_stride != 0 && input_stride != cols) ||
+        (widened && !nvfp4) || group_pairs <= 0 || group_pairs > 65535) return hipErrorInvalidValue;
+    const dim3 grid(1 + (rows - 1) / 4, group_pairs);
+    if (widened) {
+        hipLaunchKernelGGL((inkling2_expert_projection_paired<true, true>), grid, dim3(128), 0, 0,
+                           w, s, x, out, pairs, outers, count, rows, cols, input_stride);
+    } else if (nvfp4) {
+        hipLaunchKernelGGL((inkling2_expert_projection_paired<true, false>), grid, dim3(128), 0, 0,
+                           w, s, x, out, pairs, outers, count, rows, cols, input_stride);
+    } else {
+        hipLaunchKernelGGL((inkling2_expert_projection_paired<false, false>), grid, dim3(128), 0, 0,
+                           w, s, x, out, pairs, outers, count, rows, cols, input_stride);
+    }
+    return hipGetLastError();
+}
+
 __global__ void inkling2_expert_activate(const float* paired, float* activated, size_t size,
                                          float gate_cap, float up_cap) {
     const size_t i = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
