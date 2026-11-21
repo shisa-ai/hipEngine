@@ -7,13 +7,13 @@ import pytest
 from hipengine.loading.inkling2_device_dense import Inkling2DeviceDense
 
 
-def test_device_dense_vector_and_block_match_cpu():
+def test_device_dense_vector_and_block_match_cpu(monkeypatch):
     try:
         ctypes.CDLL("libamdhip64.so")
         ctypes.CDLL("librocblas.so")
     except OSError as exc:
         pytest.skip(f"HIP or rocBLAS unavailable: {exc}")
-    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.hip import HipError, get_hip_runtime
     from hipengine.core.rocblas import Rocblas
     from hipengine.kernels.backends import resolve_backend
     from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_f32_bf16w_f32_out
@@ -53,11 +53,25 @@ def test_device_dense_vector_and_block_match_cpu():
                 for paired, single in zip(actual, expected):
                     np.testing.assert_array_equal(paired.view(np.uint32), single.view(np.uint32))
                 launch = dense_gemv_f32_bf16w_f32_out
-                native = owner.project_many(names, x, native_bf16=launch)
+                native = owner.project_many(names, x, native_bf16=launch, pinned=True)
+                assert owner._host_input is not None and not owner._pin_unavailable
                 for name, paired in zip(names, native, strict=True):
                     single = owner.project(name, x, native_bf16=launch)
+                    pinned = owner.project(name, x, native_bf16=launch, pinned=True)
                     np.testing.assert_array_equal(paired.view(np.uint32), single.view(np.uint32))
+                    np.testing.assert_array_equal(pinned.view(np.uint32), single.view(np.uint32))
+        assert owner._host_input is owner._host_output is None
         with pytest.raises(RuntimeError, match="closed"):
             owner.project("head", rows)
+
+        def unavailable(*args, **kwargs):
+            raise HipError(801, "host pinning unavailable")
+
+        runtime = get_hip_runtime()
+        monkeypatch.setattr(type(runtime), "host_register", unavailable)
+        with Inkling2DeviceDense(weights, runtime=runtime, blas=blas) as owner:
+            fallback = owner.project("head", rows, native_bf16=launch, pinned=True)
+            assert owner._pin_unavailable and owner._host_input is None
+            np.testing.assert_array_equal(fallback, owner.project("head", rows, native_bf16=launch))
     finally:
         blas.close()

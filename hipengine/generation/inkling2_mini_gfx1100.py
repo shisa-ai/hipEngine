@@ -47,7 +47,8 @@ def _fp32_dense(owner):
 
 def _native_dense(owner):
     launch = partial(dense_gemv_f32_bf16w_f32_out, threads=64)
-    return partial(owner.project, native_bf16=launch), partial(owner.project_many, native_bf16=launch)
+    return (partial(owner.project, native_bf16=launch, pinned=True),
+            partial(owner.project_many, native_bf16=launch, pinned=True))
 
 
 def _host_experts(owner):

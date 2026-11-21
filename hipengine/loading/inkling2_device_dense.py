@@ -2,12 +2,35 @@
 
 from __future__ import annotations
 
+import ctypes
+import mmap
+from contextlib import contextmanager
 from threading import Lock
 
 import numpy as np
 
-from hipengine.core.hip import HipMemcpyKind
+from hipengine.core.hip import HipError, HipMemcpyKind
 from hipengine.core.memory import free, malloc
+
+
+# HIP can reject host registration if page locking is unavailable or exhausted.
+_HOST_REGISTRATION_UNAVAILABLE = frozenset((2, 304, 801))
+
+
+class _PinnedScratch:
+    def __init__(self, runtime, nbytes):
+        self.nbytes = ((nbytes + mmap.PAGESIZE - 1) // mmap.PAGESIZE) * mmap.PAGESIZE
+        self.mapping = mmap.mmap(-1, self.nbytes)
+        self.ptr = ctypes.addressof(ctypes.c_char.from_buffer(self.mapping))
+        try:
+            runtime.host_register(self.ptr, self.nbytes)
+        except BaseException:
+            self.mapping.close()
+            raise
+
+    def close(self, runtime):
+        runtime.host_unregister(self.ptr)
+        self.mapping.close()
 
 
 class Inkling2DeviceDense:
@@ -20,6 +43,8 @@ class Inkling2DeviceDense:
         self._lock = Lock() if lock is None else lock
         self._matrices = {}
         self._input = self._output = None
+        self._host_input = self._host_output = None
+        self._pin_unavailable = False
         self._closed = False
 
     def _matrix(self, name, limit, *, preserve_bf16=False):
@@ -51,7 +76,48 @@ class Inkling2DeviceDense:
         setattr(self, name, buf)
         return buf
 
-    def project(self, name: str, hidden: np.ndarray, *, limit: int | None = None, native_bf16=None) -> np.ndarray:
+    def _host_scratch(self, name, nbytes):
+        old = getattr(self, name)
+        if old is not None and old.nbytes >= nbytes:
+            return old
+        if old is not None:
+            old.close(self._runtime)
+            setattr(self, name, None)
+        buf = _PinnedScratch(self._runtime, nbytes)
+        setattr(self, name, buf)
+        return buf
+
+    @contextmanager
+    def _activation_transfer(self, inp, out, x, y, *, pinned):
+        runtime = self._runtime
+        up, down = HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST
+        if pinned and not self._pin_unavailable:
+            try:
+                host_input = self._host_scratch("_host_input", x.nbytes)
+                host_output = self._host_scratch("_host_output", y.nbytes)
+            except HipError as exc:
+                if exc.code not in _HOST_REGISTRATION_UNAVAILABLE:
+                    raise
+                self._pin_unavailable = True
+            except OSError:
+                self._pin_unavailable = True
+            else:
+                ctypes.memmove(host_input.ptr, x.ctypes.data, x.nbytes)
+                try:
+                    runtime.memcpy_async(inp.ptr, host_input.ptr, x.nbytes, up, 0)
+                    yield
+                    runtime.memcpy_async(host_output.ptr, out.ptr, y.nbytes, down, 0)
+                finally:
+                    # No caller or close operation can reuse pinned scratch while copies are in flight.
+                    runtime.stream_synchronize(0)
+                ctypes.memmove(y.ctypes.data, host_output.ptr, y.nbytes)
+                return
+        runtime.memcpy(inp.ptr, x.ctypes.data, x.nbytes, up)
+        yield
+        runtime.memcpy(y.ctypes.data, out.ptr, y.nbytes, down)
+
+    def project(self, name: str, hidden: np.ndarray, *, limit: int | None = None, native_bf16=None,
+                pinned=False) -> np.ndarray:
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling 2 dense residency is closed")
@@ -64,19 +130,18 @@ class Inkling2DeviceDense:
             y = np.empty((*hidden.shape[:-1], outputs), dtype=np.float32)
             inp = self._scratch("_input", x.nbytes)
             out = self._scratch("_output", y.nbytes)
-            self._runtime.memcpy(inp.ptr, x.ctypes.data, x.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
-            if bf16:
-                rows = 1 if x.ndim == 1 else x.shape[0]
-                native_bf16(inp.ptr, weight.ptr, out.ptr, rows, inputs, outputs, runtime=self._runtime)
-            elif x.ndim == 1:
-                self._blas.sgemv_rowmajor_nt(inp.ptr, weight.ptr, out.ptr, in_features=inputs, out_features=outputs)
-            else:
-                self._blas.sgemm_rowmajor_nt(inp.ptr, weight.ptr, out.ptr, rows=x.shape[0],
-                                            in_features=inputs, out_features=outputs)
-            self._runtime.memcpy(y.ctypes.data, out.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+            with self._activation_transfer(inp, out, x, y, pinned=pinned):
+                if bf16:
+                    rows = 1 if x.ndim == 1 else x.shape[0]
+                    native_bf16(inp.ptr, weight.ptr, out.ptr, rows, inputs, outputs, runtime=self._runtime)
+                elif x.ndim == 1:
+                    self._blas.sgemv_rowmajor_nt(inp.ptr, weight.ptr, out.ptr, in_features=inputs, out_features=outputs)
+                else:
+                    self._blas.sgemm_rowmajor_nt(inp.ptr, weight.ptr, out.ptr, rows=x.shape[0],
+                                                in_features=inputs, out_features=outputs)
             return y
 
-    def project_many(self, names, hidden: np.ndarray, *, native_bf16=None):
+    def project_many(self, names, hidden: np.ndarray, *, native_bf16=None, pinned=False):
         """Share transfers for projections that consume the same FP32 input."""
         names = tuple(names)
         if not names:
@@ -95,19 +160,17 @@ class Inkling2DeviceDense:
             y = np.empty(rows * sum(widths), dtype=np.float32)
             inp = self._scratch("_input", x.nbytes)
             out = self._scratch("_output", y.nbytes)
-            copy = self._runtime.memcpy
-            copy(inp.ptr, x.ctypes.data, x.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
-            offset = 0
-            for weight, (m, n), bf16 in matrices:
-                dst = out.ptr + offset * y.itemsize
-                if bf16:
-                    native_bf16(inp.ptr, weight.ptr, dst, rows, n, m, runtime=self._runtime)
-                elif x.ndim == 1:
-                    self._blas.sgemv_rowmajor_nt(inp.ptr, weight.ptr, dst, in_features=n, out_features=m)
-                else:
-                    self._blas.sgemm_rowmajor_nt(inp.ptr, weight.ptr, dst, rows=rows, in_features=n, out_features=m)
-                offset += rows * m
-            copy(y.ctypes.data, out.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+            with self._activation_transfer(inp, out, x, y, pinned=pinned):
+                offset = 0
+                for weight, (m, n), bf16 in matrices:
+                    dst = out.ptr + offset * y.itemsize
+                    if bf16:
+                        native_bf16(inp.ptr, weight.ptr, dst, rows, n, m, runtime=self._runtime)
+                    elif x.ndim == 1:
+                        self._blas.sgemv_rowmajor_nt(inp.ptr, weight.ptr, dst, in_features=n, out_features=m)
+                    else:
+                        self._blas.sgemm_rowmajor_nt(inp.ptr, weight.ptr, dst, rows=rows, in_features=n, out_features=m)
+                    offset += rows * m
             results = []
             offset = 0
             for width in widths:
@@ -122,6 +185,11 @@ class Inkling2DeviceDense:
             for key in tuple(self._matrices):
                 free(self._matrices[key][0], runtime=self._runtime)
                 del self._matrices[key]
+            for name in ("_host_output", "_host_input"):
+                buf = getattr(self, name)
+                if buf is not None:
+                    buf.close(self._runtime)
+                    setattr(self, name, None)
             for name in ("_output", "_input"):
                 buf = getattr(self, name)
                 if buf is not None:
