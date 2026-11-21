@@ -41,21 +41,34 @@ __global__ void split_values(const float* value, const float* scores, const floa
     float hi = sink[head], denom = 1.0f, acc = 0.0f;
     for (int start = 0; start < live; start += tile) {
         const int n = min(tile, live - start);
-        if (!tid) {
-            for (int j = 0; j < n; ++j) {
-                const int i = start + j;
-                const bool active = !evicted[i] && position >= positions[i];
-                physical[j] = active ? offsets[i] : -1;
-                if (!active) continue;
-                const float score = scores[i];
-                const float next = fmaxf(hi, score);
-                previous[j] = expf(hi - next);
-                current[j] = expf(score - next);
-                denom = denom * previous[j] + current[j];
-                hi = next;
+        if (tid < tile) {
+            const int i = start + tid;
+            const bool active = tid < n && !evicted[i] && position >= positions[i];
+            const float score = active ? scores[i] : -INFINITY;
+            const float tile_hi = __shfl(hi, 0, tile);
+            float prefix = fmaxf(tile_hi, score);
+            // Only the maximum is scanned. The denominator and value sums
+            // below still consume the exact online factors in slot order.
+            #pragma unroll
+            for (int delta = 1; delta < tile; delta *= 2) {
+                const float earlier = __shfl_up(prefix, delta, tile);
+                if (tid >= delta) prefix = fmaxf(earlier, prefix);
             }
+            const float prior = __shfl_up(prefix, 1, tile);
+            const float last = __shfl(prefix, n - 1, tile);
+            if (active) {
+                previous[tid] = expf((tid == 0 ? tile_hi : prior) - prefix);
+                current[tid] = expf(score - prefix);
+            }
+            physical[tid] = active ? offsets[i] : -1;
+            if (!tid) hi = last;
         }
         __syncthreads();
+        if (!tid) {
+            for (int j = 0; j < n; ++j) {
+                if (physical[j] >= 0) denom = denom * previous[j] + current[j];
+            }
+        }
         if (tid < dim) {
             for (int j = 0; j < n; ++j) {
                 if (physical[j] < 0) continue;
