@@ -46,6 +46,38 @@ def test_checkpoint_expert_slices_and_gate_up_rows(tmp_path):
         weights.expert(0, "w13", -1)
 
 
+def test_block_router_groups_projection_and_matches_scalar_top_k_and_mix():
+    class Weights:
+        def dense(self, name):
+            assert name.endswith("gate.bias")
+            return np.array([0, 0, 0.25, -0.25], dtype=np.float32)
+
+    hidden = np.arange(15, dtype=np.float32).reshape(5, 3)
+    shapes, routed = [], []
+
+    def project(name, x):
+        assert name.endswith("gate.weight")
+        shapes.append(x.shape)
+        col = x[..., 0]
+        return np.stack((col, col, 3 - col, col / 4), axis=-1)
+
+    def feed(layer, ids, mix, x, gate, up):
+        routed.append((ids.copy(), mix.copy()))
+        return x
+
+    options = dict(top_k=2, route_scale=8, gate_cap=4, up_cap=25, project_dense=project, feed_group=feed)
+    for row in hidden:
+        routed_feed_forward(Weights(), 0, row, **options)
+    expected_ids, expected_mix = map(np.stack, zip(*routed, strict=True))
+    shapes.clear()
+    routed.clear()
+    assert routed_feed_forward(Weights(), 0, hidden, **options) is hidden
+    assert shapes == [hidden.shape]
+    [(ids, mix)] = routed
+    np.testing.assert_array_equal(ids, expected_ids)
+    np.testing.assert_array_equal(mix.view(np.uint32), expected_mix.view(np.uint32))
+
+
 def test_feed_forward_corrects_ranking_not_weights_and_preserves_row_order():
     class Weights:
         reads = []

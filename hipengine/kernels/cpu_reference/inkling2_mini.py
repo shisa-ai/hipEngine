@@ -18,21 +18,20 @@ def routed_feed_forward(weights, layer: int, hidden: np.ndarray, *, top_k: int,
             return weights.expert(layer, stem, expert) @ x
     prefix = f"layers.{layer}.mlp.gate."
     name = prefix + "weight"
-    def route(x):
-        scores = _sigmoid(weights.dense(name) @ x if project_dense is None else project_dense(name, x))
-        if not 1 <= top_k <= scores.size:
-            raise ValueError(f"invalid Inkling 2 top-k: {top_k} for {scores.size} experts")
-        ranking = scores + weights.dense(prefix + "bias")
-        # Use expert index to break ties, and accumulate in expert order.
-        ids = np.sort(np.argsort(-ranking, kind="stable")[:top_k])
-        mix = scores[ids]
-        mix *= route_scale / (mix.sum() + np.float32(1e-20))
-        return ids, mix
-
-    if feed_group is not None and hidden.ndim == 2:
-        selections, factors = zip(*(route(row) for row in hidden))
-        return feed_group(layer, np.stack(selections), np.stack(factors), hidden, gate_cap, up_cap)
-    ids, mix = route(hidden)
+    if project_dense is None:
+        mat = weights.dense(name)
+        logits = mat @ hidden if hidden.ndim == 1 else hidden @ mat.T
+    else:
+        logits = project_dense(name, hidden)
+    scores = _sigmoid(logits)
+    experts = scores.shape[-1]
+    if not 1 <= top_k <= experts:
+        raise ValueError(f"invalid Inkling 2 top-k: {top_k} for {experts} experts")
+    ranking = scores + weights.dense(prefix + "bias")
+    # Use expert index to break ties, and accumulate in expert order.
+    ids = np.sort(np.argsort(-ranking, axis=-1, kind="stable")[..., :top_k], axis=-1)
+    mix = np.take_along_axis(scores, ids, axis=-1)
+    mix *= route_scale / (mix.sum(axis=-1, keepdims=True) + np.float32(1e-20))
     if feed_group is not None:
         return feed_group(layer, ids, mix, hidden, gate_cap, up_cap)
 
