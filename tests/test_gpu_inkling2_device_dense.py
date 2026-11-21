@@ -27,7 +27,7 @@ def test_device_dense_vector_and_block_match_cpu():
 
     def dense(name, selector):
         reads.append(name)
-        return matrix[selector]
+        return matrix[selector] if name in ("head", "other") else matrix[:7][selector]
 
     blas = Rocblas.load()
     try:
@@ -36,8 +36,9 @@ def test_device_dense_vector_and_block_match_cpu():
             np.testing.assert_allclose(owner.project("head", rows, limit=12), rows @ matrix[:12].T, atol=1e-5)
             assert reads == ["head"]
             for x in (rows[0], rows):
-                expected = owner.project("head", x), owner.project("other", x)
-                actual = owner.project_pair("head", "other", x)
+                names = ("head", "small", "other", "smaller")
+                expected = tuple(owner.project(name, x) for name in names)
+                actual = owner.project_many(names, x)
                 for paired, single in zip(actual, expected):
                     np.testing.assert_array_equal(paired.view(np.uint32), single.view(np.uint32))
         with pytest.raises(RuntimeError, match="closed"):

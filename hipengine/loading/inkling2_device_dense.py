@@ -70,16 +70,19 @@ class Inkling2DeviceDense:
             self._runtime.memcpy(y.ctypes.data, out.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
             return y
 
-    def project_pair(self, first: str, second: str, hidden: np.ndarray):
+    def project_many(self, names, hidden: np.ndarray):
         """Share transfers while preserving each FP32 BLAS call's geometry."""
+        names = tuple(names)
+        if not names:
+            raise ValueError("Inkling 2 projection group must not be empty")
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling 2 dense residency is closed")
             if hidden.ndim not in (1, 2) or not all(hidden.shape):
                 raise ValueError("Inkling 2 dense projection expects a vector or row matrix")
-            matrices = [self._matrix(name, None) for name in (first, second)]
+            matrices = [self._matrix(name, None) for name in names]
             if any(hidden.shape[-1] != n for _, (_, n) in matrices):
-                raise ValueError("Inkling 2 paired dense projection input width differs from its matrices")
+                raise ValueError("Inkling 2 grouped dense projection input width differs from its matrices")
             x = np.ascontiguousarray(hidden, dtype=np.float32)
             widths = [m for _, (m, _) in matrices]
             rows = 1 if x.ndim == 1 else x.shape[0]
@@ -97,8 +100,13 @@ class Inkling2DeviceDense:
                     self._blas.sgemm_rowmajor_nt(inp.ptr, weight.ptr, dst, rows=rows, in_features=n, out_features=m)
                 offset += rows * m
             copy(y.ctypes.data, out.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
-            split = rows * widths[0]
-            return y[:split].reshape(*x.shape[:-1], widths[0]), y[split:].reshape(*x.shape[:-1], widths[1])
+            results = []
+            offset = 0
+            for width in widths:
+                end = offset + rows * width
+                results.append(y[offset:end].reshape(*x.shape[:-1], width))
+                offset = end
+            return tuple(results)
 
     def close(self):
         with self._lock:

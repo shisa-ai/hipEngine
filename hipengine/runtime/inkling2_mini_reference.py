@@ -70,8 +70,8 @@ class Inkling2TextReference:
         weight = self.weights.dense(name) if limit is None else self.weights.dense(name, slice(limit))
         return hidden @ weight.T
 
-    def project_pair(self, first, second, hidden):
-        return self.project(first, hidden), self.project(second, hidden)
+    def project_many(self, names, hidden):
+        return tuple(self.project(name, hidden) for name in names)
 
     def session(self, capacity: int) -> Inkling2TextSession:
         return Inkling2TextSession(self, capacity)
@@ -230,7 +230,7 @@ class Inkling2TextSession:
         def merge(x, name, message):
             ctl = f"controllers.{name}."
             z = project(ctl + "down_weight", np.concatenate((_rms(x, eps), _rms(message, eps)), axis=-1))
-            forget, gain = self.model.project_pair(prefix + ctl + "forget_weight", prefix + ctl + "gain_weight", z)
+            forget, gain = self.model.project_many((prefix + ctl + "forget_weight", prefix + ctl + "gain_weight"), z)
             return (1 - np.tanh(forget)) * x + np.tanh(gain) * message
 
         def norm(x, name):
@@ -298,11 +298,16 @@ class Inkling2TextSession:
                 taps = (weight(conv + "static_w").T.reshape(nkv, dim, ksize) + dynamic).reshape(*leading, -1, ksize)
             return self._conv_rows(visit, name, y, taps, dynamic=not visit.is_local).reshape(*leading, nkv, dim)
 
-        q = linear("wq_du.weight", qi).reshape(*leading, nh, dim)
+        attn_prefix = f"layers.{visit.weight_layer}.attn."
+        q, rel, sink, gate = self.model.project_many(
+            (attn_prefix + name for name in ("wq_du.weight", "wr_du.weight", "attn_sink_proj.weight", "gate_attn.weight")),
+            qi,
+        )
+        q = q.reshape(*leading, nh, dim)
         q = _clip(q * weight("q_l2_clip.scale"), c["qk_l2_clip_threshold"])
         key = _clip(project_kv("k", ki), c["qk_l2_clip_threshold"])
         value = _rms(project_kv("v", vi), c["rms_norm_eps"])
-        rel = linear("wr_du.weight", qi).reshape(*leading, nh, -1)
+        rel = rel.reshape(*leading, nh, -1)
         rel = _clip(rel * weight("rel_l2_clip.scale"), c["rel_l2_clip_threshold"])
         if not visit.is_local:
             positions = pos + 1 + np.arange(len(qi)) if batch else pos + 1
@@ -314,13 +319,12 @@ class Inkling2TextSession:
 
         extent = c["sliding_window_size"] if visit.is_local else c["rel_extent"]
         bias = (rel @ weight("rel_logits_proj.proj"))[..., :extent]
-        sink = linear("attn_sink_proj.weight", qi)
         if batch:
             y = np.stack([self._attend(visit, s, pos + i, *args)
                           for i, args in enumerate(zip(q, key, value, bias, sink))])
         else:
             y = self._attend(visit, s, pos, q, key, value, bias, sink)
-        return linear("wo_ud.weight", y * _sigmoid(linear("gate_attn.weight", qi)))
+        return linear("wo_ud.weight", y * _sigmoid(gate))
 
     def _attend(self, visit, s, pos, q, key, value, bias, sink):
         if self.attention is not None:
