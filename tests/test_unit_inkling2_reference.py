@@ -110,22 +110,22 @@ def test_provisional_block_rolls_back_rejected_suffix_across_multiple_wraps(keep
     np.testing.assert_allclose(serial.step(0), packed.step(0), atol=1e-6)
 
 
-def test_attention_message_controllers_group_each_projection_stage(monkeypatch):
+def test_attention_message_controllers_group_projection_chains(monkeypatch):
     model = Inkling2TextReference(_config(), TinyWeights())
-    project_groups = model.project_groups
+    project_chains = model.project_chains
     observed = []
 
-    def track(groups):
-        groups = tuple(groups)
-        if any(".controllers." in name for names, _ in groups for name in names):
-            observed.append(tuple(tuple(name.split(".controllers.")[1] for name in names) for names, _ in groups))
-        return project_groups(groups)
+    def track(chains):
+        chains = tuple(chains)
+        observed.append(tuple((first.split(".controllers.")[1], *(name.split(".controllers.")[1] for name in names))
+                              for first, names, _ in chains))
+        return project_chains(chains)
 
-    monkeypatch.setattr(model, "project_groups", track)
+    monkeypatch.setattr(model, "project_chains", track)
     model.session(4).step_block((0, 1))
     assert observed == [
-        tuple((f"{name}.down_weight",) for name in ("attn", "k", "v")),
-        tuple((f"{name}.forget_weight", f"{name}.gain_weight") for name in ("attn", "k", "v")),
+        tuple((f"{name}.down_weight", f"{name}.forget_weight", f"{name}.gain_weight") for name in ("attn", "k", "v")),
+        (("mlp.down_weight", "mlp.forget_weight", "mlp.gain_weight"),),
     ]
 
 

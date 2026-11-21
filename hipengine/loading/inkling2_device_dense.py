@@ -84,50 +84,73 @@ class Inkling2DeviceDense:
 
     def project_groups(self, groups, *, native_bf16=None, pinned=False):
         """Exchange independent inputs and results together, preserving projection order."""
+        return self._project_groups(((None, names, x) for names, x in groups), native_bf16, pinned)
+
+    def project_chains(self, chains, *, native_bf16=None, pinned=False):
+        """Feed each first projection directly into the remaining projections."""
+        return self._project_groups(chains, native_bf16, pinned)
+
+    def _project_groups(self, chains, native_bf16, pinned):
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling 2 dense residency is closed")
             plans = []
-            output_count = 0
-            for names, hidden in groups:
+            output_count = intermediate_count = 0
+            for first, names, hidden in chains:
                 if hidden.ndim not in (1, 2) or not all(hidden.shape):
                     raise ValueError("Inkling 2 dense projection expects a vector or row matrix")
+                before = None
+                width = hidden.shape[-1]
+                rows = 1 if hidden.ndim == 1 else hidden.shape[0]
+                if first is not None:
+                    before = self._matrix(first, None, preserve_bf16=native_bf16 is not None)
+                    width, n = before[1]
+                    if n != hidden.shape[-1]:
+                        raise ValueError("Inkling 2 first projection input width differs from its matrix")
+                    intermediate_count = max(intermediate_count, rows * width)
                 matrices = [self._matrix(name, None, preserve_bf16=native_bf16 is not None) for name in names]
                 if not matrices:
                     raise ValueError("Inkling 2 projection group must not be empty")
-                if any(hidden.shape[-1] != n for _, (_, n), _ in matrices):
+                if any(width != n for _, (_, n), _ in matrices):
                     raise ValueError("Inkling 2 grouped dense projection input width differs from its matrices")
                 x = np.ascontiguousarray(hidden, dtype=np.float32)
-                rows = 1 if x.ndim == 1 else x.shape[0]
-                plans.append((x, rows, matrices))
+                plans.append((x, rows, before, matrices))
                 output_count += rows * sum(m for _, (m, _), _ in matrices)
             if not plans:
                 raise ValueError("Inkling 2 projection groups must not be empty")
-            inputs = plans[0][0] if len(plans) == 1 else np.concatenate([x.ravel() for x, _, _ in plans])
+            inputs = plans[0][0] if len(plans) == 1 else np.concatenate([x.ravel() for x, *_ in plans])
             output = np.empty(output_count, dtype=np.float32)
             inp = self._scratch("_input", inputs.nbytes)
-            out = self._scratch("_output", output.nbytes)
+            out = self._scratch("_output", output.nbytes + intermediate_count * output.itemsize)
+            intermediate = out.ptr + output.nbytes
             input_offset = output_offset = 0
             results = []
             with self._transfer.exchange(inp.ptr, out.ptr, inputs, output, pinned=pinned):
-                for x, rows, matrices in plans:
+                for x, rows, before, matrices in plans:
                     src = inp.ptr + input_offset
+                    if before is not None:
+                        self._launch_projection(src, intermediate, rows, x.ndim, before, native_bf16)
+                        src = intermediate
                     group = []
-                    for weight, (m, n), bf16 in matrices:
+                    for matrix in matrices:
+                        m, _ = matrix[1]
                         dst = out.ptr + output_offset * output.itemsize
-                        if bf16:
-                            native_bf16(src, weight.ptr, dst, rows, n, m, runtime=self._runtime)
-                        elif x.ndim == 1:
-                            self._blas.sgemv_rowmajor_nt(src, weight.ptr, dst, in_features=n, out_features=m)
-                        else:
-                            self._blas.sgemm_rowmajor_nt(src, weight.ptr, dst, rows=rows,
-                                                        in_features=n, out_features=m)
+                        self._launch_projection(src, dst, rows, x.ndim, matrix, native_bf16)
                         end = output_offset + rows * m
                         group.append(output[output_offset:end].reshape(*x.shape[:-1], m))
                         output_offset = end
                     results.append(tuple(group))
                     input_offset += x.nbytes
             return tuple(results)
+
+    def _launch_projection(self, src, dst, rows, ndim, matrix, native_bf16):
+        weight, (m, n), bf16 = matrix
+        if bf16:
+            native_bf16(src, weight.ptr, dst, rows, n, m, runtime=self._runtime)
+        elif ndim == 1:
+            self._blas.sgemv_rowmajor_nt(src, weight.ptr, dst, in_features=n, out_features=m)
+        else:
+            self._blas.sgemm_rowmajor_nt(src, weight.ptr, dst, rows=rows, in_features=n, out_features=m)
 
     def close(self):
         with self._lock:

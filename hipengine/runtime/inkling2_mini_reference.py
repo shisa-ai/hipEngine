@@ -80,6 +80,9 @@ class Inkling2TextReference:
     def project_groups(self, groups):
         return tuple(self.project_many(names, hidden) for names, hidden in groups)
 
+    def project_chains(self, chains):
+        return tuple(self.project_many(names, self.project(first, hidden)) for first, names, hidden in chains)
+
     def session(self, capacity: int) -> Inkling2TextSession:
         return Inkling2TextSession(self, capacity)
 
@@ -240,23 +243,13 @@ class Inkling2TextSession:
         def blend(x, message, forget, gain):
             return (1 - np.tanh(forget)) * x + np.tanh(gain) * message
 
-        def merge(x, name, message):
-            ctl = f"controllers.{name}."
-            z = project(ctl + "down_weight", controller_input(x, message))
-            forget, gain = self.model.project_many((prefix + ctl + "forget_weight", prefix + ctl + "gain_weight"), z)
-            return blend(x, message, forget, gain)
-
-        def merge_attention(inputs):
-            controllers = tuple(f"{prefix}controllers.{name}." for name in ("attn", "k", "v"))
-            incoming = tuple(messages[..., i, :] for i in range(len(controllers)))
-            reduced = self.model.project_groups(
-                ((ctl + "down_weight",), controller_input(x, message))
-                for ctl, x, message in zip(controllers, inputs, incoming, strict=True)
-            )
-            controls = self.model.project_groups(
-                ((ctl + "forget_weight", ctl + "gain_weight"), z)
-                for ctl, (z,) in zip(controllers, reduced, strict=True)
-            )
+        def merge_controllers(inputs, names, incoming):
+            chains = []
+            for x, name, message in zip(inputs, names, incoming, strict=True):
+                ctl = f"{prefix}controllers.{name}."
+                chains.append((ctl + "down_weight", (ctl + "forget_weight", ctl + "gain_weight"),
+                               controller_input(x, message)))
+            controls = self.model.project_chains(chains)
             return tuple(blend(x, message, forget, gain)
                          for x, message, (forget, gain) in zip(inputs, incoming, controls, strict=True))
 
@@ -273,7 +266,8 @@ class Inkling2TextSession:
         if messages is None and visit.is_local:
             q, k, v = (norm(a, "attn_norm"),) * 3
         else:
-            merged = inputs if messages is None else merge_attention(inputs)
+            merged = inputs if messages is None else merge_controllers(
+                inputs, ("attn", "k", "v"), tuple(messages[..., i, :] for i in range(3)))
             q, k, v = (norm(x, name) for x, name in zip(merged, norm_names, strict=True))
 
         a = static_conv("attn_sconv", self._attention(visit, self.states[visit.state_slot], get, project, q, k, v))
@@ -283,7 +277,7 @@ class Inkling2TextSession:
             a = h + a
         m = _read_blocks(w.dense(f"attn_res.mlp_queries.{layer}"), blocks, a)
         if messages is not None:
-            m = merge(m, "mlp", messages[..., 3, :])
+            m, = merge_controllers((m,), ("mlp",), (messages[..., 3, :],))
         normalized = norm(m, "mlp_norm")
 
         def feed(x):

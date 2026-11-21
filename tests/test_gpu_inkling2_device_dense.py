@@ -28,6 +28,8 @@ def test_device_dense_vector_and_block_match_cpu(monkeypatch):
 
     def dense(name, selector):
         reads.append(name)
+        if name == "following":
+            return matrix[:6, :19].copy()[selector]
         return matrix[selector] if name in ("head", "other") else matrix[:7][selector]
 
     blas = Rocblas.load()
@@ -66,6 +68,13 @@ def test_device_dense_vector_and_block_match_cpu(monkeypatch):
                 bundled = owner.project_groups(groups, native_bf16=native, pinned=True)
                 for (names, x), actual in zip(groups, bundled, strict=True):
                     expected = owner.project_many(names, x, native_bf16=native, pinned=True)
+                    for a, b in zip(actual, expected, strict=True):
+                        np.testing.assert_array_equal(a.view(np.uint32), b.view(np.uint32))
+                chains = (("head", ("following",), rows[::-1]), ("other", ("following", "following"), rows[0]))
+                chained = owner.project_chains(chains, native_bf16=native, pinned=True)
+                for (first, names, x), actual in zip(chains, chained, strict=True):
+                    intermediate = owner.project(first, x, native_bf16=native, pinned=True)
+                    expected = owner.project_many(names, intermediate, native_bf16=native, pinned=True)
                     for a, b in zip(actual, expected, strict=True):
                         np.testing.assert_array_equal(a.view(np.uint32), b.view(np.uint32))
         assert owner._transfer.host_input is owner._transfer.host_output is None
