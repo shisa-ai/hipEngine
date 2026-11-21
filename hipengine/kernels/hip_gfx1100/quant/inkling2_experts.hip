@@ -9,6 +9,14 @@ __device__ float inkling_e4m3(uint8_t x) {
     return x & 128 ? -a : a;
 }
 
+__device__ __forceinline__ float inkling_nvfp4_scale(uint8_t x) {
+    const unsigned mag = x & 127;
+    const unsigned normal = (120u << 23) + (mag << 20);
+    const unsigned subnormal = __float_as_uint(float(mag) * 0x1p-9f);
+    const unsigned bits = mag >= 8 ? normal : subnormal;
+    return mag == 127 ? NAN : __uint_as_float(bits | ((unsigned(x) & 128) << 24));
+}
+
 __device__ __forceinline__ float inkling_e2m1(unsigned q) {
     const unsigned mag = q & 7;
     // Nonzero levels occupy consecutive FP32 half-exponent steps, except 0.5.
@@ -20,7 +28,7 @@ template <bool NVFP4>
 __device__ __forceinline__ float inkling_expert_value(const uint8_t* w, const uint8_t* s, int col, float outer) {
     if constexpr (NVFP4) {
         const unsigned q = (w[col / 2] >> ((col & 1) * 4)) & 15;
-        const float a = inkling_e2m1(q) * inkling_e4m3(s[col / 16]);
+        const float a = inkling_e2m1(q) * inkling_nvfp4_scale(s[col / 16]);
         return a * outer;
     } else {
         const int scale = s[col / 32];
