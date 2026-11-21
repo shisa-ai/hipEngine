@@ -10,23 +10,25 @@ __device__ float inkling_e4m3(uint8_t x) {
 }
 
 template <bool NVFP4>
+__device__ __forceinline__ float inkling_expert_value(const uint8_t* w, const uint8_t* s, int col, float outer) {
+    if constexpr (NVFP4) {
+        const float levels[8] = {0, 0.5f, 1, 1.5f, 2, 3, 4, 6};
+        const int q = (w[col / 2] >> ((col & 1) * 4)) & 15;
+        const float a = (q & 8 ? -levels[q & 7] : levels[q & 7]) * inkling_e4m3(s[col / 16]);
+        return a * outer;
+    } else {
+        const int scale = s[col / 32];
+        const float factor = scale == 255 ? NAN : ldexpf(1.0f, scale - 127);
+        return inkling_e4m3(w[col]) * factor;
+    }
+}
+
+template <bool NVFP4>
 __device__ __forceinline__ float inkling_expert_lane(const uint8_t* w, const uint8_t* s, const float* x,
                                                     int cols, float outer, int lane) {
-    constexpr int group = NVFP4 ? 16 : 32;
     float acc = 0.0f;
     for (int col = lane; col < cols; col += 128) {
-        float a;
-        if constexpr (NVFP4) {
-            const float levels[8] = {0, 0.5f, 1, 1.5f, 2, 3, 4, 6};
-            const int q = (w[col / 2] >> ((col & 1) * 4)) & 15;
-            a = (q & 8 ? -levels[q & 7] : levels[q & 7]) * inkling_e4m3(s[col / group]);
-            a *= outer;
-        } else {
-            const int scale = s[col / group];
-            const float factor = scale == 255 ? NAN : ldexpf(1.0f, scale - 127);
-            a = inkling_e4m3(w[col]) * factor;
-        }
-        acc = fmaf(a, x[col], acc);
+        acc = fmaf(inkling_expert_value<NVFP4>(w, s, col, outer), x[col], acc);
     }
     return acc;
 }
@@ -57,10 +59,19 @@ __global__ void inkling2_expert_projection(const uint8_t* w, const uint8_t* s, c
     s += physical_row * (cols / group);
     if constexpr (WAVE_ROWS) {
         const int lane = threadIdx.x % 32;
-        const float a = inkling_expert_lane<NVFP4>(w, s, x, cols, outer, lane);
-        const float b = inkling_expert_lane<NVFP4>(w, s, x, cols, outer, lane + 32);
-        const float c = inkling_expert_lane<NVFP4>(w, s, x, cols, outer, lane + 64);
-        const float d = inkling_expert_lane<NVFP4>(w, s, x, cols, outer, lane + 96);
+        const int full = cols / tile * tile;
+        float a = 0, b = 0, c = 0, d = 0;
+        int col = lane;
+        for (; col < full; col += tile) {
+            a = fmaf(inkling_expert_value<NVFP4>(w, s, col, outer), x[col], a);
+            b = fmaf(inkling_expert_value<NVFP4>(w, s, col + 32, outer), x[col + 32], b);
+            c = fmaf(inkling_expert_value<NVFP4>(w, s, col + 64, outer), x[col + 64], c);
+            d = fmaf(inkling_expert_value<NVFP4>(w, s, col + 96, outer), x[col + 96], d);
+        }
+        if (col < cols) a = fmaf(inkling_expert_value<NVFP4>(w, s, col, outer), x[col], a);
+        if (col + 32 < cols) b = fmaf(inkling_expert_value<NVFP4>(w, s, col + 32, outer), x[col + 32], b);
+        if (col + 64 < cols) c = fmaf(inkling_expert_value<NVFP4>(w, s, col + 64, outer), x[col + 64], c);
+        if (col + 96 < cols) d = fmaf(inkling_expert_value<NVFP4>(w, s, col + 96, outer), x[col + 96], d);
         // Match the original 128-lane +64, +32, +16, ... tree.
         float sum = (a + c) + (b + d);
         #pragma unroll
