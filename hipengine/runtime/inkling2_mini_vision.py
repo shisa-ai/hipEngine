@@ -69,13 +69,16 @@ class Inkling2VisionReference:
         self.cfg = index.config["vision_config"]
         self.weights = Inkling2TextWeights(index, namespace="model.visual")
 
+    def project(self, name, rows):
+        return rows @ self.weights.dense(name).T
+
     def encode(self, image, *, check=lambda: None):
         c, read = self.cfg, self.weights.dense
         patch = c.get("native_patch_size", c.get("patch_size", 20))
         merge = c.get("adapter_merge_size", c.get("spatial_merge_size", 2))
         patches, coords, (rows, cols) = prepare_vision_patches(image, patch=patch, merge=merge)
         emb = "backbone.embeddings."
-        x = patches @ read(emb + "patch_embedding.weight").T
+        x = self.project(emb + "patch_embedding.weight", patches)
         x += interpolate_positions(read(emb + "position_embedding"), coords, (rows * merge, cols * merge), c["posemb_grid_size"])
         cls = read(emb + "class_embedding") + read(emb + "cls_position_embedding")
         x = np.concatenate((cls[None], x), axis=0)
@@ -90,7 +93,7 @@ class Inkling2VisionReference:
             return z / np.sqrt(np.mean(z * z, axis=-1, keepdims=True) + eps) * read(stem + ".weight") + read(stem + ".bias")
 
         def linear(z, stem, bias=True):
-            result = z @ read(stem + ".weight").T
+            result = self.project(stem + ".weight", z)
             return result + read(stem + ".bias") if bias else result
 
         x = norm(x, "backbone.ln_pre")

@@ -13,11 +13,16 @@ from hipengine.loading.safetensors import load_weight_index
 from hipengine.runtime.inkling2_mini_reference import _rms, _softmax
 
 
-def markov_step(state, token, hidden, context, base, joint_w, joint_b, out_w, out_b, head, cap):
-    gate, candidate, latent = np.split(joint_w @ np.concatenate((state, token, hidden, context)) + joint_b, 3)
+def _markov_update(state, joint):
+    gate, candidate, latent = np.split(joint, 3)
     candidate = np.tanh(candidate)
     state = candidate + _sigmoid(gate) * (state - candidate)
-    correction = head @ (out_w @ np.tanh(latent) + out_b)
+    return state, np.tanh(latent)
+
+
+def markov_step(state, token, hidden, context, base, joint_w, joint_b, out_w, out_b, head, cap):
+    state, latent = _markov_update(state, joint_w @ np.concatenate((state, token, hidden, context)) + joint_b)
+    correction = head @ (out_w @ latent + out_b)
     return cap * np.tanh((base + correction) / cap), state
 
 
@@ -37,6 +42,9 @@ class Inkling2DSpark:
         self.fuse = _softmax(self.weights.dense("fuse_weight"))
         if self.fuse.shape != (self.cfg["num_hidden_layers"] + 1, len(self.taps)):
             raise ValueError("Inkling 2 DSpark fuse weights do not match draft depth and target taps")
+
+    def project(self, name, rows):
+        return rows @ self.weights.dense(name).T
 
     def session(self, capacity):
         return Inkling2DSparkSession(self, capacity)
@@ -69,11 +77,11 @@ class Inkling2DSparkSession:
             prefix = f"layers.{layer}."
             context = _rms(mixed[layer], eps) * read(prefix + "dflare_norm.weight")
             a = prefix + "self_attn."
-            k = (read(a + "k_proj_ctx.weight") @ context).reshape(keys.shape[1:])
+            k = m.project(a + "k_proj_ctx.weight", context).reshape(keys.shape[1:])
             k = _rms(k, eps) * read(a + "k_norm_ctx.weight")
             slot = self.position % len(keys)
             keys[slot] = apply_rope_neox(k[None], cos, sin)[0]
-            values[slot] = (read(a + "v_proj_ctx.weight") @ context).reshape(keys.shape[1:])
+            values[slot] = m.project(a + "v_proj_ctx.weight", context).reshape(keys.shape[1:])
         self.context = _rms(mixed[-1], eps) * read("markov_head.dflare_norm.weight")
         self.position += 1
 
@@ -95,9 +103,9 @@ class Inkling2DSparkSession:
             prefix = f"layers.{layer}."
             a = prefix + "self_attn."
             x = _rms(h, eps) * read(prefix + "input_layernorm.weight")
-            q = (x @ read(a + "q_proj.weight").T).reshape(-1, nh, dim)
-            k = (x @ read(a + "k_proj.weight").T).reshape(-1, nk, dim)
-            v = (x @ read(a + "v_proj.weight").T).reshape(-1, nk, dim)
+            q = m.project(a + "q_proj.weight", x).reshape(-1, nh, dim)
+            k = m.project(a + "k_proj.weight", x).reshape(-1, nk, dim)
+            v = m.project(a + "v_proj.weight", x).reshape(-1, nk, dim)
             q = apply_rope_neox(_rms(q, eps) * read(a + "q_norm.weight"), cos, sin)
             k = apply_rope_neox(_rms(k, eps) * read(a + "k_norm.weight"), cos, sin)
             # All draft rows see the entire noise block and the same target prefix window.
@@ -108,18 +116,18 @@ class Inkling2DSparkSession:
             q = q.reshape(len(h), nk, groups, dim)
             logits = np.einsum("qngd,tnd->qngt", q, k) / sqrt(dim)
             out = np.einsum("qngt,tnd->qngd", _softmax(logits), v).reshape(len(h), nh * dim)
-            h = h + out @ read(a + "o_proj.weight").T
+            h = h + m.project(a + "o_proj.weight", out)
             x = _rms(h, eps) * read(prefix + "post_attention_layernorm.weight")
-            g = x @ read(prefix + "mlp.gate_proj.weight").T
-            u = x @ read(prefix + "mlp.up_proj.weight").T
-            h = h + (g * _sigmoid(g) * u) @ read(prefix + "mlp.down_proj.weight").T
+            g = m.project(prefix + "mlp.gate_proj.weight", x)
+            u = m.project(prefix + "mlp.up_proj.weight", x)
+            h = h + m.project(prefix + "mlp.down_proj.weight", g * _sigmoid(g) * u)
         h = _rms(h[1:], eps) * read("norm.weight")
         tcfg = m.target.config
-        head = target_read("unembed.weight", slice(tcfg["unpadded_vocab_size"]))
-        base = h @ head.T
-        joint_w = read("markov_head.rnn_proj.weight")
+        def unembed(rows):
+            return m.target.project("unembed.weight", rows, limit=tcfg["unpadded_vocab_size"])
+
+        base = unembed(h)
         joint_b = read("markov_head.rnn_proj.bias")
-        out_w = read("markov_head.hidden_out.weight")
         out_b = read("markov_head.hidden_out.bias")
         state = np.zeros(c["markov_rank"], dtype=np.float32)
         cap = tcfg["final_logit_softcapping"]
@@ -127,7 +135,10 @@ class Inkling2DSparkSession:
         previous = anchor
         for hidden, raw in zip(h, base):
             token = read("markov_head.markov_w1.weight", previous)
-            logits, state = markov_step(state, token, hidden, self.context, raw, joint_w, joint_b, out_w, out_b, head, cap)
+            joint = m.project("markov_head.rnn_proj.weight", np.concatenate((state, token, hidden, self.context))) + joint_b
+            state, latent = _markov_update(state, joint)
+            correction = unembed(m.project("markov_head.hidden_out.weight", latent) + out_b)
+            logits = cap * np.tanh((raw + correction) / cap)
             previous = int(np.argmax(logits))
             ids.append(previous)
         return tuple(ids)

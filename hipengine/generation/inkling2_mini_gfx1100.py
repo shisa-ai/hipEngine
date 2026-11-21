@@ -1,6 +1,7 @@
 """gfx1100 Inkling 2 generator with HIP projections and host sequence state."""
 
 from contextlib import ExitStack
+from threading import Lock
 
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.rocblas import Rocblas
@@ -24,13 +25,33 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
         with ExitStack() as owned:
             blas = Rocblas.load()
             owned.callback(blas.close)
-            dense = owned.enter_context(Inkling2DeviceDense(weights, runtime=runtime, blas=blas))
+            self._blas_lock = Lock()
+            dense = owned.enter_context(Inkling2DeviceDense(weights, runtime=runtime, blas=blas, lock=self._blas_lock))
             experts = owned.enter_context(Inkling2DeviceExperts(
                 weights, (v.weight_layer for v in self.model.plan.visits), runtime=runtime, launch=launch,
             ))
             self.model.project = dense.project
             self.model.project_expert = experts.project
+            if self.vision is not None:
+                vision_dense = owned.enter_context(Inkling2DeviceDense(
+                    self.vision.weights, runtime=runtime, blas=blas, lock=self._blas_lock,
+                ))
+                self.vision.project = vision_dense.project
+            self._runtime, self._blas = runtime, blas
+            self._draft = None
+            self._draft_lock = Lock()
             self._owned = owned.pop_all()
+
+    def _load_drafter(self):
+        with self._draft_lock:
+            if self._draft is None:
+                draft = super()._load_drafter()
+                dense = self._owned.enter_context(Inkling2DeviceDense(
+                    draft.weights, runtime=self._runtime, blas=self._blas, lock=self._blas_lock,
+                ))
+                draft.project = dense.project
+                self._draft = draft
+            return self._draft
 
     def close(self):
         self._owned.close()

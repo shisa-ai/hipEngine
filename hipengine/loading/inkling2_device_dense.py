@@ -13,11 +13,11 @@ from hipengine.core.memory import free, malloc
 class Inkling2DeviceDense:
     """Own lazily uploaded FP32 matrices and synchronous projection scratch."""
 
-    def __init__(self, weights, *, runtime, blas):
+    def __init__(self, weights, *, runtime, blas, lock=None):
         self._weights = weights
         self._runtime = runtime
         self._blas = blas  # Borrowed; the runner owns the rocBLAS handle.
-        self._lock = Lock()
+        self._lock = Lock() if lock is None else lock
         self._matrices = {}
         self._input = self._output = None
         self._closed = False
