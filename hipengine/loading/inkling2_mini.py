@@ -15,14 +15,15 @@ _STORAGE = {"BF16": "<u2", "F32": "<f4", "U8": "u1", "F8_E4M3": "u1"}
 class Inkling2TextWeights:
     """Keep read-only mappings, and decode only the requested expert or dense slice."""
 
-    def __init__(self, index: WeightIndex):
+    def __init__(self, index: WeightIndex, *, namespace: str = "model.llm"):
         self._index = index
+        self._namespace = namespace
         self._headers = {p: _parse_safetensors_header_and_data_start(p) for p in index.shards}
         self._file_sizes = {p: p.stat().st_size for p in index.shards}
         self._mapped: dict[str, np.ndarray] = {}
 
     def _info(self, name):
-        return self._index.tensors[f"model.llm.{name}"]
+        return self._index.tensors[f"{self._namespace}.{name}"]
 
     def raw(self, name: str) -> np.ndarray:
         if name not in self._mapped:
