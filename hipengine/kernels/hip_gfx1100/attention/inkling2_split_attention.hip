@@ -30,7 +30,8 @@ __global__ void split_scores(const float* q, const float* k, const float* bias, 
 
 __global__ void split_values(const float* value, const float* scores, const float* sink, float* out,
                              const int32_t* offsets, const int32_t* count, const int32_t* positions,
-                             const uint8_t* evicted, const int32_t* row, int nq, int nk, int dim, int stride) {
+                             const uint8_t* evicted, const int32_t* row, const float* gain,
+                             int nq, int nk, int dim, int stride) {
     constexpr int tile = 32;
     const int tid = threadIdx.x, head = blockIdx.x;
     const int kh = head / (nq / nk);
@@ -80,19 +81,23 @@ __global__ void split_values(const float* value, const float* scores, const floa
     }
     if (!tid) final_denom = denom;
     __syncthreads();
-    if (tid < dim) out[head * dim + tid] = acc / final_denom;
+    if (tid < dim) {
+        const int i = head * dim + tid;
+        const float result = acc / final_denom;
+        out[i] = gain ? __fmul_rn(result, gain[i]) : result;
+    }
 }
 
 extern "C" int hipengine_inkling2_split_attention(
     const float* q, const float* k, const float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
-    const int32_t* row, float* scores, int nq, int nk, int dim, int extent, int live) {
+    const int32_t* row, float* scores, const float* gain, int nq, int nk, int dim, int extent, int live) {
     if (live <= 0 || nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128) return hipErrorInvalidValue;
     hipLaunchKernelGGL(split_scores, dim3(1 + (live - 1) / 4, nq), dim3(128), 0, 0,
                        q, k, bias, scores, offsets, count, positions, evicted, row, nq, nk, dim, extent, live);
     int status = hipGetLastError();
     if (status != hipSuccess) return status;
     hipLaunchKernelGGL(split_values, dim3(nq), dim3(128), 0, 0,
-                       v, scores, sink, out, offsets, count, positions, evicted, row, nq, nk, dim, live);
+                       v, scores, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim, live);
     return hipGetLastError();
 }

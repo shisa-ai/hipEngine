@@ -30,7 +30,7 @@ __global__ void inkling2_target_attention(const float* q, const float* k, const 
                                            const float* bias, const float* sink, float* out,
                                            const int32_t* offsets, const int32_t* count,
                                            const int32_t* positions, const uint8_t* evicted,
-                                           const int32_t* row, int nq, int nk, int dim, int extent) {
+                                           const int32_t* row, const float* gain, int nq, int nk, int dim, int extent) {
     constexpr int tile = 128;
     const int lane = threadIdx.x;
     const int head = blockIdx.x;
@@ -65,13 +65,17 @@ __global__ void inkling2_target_attention(const float* q, const float* k, const 
     }
     if (lane == 0) factors[0] = denom;
     __syncthreads();
-    if (lane < dim) out[head * dim + lane] = acc / factors[0];
+    if (lane < dim) {
+        const int i = head * dim + lane;
+        const float value = acc / factors[0];
+        out[i] = gain ? __fmul_rn(value, gain[i]) : value;
+    }
 }
 
 __global__ void inkling2_target_attention_tiled(
     const float* q, const float* k, const float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
-    const int32_t* row, int nq, int nk, int dim, int extent) {
+    const int32_t* row, const float* gain, int nq, int nk, int dim, int extent) {
     constexpr int tile = 16;
     const int tid = threadIdx.x;
     const int lane = tid % 32;
@@ -129,28 +133,20 @@ __global__ void inkling2_target_attention_tiled(
     }
     if (tid == 0) final_denom = denom;
     __syncthreads();
-    if (tid < dim) out[head * dim + tid] = acc / final_denom;
-}
-
-__global__ void inkling2_attention_gate(float* out, const float* gate, int width) {
-    const int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < width) out[i] = __fmul_rn(out[i], gate[i]);
-}
-
-extern "C" int hipengine_inkling2_attention_gate(float* out, const float* gate, int width) {
-    if (!out || !gate || width <= 0) return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_attention_gate, dim3(1 + (width - 1) / 256), dim3(256), 0, 0,
-                       out, gate, width);
-    return hipGetLastError();
+    if (tid < dim) {
+        const int i = head * dim + tid;
+        const float value = acc / final_denom;
+        out[i] = gain ? __fmul_rn(value, gain[i]) : value;
+    }
 }
 
 extern "C" int hipengine_inkling2_target_attention_tiled(
     const float* q, const float* k, const float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
-    const int32_t* row, int nq, int nk, int dim, int extent) {
+    const int32_t* row, const float* gain, int nq, int nk, int dim, int extent) {
     if (nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 || extent <= 0) return hipErrorInvalidValue;
     hipLaunchKernelGGL(inkling2_target_attention_tiled, dim3(nq), dim3(128), 0, 0,
-                       q, k, v, bias, sink, out, offsets, count, positions, evicted, row, nq, nk, dim, extent);
+                       q, k, v, bias, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim, extent);
     return hipGetLastError();
 }
 
@@ -158,9 +154,9 @@ extern "C" int hipengine_inkling2_target_attention(const float* q, const float* 
                                                    const float* bias, const float* sink, float* out,
                                                    const int32_t* offsets, const int32_t* count,
                                                    const int32_t* positions, const uint8_t* evicted,
-                                                   const int32_t* row, int nq, int nk, int dim, int extent) {
+                                                   const int32_t* row, const float* gain, int nq, int nk, int dim, int extent) {
     if (nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 || extent <= 0) return hipErrorInvalidValue;
     hipLaunchKernelGGL(inkling2_target_attention, dim3(nq), dim3(128), 0, 0,
-                       q, k, v, bias, sink, out, offsets, count, positions, evicted, row, nq, nk, dim, extent);
+                       q, k, v, bias, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim, extent);
     return hipGetLastError();
 }

@@ -20,7 +20,7 @@ def _library():
 @lru_cache(maxsize=2)
 def _build(symbol):
     fn = getattr(_library(), symbol)
-    fn.argtypes = [ctypes.c_void_p] * 11 + [ctypes.c_int] * 4
+    fn.argtypes = [ctypes.c_void_p] * 12 + [ctypes.c_int] * 4
     fn.restype = ctypes.c_int
     return fn
 
@@ -45,18 +45,18 @@ def _span_pointers(spans: KVLiveSpans):
     return tuple(x.ptr for x in t)
 
 
-def _launch_attention(symbol, q, keys, values, bias, sink, out, spans: KVLiveSpans, nq, nk, dim, extent):
-    status = _build(symbol)(q, keys, values, bias, sink, out, *_span_pointers(spans), nq, nk, dim, extent)
+def _launch_attention(symbol, q, keys, values, bias, sink, out, spans: KVLiveSpans, nq, nk, dim, extent, *, gain=0):
+    status = _build(symbol)(q, keys, values, bias, sink, out, *_span_pointers(spans), gain, nq, nk, dim, extent)
     if status != HIP_SUCCESS:
         raise HipError(f"Inkling 2 target attention failed with HIP status {status}")
 
 
-def launch_target_attention(*args):
-    _launch_attention("hipengine_inkling2_target_attention", *args)
+def launch_target_attention(*args, gain=0):
+    _launch_attention("hipengine_inkling2_target_attention", *args, gain=gain)
 
 
-def launch_tiled_attention(*args):
-    _launch_attention("hipengine_inkling2_target_attention_tiled", *args)
+def launch_tiled_attention(*args, gain=0):
+    _launch_attention("hipengine_inkling2_target_attention_tiled", *args, gain=gain)
 
 
 @lru_cache(maxsize=1)
@@ -65,32 +65,18 @@ def _build_split():
     lib = build_hip(sources=[path], family="inkling2_split_attention", profile="decode",
                     output_name="inkling2_split_attention.so")
     fn = lib.hipengine_inkling2_split_attention
-    fn.argtypes = [ctypes.c_void_p] * 12 + [ctypes.c_int] * 5
+    fn.argtypes = [ctypes.c_void_p] * 13 + [ctypes.c_int] * 5
     fn.restype = ctypes.c_int
     return fn
 
 
-def launch_split_attention(q, keys, values, bias, sink, out, spans, nq, nk, dim, extent, scores, live):
+def launch_split_attention(q, keys, values, bias, sink, out, spans, nq, nk, dim, extent, scores, live, *, gain=0):
     if not scores or not 0 < live <= spans.max_live_count:
         raise ValueError("invalid Inkling 2 split attention score scratch or live span count")
     status = _build_split()(q, keys, values, bias, sink, out, *_span_pointers(spans),
-                            scores, nq, nk, dim, extent, live)
+                            scores, gain, nq, nk, dim, extent, live)
     if status != HIP_SUCCESS:
         raise HipError(status, "Inkling 2 split attention launch failed")
-
-
-@lru_cache(maxsize=1)
-def _build_gate():
-    fn = _library().hipengine_inkling2_attention_gate
-    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
-    fn.restype = ctypes.c_int
-    return fn
-
-
-def launch_attention_gate(out, gate, width):
-    status = _build_gate()(out, gate, width)
-    if status != HIP_SUCCESS:
-        raise HipError(status, "Inkling 2 attention gate failed")
 
 
 def launch_cache_write(key, value, keys, values, spans: KVLiveSpans, width):
@@ -103,4 +89,3 @@ register(KernelKey("hip_gfx1100", "inkling2_target_kv_write", "inkling2_mixed", 
 register(KernelKey("hip_gfx1100", "inkling2_target_attention", "inkling2_mixed", "default"), launch_target_attention)
 register(KernelKey("hip_gfx1100", "inkling2_target_attention", "inkling2_mixed", "tiled"), launch_tiled_attention)
 register(KernelKey("hip_gfx1100", "inkling2_target_attention", "inkling2_mixed", "split"), launch_split_attention)
-register(KernelKey("hip_gfx1100", "inkling2_attention_gate", "inkling2_mixed", "default"), launch_attention_gate)

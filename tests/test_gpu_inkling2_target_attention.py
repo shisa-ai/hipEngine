@@ -15,7 +15,7 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
     from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
     from hipengine.kernels.backends import resolve_backend
     from hipengine.kernels.hip_gfx1100.attention.inkling2_target_attention import (
-        launch_attention_gate, launch_cache_write, launch_split_attention, launch_target_attention, launch_tiled_attention,
+        launch_cache_write, launch_split_attention, launch_target_attention, launch_tiled_attention,
     )
     from hipengine.runtime.inkling2_undo import Inkling2UndoJournal
 
@@ -45,16 +45,16 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
     geometry = [(capacity, nq, nk, dim, extent)]
     split_rows = []
 
-    def split(*args):
+    def split(*args, **kwargs):
         split_rows.append(args[-1])
-        launch_split_attention(*args)
+        launch_split_attention(*args, **kwargs)
 
     owner = Inkling2DeviceAttention(runtime=TracedRuntime(), launch=launch_tiled_attention, write=launch_cache_write,
                                     geometry=geometry, split=split)
     strict = Inkling2DeviceAttention(runtime=runtime, launch=launch_target_attention, write=launch_cache_write,
                                      geometry=geometry)
     gated = Inkling2DeviceAttention(runtime=runtime, launch=launch_tiled_attention, write=launch_cache_write,
-                                    geometry=geometry, split=launch_split_attention, gate=launch_attention_gate)
+                                    geometry=geometry, split=launch_split_attention)
     rng = np.random.default_rng(14)
     keys, values, replay = [], [], []
     undo = Inkling2UndoJournal()
