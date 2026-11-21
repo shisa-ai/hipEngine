@@ -72,3 +72,22 @@ def test_reference_decodes_causally_with_separate_local_and_loop_states():
     np.testing.assert_array_equal(same, logits)
     fresh = reference.session(1).step(0)
     assert fresh[1] == 0 and logits[1] > 0
+
+
+def test_layer_major_block_matches_serial_logits_taps_and_followup():
+    model = Inkling2TextReference(_config(), TinyWeights())
+    a, b = model.session(7), model.session(7)
+    np.testing.assert_array_equal(a.step(0), b.step(0))
+    per_token = []
+    serial = []
+    for token in (1, 0, 1):
+        taps = {}
+        serial.append(a.step(token, capture=lambda i, h: taps.update({i: h.copy()})))
+        per_token.append(taps)
+    block_taps = {}
+    block = b.step_block((1, 0, 1), capture=lambda i, h: block_taps.update({i: h.copy()}))
+    np.testing.assert_allclose(block, np.stack(serial), rtol=1e-6, atol=1e-6)
+    for boundary, got in block_taps.items():
+        np.testing.assert_allclose(got, np.stack([t[boundary] for t in per_token]), rtol=1e-6, atol=1e-6)
+    assert a.position == b.position == 4
+    np.testing.assert_allclose(a.step(0), b.step(0), rtol=1e-6, atol=1e-6)

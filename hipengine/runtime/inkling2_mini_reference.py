@@ -25,8 +25,14 @@ def _softmax(x):
 
 
 def _read_blocks(query, blocks, partial):
-    values = _rms(np.stack((*blocks, partial)))
-    return _softmax((query @ values.T) / sqrt(partial.size)) @ values
+    values = _rms(np.stack((*blocks, partial), axis=-2))
+    if partial.ndim == 1:
+        return _softmax((query @ values.T) / sqrt(partial.size)) @ values
+    if query.ndim == 1:
+        scores = values @ query / sqrt(partial.shape[-1])
+        return np.einsum("bp,bpd->bd", _softmax(scores), values)
+    scores = query @ values.swapaxes(-1, -2) / sqrt(partial.shape[-1])
+    return _softmax(scores) @ values
 
 
 def _clip(x, limit):
@@ -116,6 +122,21 @@ class Inkling2TextSession:
             h = _rms(w.dense("embed.weight", token), c["rms_norm_eps"]) * w.dense("embed_norm.weight")
         else:
             h = np.asarray(embedding, dtype=np.float32)
+        return self._forward(h, 1, logits=logits, capture=capture)
+
+    def step_block(self, tokens, *, capture=None):
+        """Append a nonempty token block in one layer-major forward pass."""
+        tokens = tuple(tokens)
+        if not tokens or self.position + len(tokens) > self.capacity:
+            raise ValueError("Inkling 2 block exceeds session capacity or is empty")
+        c, w = self.model.config, self.model.weights
+        if any(not 0 <= token < c["vocab_size"] for token in tokens):
+            raise ValueError("Inkling 2 block contains an out-of-range token")
+        h = _rms(w.dense("embed.weight", list(tokens)), c["rms_norm_eps"]) * w.dense("embed_norm.weight")
+        return self._forward(h, len(tokens), logits=True, capture=capture)
+
+    def _forward(self, h, width, *, logits, capture):
+        c, w = self.model.config, self.model.weights
         blocks = []
         loop_start = c["loop_config"]["core_start"]
         for boundary, visit in enumerate(self.model.plan.visits):
@@ -137,7 +158,7 @@ class Inkling2TextSession:
                 messages = _read_blocks(np.stack((q, k, v, mlp)), previous, previous_partial)
             h = self._layer(visit, h, blocks, messages)
 
-        self.position += 1
+        self.position += width
         if not logits and capture is None:
             return None
         h = _rms(_read_blocks(w.dense("attn_res.output_query"), blocks, h), c["rms_norm_eps"]) * w.dense("norm.weight")
@@ -163,7 +184,7 @@ class Inkling2TextSession:
 
         def merge(x, name, message):
             ctl = f"controllers.{name}."
-            z = project(ctl + "down_weight", np.concatenate((_rms(x, eps), _rms(message, eps))))
+            z = project(ctl + "down_weight", np.concatenate((_rms(x, eps), _rms(message, eps)), axis=-1))
             return (1 - np.tanh(project(ctl + "forget_weight", z))) * x + np.tanh(project(ctl + "gain_weight", z)) * message
 
         def norm(x, name):
@@ -171,15 +192,15 @@ class Inkling2TextSession:
 
         def static_conv(name, x):
             taps = get(name + ".weight")[:, 0, ::-1]
-            return self._convolve(visit, name, x, taps)
+            return self._conv_rows(visit, name, x, taps)
 
         a = _read_blocks(w.dense(f"attn_res.attn_queries.{layer - 1}"), blocks, h) if layer else h
-        inputs = (a, a, a) if a.ndim == 1 else a
+        inputs = (a, a, a) if a.ndim == h.ndim else np.moveaxis(a, -2, 0)
         norm_names = ("attn_norm",) * 3 if visit.is_local else ("q_input_norm", "k_input_norm", "v_input_norm")
         if messages is None and visit.is_local:
             q, k, v = (norm(a, "attn_norm"),) * 3
         else:
-            q, k, v = (norm(x if messages is None else merge(x, name, messages[i]), norm_names[i])
+            q, k, v = (norm(x if messages is None else merge(x, name, messages[..., i, :]), norm_names[i])
                        for i, (x, name) in enumerate(zip(inputs, ("attn", "k", "v"))))
 
         a = static_conv("attn_sconv", self._attention(visit, self.states[visit.state_slot], get, project, q, k, v))
@@ -189,17 +210,31 @@ class Inkling2TextSession:
             a = h + a
         m = _read_blocks(w.dense(f"attn_res.mlp_queries.{layer}"), blocks, a)
         if messages is not None:
-            m = merge(m, "mlp", messages[3])
-        m = routed_feed_forward(w, layer, norm(m, "mlp_norm"), top_k=c["num_experts_per_tok"],
-                                route_scale=c["route_scale"], gate_cap=c["mlp_gate_softcap"], up_cap=c["mlp_up_softcap"],
-                                project=self.model.project_expert, project_dense=self.model.project)
+            m = merge(m, "mlp", messages[..., 3, :])
+        normalized = norm(m, "mlp_norm")
+
+        def feed(x):
+            return routed_feed_forward(w, layer, x, top_k=c["num_experts_per_tok"],
+                                       route_scale=c["route_scale"], gate_cap=c["mlp_gate_softcap"],
+                                       up_cap=c["mlp_up_softcap"], project=self.model.project_expert,
+                                       project_dense=self.model.project)
+
+        m = feed(normalized) if normalized.ndim == 1 else np.stack([feed(row) for row in normalized])
         return a + static_conv("mlp_sconv", m)
+
+    def _conv_rows(self, visit, name, x, taps, *, dynamic=False):
+        if x.ndim == 1:
+            return self._convolve(visit, name, x, taps, dynamic=dynamic)
+        return np.stack([self._convolve(visit, name, row, taps[i] if dynamic else taps, dynamic=dynamic)
+                         for i, row in enumerate(x)])
 
     def _attention(self, visit, s, get, project, qi, ki, vi):
         c = self.model.config
         nh, nkv, dim = self.model.head_shape(visit)
         ksize = c["sconv_kernel_size"]
         pos = self.position
+        batch = qi.ndim == 2
+        leading = (len(qi),) if batch else ()
 
         def weight(name):
             return get("attn." + name)
@@ -213,28 +248,39 @@ class Inkling2TextSession:
             if visit.is_local:
                 taps = weight(conv + "weight")[:, 0, ::-1]
             else:
-                dynamic = linear(conv + "weight_proj", x).reshape(nkv, 1, ksize)
-                taps = (weight(conv + "static_w").T.reshape(nkv, dim, ksize) + dynamic).reshape(-1, ksize)
-            return self._convolve(visit, name, y, taps, dynamic=not visit.is_local).reshape(nkv, dim)
+                dynamic = linear(conv + "weight_proj", x).reshape(*leading, nkv, 1, ksize)
+                taps = (weight(conv + "static_w").T.reshape(nkv, dim, ksize) + dynamic).reshape(*leading, -1, ksize)
+            return self._conv_rows(visit, name, y, taps, dynamic=not visit.is_local).reshape(*leading, nkv, dim)
 
-        q = linear("wq_du.weight", qi).reshape(nh, dim)
+        q = linear("wq_du.weight", qi).reshape(*leading, nh, dim)
         q = _clip(q * weight("q_l2_clip.scale"), c["qk_l2_clip_threshold"])
         key = _clip(project_kv("k", ki), c["qk_l2_clip_threshold"])
         value = _rms(project_kv("v", vi), c["rms_norm_eps"])
-        rel = linear("wr_du.weight", qi).reshape(nh, -1)
+        rel = linear("wr_du.weight", qi).reshape(*leading, nh, -1)
         rel = _clip(rel * weight("rel_l2_clip.scale"), c["rel_l2_clip_threshold"])
         if not visit.is_local:
-            scale = 1 + c["log_scaling_alpha"] * np.log(max(1, (pos + 1) / c["log_scaling_n_floor"]))
+            positions = pos + 1 + np.arange(len(qi)) if batch else pos + 1
+            scale = 1 + c["log_scaling_alpha"] * np.log(np.maximum(1, positions / c["log_scaling_n_floor"]))
+            if batch:
+                scale = scale[:, None, None]
             q *= scale
             rel *= scale
 
         extent = c["sliding_window_size"] if visit.is_local else c["rel_extent"]
-        bias = (rel @ weight("rel_logits_proj.proj"))[:, :extent]
+        bias = (rel @ weight("rel_logits_proj.proj"))[..., :extent]
         sink = linear("attn_sink_proj.weight", qi)
-        if self.attention is not None:
-            y = self.attention.step(visit.state_slot, pos, q, key, value, bias, sink).reshape(-1)
-            return linear("wo_ud.weight", y * _sigmoid(linear("gate_attn.weight", qi)))
+        if batch:
+            y = np.stack([self._attend(visit, s, pos + i, *args)
+                          for i, args in enumerate(zip(q, key, value, bias, sink))])
+        else:
+            y = self._attend(visit, s, pos, q, key, value, bias, sink)
+        return linear("wo_ud.weight", y * _sigmoid(linear("gate_attn.weight", qi)))
 
+    def _attend(self, visit, s, pos, q, key, value, bias, sink):
+        if self.attention is not None:
+            return self.attention.step(visit.state_slot, pos, q, key, value, bias, sink).reshape(-1)
+        nh, nkv, dim = self.model.head_shape(visit)
+        extent = bias.shape[-1]
         capacity = len(s.keys)
         slot = pos % capacity
         s.keys[slot], s.values[slot] = key, value
@@ -245,5 +291,4 @@ class Inkling2TextSession:
         near = distances < extent
         scores[:, near] += bias[:, distances[near]]
         p = _softmax(np.concatenate((scores, sink[:, None]), axis=-1))[:, :used]
-        y = np.einsum("kgt,tkd->kgd", p.reshape(nkv, groups, used), s.values[:used]).reshape(-1)
-        return linear("wo_ud.weight", y * _sigmoid(linear("gate_attn.weight", qi)))
+        return np.einsum("kgt,tkd->kgd", p.reshape(nkv, groups, used), s.values[:used]).reshape(-1)
