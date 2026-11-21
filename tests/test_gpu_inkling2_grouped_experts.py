@@ -44,6 +44,21 @@ def test_grouped_projection_matches_singletons(nvfp4, wave_rows, monkeypatch):
         return memcpy(self, dst, src, size, kind)
 
     monkeypatch.setattr(type(runtime), "memcpy", record_copy)
+    memcpy_async = type(runtime).memcpy_async
+    synchronize = type(runtime).stream_synchronize
+    exchanges = []
+
+    def record_async(self, dst, src, size, kind, stream):
+        exchanges.append(kind)
+        return memcpy_async(self, dst, src, size, kind, stream)
+
+    def record_wait(self, stream):
+        exchanges.append("wait")
+        return synchronize(self, stream)
+
+    monkeypatch.setattr(type(runtime), "memcpy_async", record_async)
+    monkeypatch.setattr(type(runtime), "stream_synchronize", record_wait)
+    expected_exchange = [HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST, "wait"]
     grouped = launch_wave_grouped_experts if wave_rows else launch_grouped_experts
     with Inkling2DeviceExperts(source, [0], runtime=runtime, launch=launch_inkling2_expert,
                               grouped=grouped, max_selected=len(ids),
@@ -64,7 +79,17 @@ def test_grouped_projection_matches_singletons(nvfp4, wave_rows, monkeypatch):
             expected = np.zeros(cols, dtype=np.float32)
             for factor, value in zip(factors, owner.project_group(0, "w2", selected, activated)):
                 expected += factor * value
-            copies.clear()
+            exchanges.clear()
             actual = owner.feed_forward(0, selected, factors, x[0], 4, 6)
-            assert copies == [HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST]
+            assert exchanges == expected_exchange
             np.testing.assert_allclose(actual, expected, rtol=3e-5, atol=3e-5)
+            for width in (2, 5, 3):
+                block = rng.standard_normal((width, cols), dtype=np.float32)
+                choices = np.stack([np.roll(selected, i) for i in range(width)])
+                mixes = rng.uniform(0.05, 0.8, choices.shape).astype(np.float32)
+                independent = np.stack([owner.feed_forward(0, ids, weights, row, 4, 6)
+                                        for ids, weights, row in zip(choices, mixes, block, strict=True)])
+                exchanges.clear()
+                packed = owner.feed_forward(0, choices, mixes, block, 4, 6)
+                assert exchanges == expected_exchange
+                np.testing.assert_array_equal(packed.view(np.uint32), independent.view(np.uint32))

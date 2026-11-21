@@ -270,7 +270,10 @@ class Inkling2TextSession:
                                        project_dense=self.model.project, project_group=self.model.project_experts_group,
                                        feed_group=self.model.feed_experts_group)
 
-        m = feed(normalized) if normalized.ndim == 1 else np.stack([feed(row) for row in normalized])
+        if normalized.ndim == 1 or self.model.feed_experts_group is not None:
+            m = feed(normalized)
+        else:
+            m = np.stack([feed(row) for row in normalized])
         return a + static_conv("mlp_sconv", m)
 
     def _conv_rows(self, visit, name, x, taps, *, dynamic=False):

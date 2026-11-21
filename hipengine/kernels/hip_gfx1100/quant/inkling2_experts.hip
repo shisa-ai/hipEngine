@@ -31,7 +31,7 @@ __device__ __forceinline__ float inkling_expert_lane(const uint8_t* w, const uin
     return acc;
 }
 
-template <bool NVFP4, bool GROUPED = false, bool WAVE_ROWS = false>
+template <bool NVFP4, bool GROUPED = false, bool WAVE_ROWS = false, bool BATCHED = false>
 __global__ void inkling2_expert_projection(const uint8_t* w, const uint8_t* s, const float* x,
                                            float* out, int rows, int cols, float outer,
                                            const int32_t* selected, const float* outers, int input_stride) {
@@ -41,10 +41,16 @@ __global__ void inkling2_expert_projection(const uint8_t* w, const uint8_t* s, c
     if (row >= rows) return;
     size_t physical_row = row;
     if constexpr (GROUPED) {
-        const int expert = selected[blockIdx.y];
+        size_t group_index = blockIdx.y;
+        if constexpr (BATCHED) group_index += size_t(blockIdx.z) * gridDim.y;
+        const int expert = selected[group_index];
         physical_row += size_t(expert) * rows;
-        x += size_t(blockIdx.y) * input_stride;
-        out += size_t(blockIdx.y) * rows;
+        if constexpr (BATCHED) {
+            x += input_stride ? group_index * input_stride : size_t(blockIdx.z) * cols;
+        } else {
+            x += group_index * input_stride;
+        }
+        out += group_index * rows;
         if constexpr (NVFP4) outer = outers[expert];
     }
     w += physical_row * (NVFP4 ? cols / 2 : cols);
@@ -88,29 +94,37 @@ extern "C" int hipengine_inkling2_expert_projection(const uint8_t* w, const uint
     return hipGetLastError();
 }
 
+template <bool NVFP4, bool WAVE_ROWS>
+static void launch_grouped(const uint8_t* w, const uint8_t* s, const float* x, float* out,
+                           const int32_t* selected, const float* outers, int count, int rows,
+                           int cols, int input_stride, int tokens) {
+    const dim3 grid(WAVE_ROWS ? 1 + (rows - 1) / 4 : rows, count, tokens);
+    if (tokens == 1) {
+        hipLaunchKernelGGL((inkling2_expert_projection<NVFP4, true, WAVE_ROWS>), grid, dim3(128), 0, 0,
+                           w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
+    } else {
+        hipLaunchKernelGGL((inkling2_expert_projection<NVFP4, true, WAVE_ROWS, true>), grid, dim3(128), 0, 0,
+                           w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
+    }
+}
+
 extern "C" int hipengine_inkling2_grouped_expert_projection(
     const uint8_t* w, const uint8_t* s, const float* x, float* out,
     const int32_t* selected, const float* outers, int count, int rows, int cols, int input_stride, int nvfp4,
-    int wave_rows) {
+    int wave_rows, int tokens) {
     if (!w || !s || !x || !out || !selected || (nvfp4 && !outers) || count <= 0 || count > 65535 ||
-        rows <= 0 || cols <= 0 || cols % (nvfp4 ? 16 : 32) || (input_stride != 0 && input_stride != cols)) {
+        tokens <= 0 || tokens > 65535 || rows <= 0 || cols <= 0 || cols % (nvfp4 ? 16 : 32) ||
+        (input_stride != 0 && input_stride != cols)) {
         return hipErrorInvalidValue;
     }
-    if (wave_rows) {
-        const dim3 grid(1 + (rows - 1) / 4, count);
-        if (nvfp4) {
-            hipLaunchKernelGGL((inkling2_expert_projection<true, true, true>), grid, dim3(128), 0, 0,
-                               w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
-        } else {
-            hipLaunchKernelGGL((inkling2_expert_projection<false, true, true>), grid, dim3(128), 0, 0,
-                               w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
-        }
+    if (wave_rows && nvfp4) {
+        launch_grouped<true, true>(w, s, x, out, selected, outers, count, rows, cols, input_stride, tokens);
+    } else if (wave_rows) {
+        launch_grouped<false, true>(w, s, x, out, selected, outers, count, rows, cols, input_stride, tokens);
     } else if (nvfp4) {
-        hipLaunchKernelGGL((inkling2_expert_projection<true, true>), dim3(rows, count), dim3(128), 0, 0,
-                           w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
+        launch_grouped<true, false>(w, s, x, out, selected, outers, count, rows, cols, input_stride, tokens);
     } else {
-        hipLaunchKernelGGL((inkling2_expert_projection<false, true>), dim3(rows, count), dim3(128), 0, 0,
-                           w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
+        launch_grouped<false, false>(w, s, x, out, selected, outers, count, rows, cols, input_stride, tokens);
     }
     return hipGetLastError();
 }
@@ -125,23 +139,34 @@ __global__ void inkling2_expert_activate(const float* paired, float* activated, 
     activated[i] = gate_cap * tanhf(gate / gate_cap) * sigmoid * up_cap * tanhf(up / up_cap);
 }
 
+template <bool BATCHED>
 __global__ void inkling2_expert_mix(const float* down, const float* mix, float* out, int count, int width) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= width) return;
+    if constexpr (BATCHED) {
+        const size_t row = blockIdx.y;
+        mix += row * count;
+        down += row * count * width;
+        out += row * width;
+    }
     float value = 0.0f;
     for (int j = 0; j < count; ++j) value = __fadd_rn(value, __fmul_rn(mix[j], down[size_t(j) * width + i]));
     out[i] = value;
 }
 
 extern "C" int hipengine_inkling2_expert_pointwise(const float* x, const float* mix, float* out,
-                                                    int count, int width, float gate_cap, float up_cap) {
-    if (!x || !out || count <= 0 || width <= 0) return hipErrorInvalidValue;
+                                                    int count, int width, float gate_cap, float up_cap, int tokens) {
+    if (!x || !out || count <= 0 || width <= 0 || tokens <= 0 || tokens > 65535) return hipErrorInvalidValue;
     if (mix) {
-        hipLaunchKernelGGL(inkling2_expert_mix, dim3(1 + (width - 1) / 256), dim3(256), 0, 0,
-                           x, mix, out, count, width);
+        const dim3 grid(1 + (width - 1) / 256, tokens);
+        if (tokens == 1) {
+            hipLaunchKernelGGL((inkling2_expert_mix<false>), grid, dim3(256), 0, 0, x, mix, out, count, width);
+        } else {
+            hipLaunchKernelGGL((inkling2_expert_mix<true>), grid, dim3(256), 0, 0, x, mix, out, count, width);
+        }
     } else {
         if (!(gate_cap > 0.0f) || !(up_cap > 0.0f)) return hipErrorInvalidValue;
-        const size_t size = size_t(count) * width;
+        const size_t size = size_t(tokens) * count * width;
         hipLaunchKernelGGL(inkling2_expert_activate, dim3(1 + (size - 1) / 256), dim3(256), 0, 0,
                            x, out, size, gate_cap, up_cap);
     }

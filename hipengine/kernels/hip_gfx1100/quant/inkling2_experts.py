@@ -35,13 +35,13 @@ def launch_inkling2_expert(weights, scales, x, output, rows, columns, *, nvfp4, 
 @lru_cache(maxsize=1)
 def _grouped_symbol():
     fn = _expert_library().hipengine_inkling2_grouped_expert_projection
-    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int] * 6
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int] * 7
     fn.restype = ctypes.c_int
     return fn
 
 
-def launch_grouped_experts(w, s, x, out, ids, outer, count, rows, columns, stride, *, nvfp4, wave_rows=False):
-    status = _grouped_symbol()(w, s, x, out, ids, outer, count, rows, columns, stride, nvfp4, wave_rows)
+def launch_grouped_experts(w, s, x, out, ids, outer, count, rows, columns, stride, *, nvfp4, wave_rows=False, tokens=1):
+    status = _grouped_symbol()(w, s, x, out, ids, outer, count, rows, columns, stride, nvfp4, wave_rows, tokens)
     if status != HIP_SUCCESS:
         raise HipError(f"Inkling 2 grouped expert projection failed with HIP status {status}")
 
@@ -49,13 +49,13 @@ def launch_grouped_experts(w, s, x, out, ids, outer, count, rows, columns, strid
 @lru_cache(maxsize=1)
 def _pointwise_symbol():
     fn = _expert_library().hipengine_inkling2_expert_pointwise
-    fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int] * 2 + [ctypes.c_float] * 2
+    fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int] * 2 + [ctypes.c_float] * 2 + [ctypes.c_int]
     fn.restype = ctypes.c_int
     return fn
 
 
-def launch_expert_pointwise(x, mix, out, count, width, gate_cap=0.0, up_cap=0.0):
-    status = _pointwise_symbol()(x, mix, out, count, width, gate_cap, up_cap)
+def launch_expert_pointwise(x, mix, out, count, width, gate_cap=0.0, up_cap=0.0, *, tokens=1):
+    status = _pointwise_symbol()(x, mix, out, count, width, gate_cap, up_cap, tokens)
     if status != HIP_SUCCESS:
         raise HipError(f"Inkling 2 expert pointwise operation failed with HIP status {status}")
 

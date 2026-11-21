@@ -9,6 +9,7 @@ import numpy as np
 
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import DeviceBuffer, free, malloc
+from hipengine.loading.inkling2_activation_transfer import Inkling2ActivationTransfer
 from hipengine.loading.inkling2_mini import Inkling2ExpertBank
 
 
@@ -35,6 +36,8 @@ class Inkling2DeviceExperts:
         self._lock = Lock()
         self._allocations: list[DeviceBuffer] = []
         self._banks: dict[tuple[int, str], _ResidentBank] = {}
+        self._block_scratch = None
+        self._transfer = Inkling2ActivationTransfer(runtime)
         self._closed = False
         try:
             layout = {(layer, stem): weights.expert_bank(layer, stem)
@@ -119,6 +122,23 @@ class Inkling2DeviceExperts:
             copy(y.ctypes.data, self._output.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
             return y
 
+    def _feed_scratch(self, tokens):
+        if tokens == 1:
+            return self._staging, self._input, self._output
+        block = self._block_scratch
+        if block is None or tokens > block[0]:
+            # Geometric growth bounds the temporary allocation count when block widths vary.
+            capacity = min(65535, 1 << (tokens - 1).bit_length())
+            staging = np.empty(self._staging.size * capacity, dtype=np.float32)
+            active = self._allocate(staging.nbytes)
+            projection = self._allocate(self._output.nbytes * capacity)
+            if block is not None:
+                for buf in block[2:]:
+                    free(buf, runtime=self._runtime)
+                    self._allocations.remove(buf)
+            block = self._block_scratch = capacity, staging, active, projection
+        return block[1:]
+
     def feed_forward(self, layer, experts, mix, hidden, gate_cap, up_cap):
         with self._lock:
             if self._closed:
@@ -127,35 +147,39 @@ class Inkling2DeviceExperts:
                 raise RuntimeError("Inkling 2 device expert feed-forward is unavailable")
             gate, down = self._banks[layer, "w13"], self._banks[layer, "w2"]
             ids = np.ascontiguousarray(experts, dtype=np.int32)
-            count = ids.size
-            if (ids.ndim != 1 or not 1 <= count <= self._max_selected or np.any(ids < 0)
-                    or np.any(ids >= min(gate.expert_count, down.expert_count)) or mix.shape != (count,)):
+            if (hidden.ndim not in (1, 2) or ids.ndim != hidden.ndim or mix.shape != ids.shape
+                    or not 1 <= ids.shape[-1] <= self._max_selected or np.any(ids < 0)
+                    or np.any(ids >= min(gate.expert_count, down.expert_count))):
                 raise ValueError("invalid Inkling 2 device expert routing")
-            if hidden.shape != (gate.columns,) or gate.rows != 2 * down.columns or down.rows != gate.columns:
+            tokens = 1 if hidden.ndim == 1 else hidden.shape[0]
+            if (not 1 <= tokens <= 65535 or hidden.shape[:-1] != ids.shape[:-1]
+                    or hidden.shape[-1] != gate.columns or gate.rows != 2 * down.columns or down.rows != gate.columns):
                 raise ValueError("invalid Inkling 2 device expert feed-forward geometry")
-            staging = self._staging[:2 * count + hidden.size]
-            staging[:count].view(np.int32)[:] = ids
-            staging[count:2 * count] = mix
-            staging[2 * count:] = hidden
-            base, output = self._input.ptr, self._output.ptr
+            host, device_input, device_output = self._feed_scratch(tokens)
+            count = ids.shape[-1]
+            stage = host[:2 * ids.size + hidden.size]
+            stage[:ids.size].view(np.int32)[:] = ids.ravel()
+            stage[ids.size:2 * ids.size].reshape(mix.shape)[...] = mix
+            stage[2 * ids.size:].reshape(hidden.shape)[...] = hidden
+            base, output = device_input.ptr, device_output.ptr
             mix_ptr = base + ids.nbytes
             inputs = mix_ptr + ids.nbytes
-            copy = self._runtime.memcpy
-            copy(base, staging.ctypes.data, staging.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
-            self._grouped(gate.weights.ptr, gate.scales.ptr, inputs, output, base, gate.device_outer,
-                          count, gate.rows, gate.columns, 0, nvfp4=gate.outer_scales is not None)
-            self._pointwise(output, 0, inputs, count, down.columns, gate_cap, up_cap)
-            self._grouped(down.weights.ptr, down.scales.ptr, inputs, output, base, down.device_outer,
-                          count, down.rows, down.columns, down.columns, nvfp4=down.outer_scales is not None)
-            self._pointwise(output, mix_ptr, inputs, count, down.rows)
-            result = np.empty(down.rows, dtype=np.float32)
-            copy(result.ctypes.data, inputs, result.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+            result = np.empty(hidden.shape, dtype=np.float32)
+            with self._transfer.exchange(base, inputs, stage, result, pinned=True):
+                self._grouped(gate.weights.ptr, gate.scales.ptr, inputs, output, base, gate.device_outer,
+                              count, gate.rows, gate.columns, 0, nvfp4=gate.outer_scales is not None, tokens=tokens)
+                self._pointwise(output, 0, inputs, count, down.columns, gate_cap, up_cap, tokens=tokens)
+                self._grouped(down.weights.ptr, down.scales.ptr, inputs, output, base, down.device_outer,
+                              count, down.rows, down.columns, down.columns, nvfp4=down.outer_scales is not None,
+                              tokens=tokens)
+                self._pointwise(output, mix_ptr, inputs, count, down.rows, tokens=tokens)
             return result
 
     def close(self):
         with self._lock:
             self._closed = True
             self._banks.clear()
+            self._transfer.close()
             while self._allocations:
                 free(self._allocations[-1], runtime=self._runtime)
                 self._allocations.pop()

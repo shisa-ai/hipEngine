@@ -12,20 +12,27 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
 def routed_feed_forward(weights, layer: int, hidden: np.ndarray, *, top_k: int,
                         route_scale: float, gate_cap: float, up_cap: float, project=None, project_dense=None,
                         project_group=None, feed_group=None) -> np.ndarray:
-    """One token, with FP32 routing and accumulation."""
+    """Route one token or an ordered block for a device feed-forward owner."""
     if project is None:
         def project(layer, stem, expert, x):
             return weights.expert(layer, stem, expert) @ x
     prefix = f"layers.{layer}.mlp.gate."
     name = prefix + "weight"
-    scores = _sigmoid(weights.dense(name) @ hidden if project_dense is None else project_dense(name, hidden))
-    if not 1 <= top_k <= scores.size:
-        raise ValueError(f"invalid Inkling 2 top-k: {top_k} for {scores.size} experts")
-    ranking = scores + weights.dense(prefix + "bias")
-    # Use expert index to break ties, and accumulate in expert order.
-    ids = np.sort(np.argsort(-ranking, kind="stable")[:top_k])
-    mix = scores[ids]
-    mix *= route_scale / (mix.sum() + np.float32(1e-20))
+    def route(x):
+        scores = _sigmoid(weights.dense(name) @ x if project_dense is None else project_dense(name, x))
+        if not 1 <= top_k <= scores.size:
+            raise ValueError(f"invalid Inkling 2 top-k: {top_k} for {scores.size} experts")
+        ranking = scores + weights.dense(prefix + "bias")
+        # Use expert index to break ties, and accumulate in expert order.
+        ids = np.sort(np.argsort(-ranking, kind="stable")[:top_k])
+        mix = scores[ids]
+        mix *= route_scale / (mix.sum() + np.float32(1e-20))
+        return ids, mix
+
+    if feed_group is not None and hidden.ndim == 2:
+        selections, factors = zip(*(route(row) for row in hidden))
+        return feed_group(layer, np.stack(selections), np.stack(factors), hidden, gate_cap, up_cap)
+    ids, mix = route(hidden)
     if feed_group is not None:
         return feed_group(layer, ids, mix, hidden, gate_cap, up_cap)
 
