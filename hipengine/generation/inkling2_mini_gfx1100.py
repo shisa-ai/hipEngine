@@ -26,8 +26,10 @@ from hipengine.runtime.inkling2_device_draft_kv import Inkling2DeviceDraftKV
 
 _BACKEND = "hip_gfx1100"
 _HEAD = "inkling2_vocabulary_projection"
+_DENSE = "inkling2_dense_projection"
 _EXPERTS = "inkling2_routed_ffn"
 _HEAD_EVIDENCE = "worklog/entries/20261121T084738.426332Z-lhl-inkling2-mini-d38a06.md"
+_DENSE_EVIDENCE = "worklog/entries/20261121T100937.153828Z-lhl-inkling2-mini-557326.md"
 _EXPERTS_EVIDENCE = "worklog/entries/20261121T094149.586925Z-lhl-inkling2-mini-732718.md"
 
 
@@ -37,6 +39,15 @@ def _fp32_head(owner):
 
 def _native_head(owner):
     return partial(owner.project, native_bf16=dense_gemv_f32_bf16w_f32_out)
+
+
+def _fp32_dense(owner):
+    return owner.project, owner.project_many
+
+
+def _native_dense(owner):
+    launch = partial(dense_gemv_f32_bf16w_f32_out, threads=64)
+    return partial(owner.project, native_bf16=launch), partial(owner.project_many, native_bf16=launch)
 
 
 def _host_experts(owner):
@@ -57,6 +68,7 @@ def _bind_profile(generator, profile):
     generator.model.project_logits = partial(
         bind(_HEAD, generator._dense), "unembed.weight", limit=generator.model.config["unpadded_vocab_size"],
     )
+    generator.model.project, generator.model.project_many = bind(_DENSE, generator._dense)
     generator.model.feed_experts_group = bind(_EXPERTS, generator._experts)
 
 
@@ -64,23 +76,29 @@ def register_inkling2_gfx1100_profiles():
     model, quant = INKLING2_MINI.name, INKLING2_MINI.default_quant
     for layer, variant, projection in (
         (_HEAD, "fp32_rocblas", _fp32_head), (_HEAD, "native_bf16", _native_head),
+        (_DENSE, "fp32_rocblas", _fp32_dense), (_DENSE, "native_bf16_threads64", _native_dense),
         (_EXPERTS, "host_pointwise", _host_experts), (_EXPERTS, "device_pointwise", _device_experts),
     ):
         key = KernelKey(_BACKEND, layer, quant, variant)
         if not is_registered(key):
             register(key, projection)
     registered = registered_runtime_profile_keys()
-    for profile, head, head_fallback, experts, experts_fallback in (
-        ("strict", "fp32_rocblas", None, "host_pointwise", None),
-        ("production", "native_bf16", "fp32_rocblas", "device_pointwise", "host_pointwise"),
+    for profile, (head, dense, experts) in (
+        ("strict", ("fp32_rocblas", "fp32_rocblas", "host_pointwise")),
+        ("production", ("native_bf16", "native_bf16_threads64", "device_pointwise")),
     ):
         if RuntimeProfileKey(model, _BACKEND, quant, profile) not in registered:
+            fallback = profile != "strict"
             register_runtime_profile_plan(
                 model=model, backend=_BACKEND, quant=quant, profile=profile,
                 plan=RuntimeProfilePlan(
                     selections=(
-                        VariantSelection(_HEAD, "checkpoint_bf16_head", head, head_fallback, _HEAD_EVIDENCE),
-                        VariantSelection(_EXPERTS, "target", experts, experts_fallback, _EXPERTS_EVIDENCE),
+                        VariantSelection(_HEAD, "checkpoint_bf16_head", head,
+                                         "fp32_rocblas" if fallback else None, _HEAD_EVIDENCE),
+                        VariantSelection(_DENSE, "target_text", dense,
+                                         "fp32_rocblas" if fallback else None, _DENSE_EVIDENCE),
+                        VariantSelection(_EXPERTS, "target", experts,
+                                         "host_pointwise" if fallback else None, _EXPERTS_EVIDENCE),
                     ),
                     kv_policy="fp32", graph_policy="eager", binder=_bind_profile,
                 ),

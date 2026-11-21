@@ -52,6 +52,11 @@ def test_device_dense_vector_and_block_match_cpu():
                 actual = owner.project_many(names, x)
                 for paired, single in zip(actual, expected):
                     np.testing.assert_array_equal(paired.view(np.uint32), single.view(np.uint32))
+                launch = dense_gemv_f32_bf16w_f32_out
+                native = owner.project_many(names, x, native_bf16=launch)
+                for name, paired in zip(names, native, strict=True):
+                    single = owner.project(name, x, native_bf16=launch)
+                    np.testing.assert_array_equal(paired.view(np.uint32), single.view(np.uint32))
         with pytest.raises(RuntimeError, match="closed"):
             owner.project("head", rows)
     finally:

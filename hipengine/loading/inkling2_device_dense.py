@@ -76,8 +76,8 @@ class Inkling2DeviceDense:
             self._runtime.memcpy(y.ctypes.data, out.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
             return y
 
-    def project_many(self, names, hidden: np.ndarray):
-        """Share transfers while preserving each FP32 BLAS call's geometry."""
+    def project_many(self, names, hidden: np.ndarray, *, native_bf16=None):
+        """Share transfers for projections that consume the same FP32 input."""
         names = tuple(names)
         if not names:
             raise ValueError("Inkling 2 projection group must not be empty")
@@ -86,7 +86,7 @@ class Inkling2DeviceDense:
                 raise RuntimeError("Inkling 2 dense residency is closed")
             if hidden.ndim not in (1, 2) or not all(hidden.shape):
                 raise ValueError("Inkling 2 dense projection expects a vector or row matrix")
-            matrices = [self._matrix(name, None) for name in names]
+            matrices = [self._matrix(name, None, preserve_bf16=native_bf16 is not None) for name in names]
             if any(hidden.shape[-1] != n for _, (_, n), _ in matrices):
                 raise ValueError("Inkling 2 grouped dense projection input width differs from its matrices")
             x = np.ascontiguousarray(hidden, dtype=np.float32)
@@ -98,9 +98,11 @@ class Inkling2DeviceDense:
             copy = self._runtime.memcpy
             copy(inp.ptr, x.ctypes.data, x.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
             offset = 0
-            for weight, (m, n), _ in matrices:
+            for weight, (m, n), bf16 in matrices:
                 dst = out.ptr + offset * y.itemsize
-                if x.ndim == 1:
+                if bf16:
+                    native_bf16(inp.ptr, weight.ptr, dst, rows, n, m, runtime=self._runtime)
+                elif x.ndim == 1:
                     self._blas.sgemv_rowmajor_nt(inp.ptr, weight.ptr, dst, in_features=n, out_features=m)
                 else:
                     self._blas.sgemm_rowmajor_nt(inp.ptr, weight.ptr, dst, rows=rows, in_features=n, out_features=m)

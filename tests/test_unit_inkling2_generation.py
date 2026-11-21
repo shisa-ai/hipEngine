@@ -18,7 +18,7 @@ def test_original_architecture_resolves_to_cpu_reference_factory():
     assert factory is Inkling2ReferenceGenerator
 
 
-def test_gfx1100_profiles_resolve_vocabulary_and_expert_variants():
+def test_gfx1100_profiles_resolve_vocabulary_dense_and_expert_variants():
     from hipengine.execution_profiles import resolve_default_execution_profile, resolve_runtime_profile
 
     register_builtin_generators()
@@ -30,9 +30,12 @@ def test_gfx1100_profiles_resolve_vocabulary_and_expert_variants():
     assert not native.fell_back_to_strict
     fast = {item["layer"]: item for item in native.manifest["selections"]}
     exact = {item["layer"]: item for item in strict.manifest["selections"]}
-    assert fast.keys() == exact.keys() == {"inkling2_vocabulary_projection", "inkling2_routed_ffn"}
+    assert fast.keys() == exact.keys() == {
+        "inkling2_vocabulary_projection", "inkling2_dense_projection", "inkling2_routed_ffn",
+    }
     for layer, production, fallback in (
         ("inkling2_vocabulary_projection", "native_bf16", "fp32_rocblas"),
+        ("inkling2_dense_projection", "native_bf16_threads64", "fp32_rocblas"),
         ("inkling2_routed_ffn", "device_pointwise", "host_pointwise"),
     ):
         assert fast[layer]["selected_variant"] == production
