@@ -6,6 +6,23 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 
+from hipengine.models.registry import register_model
+from hipengine.quant.inkling2_experts import INKLING2_MIXED_QUANT
+
+
+@dataclass(frozen=True, slots=True)
+class Inkling2MiniModel:
+    name: str = "inkling2_mini"
+    architectures: tuple[str, ...] = ("Inkling2LoopForConditionalGeneration",)
+    default_quant: str = INKLING2_MIXED_QUANT
+
+    def layer_sequence(self) -> tuple[str, ...]:
+        return ("inkling2_attention", "inkling2_routed_ffn")
+
+
+INKLING2_MINI = register_model(Inkling2MiniModel())
+
+
 @dataclass(frozen=True, slots=True)
 class Inkling2Visit:
     """One decoder visit; KV and convolution state share the visit's slot ID."""

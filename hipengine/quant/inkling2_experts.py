@@ -5,7 +5,27 @@ These decode weights only. They do not simulate activation quantization.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
+
+from hipengine.quant.registry import register_quant
+
+INKLING2_MIXED_QUANT = "inkling2_mixed"
+
+
+@dataclass(frozen=True)
+class Inkling2MixedQuant:
+    name: str = INKLING2_MIXED_QUANT
+    weight_storage: str = "nvfp4_mxfp8_bf16"
+    activation_preprocess: str = "none"
+    compute_dtype: str = "fp32"
+    scale_granularity: str = "block_and_expert"
+    calibration_artifact: str = "none"
+    kernel_family: str = "inkling2_mixed"
+
+
+INKLING2_MIXED = register_quant(Inkling2MixedQuant())
 
 
 def _e4m3_table() -> np.ndarray:

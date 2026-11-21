@@ -4,6 +4,7 @@ from hipengine.models.base import DEFAULT_GENERATION_SURFACES, ModelPlugin, gene
 from hipengine.models.vibevoice_asr import VIBEVOICE_ASR, VibeVoiceASRModel
 from hipengine.models.vibevoice_tts import VIBEVOICE_TTS, VibeVoiceTTSModel
 from hipengine.models.gemma4 import GEMMA4_GGUF, Gemma4GGUFModel
+from hipengine.models.inkling2_mini import INKLING2_MINI
 from hipengine.models.kv_capabilities import (
     KVCapabilityDeclaration,
     KVCapabilityEvidence,

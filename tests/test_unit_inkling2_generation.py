@@ -1,0 +1,42 @@
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+from hipengine.generation import GenerationRequest, register_builtin_generators, resolve_text_generator
+from hipengine.generation.inkling2_mini import Inkling2ReferenceGenerator
+from hipengine.models import resolve_model
+from hipengine.quant import resolve_quant
+
+
+def test_original_architecture_resolves_to_cpu_reference_factory():
+    register_builtin_generators()
+    model = resolve_model("Inkling2LoopForConditionalGeneration")
+    quant = resolve_quant(model.default_quant)
+    assert quant.compute_dtype == "fp32"
+    factory = resolve_text_generator(model=model.name, backend="cpu_reference", quant=quant.name)
+    assert factory is Inkling2ReferenceGenerator
+
+
+def test_cpu_reference_generation_uses_shared_sampler_and_enforces_context():
+    class Session:
+        def step(self, token, *, logits=True):
+            tokens.append(token)
+            return np.array([0, 9, 1], dtype=np.float32) if logits else None
+
+    tokens = []
+    gen = Inkling2ReferenceGenerator.__new__(Inkling2ReferenceGenerator)
+    gen.model = SimpleNamespace(session=lambda capacity: Session())
+    gen.tokenizer = SimpleNamespace(decode=lambda ids, **_: "".join(map(str, ids)))
+    gen.max_sequence_length = 4
+    gen.eos_token_id = 1
+    req = GenerationRequest(prompts=((2, 0),), max_tokens=2, temperature=0, top_p=1, ignore_eos=False)
+    output, = gen.generate_detailed(req)
+    assert output.generated_token_ids == (1,)
+    assert output.prompt_tokens == 2
+    assert output.finish_details.reason == "stop"
+    assert output.finish_details.eos_token_id == 1
+    assert tokens == [2, 0]
+    req = GenerationRequest(prompts=((2, 0),), max_tokens=3, temperature=0, top_p=1, ignore_eos=False)
+    with pytest.raises(ValueError, match="context"):
+        gen.generate_detailed(req)

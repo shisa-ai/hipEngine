@@ -3,6 +3,7 @@
 from hipengine.quant.base import QuantPlugin
 from hipengine.quant.bf16 import BF16, BF16Quant
 from hipengine.quant.fp16 import FP16, FP16Quant
+from hipengine.quant.inkling2_experts import INKLING2_MIXED
 from hipengine.quant.gguf import (
     GGMLQuantizationType,
     GGUFQuantLayout,
