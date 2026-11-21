@@ -24,11 +24,14 @@ __device__ __forceinline__ float inkling_e2m1(unsigned q) {
     return __uint_as_float(bits | ((q & 8) << 28));
 }
 
-template <bool NVFP4>
+template <bool NVFP4, bool WIDENED>
 __device__ __forceinline__ float inkling_expert_value(const uint8_t* w, const uint8_t* s, int col, float outer) {
     if constexpr (NVFP4) {
         const unsigned q = (w[col / 2] >> ((col & 1) * 4)) & 15;
-        const float a = inkling_e2m1(q) * inkling_nvfp4_scale(s[col / 16]);
+        const float scale = WIDENED
+            ? __uint_as_float(unsigned(reinterpret_cast<const uint16_t*>(s)[col / 16]) << 16)
+            : inkling_nvfp4_scale(s[col / 16]);
+        const float a = inkling_e2m1(q) * scale;
         return a * outer;
     } else {
         const int scale = s[col / 32];
@@ -37,17 +40,17 @@ __device__ __forceinline__ float inkling_expert_value(const uint8_t* w, const ui
     }
 }
 
-template <bool NVFP4>
+template <bool NVFP4, bool WIDENED>
 __device__ __forceinline__ float inkling_expert_lane(const uint8_t* w, const uint8_t* s, const float* x,
                                                     int cols, float outer, int lane) {
     float acc = 0.0f;
     for (int col = lane; col < cols; col += 128) {
-        acc = fmaf(inkling_expert_value<NVFP4>(w, s, col, outer), x[col], acc);
+        acc = fmaf(inkling_expert_value<NVFP4, WIDENED>(w, s, col, outer), x[col], acc);
     }
     return acc;
 }
 
-template <bool NVFP4, bool GROUPED = false, bool WAVE_ROWS = false, bool BATCHED = false>
+template <bool NVFP4, bool GROUPED = false, bool WAVE_ROWS = false, bool BATCHED = false, bool WIDENED = false>
 __global__ void inkling2_expert_projection(const uint8_t* w, const uint8_t* s, const float* x,
                                            float* out, int rows, int cols, float outer,
                                            const int32_t* selected, const float* outers, int input_stride) {
@@ -70,22 +73,22 @@ __global__ void inkling2_expert_projection(const uint8_t* w, const uint8_t* s, c
         if constexpr (NVFP4) outer = outers[expert];
     }
     w += physical_row * (NVFP4 ? cols / 2 : cols);
-    s += physical_row * (cols / group);
+    s += physical_row * (cols / group) * (WIDENED ? 2 : 1);
     if constexpr (WAVE_ROWS) {
         const int lane = threadIdx.x % 32;
         const int full = cols / tile * tile;
         float a = 0, b = 0, c = 0, d = 0;
         int col = lane;
         for (; col < full; col += tile) {
-            a = fmaf(inkling_expert_value<NVFP4>(w, s, col, outer), x[col], a);
-            b = fmaf(inkling_expert_value<NVFP4>(w, s, col + 32, outer), x[col + 32], b);
-            c = fmaf(inkling_expert_value<NVFP4>(w, s, col + 64, outer), x[col + 64], c);
-            d = fmaf(inkling_expert_value<NVFP4>(w, s, col + 96, outer), x[col + 96], d);
+            a = fmaf(inkling_expert_value<NVFP4, WIDENED>(w, s, col, outer), x[col], a);
+            b = fmaf(inkling_expert_value<NVFP4, WIDENED>(w, s, col + 32, outer), x[col + 32], b);
+            c = fmaf(inkling_expert_value<NVFP4, WIDENED>(w, s, col + 64, outer), x[col + 64], c);
+            d = fmaf(inkling_expert_value<NVFP4, WIDENED>(w, s, col + 96, outer), x[col + 96], d);
         }
-        if (col < cols) a = fmaf(inkling_expert_value<NVFP4>(w, s, col, outer), x[col], a);
-        if (col + 32 < cols) b = fmaf(inkling_expert_value<NVFP4>(w, s, col + 32, outer), x[col + 32], b);
-        if (col + 64 < cols) c = fmaf(inkling_expert_value<NVFP4>(w, s, col + 64, outer), x[col + 64], c);
-        if (col + 96 < cols) d = fmaf(inkling_expert_value<NVFP4>(w, s, col + 96, outer), x[col + 96], d);
+        if (col < cols) a = fmaf(inkling_expert_value<NVFP4, WIDENED>(w, s, col, outer), x[col], a);
+        if (col + 32 < cols) b = fmaf(inkling_expert_value<NVFP4, WIDENED>(w, s, col + 32, outer), x[col + 32], b);
+        if (col + 64 < cols) c = fmaf(inkling_expert_value<NVFP4, WIDENED>(w, s, col + 64, outer), x[col + 64], c);
+        if (col + 96 < cols) d = fmaf(inkling_expert_value<NVFP4, WIDENED>(w, s, col + 96, outer), x[col + 96], d);
         // Match the original 128-lane +64, +32, +16, ... tree.
         float sum = (a + c) + (b + d);
         #pragma unroll
@@ -93,7 +96,7 @@ __global__ void inkling2_expert_projection(const uint8_t* w, const uint8_t* s, c
         if (lane == 0) out[row] = sum;
     } else {
         __shared__ float reduction[tile];
-        reduction[threadIdx.x] = inkling_expert_lane<NVFP4>(w, s, x, cols, outer, threadIdx.x);
+        reduction[threadIdx.x] = inkling_expert_lane<NVFP4, WIDENED>(w, s, x, cols, outer, threadIdx.x);
         __syncthreads();
         for (int step = tile / 2; step > 0; step /= 2) {
             if (threadIdx.x < step) reduction[threadIdx.x] += reduction[threadIdx.x + step];
@@ -105,11 +108,14 @@ __global__ void inkling2_expert_projection(const uint8_t* w, const uint8_t* s, c
 
 extern "C" int hipengine_inkling2_expert_projection(const uint8_t* w, const uint8_t* s, const float* x,
                                                      float* out, int rows, int cols, int nvfp4,
-                                                     float outer, hipStream_t stream) {
-    if (!w || !s || !x || !out || rows <= 0 || cols <= 0 || cols % (nvfp4 ? 16 : 32)) {
+                                                     float outer, hipStream_t stream, int widened) {
+    if (!w || !s || !x || !out || rows <= 0 || cols <= 0 || cols % (nvfp4 ? 16 : 32) || (widened && !nvfp4)) {
         return hipErrorInvalidValue;
     }
-    if (nvfp4) {
+    if (widened) {
+        hipLaunchKernelGGL((inkling2_expert_projection<true, false, false, false, true>), dim3(rows), dim3(128), 0, stream,
+                           w, s, x, out, rows, cols, outer, nullptr, nullptr, 0);
+    } else if (nvfp4) {
         hipLaunchKernelGGL((inkling2_expert_projection<true>), dim3(rows), dim3(128), 0, stream,
                            w, s, x, out, rows, cols, outer, nullptr, nullptr, 0);
     } else {
@@ -119,16 +125,16 @@ extern "C" int hipengine_inkling2_expert_projection(const uint8_t* w, const uint
     return hipGetLastError();
 }
 
-template <bool NVFP4, bool WAVE_ROWS>
+template <bool NVFP4, bool WAVE_ROWS, bool WIDENED = false>
 static void launch_grouped(const uint8_t* w, const uint8_t* s, const float* x, float* out,
                            const int32_t* selected, const float* outers, int count, int rows,
                            int cols, int input_stride, int tokens) {
     const dim3 grid(WAVE_ROWS ? 1 + (rows - 1) / 4 : rows, count, tokens);
     if (tokens == 1) {
-        hipLaunchKernelGGL((inkling2_expert_projection<NVFP4, true, WAVE_ROWS>), grid, dim3(128), 0, 0,
+        hipLaunchKernelGGL((inkling2_expert_projection<NVFP4, true, WAVE_ROWS, false, WIDENED>), grid, dim3(128), 0, 0,
                            w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
     } else {
-        hipLaunchKernelGGL((inkling2_expert_projection<NVFP4, true, WAVE_ROWS, true>), grid, dim3(128), 0, 0,
+        hipLaunchKernelGGL((inkling2_expert_projection<NVFP4, true, WAVE_ROWS, true, WIDENED>), grid, dim3(128), 0, 0,
                            w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
     }
 }
@@ -136,13 +142,17 @@ static void launch_grouped(const uint8_t* w, const uint8_t* s, const float* x, f
 extern "C" int hipengine_inkling2_grouped_expert_projection(
     const uint8_t* w, const uint8_t* s, const float* x, float* out,
     const int32_t* selected, const float* outers, int count, int rows, int cols, int input_stride, int nvfp4,
-    int wave_rows, int tokens) {
+    int wave_rows, int tokens, int widened) {
     if (!w || !s || !x || !out || !selected || (nvfp4 && !outers) || count <= 0 || count > 65535 ||
         tokens <= 0 || tokens > 65535 || rows <= 0 || cols <= 0 || cols % (nvfp4 ? 16 : 32) ||
-        (input_stride != 0 && input_stride != cols)) {
+        (input_stride != 0 && input_stride != cols) || (widened && !nvfp4)) {
         return hipErrorInvalidValue;
     }
-    if (wave_rows && nvfp4) {
+    if (widened && wave_rows) {
+        launch_grouped<true, true, true>(w, s, x, out, selected, outers, count, rows, cols, input_stride, tokens);
+    } else if (widened) {
+        launch_grouped<true, false, true>(w, s, x, out, selected, outers, count, rows, cols, input_stride, tokens);
+    } else if (wave_rows && nvfp4) {
         launch_grouped<true, true>(w, s, x, out, selected, outers, count, rows, cols, input_stride, tokens);
     } else if (wave_rows) {
         launch_grouped<false, true>(w, s, x, out, selected, outers, count, rows, cols, input_stride, tokens);

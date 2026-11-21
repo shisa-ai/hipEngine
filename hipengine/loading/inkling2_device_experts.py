@@ -11,6 +11,7 @@ from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import DeviceBuffer, free, malloc
 from hipengine.loading.inkling2_activation_transfer import Inkling2ActivationTransfer
 from hipengine.loading.inkling2_mini import Inkling2ExpertBank
+from hipengine.quant.inkling2_experts import widen_nvfp4_scales
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,12 +23,15 @@ class _ResidentBank:
     columns: int
     outer_scales: np.ndarray | None
     device_outer: int = 0
+    expanded_scales: bool = False
 
 
 class Inkling2DeviceExperts:
     """Own packed banks and synchronized FP32 projection scratch on one device."""
 
-    def __init__(self, weights, layers, *, runtime, launch, grouped=None, max_selected=1, pointwise=None):
+    def __init__(self, weights, layers, *, runtime, launch, grouped=None, max_selected=1, pointwise=None,
+                 expand_nvfp4_scales=False):
+        self._expand_nvfp4_scales = expand_nvfp4_scales
         self._pointwise = pointwise
         self._runtime = runtime
         self._launch = launch
@@ -70,11 +74,12 @@ class Inkling2DeviceExperts:
             return buffer
 
         weights = upload(bank.values)
-        scales = upload(bank.scales)
+        expanded = self._expand_nvfp4_scales and bank.amax is not None
+        scales = upload(widen_nvfp4_scales(bank.scales) if expanded else bank.scales)
         exp, rows, _ = bank.values.shape
         outer = None if bank.amax is None else bank.amax / np.float32(bank.denominator)
         device_outer = upload(outer).ptr if outer is not None and self._grouped is not None else 0
-        return _ResidentBank(weights, scales, exp, rows, bank.columns, outer, device_outer)
+        return _ResidentBank(weights, scales, exp, rows, bank.columns, outer, device_outer, expanded)
 
     def project(self, layer, projection, expert, hidden):
         with self._lock:
@@ -92,7 +97,8 @@ class Inkling2DeviceExperts:
             self._launch(bank.weights.ptr + expert * (bank.weights.nbytes // bank.expert_count),
                          bank.scales.ptr + expert * (bank.scales.nbytes // bank.expert_count),
                          self._input.ptr, self._output.ptr, bank.rows, bank.columns,
-                         nvfp4=outer is not None, outer_scale=1.0 if outer is None else float(outer[expert]))
+                         nvfp4=outer is not None, outer_scale=1.0 if outer is None else float(outer[expert]),
+                         expanded_scales=bank.expanded_scales)
             self._runtime.memcpy(y.ctypes.data, self._output.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
             return y
 
@@ -118,7 +124,7 @@ class Inkling2DeviceExperts:
             self._grouped(bank.weights.ptr, bank.scales.ptr, self._input.ptr + ids.nbytes, self._output.ptr,
                           self._input.ptr, bank.device_outer, count, bank.rows, bank.columns,
                           bank.columns if hidden.ndim == 2 else 0,
-                          nvfp4=bank.outer_scales is not None)
+                          nvfp4=bank.outer_scales is not None, expanded_scales=bank.expanded_scales)
             copy(y.ctypes.data, self._output.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
             return y
 
@@ -167,11 +173,12 @@ class Inkling2DeviceExperts:
             result = np.empty(hidden.shape, dtype=np.float32)
             with self._transfer.exchange(base, inputs, stage, result, pinned=True):
                 self._grouped(gate.weights.ptr, gate.scales.ptr, inputs, output, base, gate.device_outer,
-                              count, gate.rows, gate.columns, 0, nvfp4=gate.outer_scales is not None, tokens=tokens)
+                              count, gate.rows, gate.columns, 0, nvfp4=gate.outer_scales is not None, tokens=tokens,
+                              expanded_scales=gate.expanded_scales)
                 self._pointwise(output, 0, inputs, count, down.columns, gate_cap, up_cap, tokens=tokens)
                 self._grouped(down.weights.ptr, down.scales.ptr, inputs, output, base, down.device_outer,
                               count, down.rows, down.columns, down.columns, nvfp4=down.outer_scales is not None,
-                              tokens=tokens)
+                              tokens=tokens, expanded_scales=down.expanded_scales)
                 self._pointwise(output, mix_ptr, inputs, count, down.rows, tokens=tokens)
                 if transform_output is not None:
                     transform_output(inputs, result.shape)

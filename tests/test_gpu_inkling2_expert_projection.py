@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
-from hipengine.quant.inkling2_experts import decode_mxfp8_expert, decode_nvfp4_expert
+from hipengine.quant.inkling2_experts import decode_mxfp8_expert, decode_nvfp4_expert, widen_nvfp4_scales
 
 
 @pytest.mark.parametrize("nvfp4,columns", [(True, 1152), (True, 2304), (False, 1152), (False, 2304)])
@@ -39,6 +39,16 @@ def test_original_expert_projection_against_cpu(nvfp4, columns):
             rt.memcpy(ptrs[-1], arr.ctypes.data, arr.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
         launch_inkling2_expert(*ptrs, rows, columns, nvfp4=nvfp4, outer_scale=0.375 if nvfp4 else 1.0)
         rt.memcpy(out.ctypes.data, ptrs[-1], out.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+        if nvfp4:
+            expanded = widen_nvfp4_scales(scales)
+            expanded_ptr = rt.malloc(expanded.nbytes)
+            ptrs.append(expanded_ptr)
+            rt.memcpy(expanded_ptr, expanded.ctypes.data, expanded.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+            result = np.empty_like(out)
+            launch_inkling2_expert(ptrs[0], expanded_ptr, ptrs[2], ptrs[3], rows, columns,
+                                   nvfp4=True, outer_scale=0.375, expanded_scales=True)
+            rt.memcpy(result.ctypes.data, ptrs[3], result.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+            np.testing.assert_array_equal(result.view(np.uint32), out.view(np.uint32))
     finally:
         for ptr in reversed(ptrs):
             rt.free(ptr)

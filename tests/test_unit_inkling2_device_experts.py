@@ -38,7 +38,8 @@ def test_resident_projection_uses_expert_offsets_and_respects_lifetime():
     memory = Memory()
     calls = []
 
-    def launch(w, s, x, y, rows, columns, *, nvfp4, outer_scale):
+    def launch(w, s, x, y, rows, columns, *, nvfp4, outer_scale, expanded_scales):
+        assert not expanded_scales
         calls.append((ctypes.string_at(w, 1)[0], ctypes.string_at(s, 1)[0], columns, nvfp4, outer_scale))
         target = (ctypes.c_float * rows).from_address(y)
         target[:] = [1.0, 3.0]

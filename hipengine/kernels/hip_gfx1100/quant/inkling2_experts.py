@@ -21,13 +21,15 @@ def _expert_library():
 @lru_cache(maxsize=1)
 def build_inkling2_expert():
     fn = _expert_library().hipengine_inkling2_expert_projection
-    fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int] * 3 + [ctypes.c_float, ctypes.c_void_p]
+    fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int] * 3 + [ctypes.c_float, ctypes.c_void_p, ctypes.c_int]
     fn.restype = ctypes.c_int
     return fn
 
 
-def launch_inkling2_expert(weights, scales, x, output, rows, columns, *, nvfp4, outer_scale=1.0, stream=0):
-    status = build_inkling2_expert()(weights, scales, x, output, rows, columns, nvfp4, outer_scale, stream)
+def launch_inkling2_expert(weights, scales, x, output, rows, columns, *, nvfp4, outer_scale=1.0, stream=0,
+                           expanded_scales=False):
+    status = build_inkling2_expert()(weights, scales, x, output, rows, columns, nvfp4, outer_scale, stream,
+                                    expanded_scales)
     if status != HIP_SUCCESS:
         raise HipError(f"Inkling 2 packed expert projection failed with HIP status {status}")
 
@@ -35,13 +37,15 @@ def launch_inkling2_expert(weights, scales, x, output, rows, columns, *, nvfp4, 
 @lru_cache(maxsize=1)
 def _grouped_symbol():
     fn = _expert_library().hipengine_inkling2_grouped_expert_projection
-    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int] * 7
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int] * 8
     fn.restype = ctypes.c_int
     return fn
 
 
-def launch_grouped_experts(w, s, x, out, ids, outer, count, rows, columns, stride, *, nvfp4, wave_rows=False, tokens=1):
-    status = _grouped_symbol()(w, s, x, out, ids, outer, count, rows, columns, stride, nvfp4, wave_rows, tokens)
+def launch_grouped_experts(w, s, x, out, ids, outer, count, rows, columns, stride, *, nvfp4, wave_rows=False, tokens=1,
+                           expanded_scales=False):
+    status = _grouped_symbol()(w, s, x, out, ids, outer, count, rows, columns, stride, nvfp4, wave_rows, tokens,
+                               expanded_scales)
     if status != HIP_SUCCESS:
         raise HipError(f"Inkling 2 grouped expert projection failed with HIP status {status}")
 

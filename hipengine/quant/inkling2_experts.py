@@ -38,6 +38,8 @@ def _e4m3_table() -> np.ndarray:
 
 
 _E4M3 = _e4m3_table()
+_E4M3_BF16 = (_E4M3.astype(np.float32).view(np.uint32) >> 16).astype(np.uint16)
+_E4M3_BF16[[127, 255]] = 0x7FC0
 _E2M1 = np.array([0, 0.5, 1, 1.5, 2, 3, 4, 6, -0.0, -0.5, -1, -1.5, -2, -3, -4, -6], dtype=np.float32)
 _CODES = np.arange(256, dtype=np.uint8)
 _E2M1_PAIRS = np.stack((_E2M1[_CODES & 15], _E2M1[_CODES >> 4]), axis=-1)
@@ -51,6 +53,13 @@ def _check_layout(weights: np.ndarray, scales: np.ndarray, block_bytes: int) -> 
         raise ValueError("expert weight and scale storage must be raw uint8 arrays")
     if weights.ndim != 2 or scales.ndim != 2 or weights.shape != (scales.shape[0], scales.shape[1] * block_bytes):
         raise ValueError(f"incompatible expert layout: {weights.shape=} {scales.shape=} {block_bytes=}")
+
+
+def widen_nvfp4_scales(scales: np.ndarray) -> np.ndarray:
+    """Store every E4M3 scale, including signed zero, exactly in BF16."""
+    if scales.dtype != np.uint8:
+        raise ValueError("NVFP4 scales must be raw uint8")
+    return _E4M3_BF16[scales]
 
 
 def decode_nvfp4_expert(

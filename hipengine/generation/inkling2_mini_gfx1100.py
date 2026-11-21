@@ -157,6 +157,7 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
             experts = owned.enter_context(Inkling2DeviceExperts(
                 weights, (v.weight_layer for v in self.model.plan.visits), runtime=runtime, launch=launch,
                 grouped=grouped, max_selected=cfg["num_experts_per_tok"], pointwise=pointwise,
+                expand_nvfp4_scales=True,
             ))
             self._experts = experts
             self._dense = dense
