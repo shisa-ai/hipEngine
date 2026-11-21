@@ -17,13 +17,13 @@ class Inkling2TextWeights:
 
     def __init__(self, index: WeightIndex, *, namespace: str = "model.llm"):
         self._index = index
-        self._namespace = namespace
+        self._prefix = f"{namespace}." if namespace else ""
         self._headers = {p: _parse_safetensors_header_and_data_start(p) for p in index.shards}
         self._file_sizes = {p: p.stat().st_size for p in index.shards}
         self._mapped: dict[str, np.ndarray] = {}
 
     def _info(self, name):
-        return self._index.tensors[f"{self._namespace}.{name}"]
+        return self._index.tensors[f"{self._prefix}{name}"]
 
     def raw(self, name: str) -> np.ndarray:
         if name not in self._mapped:

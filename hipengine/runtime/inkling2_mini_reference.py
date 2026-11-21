@@ -76,7 +76,8 @@ class Inkling2TextSession:
         cap = min(self.capacity, self.model.config["sliding_window_size"]) if visit.is_local else self.capacity
         return _VisitState(np.empty((cap, nkv, dim), np.float32), np.empty((cap, nkv, dim), np.float32))
 
-    def step(self, token: int, *, embedding: np.ndarray | None = None, logits: bool = True) -> np.ndarray | None:
+    def step(self, token: int, *, embedding: np.ndarray | None = None, logits: bool = True,
+             capture=None) -> np.ndarray | None:
         if self.position >= self.capacity:
             raise ValueError("Inkling 2 session capacity exceeded")
         c, w = self.model.config, self.model.weights
@@ -88,7 +89,7 @@ class Inkling2TextSession:
             h = np.asarray(embedding, dtype=np.float32)
         blocks = []
         loop_start = c["loop_config"]["core_start"]
-        for visit in self.model.plan.visits:
+        for boundary, visit in enumerate(self.model.plan.visits):
             layer = visit.weight_layer
             if layer == loop_start:
                 if visit.restart_from_prelude:
@@ -97,6 +98,8 @@ class Inkling2TextSession:
                     h, blocks = prelude_hidden, prelude_blocks.copy()
                 else:
                     prelude_hidden, prelude_blocks = h, blocks.copy()
+            if capture is not None:
+                capture(boundary, h)
             messages = None
             if visit.message_pass is not None:
                 i = 2 * (layer - loop_start)
@@ -106,9 +109,13 @@ class Inkling2TextSession:
             h = self._layer(visit, h, blocks, messages)
 
         self.position += 1
-        if not logits:
+        if not logits and capture is None:
             return None
         h = _rms(_read_blocks(w.dense("attn_res.output_query"), blocks, h), c["rms_norm_eps"]) * w.dense("norm.weight")
+        if capture is not None:
+            capture(len(self.model.plan.visits), h)
+        if not logits:
+            return None
         raw = w.dense("unembed.weight", slice(c["unpadded_vocab_size"])) @ h
         cap = c["final_logit_softcapping"]
         return cap * np.tanh(raw / cap)
