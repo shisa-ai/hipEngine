@@ -62,6 +62,7 @@ class Inkling2TextReference:
         self.weights = weights
         self.plan = Inkling2VisitPlan.from_config(config)
         self.project_expert = None
+        self.project_experts_group = None
         self.convolution_factory = None
         self.attention_factory = None
 
@@ -258,7 +259,7 @@ class Inkling2TextSession:
             return routed_feed_forward(w, layer, x, top_k=c["num_experts_per_tok"],
                                        route_scale=c["route_scale"], gate_cap=c["mlp_gate_softcap"],
                                        up_cap=c["mlp_up_softcap"], project=self.model.project_expert,
-                                       project_dense=self.model.project)
+                                       project_dense=self.model.project, project_group=self.model.project_experts_group)
 
         m = feed(normalized) if normalized.ndim == 1 else np.stack([feed(row) for row in normalized])
         return a + static_conv("mlp_sconv", m)

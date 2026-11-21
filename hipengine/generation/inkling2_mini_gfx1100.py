@@ -27,6 +27,8 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
         runtime = get_hip_runtime()
         launch = resolve(backend="hip_gfx1100", layer="inkling2_expert_projection", quant=INKLING2_MINI.default_quant,
                          variant="default")
+        grouped = resolve(backend="hip_gfx1100", layer="inkling2_expert_projection", quant=INKLING2_MINI.default_quant,
+                          variant="grouped")
         conv = resolve(backend="hip_gfx1100", layer="inkling2_short_conv", quant=INKLING2_MINI.default_quant,
                        variant="default")
         self.model.convolution_factory = lambda: Inkling2DeviceConvolution(
@@ -56,9 +58,11 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
             dense = owned.enter_context(Inkling2DeviceDense(weights, runtime=runtime, blas=blas, lock=self._blas_lock))
             experts = owned.enter_context(Inkling2DeviceExperts(
                 weights, (v.weight_layer for v in self.model.plan.visits), runtime=runtime, launch=launch,
+                grouped=grouped, max_selected=cfg["num_experts_per_tok"],
             ))
             self.model.project = dense.project
             self.model.project_expert = experts.project
+            self.model.project_experts_group = experts.project_group
             self._block_attention = owned.enter_context(Inkling2DeviceBlockAttention(runtime=runtime, launch=block_attn))
             if self.vision is not None:
                 vision_dense = owned.enter_context(Inkling2DeviceDense(

@@ -20,14 +20,17 @@ class _ResidentBank:
     rows: int
     columns: int
     outer_scales: np.ndarray | None
+    device_outer: int = 0
 
 
 class Inkling2DeviceExperts:
     """Own packed banks and synchronized FP32 projection scratch on one device."""
 
-    def __init__(self, weights, layers, *, runtime, launch):
+    def __init__(self, weights, layers, *, runtime, launch, grouped=None, max_selected=1):
         self._runtime = runtime
         self._launch = launch
+        self._grouped = grouped
+        self._max_selected = max_selected
         self._lock = Lock()
         self._allocations: list[DeviceBuffer] = []
         self._banks: dict[tuple[int, str], _ResidentBank] = {}
@@ -37,8 +40,11 @@ class Inkling2DeviceExperts:
                       for layer in dict.fromkeys(layers) for stem in ("w13", "w2")}
             if not layout:
                 raise ValueError("Inkling 2 expert residency requires at least one layer")
-            self._input = self._allocate(4 * max(bank.columns for bank in layout.values()))
-            self._output = self._allocate(4 * max(bank.values.shape[1] for bank in layout.values()))
+            if not 1 <= max_selected <= 65535:
+                raise ValueError("Inkling 2 selected expert scratch width is invalid")
+            self._input = self._allocate(4 * max_selected * max(bank.columns for bank in layout.values()))
+            self._output = self._allocate(4 * max_selected * max(bank.values.shape[1] for bank in layout.values()))
+            self._ids = self._allocate(4 * max_selected) if grouped is not None else None
             for key, bank in layout.items():
                 self._banks[key] = self._upload(bank)
         except BaseException:
@@ -60,7 +66,8 @@ class Inkling2DeviceExperts:
         scales = upload(bank.scales)
         exp, rows, _ = bank.values.shape
         outer = None if bank.amax is None else bank.amax / np.float32(bank.denominator)
-        return _ResidentBank(weights, scales, exp, rows, bank.columns, outer)
+        device_outer = upload(outer).ptr if outer is not None and self._grouped is not None else 0
+        return _ResidentBank(weights, scales, exp, rows, bank.columns, outer, device_outer)
 
     def project(self, layer, projection, expert, hidden):
         with self._lock:
@@ -80,6 +87,30 @@ class Inkling2DeviceExperts:
                          self._input.ptr, self._output.ptr, bank.rows, bank.columns,
                          nvfp4=outer is not None, outer_scale=1.0 if outer is None else float(outer[expert]))
             self._runtime.memcpy(y.ctypes.data, self._output.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+            return y
+
+    def project_group(self, layer, projection, experts, hidden):
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling 2 expert residency is closed")
+            bank = self._banks[layer, projection]
+            if self._grouped is None:
+                raise RuntimeError("Inkling 2 grouped expert projection is unavailable")
+            ids = np.ascontiguousarray(experts, dtype=np.int32)
+            count = ids.size
+            if ids.ndim != 1 or not 1 <= count <= self._max_selected or np.any(ids < 0) or np.any(ids >= bank.expert_count):
+                raise ValueError("invalid Inkling 2 selected expert IDs")
+            if hidden.shape not in ((bank.columns,), (count, bank.columns)):
+                raise ValueError("invalid Inkling 2 grouped expert input geometry")
+            x = np.ascontiguousarray(hidden, dtype=np.float32)
+            y = np.empty((count, bank.rows), dtype=np.float32)
+            copy = self._runtime.memcpy
+            copy(self._ids.ptr, ids.ctypes.data, ids.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+            copy(self._input.ptr, x.ctypes.data, x.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+            self._grouped(bank.weights.ptr, bank.scales.ptr, self._input.ptr, self._output.ptr, self._ids.ptr,
+                          bank.device_outer, count, bank.rows, bank.columns, bank.columns if x.ndim == 2 else 0,
+                          nvfp4=bank.outer_scales is not None)
+            copy(y.ctypes.data, self._output.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
             return y
 
     def close(self):

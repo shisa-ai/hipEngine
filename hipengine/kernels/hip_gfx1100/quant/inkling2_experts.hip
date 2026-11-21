@@ -9,14 +9,23 @@ __device__ float inkling_e4m3(uint8_t x) {
     return x & 128 ? -a : a;
 }
 
-template <bool NVFP4>
+template <bool NVFP4, bool GROUPED = false>
 __global__ void inkling2_expert_projection(const uint8_t* w, const uint8_t* s, const float* x,
-                                           float* out, int cols, float outer) {
+                                           float* out, int rows, int cols, float outer,
+                                           const int32_t* selected, const float* outers, int input_stride) {
     constexpr int tile = 128;
     constexpr int group = NVFP4 ? 16 : 32;
     const int row = blockIdx.x;
-    w += size_t(row) * (NVFP4 ? cols / 2 : cols);
-    s += size_t(row) * (cols / group);
+    size_t physical_row = row;
+    if constexpr (GROUPED) {
+        const int expert = selected[blockIdx.y];
+        physical_row += size_t(expert) * rows;
+        x += size_t(blockIdx.y) * input_stride;
+        out += size_t(blockIdx.y) * rows;
+        if constexpr (NVFP4) outer = outers[expert];
+    }
+    w += physical_row * (NVFP4 ? cols / 2 : cols);
+    s += physical_row * (cols / group);
     float acc = 0;
     for (int col = threadIdx.x; col < cols; col += tile) {
         float a;
@@ -49,9 +58,28 @@ extern "C" int hipengine_inkling2_expert_projection(const uint8_t* w, const uint
         return hipErrorInvalidValue;
     }
     if (nvfp4) {
-        hipLaunchKernelGGL((inkling2_expert_projection<true>), dim3(rows), dim3(128), 0, stream, w, s, x, out, cols, outer);
+        hipLaunchKernelGGL((inkling2_expert_projection<true>), dim3(rows), dim3(128), 0, stream,
+                           w, s, x, out, rows, cols, outer, nullptr, nullptr, 0);
     } else {
-        hipLaunchKernelGGL((inkling2_expert_projection<false>), dim3(rows), dim3(128), 0, stream, w, s, x, out, cols, outer);
+        hipLaunchKernelGGL((inkling2_expert_projection<false>), dim3(rows), dim3(128), 0, stream,
+                           w, s, x, out, rows, cols, outer, nullptr, nullptr, 0);
+    }
+    return hipGetLastError();
+}
+
+extern "C" int hipengine_inkling2_grouped_expert_projection(
+    const uint8_t* w, const uint8_t* s, const float* x, float* out,
+    const int32_t* selected, const float* outers, int count, int rows, int cols, int input_stride, int nvfp4) {
+    if (!w || !s || !x || !out || !selected || (nvfp4 && !outers) || count <= 0 || count > 65535 ||
+        rows <= 0 || cols <= 0 || cols % (nvfp4 ? 16 : 32) || (input_stride != 0 && input_stride != cols)) {
+        return hipErrorInvalidValue;
+    }
+    if (nvfp4) {
+        hipLaunchKernelGGL((inkling2_expert_projection<true, true>), dim3(rows, count), dim3(128), 0, 0,
+                           w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
+    } else {
+        hipLaunchKernelGGL((inkling2_expert_projection<false, true>), dim3(rows, count), dim3(128), 0, 0,
+                           w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
     }
     return hipGetLastError();
 }

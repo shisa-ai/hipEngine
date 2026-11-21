@@ -10,7 +10,8 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
 
 
 def routed_feed_forward(weights, layer: int, hidden: np.ndarray, *, top_k: int,
-                        route_scale: float, gate_cap: float, up_cap: float, project=None, project_dense=None) -> np.ndarray:
+                        route_scale: float, gate_cap: float, up_cap: float, project=None, project_dense=None,
+                        project_group=None) -> np.ndarray:
     """One token, with FP32 routing and accumulation."""
     if project is None:
         def project(layer, stem, expert, x):
@@ -25,11 +26,19 @@ def routed_feed_forward(weights, layer: int, hidden: np.ndarray, *, top_k: int,
     ids = np.sort(np.argsort(-ranking, kind="stable")[:top_k])
     mix = scores[ids]
     mix *= route_scale / (mix.sum() + np.float32(1e-20))
-    result = np.zeros_like(hidden, dtype=np.float32)
-    for expert, factor in zip(ids.tolist(), mix):
-        paired = project(layer, "w13", expert, hidden)
+    def activate(paired):
         gate, up = paired[0::2], paired[1::2]
-        activation = (gate_cap * np.tanh(gate / gate_cap) * _sigmoid(gate)
-                      * up_cap * np.tanh(up / up_cap))
-        result += factor * project(layer, "w2", expert, activation)
+        return gate_cap * np.tanh(gate / gate_cap) * _sigmoid(gate) * up_cap * np.tanh(up / up_cap)
+
+    result = np.zeros_like(hidden, dtype=np.float32)
+    if project_group is not None:
+        paired = project_group(layer, "w13", ids, hidden)
+        inputs = np.stack([activate(row) for row in paired])
+        down = project_group(layer, "w2", ids, inputs)
+        for factor, row in zip(mix, down):
+            result += factor * row
+    else:
+        for expert, factor in zip(ids.tolist(), mix):
+            paired = project(layer, "w13", expert, hidden)
+            result += factor * project(layer, "w2", expert, activate(paired))
     return result
