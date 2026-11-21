@@ -11,10 +11,10 @@ from hipengine.loading.inkling2_activation_transfer import Inkling2ActivationTra
 
 
 class Inkling2DeviceConvolution:
-    def __init__(self, *, runtime, launch, channels, width):
+    def __init__(self, *, runtime, launch, channels, width, launch_block=None):
         if channels <= 0 or width <= 0:
             raise ValueError("Inkling 2 convolution geometry must be positive")
-        self.rt, self.launch = runtime, launch
+        self.rt, self.launch, self.launch_block = runtime, launch, launch_block
         self.channels, self.width = channels, width
         self.histories = {}
         self.static_taps = {}
@@ -105,7 +105,11 @@ class Inkling2DeviceConvolution:
             self.static_taps[key] = buf.ptr
         tap_ptr = self.static_taps[key]
         scale = self._scale(False)
-        for i in range(1 if len(shape) == 1 else shape[0]):
+        rows = 1 if len(shape) == 1 else shape[0]
+        if rows > 1 and undo is None and self.launch_block is not None:
+            self.launch_block(history.ptr, ptr, tap_ptr, ptr, channels, self.width, scale, rows)
+            return
+        for i in range(rows):
             self._snapshot(history, position + i, undo)
             row = ptr + i * channels * 4
             self.launch(history.ptr, row, tap_ptr, row, channels, self.width, scale)

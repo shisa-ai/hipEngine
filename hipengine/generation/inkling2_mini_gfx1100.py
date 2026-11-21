@@ -127,8 +127,10 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
                             variant="default")
         conv = resolve(backend="hip_gfx1100", layer="inkling2_short_conv", quant=INKLING2_MINI.default_quant,
                        variant="default")
+        conv_block = resolve(backend=_BACKEND, layer="inkling2_short_conv", quant=INKLING2_MINI.default_quant,
+                             variant="block")
         self.model.convolution_factory = lambda: Inkling2DeviceConvolution(
-            runtime=runtime, launch=conv, channels=self.model.config["hidden_size"],
+            runtime=runtime, launch=conv, launch_block=conv_block, channels=self.model.config["hidden_size"],
             width=self.model.config["sconv_kernel_size"],
         )
         attn = resolve(backend=_BACKEND, layer="inkling2_target_attention", quant=INKLING2_MINI.default_quant,

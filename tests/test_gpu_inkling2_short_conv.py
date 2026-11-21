@@ -1,10 +1,54 @@
 import ctypes
+from contextlib import closing
 
 import numpy as np
 import pytest
 
 from hipengine.runtime.inkling2_device_convolution import Inkling2DeviceConvolution
 from hipengine.runtime.inkling2_mini_reference import _VisitState
+
+
+def test_static_block_convolution_uses_one_launch_and_preserves_history():
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP unavailable: {exc}")
+    from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
+    from hipengine.core.memory import free, malloc
+    from hipengine.kernels.backends import resolve_backend
+    from hipengine.kernels.hip_gfx1100.quant import inkling2_short_conv as conv
+
+    if resolve_backend("auto", execution_device=True) != "hip_gfx1100":
+        pytest.skip("test requires gfx1100")
+    runtime = get_hip_runtime()
+    block_sizes = []
+
+    def launch_block(*args):
+        block_sizes.append(args[-1])
+        conv.launch_short_conv_block(*args)
+
+    rng = np.random.default_rng(19)
+    x = rng.normal(size=(13, 131)).astype(np.float32)
+    taps = rng.normal(size=(131, 4)).astype(np.float32)[:, ::-1]
+    stage = malloc(x.nbytes, runtime=runtime)
+    try:
+        with (
+            closing(Inkling2DeviceConvolution(runtime=runtime, launch=conv.launch_short_conv,
+                                             channels=131, width=4)) as serial,
+            closing(Inkling2DeviceConvolution(runtime=runtime, launch=conv.launch_short_conv, launch_block=launch_block,
+                                             channels=131, width=4)) as batched,
+        ):
+            expected = np.stack([serial.step(0, "attn", row, taps) for row in x])
+            actual = np.empty_like(x)
+            runtime.memcpy(stage.ptr, x.ctypes.data, x.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+            for i, j in ((0, 2), (2, 7), (7, 12)):
+                batched.apply_static(0, "attn", taps, stage.ptr + i * x[0].nbytes, x[i:j].shape, position=i)
+            runtime.memcpy(actual.ctypes.data, stage.ptr, x.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+            actual[-1] = batched.step(0, "attn", x[-1], taps, position=12)
+            assert block_sizes == [2, 5, 5]
+            np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+    finally:
+        free(stage, runtime=runtime)
 
 
 @pytest.mark.parametrize("paired", [False, True])
