@@ -95,8 +95,8 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
         runtime = get_hip_runtime()
         launch = resolve(backend="hip_gfx1100", layer="inkling2_expert_projection", quant=INKLING2_MINI.default_quant,
                          variant="default")
-        grouped = resolve(backend="hip_gfx1100", layer="inkling2_expert_projection", quant=INKLING2_MINI.default_quant,
-                          variant="grouped")
+        grouped = resolve(backend=_BACKEND, layer="inkling2_expert_projection", quant=INKLING2_MINI.default_quant,
+                          variant="grouped_wave_rows")
         pointwise = resolve(backend=_BACKEND, layer="inkling2_expert_pointwise", quant=INKLING2_MINI.default_quant,
                             variant="default")
         conv = resolve(backend="hip_gfx1100", layer="inkling2_short_conv", quant=INKLING2_MINI.default_quant,

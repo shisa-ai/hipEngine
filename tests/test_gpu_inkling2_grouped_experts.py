@@ -8,8 +8,9 @@ from hipengine.loading.inkling2_device_experts import Inkling2DeviceExperts
 from hipengine.loading.inkling2_mini import Inkling2ExpertBank
 
 
+@pytest.mark.parametrize("wave_rows", [False, True])
 @pytest.mark.parametrize("nvfp4", [False, True])
-def test_grouped_projection_matches_singletons(nvfp4, monkeypatch):
+def test_grouped_projection_matches_singletons(nvfp4, wave_rows, monkeypatch):
     try:
         ctypes.CDLL("libamdhip64.so")
     except OSError as exc:
@@ -17,7 +18,7 @@ def test_grouped_projection_matches_singletons(nvfp4, monkeypatch):
     from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
     from hipengine.kernels.backends import resolve_backend
     from hipengine.kernels.hip_gfx1100.quant.inkling2_experts import (
-        launch_expert_pointwise, launch_grouped_experts, launch_inkling2_expert,
+        launch_expert_pointwise, launch_grouped_experts, launch_inkling2_expert, launch_wave_grouped_experts,
     )
 
     if resolve_backend("auto", execution_device=True) != "hip_gfx1100":
@@ -43,8 +44,9 @@ def test_grouped_projection_matches_singletons(nvfp4, monkeypatch):
         return memcpy(self, dst, src, size, kind)
 
     monkeypatch.setattr(type(runtime), "memcpy", record_copy)
+    grouped = launch_wave_grouped_experts if wave_rows else launch_grouped_experts
     with Inkling2DeviceExperts(source, [0], runtime=runtime, launch=launch_inkling2_expert,
-                              grouped=launch_grouped_experts, max_selected=len(ids),
+                              grouped=grouped, max_selected=len(ids),
                               pointwise=launch_expert_pointwise) as owner:
         for selected in (ids, ids[::2]):
             x = rng.standard_normal((len(selected), cols), dtype=np.float32)

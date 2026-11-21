@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import ctypes
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 
 from hipengine.core.build import build_hip
@@ -35,13 +35,13 @@ def launch_inkling2_expert(weights, scales, x, output, rows, columns, *, nvfp4, 
 @lru_cache(maxsize=1)
 def _grouped_symbol():
     fn = _expert_library().hipengine_inkling2_grouped_expert_projection
-    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int] * 5
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int] * 6
     fn.restype = ctypes.c_int
     return fn
 
 
-def launch_grouped_experts(w, s, x, out, ids, outer, count, rows, columns, stride, *, nvfp4):
-    status = _grouped_symbol()(w, s, x, out, ids, outer, count, rows, columns, stride, nvfp4)
+def launch_grouped_experts(w, s, x, out, ids, outer, count, rows, columns, stride, *, nvfp4, wave_rows=False):
+    status = _grouped_symbol()(w, s, x, out, ids, outer, count, rows, columns, stride, nvfp4, wave_rows)
     if status != HIP_SUCCESS:
         raise HipError(f"Inkling 2 grouped expert projection failed with HIP status {status}")
 
@@ -61,5 +61,8 @@ def launch_expert_pointwise(x, mix, out, count, width, gate_cap=0.0, up_cap=0.0)
 
 
 register(KernelKey("hip_gfx1100", "inkling2_expert_pointwise", "inkling2_mixed", "default"), launch_expert_pointwise)
+launch_wave_grouped_experts = partial(launch_grouped_experts, wave_rows=True)
+register(KernelKey("hip_gfx1100", "inkling2_expert_projection", "inkling2_mixed", "grouped_wave_rows"),
+         launch_wave_grouped_experts)
 register(KernelKey("hip_gfx1100", "inkling2_expert_projection", "inkling2_mixed", "grouped"), launch_grouped_experts)
 register(KernelKey("hip_gfx1100", "inkling2_expert_projection", "inkling2_mixed", "default"), launch_inkling2_expert)

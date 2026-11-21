@@ -9,25 +9,12 @@ __device__ float inkling_e4m3(uint8_t x) {
     return x & 128 ? -a : a;
 }
 
-template <bool NVFP4, bool GROUPED = false>
-__global__ void inkling2_expert_projection(const uint8_t* w, const uint8_t* s, const float* x,
-                                           float* out, int rows, int cols, float outer,
-                                           const int32_t* selected, const float* outers, int input_stride) {
-    constexpr int tile = 128;
+template <bool NVFP4>
+__device__ __forceinline__ float inkling_expert_lane(const uint8_t* w, const uint8_t* s, const float* x,
+                                                    int cols, float outer, int lane) {
     constexpr int group = NVFP4 ? 16 : 32;
-    const int row = blockIdx.x;
-    size_t physical_row = row;
-    if constexpr (GROUPED) {
-        const int expert = selected[blockIdx.y];
-        physical_row += size_t(expert) * rows;
-        x += size_t(blockIdx.y) * input_stride;
-        out += size_t(blockIdx.y) * rows;
-        if constexpr (NVFP4) outer = outers[expert];
-    }
-    w += physical_row * (NVFP4 ? cols / 2 : cols);
-    s += physical_row * (cols / group);
-    float acc = 0;
-    for (int col = threadIdx.x; col < cols; col += tile) {
+    float acc = 0.0f;
+    for (int col = lane; col < cols; col += 128) {
         float a;
         if constexpr (NVFP4) {
             const float levels[8] = {0, 0.5f, 1, 1.5f, 2, 3, 4, 6};
@@ -41,14 +28,48 @@ __global__ void inkling2_expert_projection(const uint8_t* w, const uint8_t* s, c
         }
         acc = fmaf(a, x[col], acc);
     }
-    __shared__ float reduction[tile];
-    reduction[threadIdx.x] = acc;
-    __syncthreads();
-    for (int step = tile / 2; step > 0; step /= 2) {
-        if (threadIdx.x < step) reduction[threadIdx.x] += reduction[threadIdx.x + step];
-        __syncthreads();
+    return acc;
+}
+
+template <bool NVFP4, bool GROUPED = false, bool WAVE_ROWS = false>
+__global__ void inkling2_expert_projection(const uint8_t* w, const uint8_t* s, const float* x,
+                                           float* out, int rows, int cols, float outer,
+                                           const int32_t* selected, const float* outers, int input_stride) {
+    constexpr int tile = 128;
+    constexpr int group = NVFP4 ? 16 : 32;
+    const int row = WAVE_ROWS ? 4 * blockIdx.x + threadIdx.x / 32 : blockIdx.x;
+    if (row >= rows) return;
+    size_t physical_row = row;
+    if constexpr (GROUPED) {
+        const int expert = selected[blockIdx.y];
+        physical_row += size_t(expert) * rows;
+        x += size_t(blockIdx.y) * input_stride;
+        out += size_t(blockIdx.y) * rows;
+        if constexpr (NVFP4) outer = outers[expert];
     }
-    if (threadIdx.x == 0) out[row] = reduction[0];
+    w += physical_row * (NVFP4 ? cols / 2 : cols);
+    s += physical_row * (cols / group);
+    if constexpr (WAVE_ROWS) {
+        const int lane = threadIdx.x % 32;
+        const float a = inkling_expert_lane<NVFP4>(w, s, x, cols, outer, lane);
+        const float b = inkling_expert_lane<NVFP4>(w, s, x, cols, outer, lane + 32);
+        const float c = inkling_expert_lane<NVFP4>(w, s, x, cols, outer, lane + 64);
+        const float d = inkling_expert_lane<NVFP4>(w, s, x, cols, outer, lane + 96);
+        // Match the original 128-lane +64, +32, +16, ... tree.
+        float sum = (a + c) + (b + d);
+        #pragma unroll
+        for (int offset = 16; offset > 0; offset /= 2) sum += __shfl_down(sum, offset, 32);
+        if (lane == 0) out[row] = sum;
+    } else {
+        __shared__ float reduction[tile];
+        reduction[threadIdx.x] = inkling_expert_lane<NVFP4>(w, s, x, cols, outer, threadIdx.x);
+        __syncthreads();
+        for (int step = tile / 2; step > 0; step /= 2) {
+            if (threadIdx.x < step) reduction[threadIdx.x] += reduction[threadIdx.x + step];
+            __syncthreads();
+        }
+        if (threadIdx.x == 0) out[row] = reduction[0];
+    }
 }
 
 extern "C" int hipengine_inkling2_expert_projection(const uint8_t* w, const uint8_t* s, const float* x,
@@ -69,12 +90,22 @@ extern "C" int hipengine_inkling2_expert_projection(const uint8_t* w, const uint
 
 extern "C" int hipengine_inkling2_grouped_expert_projection(
     const uint8_t* w, const uint8_t* s, const float* x, float* out,
-    const int32_t* selected, const float* outers, int count, int rows, int cols, int input_stride, int nvfp4) {
+    const int32_t* selected, const float* outers, int count, int rows, int cols, int input_stride, int nvfp4,
+    int wave_rows) {
     if (!w || !s || !x || !out || !selected || (nvfp4 && !outers) || count <= 0 || count > 65535 ||
         rows <= 0 || cols <= 0 || cols % (nvfp4 ? 16 : 32) || (input_stride != 0 && input_stride != cols)) {
         return hipErrorInvalidValue;
     }
-    if (nvfp4) {
+    if (wave_rows) {
+        const dim3 grid(1 + (rows - 1) / 4, count);
+        if (nvfp4) {
+            hipLaunchKernelGGL((inkling2_expert_projection<true, true, true>), grid, dim3(128), 0, 0,
+                               w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
+        } else {
+            hipLaunchKernelGGL((inkling2_expert_projection<false, true, true>), grid, dim3(128), 0, 0,
+                               w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
+        }
+    } else if (nvfp4) {
         hipLaunchKernelGGL((inkling2_expert_projection<true, true>), dim3(rows, count), dim3(128), 0, 0,
                            w, s, x, out, rows, cols, 1.0f, selected, outers, input_stride);
     } else {
