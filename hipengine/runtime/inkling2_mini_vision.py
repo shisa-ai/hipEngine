@@ -72,6 +72,15 @@ class Inkling2VisionReference:
     def project(self, name, rows):
         return rows @ self.weights.dense(name).T
 
+    def attend(self, q, k, v, *, check=lambda: None):
+        q, k, v = q.transpose(1, 0, 2), k.transpose(1, 2, 0), v.transpose(1, 0, 2)
+        y = np.empty_like(q)
+        for start in range(0, q.shape[1], 32):
+            check()
+            tile = slice(start, start + 32)
+            y[:, tile] = _softmax((q[:, tile] @ k) / sqrt(q.shape[-1])) @ v
+        return y.transpose(1, 0, 2)
+
     def encode(self, image, *, check=lambda: None):
         c, read = self.cfg, self.weights.dense
         patch = c.get("native_patch_size", c.get("patch_size", 20))
@@ -103,15 +112,9 @@ class Inkling2VisionReference:
             h = norm(x, stem + "ln_1")
             q, k, v = (linear(h, stem + "self_attn." + name + "_proj").reshape(-1, heads, dim)
                        for name in ("q", "k", "v"))
-            q = rope_2d(q, pos_x, pos_y, dim, theta).transpose(1, 0, 2)
-            k = rope_2d(k, pos_x, pos_y, dim, theta).transpose(1, 2, 0)
-            v = v.transpose(1, 0, 2)
-            y = np.empty_like(q)
-            for start in range(0, len(x), 32):
-                check()
-                tile = slice(start, start + 32)
-                y[:, tile] = _softmax((q[:, tile] @ k) / sqrt(dim)) @ v
-            y = y.transpose(1, 0, 2).reshape(x.shape)
+            q = rope_2d(q, pos_x, pos_y, dim, theta)
+            k = rope_2d(k, pos_x, pos_y, dim, theta)
+            y = self.attend(q, k, v, check=check).reshape(x.shape)
             x += linear(y, stem + "self_attn.out_proj") * read(stem + "ls_1.gamma")
             h = gelu_erf(linear(norm(x, stem + "ln_2"), stem + "mlp.c_fc"))
             x += linear(h, stem + "mlp.c_proj") * read(stem + "ls_2.gamma")

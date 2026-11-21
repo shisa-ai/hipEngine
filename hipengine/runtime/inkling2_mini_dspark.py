@@ -46,6 +46,13 @@ class Inkling2DSpark:
     def project(self, name, rows):
         return rows @ self.weights.dense(name).T
 
+    def attend(self, q, k, v):
+        rows, heads, width = q.shape
+        nk = k.shape[1]
+        q = q.reshape(rows, nk, heads // nk, width)
+        logits = np.einsum("qngd,tnd->qngt", q, k) / sqrt(width)
+        return np.einsum("qngt,tnd->qngd", _softmax(logits), v).reshape(rows, heads, width)
+
     def session(self, capacity):
         return Inkling2DSparkSession(self, capacity)
 
@@ -98,7 +105,6 @@ class Inkling2DSparkSession:
         h = np.vstack((first, np.broadcast_to(read("mask_embed"), (count, first.size))))
         nh, nk, dim = (c[k] for k in ("num_attention_heads", "num_key_value_heads", "head_dim"))
         cos, sin = rope_tables_neox(np.arange(self.position, self.position + len(h)), dim, c["rope_theta"])
-        groups = nh // nk
         for layer, (keys, values) in enumerate(zip(self.keys, self.values)):
             prefix = f"layers.{layer}."
             a = prefix + "self_attn."
@@ -113,9 +119,7 @@ class Inkling2DSparkSession:
             slots = np.arange(start, self.position) % len(keys)
             k = np.concatenate((keys[slots], k), axis=0)
             v = np.concatenate((values[slots], v), axis=0)
-            q = q.reshape(len(h), nk, groups, dim)
-            logits = np.einsum("qngd,tnd->qngt", q, k) / sqrt(dim)
-            out = np.einsum("qngt,tnd->qngd", _softmax(logits), v).reshape(len(h), nh * dim)
+            out = m.attend(q, k, v).reshape(len(h), nh * dim)
             h = h + m.project(a + "o_proj.weight", out)
             x = _rms(h, eps) * read(prefix + "post_attention_layernorm.weight")
             g = m.project(prefix + "mlp.gate_proj.weight", x)

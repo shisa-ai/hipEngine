@@ -7,13 +7,14 @@ from hipengine.core.hip import get_hip_runtime
 from hipengine.core.rocblas import Rocblas
 from hipengine.generation.inkling2_mini import Inkling2ReferenceGenerator
 from hipengine.generation.registry import register_text_generator
-from hipengine.kernels.hip_gfx1100.attention import inkling2_target_attention  # noqa: F401
+from hipengine.kernels.hip_gfx1100.attention import inkling2_block_attention, inkling2_target_attention  # noqa: F401
 from hipengine.kernels.hip_gfx1100.quant import inkling2_experts, inkling2_short_conv  # noqa: F401
 from hipengine.kernels.registry import resolve
 from hipengine.loading.inkling2_device_dense import Inkling2DeviceDense
 from hipengine.loading.inkling2_device_experts import Inkling2DeviceExperts
 from hipengine.models.inkling2_mini import INKLING2_MINI
 from hipengine.runtime.inkling2_device_attention import Inkling2DeviceAttention
+from hipengine.runtime.inkling2_device_block_attention import Inkling2DeviceBlockAttention
 from hipengine.runtime.inkling2_device_convolution import Inkling2DeviceConvolution
 
 
@@ -33,6 +34,8 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
         attn = resolve(backend="hip_gfx1100", layer="inkling2_target_attention", quant=INKLING2_MINI.default_quant,
                        variant="default")
         cfg = self.model.config
+        block_attn = resolve(backend="hip_gfx1100", layer="inkling2_block_attention", quant=INKLING2_MINI.default_quant,
+                             variant="default")
         visits = sorted(self.model.plan.visits, key=lambda v: v.state_slot)
 
         def attention_factory(capacity):
@@ -54,15 +57,21 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
             ))
             self.model.project = dense.project
             self.model.project_expert = experts.project
+            self._block_attention = owned.enter_context(Inkling2DeviceBlockAttention(runtime=runtime, launch=block_attn))
             if self.vision is not None:
                 vision_dense = owned.enter_context(Inkling2DeviceDense(
                     self.vision.weights, runtime=runtime, blas=blas, lock=self._blas_lock,
                 ))
                 self.vision.project = vision_dense.project
+                self.vision.attend = self._vision_attention
             self._runtime, self._blas = runtime, blas
             self._draft = None
             self._draft_lock = Lock()
             self._owned = owned.pop_all()
+
+    def _vision_attention(self, q, k, v, *, check):
+        check()
+        return self._block_attention(q, k, v)
 
     def _load_drafter(self):
         with self._draft_lock:
@@ -72,6 +81,7 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
                     draft.weights, runtime=self._runtime, blas=self._blas, lock=self._blas_lock,
                 ))
                 draft.project = dense.project
+                draft.attend = self._block_attention
                 self._draft = draft
             return self._draft
 
