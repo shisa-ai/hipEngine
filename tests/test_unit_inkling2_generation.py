@@ -18,7 +18,7 @@ def test_original_architecture_resolves_to_cpu_reference_factory():
     assert factory is Inkling2ReferenceGenerator
 
 
-def test_gfx1100_vocabulary_profiles_resolve_native_and_strict():
+def test_gfx1100_profiles_resolve_vocabulary_and_expert_variants():
     from hipengine.execution_profiles import resolve_default_execution_profile, resolve_runtime_profile
 
     register_builtin_generators()
@@ -28,9 +28,16 @@ def test_gfx1100_vocabulary_profiles_resolve_native_and_strict():
     native = resolve_runtime_profile(**key, profile="production")
     strict = resolve_runtime_profile(**key, profile="strict")
     assert not native.fell_back_to_strict
-    assert native.manifest["selections"][0]["selected_variant"] == "native_bf16"
-    assert native.manifest["selections"][0]["strict_fallback_variant"] == "fp32_rocblas"
-    assert strict.manifest["selections"][0]["selected_variant"] == "fp32_rocblas"
+    fast = {item["layer"]: item for item in native.manifest["selections"]}
+    exact = {item["layer"]: item for item in strict.manifest["selections"]}
+    assert fast.keys() == exact.keys() == {"inkling2_vocabulary_projection", "inkling2_routed_ffn"}
+    for layer, production, fallback in (
+        ("inkling2_vocabulary_projection", "native_bf16", "fp32_rocblas"),
+        ("inkling2_routed_ffn", "device_pointwise", "host_pointwise"),
+    ):
+        assert fast[layer]["selected_variant"] == production
+        assert fast[layer]["strict_fallback_variant"] == fallback
+        assert exact[layer]["selected_variant"] == fallback
 
 
 def test_cpu_reference_generation_uses_shared_sampler_and_enforces_context():

@@ -11,7 +11,7 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
 
 def routed_feed_forward(weights, layer: int, hidden: np.ndarray, *, top_k: int,
                         route_scale: float, gate_cap: float, up_cap: float, project=None, project_dense=None,
-                        project_group=None) -> np.ndarray:
+                        project_group=None, feed_group=None) -> np.ndarray:
     """One token, with FP32 routing and accumulation."""
     if project is None:
         def project(layer, stem, expert, x):
@@ -26,6 +26,9 @@ def routed_feed_forward(weights, layer: int, hidden: np.ndarray, *, top_k: int,
     ids = np.sort(np.argsort(-ranking, kind="stable")[:top_k])
     mix = scores[ids]
     mix *= route_scale / (mix.sum() + np.float32(1e-20))
+    if feed_group is not None:
+        return feed_group(layer, ids, mix, hidden, gate_cap, up_cap)
+
     def activate(paired):
         gate, up = paired[0::2], paired[1::2]
         return gate_cap * np.tanh(gate / gate_cap) * _sigmoid(gate) * up_cap * np.tanh(up / up_cap)

@@ -26,7 +26,8 @@ class _ResidentBank:
 class Inkling2DeviceExperts:
     """Own packed banks and synchronized FP32 projection scratch on one device."""
 
-    def __init__(self, weights, layers, *, runtime, launch, grouped=None, max_selected=1):
+    def __init__(self, weights, layers, *, runtime, launch, grouped=None, max_selected=1, pointwise=None):
+        self._pointwise = pointwise
         self._runtime = runtime
         self._launch = launch
         self._grouped = grouped
@@ -44,7 +45,7 @@ class Inkling2DeviceExperts:
                 raise ValueError("Inkling 2 selected expert scratch width is invalid")
             input_values = max_selected * max(bank.columns for bank in layout.values())
             if grouped is not None:
-                input_values += max_selected
+                input_values += max_selected * (2 if pointwise is not None else 1)
             self._staging = np.empty(input_values, dtype=np.float32) if grouped is not None else None
             self._input = self._allocate(4 * input_values)
             self._output = self._allocate(4 * max_selected * max(bank.values.shape[1] for bank in layout.values()))
@@ -117,6 +118,39 @@ class Inkling2DeviceExperts:
                           nvfp4=bank.outer_scales is not None)
             copy(y.ctypes.data, self._output.ptr, y.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
             return y
+
+    def feed_forward(self, layer, experts, mix, hidden, gate_cap, up_cap):
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling 2 expert residency is closed")
+            if self._grouped is None or self._pointwise is None:
+                raise RuntimeError("Inkling 2 device expert feed-forward is unavailable")
+            gate, down = self._banks[layer, "w13"], self._banks[layer, "w2"]
+            ids = np.ascontiguousarray(experts, dtype=np.int32)
+            count = ids.size
+            if (ids.ndim != 1 or not 1 <= count <= self._max_selected or np.any(ids < 0)
+                    or np.any(ids >= min(gate.expert_count, down.expert_count)) or mix.shape != (count,)):
+                raise ValueError("invalid Inkling 2 device expert routing")
+            if hidden.shape != (gate.columns,) or gate.rows != 2 * down.columns or down.rows != gate.columns:
+                raise ValueError("invalid Inkling 2 device expert feed-forward geometry")
+            staging = self._staging[:2 * count + hidden.size]
+            staging[:count].view(np.int32)[:] = ids
+            staging[count:2 * count] = mix
+            staging[2 * count:] = hidden
+            base, output = self._input.ptr, self._output.ptr
+            mix_ptr = base + ids.nbytes
+            inputs = mix_ptr + ids.nbytes
+            copy = self._runtime.memcpy
+            copy(base, staging.ctypes.data, staging.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+            self._grouped(gate.weights.ptr, gate.scales.ptr, inputs, output, base, gate.device_outer,
+                          count, gate.rows, gate.columns, 0, nvfp4=gate.outer_scales is not None)
+            self._pointwise(output, 0, inputs, count, down.columns, gate_cap, up_cap)
+            self._grouped(down.weights.ptr, down.scales.ptr, inputs, output, base, down.device_outer,
+                          count, down.rows, down.columns, down.columns, nvfp4=down.outer_scales is not None)
+            self._pointwise(output, mix_ptr, inputs, count, down.rows)
+            result = np.empty(down.rows, dtype=np.float32)
+            copy(result.ctypes.data, inputs, result.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+            return result
 
     def close(self):
         with self._lock:

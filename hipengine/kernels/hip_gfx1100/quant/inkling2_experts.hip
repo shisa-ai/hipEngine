@@ -83,3 +83,36 @@ extern "C" int hipengine_inkling2_grouped_expert_projection(
     }
     return hipGetLastError();
 }
+
+__global__ void inkling2_expert_activate(const float* paired, float* activated, size_t size,
+                                         float gate_cap, float up_cap) {
+    const size_t i = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= size) return;
+    const float gate = paired[2 * i], up = paired[2 * i + 1];
+    const float e = expf(-fabsf(gate));
+    const float sigmoid = (gate >= 0 ? 1.0f : e) / (1.0f + e);
+    activated[i] = gate_cap * tanhf(gate / gate_cap) * sigmoid * up_cap * tanhf(up / up_cap);
+}
+
+__global__ void inkling2_expert_mix(const float* down, const float* mix, float* out, int count, int width) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= width) return;
+    float value = 0.0f;
+    for (int j = 0; j < count; ++j) value = __fadd_rn(value, __fmul_rn(mix[j], down[size_t(j) * width + i]));
+    out[i] = value;
+}
+
+extern "C" int hipengine_inkling2_expert_pointwise(const float* x, const float* mix, float* out,
+                                                    int count, int width, float gate_cap, float up_cap) {
+    if (!x || !out || count <= 0 || width <= 0) return hipErrorInvalidValue;
+    if (mix) {
+        hipLaunchKernelGGL(inkling2_expert_mix, dim3(1 + (width - 1) / 256), dim3(256), 0, 0,
+                           x, mix, out, count, width);
+    } else {
+        if (!(gate_cap > 0.0f) || !(up_cap > 0.0f)) return hipErrorInvalidValue;
+        const size_t size = size_t(count) * width;
+        hipLaunchKernelGGL(inkling2_expert_activate, dim3(1 + (size - 1) / 256), dim3(256), 0, 0,
+                           x, out, size, gate_cap, up_cap);
+    }
+    return hipGetLastError();
+}

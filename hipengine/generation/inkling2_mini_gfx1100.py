@@ -26,7 +26,9 @@ from hipengine.runtime.inkling2_device_draft_kv import Inkling2DeviceDraftKV
 
 _BACKEND = "hip_gfx1100"
 _HEAD = "inkling2_vocabulary_projection"
+_EXPERTS = "inkling2_routed_ffn"
 _HEAD_EVIDENCE = "worklog/entries/20261121T084738.426332Z-lhl-inkling2-mini-d38a06.md"
+_EXPERTS_EVIDENCE = "worklog/entries/20261121T094149.586925Z-lhl-inkling2-mini-732718.md"
 
 
 def _fp32_head(owner):
@@ -37,31 +39,50 @@ def _native_head(owner):
     return partial(owner.project, native_bf16=dense_gemv_f32_bf16w_f32_out)
 
 
-def _bind_head(generator, profile):
-    selection, = profile.manifest["selections"]
-    projection = resolve(backend=_BACKEND, layer=_HEAD, quant=INKLING2_MINI.default_quant,
-                         variant=selection["selected_variant"])(generator._dense)
+def _host_experts(owner):
+    return None
+
+
+def _device_experts(owner):
+    return owner.feed_forward
+
+
+def _bind_profile(generator, profile):
+    selections = {item["layer"]: item["selected_variant"] for item in profile.manifest["selections"]}
+
+    def bind(layer, owner):
+        return resolve(backend=_BACKEND, layer=layer, quant=INKLING2_MINI.default_quant,
+                       variant=selections[layer])(owner)
+
     generator.model.project_logits = partial(
-        projection, "unembed.weight", limit=generator.model.config["unpadded_vocab_size"],
+        bind(_HEAD, generator._dense), "unembed.weight", limit=generator.model.config["unpadded_vocab_size"],
     )
+    generator.model.feed_experts_group = bind(_EXPERTS, generator._experts)
 
 
 def register_inkling2_gfx1100_profiles():
     model, quant = INKLING2_MINI.name, INKLING2_MINI.default_quant
-    for variant, projection in (("fp32_rocblas", _fp32_head), ("native_bf16", _native_head)):
-        key = KernelKey(_BACKEND, _HEAD, quant, variant)
+    for layer, variant, projection in (
+        (_HEAD, "fp32_rocblas", _fp32_head), (_HEAD, "native_bf16", _native_head),
+        (_EXPERTS, "host_pointwise", _host_experts), (_EXPERTS, "device_pointwise", _device_experts),
+    ):
+        key = KernelKey(_BACKEND, layer, quant, variant)
         if not is_registered(key):
             register(key, projection)
     registered = registered_runtime_profile_keys()
-    for profile, variant, fallback in (
-        ("strict", "fp32_rocblas", None), ("production", "native_bf16", "fp32_rocblas"),
+    for profile, head, head_fallback, experts, experts_fallback in (
+        ("strict", "fp32_rocblas", None, "host_pointwise", None),
+        ("production", "native_bf16", "fp32_rocblas", "device_pointwise", "host_pointwise"),
     ):
         if RuntimeProfileKey(model, _BACKEND, quant, profile) not in registered:
             register_runtime_profile_plan(
                 model=model, backend=_BACKEND, quant=quant, profile=profile,
                 plan=RuntimeProfilePlan(
-                    selections=(VariantSelection(_HEAD, "checkpoint_bf16_head", variant, fallback, _HEAD_EVIDENCE),),
-                    kv_policy="fp32", graph_policy="eager", binder=_bind_head,
+                    selections=(
+                        VariantSelection(_HEAD, "checkpoint_bf16_head", head, head_fallback, _HEAD_EVIDENCE),
+                        VariantSelection(_EXPERTS, "target", experts, experts_fallback, _EXPERTS_EVIDENCE),
+                    ),
+                    kv_policy="fp32", graph_policy="eager", binder=_bind_profile,
                 ),
             )
 
@@ -76,6 +97,8 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
                          variant="default")
         grouped = resolve(backend="hip_gfx1100", layer="inkling2_expert_projection", quant=INKLING2_MINI.default_quant,
                           variant="grouped")
+        pointwise = resolve(backend=_BACKEND, layer="inkling2_expert_pointwise", quant=INKLING2_MINI.default_quant,
+                            variant="default")
         conv = resolve(backend="hip_gfx1100", layer="inkling2_short_conv", quant=INKLING2_MINI.default_quant,
                        variant="default")
         self.model.convolution_factory = lambda: Inkling2DeviceConvolution(
@@ -107,8 +130,9 @@ class Inkling2Gfx1100Generator(Inkling2ReferenceGenerator):
             dense = owned.enter_context(Inkling2DeviceDense(weights, runtime=runtime, blas=blas, lock=self._blas_lock))
             experts = owned.enter_context(Inkling2DeviceExperts(
                 weights, (v.weight_layer for v in self.model.plan.visits), runtime=runtime, launch=launch,
-                grouped=grouped, max_selected=cfg["num_experts_per_tok"],
+                grouped=grouped, max_selected=cfg["num_experts_per_tok"], pointwise=pointwise,
             ))
+            self._experts = experts
             self._dense = dense
             self.model.project = dense.project
             self.model.project_many = dense.project_many
