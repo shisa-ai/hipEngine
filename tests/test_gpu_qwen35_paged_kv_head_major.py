@@ -302,6 +302,56 @@ def test_paged_bf16_head_major_copy_matches_permuted_numpy_oracle(context_len: i
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_f32_append_targets_independent_bf16_pages(hip_test_target_arch) -> None:
+    from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND, hip_target_arch_environment
+
+    write = resolve(backend=HIP_TARGET_ARCH_BACKEND[hip_test_target_arch], layer="paged_kv_write",
+                    quant="bf16", variant="f32_page_ptrs_spans")
+    runtime = get_hip_runtime()
+    block_size, width = 256, 8
+    sentinel = np.uint16(0xA55A)
+    buffers = []
+
+    def upload(array):
+        result = malloc(array.nbytes, runtime=runtime)
+        buffers.append(result)
+        copy_host_to_device(result, host_array_ptr(array), runtime=runtime)
+        return result
+
+    try:
+        keys = [upload(np.full((block_size, width), sentinel, dtype=np.uint16)) for _ in range(2)]
+        vals = [upload(np.full((block_size, width), sentinel, dtype=np.uint16)) for _ in range(2)]
+        kt = upload(np.array([p.ptr for p in keys], dtype=np.uint64))
+        vt = upload(np.array([p.ptr for p in vals], dtype=np.uint64))
+        table = upload(np.array([1, 0], dtype=np.int32))
+        position = upload(np.array([0], dtype=np.int64))
+        k = upload(np.arange(width, dtype=np.float32))
+        v = upload(-np.arange(1, width + 1, dtype=np.float32))
+        spans = KVLiveSpans.paged_uniform(
+            block_table=_tensor(table.ptr, (2,), DType.INT32),
+            live_counts=_tensor(position.ptr, (1,), DType.INT64),
+            max_live_count=block_size + 1, storage_dtype=DType.BF16,
+        )
+        with hip_target_arch_environment(hip_test_target_arch):
+            for pos in (255, 256):
+                host_pos = np.array([pos], dtype=np.int64)
+                copy_host_to_device(position, host_array_ptr(host_pos), runtime=runtime)
+                write(k.ptr, v.ptr, kt.ptr, vt.ptr, spans, block_size, 1, width, runtime=runtime)
+            runtime.device_synchronize()
+        for planes, source in ((keys, np.arange(width, dtype=np.float32)),
+                               (vals, -np.arange(1, width + 1, dtype=np.float32))):
+            for page, row in zip(planes, (0, 255), strict=True):
+                out = np.empty((block_size, width), dtype=np.uint16)
+                copy_device_to_host(host_array_ptr(out), page, runtime=runtime)
+                expected = np.full_like(out, sentinel)
+                expected[row] = (source.view(np.uint32) >> 16).astype(np.uint16)
+                np.testing.assert_array_equal(out, expected)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize("context_len", [1, 255, 256, 257])
 def test_dense_and_generic_head_major_copy_are_byte_exact(context_len: int) -> None:
     runtime = get_hip_runtime()
