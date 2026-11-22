@@ -434,6 +434,20 @@ def qwen35_write_paged_kv_f32_page_ptrs_spans(
     )
 
 
+def qwen35_write_paged_kv_mixed_bf16_page_ptrs_spans(
+    key_ptr: int, value_ptr: int, key_pages_ptr: int, value_pages_ptr: int,
+    spans: KVLiveSpans, block_size: int, num_kv_heads: int, head_dim: int,
+    *, stream: int = 0, library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append FP32 keys and BF16 values through global KV page IDs."""
+    _launch_write(
+        "hipengine_qwen35_write_paged_kv_mixed_bf16_page_ptrs_spans",
+        key_ptr, value_ptr, key_pages_ptr, value_pages_ptr, spans,
+        block_size, num_kv_heads, head_dim, stream=stream, library=library, runtime=runtime,
+    )
+
+
 def qwen35_write_paged_kv_f32_batch_spans(
     key_ptr: int,
     value_ptr: int,
@@ -1042,6 +1056,11 @@ def register_qwen35_paged_kv_write_kernels(*, replace: bool = True) -> None:
         register(
             KernelKey(backend, "paged_kv_write", "bf16", "f32_page_ptrs_spans"),
             qwen35_write_paged_kv_f32_page_ptrs_spans,
+            replace=replace,
+        )
+        register(
+            KernelKey(backend, "paged_kv_write", "bf16", "mixed_bf16_page_ptrs_spans"),
+            qwen35_write_paged_kv_mixed_bf16_page_ptrs_spans,
             replace=replace,
         )
     register(

@@ -63,10 +63,10 @@ __global__ void qwen35_write_paged_kv_kernel(
   value_cache[cache_offset] = float_to_bf16_bits(value[idx]);
 }
 
-template <bool page_pointers = false>
+template <typename value_t = float, bool page_pointers = false>
 __global__ void qwen35_write_paged_kv_position_tensor_kernel(
     const float* key,
-    const float* value,
+    const value_t* value,
     uint16_t* key_cache,
     uint16_t* value_cache,
     const int32_t* block_table,
@@ -92,11 +92,11 @@ __global__ void qwen35_write_paged_kv_position_tensor_kernel(
     auto* key_page = reinterpret_cast<uint16_t*>(reinterpret_cast<const uintptr_t*>(key_cache)[physical_block]);
     auto* value_page = reinterpret_cast<uint16_t*>(reinterpret_cast<const uintptr_t*>(value_cache)[physical_block]);
     key_page[cache_offset] = float_to_bf16_bits(key[idx]);
-    value_page[cache_offset] = float_to_bf16_bits(value[idx]);
+    value_page[cache_offset] = float_to_bf16_bits(scalar_to_float_qwen35(value[idx]));
   } else {
     const int64_t block_base = physical_block * block_size * size;
     key_cache[block_base + cache_offset] = float_to_bf16_bits(key[idx]);
-    value_cache[block_base + cache_offset] = float_to_bf16_bits(value[idx]);
+    value_cache[block_base + cache_offset] = float_to_bf16_bits(scalar_to_float_qwen35(value[idx]));
   }
 }
 
@@ -1258,7 +1258,7 @@ extern "C" int hipengine_qwen35_write_paged_kv_f32_spans(
   const int64_t size = num_kv_heads * head_dim;
   const int blocks = static_cast<int>((size + threads - 1) / threads);
   hipLaunchKernelGGL(
-      qwen35_write_paged_kv_position_tensor_kernel<false>,
+      qwen35_write_paged_kv_position_tensor_kernel<>,
       dim3(static_cast<unsigned int>(blocks)),
       dim3(threads),
       0,
@@ -1276,8 +1276,9 @@ extern "C" int hipengine_qwen35_write_paged_kv_f32_spans(
   return static_cast<int>(hipGetLastError());
 }
 
-extern "C" int hipengine_qwen35_write_paged_kv_f32_page_ptrs_spans(
-    const float* key, const float* value, uint16_t* key_pages, uint16_t* value_pages,
+template <typename value_t>
+static int launch_write_page_ptrs(
+    const float* key, const value_t* value, uint16_t* key_pages, uint16_t* value_pages,
     const int32_t* base_offsets, const int64_t* live_counts, int64_t block_size,
     int64_t block_table_len, int64_t num_kv_heads, int64_t head_dim, hipStream_t stream) {
   if (!valid_kv_shape(block_size, block_table_len, num_kv_heads, head_dim)) {
@@ -1286,11 +1287,27 @@ extern "C" int hipengine_qwen35_write_paged_kv_f32_page_ptrs_spans(
   const int threads = 256;
   const int64_t size = num_kv_heads * head_dim;
   const int blocks = static_cast<int>((size + threads - 1) / threads);
-  hipLaunchKernelGGL(qwen35_write_paged_kv_position_tensor_kernel<true>,
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(qwen35_write_paged_kv_position_tensor_kernel<value_t, true>),
                     dim3(static_cast<unsigned int>(blocks)), dim3(threads), 0, stream,
                     key, value, key_pages, value_pages, base_offsets, live_counts,
                     block_size, block_table_len, num_kv_heads, head_dim);
   return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_write_paged_kv_f32_page_ptrs_spans(
+    const float* key, const float* value, uint16_t* key_pages, uint16_t* value_pages,
+    const int32_t* base_offsets, const int64_t* live_counts, int64_t block_size,
+    int64_t block_table_len, int64_t num_kv_heads, int64_t head_dim, hipStream_t stream) {
+  return launch_write_page_ptrs(key, value, key_pages, value_pages, base_offsets, live_counts,
+                                block_size, block_table_len, num_kv_heads, head_dim, stream);
+}
+
+extern "C" int hipengine_qwen35_write_paged_kv_mixed_bf16_page_ptrs_spans(
+    const float* key, const uint16_t* value, uint16_t* key_pages, uint16_t* value_pages,
+    const int32_t* base_offsets, const int64_t* live_counts, int64_t block_size,
+    int64_t block_table_len, int64_t num_kv_heads, int64_t head_dim, hipStream_t stream) {
+  return launch_write_page_ptrs(key, value, key_pages, value_pages, base_offsets, live_counts,
+                                block_size, block_table_len, num_kv_heads, head_dim, stream);
 }
 
 extern "C" int hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_f32_spans(
