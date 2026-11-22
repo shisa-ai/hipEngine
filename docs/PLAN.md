@@ -1417,6 +1417,13 @@ Phase-0 targets (driven by the current research focus):
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
 | **sansho** (custom) | (your arch; see `~/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
 
+Inkling 2 Mini: the [Loom optimization campaign](campaigns/INKLING2-MINI-LOOM-OPTIMIZATION.md)
+starts with packed GGUF generation on `gfx1151` and a same-host, same-checkpoint
+comparison against ordinary Loom on Strix Halo. The original-checkpoint W7900
+work and the Gufo/mainline GGUF comparison are separate lanes. The campaign
+prioritizes device-resident decode, tiled prefill, and four-stream serving;
+speculative decoding has a separate correctness and throughput comparison.
+
 Qwen3.8-Flash-Next Gufo comparison (October 20): the
 [optimization campaign](campaigns/QWEN38FN-GUFO-OPTIMIZATION.md) plans a
 same-host benchmark refresh, bulk MTP prompt catch-up, cheaper transactional
