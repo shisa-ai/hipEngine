@@ -107,6 +107,7 @@ class Inkling2GGUFText(Inkling2TextReference):
         self.projection = projection
         if projection is not None:
             self.project_device = self.project_block_device = self._project_device
+            self.project_many_transformed = self._project_many_transformed
 
     def head_shape(self, visit):
         layer = self.mapping.layers[visit.weight_layer]
@@ -124,6 +125,11 @@ class Inkling2GGUFText(Inkling2TextReference):
     def _project_device(self, name, width, *, rows=None, transform_output=None):
         return self.projection.project_device(self.weights.names[name].name, width, rows=rows,
                                               transform_output=transform_output)
+
+    def _project_many_transformed(self, names, hidden, transforms):
+        tensors = self.weights.names
+        return self.projection.project_many(tuple(tensors[name].name for name in names), hidden,
+                                            pinned=True, transform_outputs=transforms)
 
     def project_many(self, names, hidden):
         return self.project_groups(((names, hidden),))[0]

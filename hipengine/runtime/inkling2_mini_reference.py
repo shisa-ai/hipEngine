@@ -69,6 +69,7 @@ class Inkling2TextReference:
         self.attention_factory = None
         self.project_device = None
         self.project_block_device = None
+        self.project_many_transformed = None
 
     def project(self, name, hidden, *, limit=None):
         weight = self.weights.dense(name) if limit is None else self.weights.dense(name, slice(limit))
@@ -384,9 +385,20 @@ class Inkling2TextSession:
         query_names = ("wq_du.weight", "wr_du.weight", "attn_sink_proj.weight", "gate_attn.weight")
         key_names, value_names = ("wk_dv.weight",), ("wv_dv.weight",)
         dynamic = not visit.is_local
+        projected_conv = False
         if visit.is_local and qi is ki and qi is vi:
-            q, rel, sink, gate, k, v = self.model.project_many(names_in_layer((*query_names, *key_names, *value_names)), qi)
+            names = names_in_layer((*query_names, *key_names, *value_names))
             kt, vt = kv_taps("k"), kv_taps("v")
+            if self.convolution is not None and self.model.project_many_transformed is not None and self._undo is None:
+                slot = visit.state_slot
+                transforms = (None,) * len(query_names) + (
+                    partial(self.convolution.apply_static, slot, "k", kt, position=pos),
+                    partial(self.convolution.apply_static, slot, "v", vt, position=pos),
+                )
+                q, rel, sink, gate, k, v = self.model.project_many_transformed(names, qi, transforms)
+                projected_conv = True
+            else:
+                q, rel, sink, gate, k, v = self.model.project_many(names, qi)
         else:
             if dynamic:
                 key_names += ("k_sconv.weight_proj",)
@@ -397,7 +409,7 @@ class Inkling2TextSession:
         if self.convolution is None:
             k = self._conv_rows(visit, "k", k, kt, dynamic=dynamic)
             v = self._conv_rows(visit, "v", v, vt, dynamic=dynamic)
-        else:
+        elif not projected_conv:
             k, v = self.convolution.step_kv(visit.state_slot, k, v, kt, vt,
                                             dynamic=dynamic, position=pos, undo=self._undo)
         q = q.reshape(*leading, nh, dim)

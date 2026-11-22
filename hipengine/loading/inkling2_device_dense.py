@@ -97,9 +97,12 @@ class Inkling2DeviceDense:
 
             yield out.ptr, result, consume
 
-    def project_many(self, names, hidden: np.ndarray, *, native_bf16=None, pinned=False):
-        """Share transfers for projections that consume the same FP32 input."""
-        return self.project_groups(((names, hidden),), native_bf16=native_bf16, pinned=pinned)[0]
+    def project_many(self, names, hidden: np.ndarray, *, native_bf16=None, pinned=False, transform_outputs=None):
+        """Share transfers and optionally consume each resident output before download."""
+        names = tuple(names)
+        if transform_outputs is not None and len(transform_outputs) != len(names):
+            raise ValueError("Inkling 2 projection requires one transform slot per output")
+        return self._project_groups(((None, names, hidden),), native_bf16, pinned, transform_outputs)[0]
 
     def project_groups(self, groups, *, native_bf16=None, pinned=False):
         """Exchange independent inputs and results together, preserving projection order."""
@@ -109,7 +112,7 @@ class Inkling2DeviceDense:
         """Feed each first projection directly into the remaining projections."""
         return self._project_groups(chains, native_bf16, pinned)
 
-    def _project_groups(self, chains, native_bf16, pinned):
+    def _project_groups(self, chains, native_bf16, pinned, transform_outputs=None):
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling 2 dense residency is closed")
@@ -151,12 +154,15 @@ class Inkling2DeviceDense:
                         self._launch_projection(src, intermediate, rows, x.ndim, before, native_bf16)
                         src = intermediate
                     group = []
-                    for matrix in matrices:
+                    for index, matrix in enumerate(matrices):
                         m, _ = matrix[1]
                         dst = out.ptr + output_offset * output.itemsize
                         self._launch_projection(src, dst, rows, x.ndim, matrix, native_bf16)
                         end = output_offset + rows * m
-                        group.append(output[output_offset:end].reshape(*x.shape[:-1], m))
+                        view = output[output_offset:end].reshape(*x.shape[:-1], m)
+                        if transform_outputs is not None and (consume := transform_outputs[index]) is not None:
+                            consume(dst, view.shape)
+                        group.append(view)
                         output_offset = end
                     results.append(tuple(group))
                     input_offset += x.nbytes

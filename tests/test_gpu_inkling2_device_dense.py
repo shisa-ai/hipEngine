@@ -62,6 +62,12 @@ def test_device_dense_vector_and_block_match_cpu(monkeypatch):
                     pinned = owner.project(name, x, native_bf16=launch, pinned=True)
                     np.testing.assert_array_equal(paired.view(np.uint32), single.view(np.uint32))
                     np.testing.assert_array_equal(pinned.view(np.uint32), single.view(np.uint32))
+            seen_outputs = []
+            actual = owner.project_many(("head", "small"), rows, pinned=True,
+                                        transform_outputs=(None, lambda ptr, shape: seen_outputs.append((ptr, shape))))
+            assert len(seen_outputs) == 1 and seen_outputs[0][0] != 0
+            assert seen_outputs[0][1] == actual[1].shape
+            np.testing.assert_array_equal(actual[1], owner.project("small", rows))
             launch = dense_gemv_f32_bf16w_f32_out
             groups = ((("head", "small"), rows[::-1]), (("other",), rows[0]), (("smaller",), rows[:2]))
             for native in (None, launch):
