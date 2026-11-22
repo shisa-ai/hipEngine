@@ -33,15 +33,18 @@ def _launch(x, weight, output, rows, in_features, out_features, *, target_arch, 
 
 
 @lru_cache(maxsize=None)
-def _selected(target_arch):
-    fn = _library(target_arch).hipengine_gguf_nvfp4_selected_f32_f32_out
+def _selected(target_arch, register_fp4):
+    variant = "selected_register_fp4" if register_fp4 else "selected"
+    fn = getattr(_library(target_arch), f"hipengine_gguf_nvfp4_{variant}_f32_f32_out")
     fn.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_int] * 4 + [ctypes.c_void_p]
     fn.restype = ctypes.c_int
     return fn
 
 
-def _launch_selected(x, weight, output, ids, scales, rows, experts, in_features, out_features, *, target_arch, stream=0):
-    status = _selected(target_arch)(x, weight, output, ids, scales, rows, experts, in_features, out_features, stream)
+def _launch_selected(x, weight, output, ids, scales, rows, experts, in_features, out_features, *, target_arch,
+                     stream=0, register_fp4=False):
+    status = _selected(target_arch, register_fp4)(x, weight, output, ids, scales, rows, experts, in_features,
+                                                  out_features, stream)
     if status != HIP_SUCCESS:
         raise HipError(f"GGUF NVFP4 selected projection failed with HIP status {status}")
 
@@ -65,5 +68,7 @@ for _backend in ("hip_gfx1100", "hip_gfx1151"):
     register(KernelKey(_backend, "linear", "gguf_nvfp4", "gemv_f32_f32_out"), partial(_launch, target_arch=_arch))
     register(KernelKey(_backend, "moe_linear", "gguf_nvfp4", "selected_f32_f32_out"),
              partial(_launch_selected, target_arch=_arch))
+    register(KernelKey(_backend, "moe_linear", "gguf_nvfp4", "selected_register_fp4_f32_f32_out"),
+             partial(_launch_selected, target_arch=_arch, register_fp4=True))
     register(KernelKey(_backend, "moe_linear", "gguf_nvfp4", "selected_tile4_f32_f32_out"),
              partial(_launch_tiled, target_arch=_arch))

@@ -81,6 +81,8 @@ def test_selected_nvfp4_exactly_matches_scalar_launches(out_features):
     expected = np.empty_like(observed)
     scalar = resolve(backend=backend, layer="linear", quant="gguf_nvfp4", variant="gemv_f32_f32_out")
     selected = resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4", variant="selected_f32_f32_out")
+    packed_table = resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
+                           variant="selected_register_fp4_f32_f32_out")
     runtime = get_hip_runtime()
     pointers = []
     try:
@@ -94,6 +96,9 @@ def test_selected_nvfp4_exactly_matches_scalar_launches(out_features):
                    out_ptr + i * expected.strides[0], 1, in_features, out_features, outer_scale=float(scale))
         runtime.memcpy(expected.ctypes.data, out_ptr, expected.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
         selected(x_ptr, w_ptr, out_ptr, ids_ptr, scales_ptr, len(ids), experts, in_features, out_features)
+        runtime.memcpy(observed.ctypes.data, out_ptr, observed.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+        np.testing.assert_array_equal(observed.view(np.uint32), expected.view(np.uint32))
+        packed_table(x_ptr, w_ptr, out_ptr, ids_ptr, scales_ptr, len(ids), experts, in_features, out_features)
         runtime.memcpy(observed.ctypes.data, out_ptr, observed.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
     finally:
         for ptr in reversed(pointers):

@@ -53,6 +53,10 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 if is_registered(key):
                     launch = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
                     launches[quant] = self._bind_packed(quant, launch)
+            key = KernelKey(backend, "moe_linear", f"gguf_{quant.name.lower()}", "selected_register_fp4_f32_f32_out")
+            if is_registered(key):
+                launch = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+                self._selected_launches[quant] = self._bind_packed(quant, launch)
         self._mix = None
         key = KernelKey(backend, "inkling2_expert_pointwise", "inkling2_mixed", "ordered_mix_exact")
         if (is_registered(key) and all(Q(layer.down.weight.ggml_type) in self._selected_launches

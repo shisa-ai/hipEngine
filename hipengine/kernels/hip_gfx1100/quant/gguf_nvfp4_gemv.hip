@@ -16,13 +16,15 @@ __device__ __forceinline__ float decode_scale(uint8_t code) {
     return code == 0x7f ? 0.0f : significand * power;
 }
 
+template<bool register_fp4 = false>
 __device__ __forceinline__ int decode_fp4(unsigned code) {
     constexpr int magnitude[] = {0, 1, 2, 3, 4, 6, 8, 12};
-    const int value = magnitude[code & 7];
+    // Four-bit magnitudes in ascending code order; no per-lane table load.
+    const int value = register_fp4 ? (0xc8643210u >> (4 * (code & 7))) & 15 : magnitude[code & 7];
     return code & 8 ? -value : value;
 }
 
-template<bool selected>
+template<bool selected, bool register_fp4 = false>
 __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_gemv_f32_kernel(
         const float * x, const uint8_t * weights, float * out, int in_features, int out_features,
         size_t output_values, float outer_scale, const int32_t * ids, const float * scales, int experts) {
@@ -54,8 +56,8 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_gemv_f32_ke
     for (int b = 0; b < blocks; ++b) {
         const float scale = decode_scale(packed[group]);
         const unsigned codes = packed[4 + lane];
-        sum = fmaf(scale * decode_fp4(codes & 15), input[first], sum);
-        sum = fmaf(scale * decode_fp4(codes >> 4), input[first + 8], sum);
+        sum = fmaf(scale * decode_fp4<register_fp4>(codes & 15), input[first], sum);
+        sum = fmaf(scale * decode_fp4<register_fp4>(codes >> 4), input[first + 8], sum);
         packed += bytes_per_block;
         input += values_per_block;
     }
@@ -112,7 +114,7 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_selected_ti
     }
 }
 
-template<bool selected>
+template<bool selected, bool register_fp4 = false>
 int launch(const float * x, const uint8_t * weights, float * out, int batch, int in_features, int out_features,
            float outer_scale, hipStream_t stream, const int32_t * ids, const float * scales, int experts) {
     if (!x || !weights || !out || batch <= 0 || in_features <= 0 || in_features % values_per_block
@@ -124,7 +126,7 @@ int launch(const float * x, const uint8_t * weights, float * out, int batch, int
     if (blocks > INT32_MAX) {
         return hipErrorInvalidValue;
     }
-    hipLaunchKernelGGL((gguf_nvfp4_gemv_f32_kernel<selected>), dim3(blocks), dim3(wave * waves_per_block),
+    hipLaunchKernelGGL((gguf_nvfp4_gemv_f32_kernel<selected, register_fp4>), dim3(blocks), dim3(wave * waves_per_block),
                        0, stream, x, weights, out, in_features, out_features, output_values, outer_scale,
                        ids, scales, experts);
     return hipGetLastError();
@@ -141,6 +143,12 @@ extern "C" int hipengine_gguf_nvfp4_selected_f32_f32_out(
         const float * x, const uint8_t * weights, float * out, const int32_t * ids, const float * scales,
         int batch, int experts, int in_features, int out_features, hipStream_t stream) {
     return launch<true>(x, weights, out, batch, in_features, out_features, 1.0f, stream, ids, scales, experts);
+}
+
+extern "C" int hipengine_gguf_nvfp4_selected_register_fp4_f32_f32_out(
+        const float* x, const uint8_t* weights, float* out, const int32_t* ids, const float* scales,
+        int batch, int experts, int in_features, int out_features, hipStream_t stream) {
+    return launch<true, true>(x, weights, out, batch, in_features, out_features, 1.0f, stream, ids, scales, experts);
 }
 
 extern "C" int hipengine_gguf_nvfp4_selected_tile4_f32_f32_out(
