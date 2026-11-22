@@ -98,8 +98,8 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_selected_ti
     for (int b = 0; b < blocks; ++b) {
         const float scale = decode_scale(packed[group]);
         const unsigned codes = packed[4 + lane];
-        const float low = scale * decode_fp4(codes & 15);
-        const float high = scale * decode_fp4(codes >> 4);
+        const float low = scale * decode_fp4<true>(codes & 15);
+        const float high = scale * decode_fp4<true>(codes >> 4);
         #pragma unroll
         for (int t = 0; t < route_tile; ++t) {
             sum[t] = fmaf(low, inputs[t][0], sum[t]);
