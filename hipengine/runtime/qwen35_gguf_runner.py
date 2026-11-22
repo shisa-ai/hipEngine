@@ -132,6 +132,7 @@ from hipengine.runtime.qwen35_gguf_planning import (
     qwen35_gguf_resident_breakdown,
 )
 from hipengine.runtime.qwen35_gguf_kv import (
+    Qwen35GGUFDeviceKVPageView,
     Qwen35GGUFKVChunkBacking,
     Qwen35GGUFKVChunkLayout,
     VmmPlaneBuffer,
@@ -16019,6 +16020,47 @@ class Qwen35GGUFResidentSession:
 
         return graph_lifetime_of(self).close_live_graphs()
 
+    def device_kv_page_view(self) -> Qwen35GGUFDeviceKVPageView:
+        """Prepare request-local KV indirection before a consumer captures a graph."""
+
+        pool = self._device_kv_pool
+        allocation = self._device_kv_allocation
+        if not isinstance(pool, GlobalDeviceKVPool) or allocation is None:
+            raise RuntimeError("GGUF device page view requires a bound global KV allocation")
+        binding = getattr(self, "_device_kv_page_view", None)
+        if binding is not None:
+            return binding[0]
+        pointers = pool.request_page_pointers(allocation)
+        page_count = len(allocation.block_ids)
+        planes = np.asarray(tuple(pointers.values()), dtype=np.uint64)
+        block_table = np.arange(page_count, dtype=np.int32)
+        host = np.concatenate((planes.view(np.uint8).ravel(), block_table.view(np.uint8)))
+        runtime = self.runtime or get_hip_runtime()
+        charge = pool.reserve_resident_bytes("request_kv_page_view", host.nbytes)
+        buffer = None
+        try:
+            buffer = malloc(host.nbytes, runtime=runtime)
+            copy_host_array_to_device(buffer, host, host.nbytes, runtime=runtime)
+        except BaseException:
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+            pool.release_private_workspace(charge)
+            raise
+        view = Qwen35GGUFDeviceKVPageView(buffer, tuple(pointers), page_count)
+        self._device_kv_page_view = (view, charge)
+        return view
+
+    def _release_device_kv_page_view(self) -> None:
+        binding = getattr(self, "_device_kv_page_view", None)
+        if binding is None:
+            return
+        if graph_lifetime_of(self).pinned_count:
+            raise RuntimeError("cannot release GGUF page view while graphs remain pinned")
+        view, charge = binding
+        free(view.buffer, runtime=self.runtime or get_hip_runtime())
+        self._device_kv_page_view = None
+        self._device_kv_pool.release_private_workspace(charge)
+
     def unbind_device_kv_allocation(self) -> DeviceKVPoolAllocation:
         """Detach scheduler-owned KV after all graph pins have been invalidated."""
 
@@ -16029,6 +16071,7 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident session has no device KV allocation")
         if graph_lifetime_of(self).pinned_count:
             raise RuntimeError("cannot detach GGUF device KV while graphs remain pinned")
+        self._release_device_kv_page_view()
         empty = tuple(None for _ in self.scratch.full_key_caches)
         self.scratch = replace(
             self.scratch,

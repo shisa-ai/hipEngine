@@ -361,10 +361,17 @@ def test_bf16_decode_through_independent_pages_matches_contiguous(head_dim, hip_
         qwen35_paged_full_attn_decode_context_bf16_spans as reference,
     )
 
+    from hipengine.kvcache.device_global import GlobalDeviceKVPool
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
     decode = resolve(backend=HIP_TARGET_ARCH_BACKEND[hip_test_target_arch], layer="paged_attn_decode",
                      quant="bf16", variant="context_page_ptrs_spans")
     runtime = get_hip_runtime()
     buffers = []
+    pool = None
+    allocation = None
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runtime = runtime
     rng = np.random.default_rng(947)
 
     def upload(array):
@@ -377,10 +384,28 @@ def test_bf16_decode_through_independent_pages_matches_contiguous(head_dim, hip_
         values = rng.uniform(-0.5, 0.5, (2, 2, 256, head_dim)).astype(np.float32)
         planes = (values.view(np.uint32) >> 16).astype(np.uint16)
         contiguous = [upload(plane) for plane in planes]
-        tables = []
-        for plane in planes:
-            pages = [upload(page) for page in plane]
-            tables.append(upload(np.array([p.ptr for p in pages], dtype=np.uint64)))
+        roles = ("key_payload", "value_payload")
+        pointers = {
+            role: tuple(upload(page).ptr for page in reversed(plane))
+            for role, plane in zip(roles, planes, strict=True)
+        }
+        # Deliberately not device tables: the resident path must snapshot the
+        # lease's payload page addresses, not borrow this pool publication.
+        pool = GlobalDeviceKVPool(
+            page_bytes=planes[:, 0].nbytes,
+            backend_fingerprint=hip_test_target_arch,
+            generation=1,
+            backing=object(),
+            plane_page_pointers=pointers,
+            pointer_table_pointers={role: 1 for role in roles},
+            metadata_descriptor_pointer=1,
+            close_storage=lambda: None,
+        )
+        allocation = pool.allocate(0, 2)
+        session._device_kv_pool = pool
+        session._device_kv_allocation = allocation
+        view = session.device_kv_page_view()
+        tables = [view.plane(role) for role in roles]
         table = upload(np.array([1, 0], dtype=np.int32))
         count = upload(np.array([257], dtype=np.int64))
         query = upload(rng.uniform(-0.5, 0.5, (2, head_dim)).astype(np.float32))
@@ -390,9 +415,12 @@ def test_bf16_decode_through_independent_pages_matches_contiguous(head_dim, hip_
             live_counts=_tensor(count.ptr, (1,), DType.INT64),
             max_live_count=257, storage_dtype=DType.BF16,
         )
+        page_spans = replace(spans, base_offsets=_tensor(view.block_table.ptr, (2,), DType.INT32))
         with hip_target_arch_environment(hip_test_target_arch):
-            for fn, inputs, output in ((reference, contiguous, a), (decode, tables, b)):
-                fn(query.ptr, inputs[0].ptr, inputs[1].ptr, output.ptr, spans,
+            for fn, inputs, output, live_spans in (
+                (reference, contiguous, a, spans), (decode, tables, b, page_spans),
+            ):
+                fn(query.ptr, inputs[0].ptr, inputs[1].ptr, output.ptr, live_spans,
                    257, 256, 2, 1, head_dim, head_dim ** -0.5, runtime=runtime)
             runtime.device_synchronize()
         expected = np.empty((2, head_dim), dtype=np.float32)
@@ -402,6 +430,11 @@ def test_bf16_decode_through_independent_pages_matches_contiguous(head_dim, hip_
         assert np.any(expected != 0)
         np.testing.assert_array_equal(got, expected)
     finally:
+        session._release_device_kv_page_view()
+        if pool is not None:
+            if allocation is not None:
+                pool.release(allocation.request_id)
+            pool.close()
         for buffer in reversed(buffers):
             free(buffer, runtime=runtime)
 

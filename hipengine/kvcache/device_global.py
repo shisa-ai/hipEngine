@@ -391,6 +391,17 @@ class GlobalDeviceKVPool:
     def pointer_for(self, block_id: int) -> int:
         return self.global_pool.page_pointer(self._primary_plane, int(block_id))
 
+    def request_page_pointers(
+        self, allocation: DeviceKVPoolAllocation,
+    ) -> dict[str, tuple[int, ...]]:
+        """Snapshot host addresses in lease order, independent of device publication."""
+
+        with self._lock:
+            self._require_open()
+            if self._request_allocations.get(allocation.request_id) is not allocation:
+                raise ValueError("device KV pool no longer owns this allocation")
+            return self.global_pool.page_pointers_for(allocation.block_ids)
+
     def refcount(self, block_id: int) -> int:
         record = self.global_pool.page(int(block_id))
         return len(record.active_lease_ids) + int(record.cache_references)

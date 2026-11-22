@@ -240,6 +240,89 @@ def _chunk_provider_pool(monkeypatch):
     return pool, live, uploaded
 
 
+def test_resident_page_view_outlives_pool_publications(monkeypatch):
+    pool, live, uploaded = _chunk_provider_pool(monkeypatch)
+    session = object.__new__(runner.Qwen35GGUFResidentSession)
+    session.runtime = object()
+    session._device_kv_page_view = None
+    session._device_kv_pool = pool
+    try:
+        pool.grow(3)
+        allocation = pool.allocate(7, 3)
+        session._device_kv_allocation = allocation
+        role = 'layer1.key_payload'
+        expected = tuple(pool.global_pool.page_pointer(role, page)
+                         for page in allocation.block_ids)
+        old_table = pool.global_pool._pointer_table_pointers[role]
+        view = session.device_kv_page_view()
+        assert session.device_kv_page_view() is view
+        contents = uploaded[view.buffer.ptr]
+        assert set(view.roles) == set(pool.global_pool._pointer_table_pointers)
+        for plane_role in view.roles:
+            plane = view.plane(plane_role)
+            table = np.frombuffer(contents, dtype=np.uint64,
+                                  offset=plane.ptr - view.buffer.ptr, count=view.page_count)
+            assert tuple(table) == tuple(pool.global_pool.page_pointer(plane_role, page)
+                                         for page in allocation.block_ids)
+        indices = np.frombuffer(contents, dtype=np.int32,
+                                offset=view.block_table.ptr - view.buffer.ptr)
+        assert tuple(indices) == tuple(range(len(allocation.block_ids)))
+        assert view.page_count == len(allocation.block_ids)
+        assert pool.private_workspace_bytes == view.buffer.nbytes
+
+        pool.grow(2)
+        assert old_table not in live
+        assert pool.shrink_idle(now_seconds=1.0) == 2
+        assert view.buffer.ptr in live
+        assert tuple(np.frombuffer(uploaded[view.buffer.ptr], dtype=np.uint64,
+                                   offset=view.plane(role).ptr - view.buffer.ptr,
+                                   count=len(expected))) == expected
+
+        graph = object()
+        session._pin_device_kv_graph(graph)
+        try:
+            with pytest.raises(RuntimeError, match='graphs remain pinned'):
+                session._release_device_kv_page_view()
+            assert view.buffer.ptr in live
+        finally:
+            session._unpin_device_kv_graph(graph)
+        session._release_device_kv_page_view()
+        assert view.buffer.ptr not in live
+        assert pool.private_workspace_bytes == 0
+        pool.release(7)
+        with pytest.raises(ValueError, match='no longer owns'):
+            session.device_kv_page_view()
+    finally:
+        session._release_device_kv_page_view()
+        if 7 in pool.allocations:
+            pool.release(7)
+        pool.close()
+    assert not live
+
+
+def test_resident_page_view_upload_failure_rolls_back(monkeypatch):
+    pool, live, _uploaded = _chunk_provider_pool(monkeypatch)
+    session = object.__new__(runner.Qwen35GGUFResidentSession)
+    session.runtime = object()
+    session._device_kv_pool = pool
+    session._device_kv_allocation = pool.allocate(7, 2)
+    owned = live.copy()
+
+    def fail_upload(*args, **kwargs):
+        raise RuntimeError('page view upload failed')
+
+    monkeypatch.setattr(runner, 'copy_host_array_to_device', fail_upload)
+    try:
+        with pytest.raises(RuntimeError, match='page view upload failed'):
+            session.device_kv_page_view()
+        assert live == owned
+        assert pool.private_workspace_bytes == 0
+    finally:
+        pool.release(7)
+        pool.close()
+    assert not live
+
+
 def test_runtime_shrink_releases_the_appended_chunk_and_republishes_tables(
     monkeypatch,
 ):

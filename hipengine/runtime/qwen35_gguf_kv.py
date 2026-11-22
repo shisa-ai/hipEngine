@@ -132,6 +132,34 @@ def _validate_bound_blocks_against_capacity(
         raise ValueError("GGUF KV allocation is outside its pool page range")
 
 
+@dataclass(frozen=True, slots=True)
+class Qwen35GGUFDeviceKVPageView:
+    """Resident-owned tables indexed by logical request page, not global page ID.
+
+    The session owns the buffer and its memory charge until unbind. The pool
+    owns the payload pages through the request lease and existing graph pins.
+    """
+
+    buffer: DeviceBuffer
+    roles: tuple[str, ...]
+    page_count: int
+
+    def plane(self, role: str) -> DeviceBuffer:
+        offset = self.roles.index(role)
+        plane_bytes = self.page_count * np.dtype(np.uint64).itemsize
+        return DeviceBuffer(self.buffer.ptr + offset * plane_bytes, plane_bytes)
+
+    @property
+    def block_table(self) -> DeviceBuffer:
+        """Identity int32 offsets for use in the page-pointer kernels' live spans."""
+
+        nbytes = self.page_count * np.dtype(np.int32).itemsize
+        return DeviceBuffer(
+            self.buffer.ptr + len(self.roles) * self.page_count * np.dtype(np.uint64).itemsize,
+            nbytes,
+        )
+
+
 class VmmPlaneBuffer:
     """``DeviceBuffer``-compatible view over one plane of a stable VMM arena.
 

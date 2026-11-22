@@ -222,6 +222,17 @@ class GlobalKVPoolSet:
         except IndexError as exc:
             raise IndexError(f"KV page_id {page_id} is outside the global pool") from exc
 
+    def page_pointers_for(self, page_ids: tuple[int, ...]) -> dict[str, tuple[int, ...]]:
+        """Resolve a list of page IDs against every payload and metadata plane."""
+
+        with self._lock:
+            for page_id in page_ids:
+                self._get_page(page_id)
+            return {
+                role: tuple(pointers[page_id] for page_id in page_ids)
+                for role, pointers in sorted(self._plane_page_pointers.items())
+            }
+
     def append_pages(
         self,
         plane_page_pointers: dict[str, tuple[int, ...]],
