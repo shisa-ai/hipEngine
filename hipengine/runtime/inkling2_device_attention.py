@@ -161,8 +161,13 @@ class Inkling2DeviceAttention:
         if visit not in self.banks:
             self.banks[visit] = self._make_bank(cap, nk, d)
         keys, values, spans = self.banks[visit]
+        # The farthest lag in this block cannot exceed either the final row's
+        # absolute position or the live ring length minus one.
+        live = min(position + rows, cap)
+        extent = min(extent, live)
+        arrays = q, key, value, bias[..., :extent], sink
         host = np.empty(2 + sum(a.size for a in arrays), dtype=np.float32)
-        host[:2].view(np.int32)[:] = (min(position + rows, cap), position)
+        host[:2].view(np.int32)[:] = (live, position)
         result = np.empty((rows, nq, d), dtype=np.float32)
         need = host.nbytes + result.nbytes
         scratch = self._block_scratch

@@ -26,15 +26,23 @@ def test_committed_attention_block_sees_causal_kv_before_ring_commit(capacity):
             ((nq, dim), (nk, dim), (nk, dim), (nq, extent), (nq,))]
     owner = dict(runtime=get_hip_runtime(), geometry=[(capacity, nq, nk, dim, extent)],
                  launch=attn.launch_tiled_attention, write=attn.launch_cache_write, split=attn.launch_split_attention)
+    staged_extents = []
+
+    def block(*args):
+        staged_extents.append(args[-4])
+        attn.launch_attention_block(*args)
+
     with (
         closing(Inkling2DeviceAttention(**owner)) as serial,
-        closing(Inkling2DeviceAttention(**owner, block=attn.launch_attention_block)) as batch,
+        closing(Inkling2DeviceAttention(**owner, block=block)) as batch,
     ):
         reference = np.stack([serial.step(0, i, *row) for i, row in enumerate(zip(*args, strict=True))])
         actual = []
-        for i, j in ((0, 2), (2, capacity + 6), (capacity + 6, n - 1)):
+        blocks = ((0, 2), (2, capacity + 6), (capacity + 6, n - 1))
+        for i, j in blocks:
             actual.extend(batch.step_block(0, i, *(a[i:j] for a in args)))
         actual.append(batch.step(0, n - 1, *(a[-1] for a in args)))
+        assert staged_extents == [min(extent, capacity, end) for _, end in blocks]
         np.testing.assert_array_equal(np.asarray(actual).view(np.uint32), reference.view(np.uint32))
 
 
