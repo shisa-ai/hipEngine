@@ -32,8 +32,9 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
     mapping = weights.mapping
     matrices = [mapping.root["output.weight"], mapping.layers[2].gate_up.weight,
                 mapping.layers[2].down.weight, mapping.layers[4].gate_up.weight, mapping.layers[4].down.weight]
+    dense = mapping.layers[2].tensors["attn_q.weight"]
     raw = {}
-    for t in matrices:
+    for t in (*matrices, dense):
         blocks = rng.integers(0, 256, t.byte_shape, dtype=np.uint8)
         if t.ggml_type == Q.NVFP4:
             blocks.reshape(-1, 36)[:, :4] = rng.integers(16, 63, (blocks.size // 36, 4), dtype=np.uint8)
@@ -53,6 +54,24 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
             head = matrices[0]
             np.testing.assert_allclose(owner.project(head.name, x, limit=mapping.vocab_size),
                                        x @ weights.decode(head, slice(mapping.vocab_size)).T, rtol=1e-5, atol=2e-6)
+            launch_prefill = owner._q8_prefill
+            assert launch_prefill is not None
+            spy = Mock(wraps=launch_prefill)
+            owner._q8_prefill = spy
+            for rows in (3, 4, 9):
+                inp = rng.normal(0, 0.1, (rows, 256)).astype(np.float32)
+                actual = owner.project(dense.name, inp)
+                try:
+                    owner._q8_prefill = None
+                    expected = owner.project(dense.name, inp)
+                finally:
+                    owner._q8_prefill = spy
+                np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+            assert spy.call_count == 3
+            # One row and an output tail not divisible by eight use the parent.
+            owner.project(dense.name, x[0, :])
+            owner.project(head.name, x, limit=mapping.vocab_size)
+            assert spy.call_count == 3
             for visit in (mapping.plan.visits[2], mapping.plan.visits[4], mapping.plan.visits[6]):
                 for projection in ("gate_up", "down"):
                     observed = owner.project_selected(visit, projection, expert_ids, x)

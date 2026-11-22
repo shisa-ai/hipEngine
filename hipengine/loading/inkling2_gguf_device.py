@@ -36,6 +36,10 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._selected_launches = {}
         self._tiled_launches = {}
         self._k_library = None
+        prefill = KernelKey(backend, "linear", "gguf_q8_0", "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out")
+        self._q8_prefill = (self._bind_packed(Q.Q8_0, resolve(backend=prefill.backend, layer=prefill.layer,
+                                                           quant=prefill.quant, variant=prefill.variant))
+                            if is_registered(prefill) else None)
         for quant in self._launches:
             for variant, launches in (("selected_f32_f32_out", self._selected_launches),
                                       ("selected_tile4_f32_f32_out", self._tiled_launches)):
@@ -109,7 +113,8 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     def _launch_projection(self, src, dst, rows, ndim, matrix, native_bf16):
         weight, (m, n), packed = matrix
         if packed:
-            self._packed_launch(packed)(src, weight.ptr, dst, rows, n, m)
+            launch = self._q8_prefill if packed == Q.Q8_0 and rows > 1 and m % 8 == 0 else None
+            (launch or self._packed_launch(packed))(src, weight.ptr, dst, rows, n, m)
         else:
             super()._launch_projection(src, dst, rows, ndim, matrix, native_bf16)
 
