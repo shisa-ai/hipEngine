@@ -37,7 +37,7 @@ def acquire_packed_backing(
 def select_packed_arena_backing(
     pool, *, total_pages: int, layout, eager_key: str, lease_growth, on_shortfall,
 ):
-    """Return backing, local page map and owned growth key, or no arena.
+    """Return backing, page ids and owned growth key, or no arena.
 
     The eager reservation stays pool-owned. Any temporary growth lease is released
     on refusal or exception; successful ownership transfers to the caller.
@@ -60,43 +60,14 @@ def select_packed_arena_backing(
             else:
                 growth_key, extra = grown
                 pages = (*tuple(pages), *extra)
-        backing = None
-        local_pages = None
-        if pages is not None:
-            bind = getattr(pool, "workspace_backing_for_pages", None)
-            if callable(bind):
-                binding = bind(tuple(pages[:total_pages]))
-                compatible = binding is not None
-                if compatible:
-                    backing, local_pages = binding
-            else:
-                root_fits = getattr(pool, "workspace_pages_fit_root_backing", None)
-                compatible = not callable(root_fits) or root_fits(tuple(pages[:total_pages]))
-            if not compatible:
-                if growth_key is not None:
-                    release_key, growth_key = growth_key, None
-                    pool.release_workspace(release_key)
-                pages = None
-                if callable(bind):
-                    replacement = lease_growth(pool, needed_pages=total_pages)
-                    if replacement is not None:
-                        growth_key, replacement_pages = replacement
-                        binding = bind(tuple(replacement_pages))
-                        if binding is None:
-                            release_key, growth_key = growth_key, None
-                            pool.release_workspace(release_key)
-                        else:
-                            pages = replacement_pages
-                            backing, local_pages = binding
         if pages is None:
             return None, None, None
-        if backing is None:
-            backing = getattr(pool, "backing", None)
+        # The pool has one stable-address backing, so leased global page ids
+        # index its planes directly.
+        backing = getattr(pool, "backing", None)
         if backing is None or getattr(backing, "layout", None) != layout:
             raise RuntimeError("packed workspace lease has no layout-compatible KV backing")
-        page_ids = tuple(int(page) for page in (
-            local_pages if local_pages is not None else pages[:total_pages]
-        ))
+        page_ids = tuple(int(page) for page in pages[:total_pages])
         return backing, page_ids, growth_key
     except BaseException:
         if growth_key is not None:

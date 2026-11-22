@@ -1,4 +1,4 @@
-"""Exercise runtime pointer-table publication across repeated KV pool growth."""
+"""Exercise runtime KV pool storage ownership, growth refusal and graph invalidation."""
 from types import SimpleNamespace
 
 import numpy as np
@@ -11,10 +11,13 @@ from tests.test_unit_gguf_packed_workspace_stability import (
     _allocator_fake_runner,
     _int8_kv_layout,
 )
+from tests.test_unit_gguf_vmm_kv_pool import _session as _vmm_session
 
 
 @pytest.mark.parametrize('close_failure', [False, True])
-def test_runtime_growth_preserves_every_previous_device_page_pointer(monkeypatch, close_failure):
+def test_fixed_backing_refuses_growth_and_frees_storage_once(monkeypatch, close_failure):
+    """Without stable addresses the pool never appends a second base."""
+
     next_pointer = 0x100000
     uploaded = {}
     live = set()
@@ -56,14 +59,20 @@ def test_runtime_growth_preserves_every_previous_device_page_pointer(monkeypatch
     session.kv_storage_layout = 'uniform'
     pool = session.create_global_device_kv_pool(page_capacity=2, generation=1)
     try:
-        for growth in (1, 3, 2):
-            pool.grow(growth)
-            global_pool = pool.global_pool
-            for role, pointer in global_pool._pointer_table_pointers.items():
-                table = np.frombuffer(uploaded[pointer], dtype=np.uint64)
-                expected = tuple(global_pool.page_pointer(role, page)
-                                 for page in range(pool.current_pages))
-                assert tuple(table) == expected
+        owned_before = set(live)
+        for growth in (1, 3):
+            with pytest.raises(MemoryError, match='no growth provider'):
+                pool.grow(growth)
+        with pytest.raises(MemoryError):
+            pool.allocate(1, 3)
+        assert pool.current_pages == 2
+        assert set(live) == owned_before
+        global_pool = pool.global_pool
+        for role, pointer in global_pool._pointer_table_pointers.items():
+            table = np.frombuffer(uploaded[pointer], dtype=np.uint64)
+            expected = tuple(global_pool.page_pointer(role, page)
+                             for page in range(pool.current_pages))
+            assert tuple(table) == expected
     finally:
         closing = True
         owned = set(live)
@@ -76,7 +85,7 @@ def test_runtime_growth_preserves_every_previous_device_page_pointer(monkeypatch
         assert len(attempts) == len(owned)
         pool.close()
         assert len(attempts) == len(owned)
-        with pytest.raises(RuntimeError, match='closed'):
+        with pytest.raises(MemoryError, match='no growth provider'):
             pool.grow(1)
     assert live == ({attempts[0]} if close_failure else set())
 
@@ -94,32 +103,7 @@ def test_pool_mutation_closes_owner_session_graphs(monkeypatch, borrowed, mutati
     reading the missing attribute as nothing to do.
     """
 
-    next_pointer = 0x900000
-
-    def malloc(nbytes, **kwargs):
-        nonlocal next_pointer
-        buffer = DeviceBuffer(ptr=next_pointer, nbytes=int(nbytes))
-        next_pointer += int(nbytes) + 256
-        return buffer
-
-    monkeypatch.setattr(runner, 'malloc', malloc)
-    monkeypatch.setattr(runner, 'free', lambda buffer, **kwargs: None)
-    monkeypatch.setattr(gguf_kv, 'malloc', malloc)
-    monkeypatch.setattr(gguf_kv, 'free', lambda buffer, **kwargs: None)
-    monkeypatch.setattr(
-        runner, 'copy_host_array_to_device', lambda *args, **kwargs: None
-    )
-
-    session = object.__new__(runner.Qwen35GGUFResidentSession)
-    session.defer_kv_allocation = True
-    session.runner = _allocator_fake_runner()
-    session.scratch = SimpleNamespace()
-    session.runtime = SimpleNamespace(memset=lambda *args: None)
-    session._device_kv_layout = _int8_kv_layout()
-    session.kv_pool_memory_budget_mib = 128
-    session.model_path = 'test.gguf'
-    session.kv_storage_dtype = runner.DType.INT8_PER_TOKEN_HEAD
-    session.kv_storage_layout = 'uniform'
+    session, _allocator = _vmm_session(monkeypatch)
     assert not hasattr(session, '_resident_batch_owner')
 
     owner = session
@@ -172,7 +156,7 @@ def test_auto_budget_shrinks_the_initial_floor_before_allocation(monkeypatch):
         session.create_global_device_kv_pool(page_capacity=128, generation=1)
 
 
-def test_copy_on_write_preserves_appended_chunk_identity(monkeypatch):
+def test_copy_on_write_preserves_allocation_identity(monkeypatch):
     from hipengine.kvcache.device_global import GlobalDeviceKVPool
     from hipengine.kvcache.pool import DeviceKVPoolAllocation
 
@@ -194,229 +178,3 @@ def test_copy_on_write_preserves_appended_chunk_identity(monkeypatch):
     assert fork.pool_page_capacity == 8
     assert fork.backing is allocation.backing
     assert fork.first_divergent_token == 256
-
-
-def _chunk_provider_pool(monkeypatch):
-    """Build a chunk-confined pool over a fake device allocator.
-
-    Returns the pool, the live-pointer set, and the recorded uploads so a shrink
-    can be checked against the storage the provider actually holds.
-    """
-
-    next_pointer = 0x100000
-    uploaded: dict[int, bytes] = {}
-    live: set[int] = set()
-
-    def malloc(nbytes, **kwargs):
-        nonlocal next_pointer
-        buffer = DeviceBuffer(ptr=next_pointer, nbytes=int(nbytes))
-        next_pointer += int(nbytes) + 256
-        live.add(buffer.ptr)
-        return buffer
-
-    def free(buffer, **kwargs):
-        live.remove(buffer.ptr)
-
-    def upload(buffer, array, nbytes=None, **kwargs):
-        count = int(array.nbytes if nbytes is None else nbytes)
-        uploaded[buffer.ptr] = np.ascontiguousarray(array).tobytes()[:count]
-
-    monkeypatch.setattr(runner, 'malloc', malloc)
-    monkeypatch.setattr(runner, 'free', free)
-    monkeypatch.setattr(gguf_kv, 'malloc', malloc)
-    monkeypatch.setattr(gguf_kv, 'free', free)
-    monkeypatch.setattr(runner, 'copy_host_array_to_device', upload)
-    session = object.__new__(runner.Qwen35GGUFResidentSession)
-    session.defer_kv_allocation = True
-    session.runner = _allocator_fake_runner()
-    session.scratch = SimpleNamespace()
-    session.runtime = SimpleNamespace(memset=lambda *args: None)
-    session._device_kv_layout = _int8_kv_layout()
-    session.kv_pool_memory_budget_mib = 128
-    session.model_path = 'test.gguf'
-    session.kv_storage_dtype = runner.DType.INT8_PER_TOKEN_HEAD
-    session.kv_storage_layout = 'uniform'
-    pool = session.create_global_device_kv_pool(page_capacity=2, generation=1)
-    return pool, live, uploaded
-
-
-def test_resident_page_view_outlives_pool_publications(monkeypatch):
-    pool, live, uploaded = _chunk_provider_pool(monkeypatch)
-    session = object.__new__(runner.Qwen35GGUFResidentSession)
-    session.runtime = object()
-    session._device_kv_page_view = None
-    session._device_kv_pool = pool
-    try:
-        pool.grow(3)
-        allocation = pool.allocate(7, 3)
-        session._device_kv_allocation = allocation
-        role = 'layer1.key_payload'
-        expected = tuple(pool.global_pool.page_pointer(role, page)
-                         for page in allocation.block_ids)
-        old_table = pool.global_pool._pointer_table_pointers[role]
-        view = session.device_kv_page_view()
-        assert session.device_kv_page_view() is view
-        contents = uploaded[view.buffer.ptr]
-        assert set(view.roles) == set(pool.global_pool._pointer_table_pointers)
-        for plane_role in view.roles:
-            plane = view.plane(plane_role)
-            table = np.frombuffer(contents, dtype=np.uint64,
-                                  offset=plane.ptr - view.buffer.ptr, count=view.page_count)
-            assert tuple(table) == tuple(pool.global_pool.page_pointer(plane_role, page)
-                                         for page in allocation.block_ids)
-        indices = np.frombuffer(contents, dtype=np.int32,
-                                offset=view.block_table.ptr - view.buffer.ptr)
-        assert tuple(indices) == tuple(range(len(allocation.block_ids)))
-        assert view.page_count == len(allocation.block_ids)
-        assert pool.private_workspace_bytes == view.buffer.nbytes
-
-        pool.grow(2)
-        assert old_table not in live
-        assert pool.shrink_idle(now_seconds=1.0) == 2
-        assert view.buffer.ptr in live
-        assert tuple(np.frombuffer(uploaded[view.buffer.ptr], dtype=np.uint64,
-                                   offset=view.plane(role).ptr - view.buffer.ptr,
-                                   count=len(expected))) == expected
-
-        graph = object()
-        session._pin_device_kv_graph(graph)
-        try:
-            with pytest.raises(RuntimeError, match='graphs remain pinned'):
-                session._release_device_kv_page_view()
-            assert view.buffer.ptr in live
-        finally:
-            session._unpin_device_kv_graph(graph)
-        session._release_device_kv_page_view()
-        assert view.buffer.ptr not in live
-        assert pool.private_workspace_bytes == 0
-        pool.release(7)
-        with pytest.raises(ValueError, match='no longer owns'):
-            session.device_kv_page_view()
-    finally:
-        session._release_device_kv_page_view()
-        if 7 in pool.allocations:
-            pool.release(7)
-        pool.close()
-    assert not live
-
-
-def test_resident_page_view_upload_failure_rolls_back(monkeypatch):
-    pool, live, _uploaded = _chunk_provider_pool(monkeypatch)
-    session = object.__new__(runner.Qwen35GGUFResidentSession)
-    session.runtime = object()
-    session._device_kv_pool = pool
-    session._device_kv_allocation = pool.allocate(7, 2)
-    owned = live.copy()
-
-    def fail_upload(*args, **kwargs):
-        raise RuntimeError('page view upload failed')
-
-    monkeypatch.setattr(runner, 'copy_host_array_to_device', fail_upload)
-    try:
-        with pytest.raises(RuntimeError, match='page view upload failed'):
-            session.device_kv_page_view()
-        assert live == owned
-        assert pool.private_workspace_bytes == 0
-    finally:
-        pool.release(7)
-        pool.close()
-    assert not live
-
-
-def test_runtime_shrink_releases_the_appended_chunk_and_republishes_tables(
-    monkeypatch,
-):
-    """A chunk-confined provider frees only the chunks above the retained capacity."""
-
-    pool, live, uploaded = _chunk_provider_pool(monkeypatch)
-    try:
-        pool.grow(3)
-        assert pool.current_pages == 5
-        assert len(pool._chunks) == 2
-        appended = pool._chunks[-1][2]
-        appended_buffers = {int(buffer.ptr) for buffer in appended.buffers}
-        assert appended_buffers <= live
-
-        released = pool.shrink_idle(now_seconds=1.0)
-
-        assert released == 3
-        assert pool.current_pages == 2
-        assert len(pool._chunks) == 1
-        assert pool.stats.shrink_events == 1
-        # The appended chunk's plane buffers are freed, and only the republished
-        # tables remain beyond the load-time chunk.
-        assert appended_buffers.isdisjoint(live)
-        descriptor = np.frombuffer(
-            uploaded[int(pool.global_pool.storage_view().metadata_descriptor_ptr)],
-            dtype=np.uint64,
-        )
-        assert int(descriptor[1]) == 2
-        for role, pointer in pool.global_pool._pointer_table_pointers.items():
-            table = np.frombuffer(uploaded[pointer], dtype=np.uint64)
-            expected = tuple(
-                pool.global_pool.page_pointer(role, page)
-                for page in range(pool.current_pages)
-            )
-            assert tuple(int(value) for value in table) == expected
-
-        # The load-time chunk is the floor and is never retracted.
-        assert pool.shrink_idle(now_seconds=2.0) == 0
-        assert pool.current_pages == 2
-    finally:
-        pool.close()
-    assert not live
-
-
-def test_runtime_shrink_keeps_a_chunk_a_live_allocation_still_uses(monkeypatch):
-    pool, live, _uploaded = _chunk_provider_pool(monkeypatch)
-    try:
-        pool.grow(3)
-        allocation = pool.allocate(1, 3)
-        assert allocation.chunk_start_block_id == 2
-
-        assert pool.shrink_idle(now_seconds=1.0) == 0
-        assert pool.current_pages == 5
-
-        pool.release(1)
-        assert pool.shrink_idle(now_seconds=1.0) == 3
-        assert pool.current_pages == 2
-    finally:
-        pool.close()
-    assert not live
-
-
-def test_runtime_shrink_reports_a_device_free_failure_without_double_freeing(
-    monkeypatch,
-):
-    """A free failure after retraction leaks; it must not corrupt the pool."""
-
-    pool, live, _uploaded = _chunk_provider_pool(monkeypatch)
-    fake_free = gguf_kv.free
-    appended_buffers: set[int] = set()
-    try:
-        pool.grow(3)
-        appended = pool._chunks[-1][2]
-        appended_buffers = {int(buffer.ptr) for buffer in appended.buffers}
-
-        def failing_free(buffer, **kwargs):
-            if int(buffer.ptr) in appended_buffers:
-                raise RuntimeError("hipFree failed")
-            return fake_free(buffer, **kwargs)
-
-        monkeypatch.setattr(runner, 'free', failing_free)
-        monkeypatch.setattr(gguf_kv, 'free', failing_free)
-        with pytest.raises(RuntimeError, match="device free"):
-            pool.shrink_idle(now_seconds=1.0)
-
-        # The pool retracted the chunk before freeing it, so it no longer tracks
-        # the storage and close cannot free it a second time.
-        assert pool.current_pages == 2
-        assert len(pool._chunks) == 1
-        assert pool.stats.shrink_events == 1
-        assert appended_buffers <= live
-    finally:
-        monkeypatch.setattr(runner, 'free', fake_free)
-        monkeypatch.setattr(gguf_kv, 'free', fake_free)
-        pool.close()
-    # The failed frees leaked exactly the released chunk's plane buffers.
-    assert live == appended_buffers

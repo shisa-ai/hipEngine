@@ -33,138 +33,85 @@ def _pool(*, pages: int = 6):
     return pool, closed
 
 
-def test_workspace_root_binding_rejects_appended_chunks():
+def _stable_growth(grown: list[int] | None = None):
+    """Growth provider with one stable base: new pages extend the same arena."""
+
+    def grow(count, start):
+        if grown is not None:
+            grown.append(count)
+        return (
+            {role: tuple(base + (start + i) * 0x100 for i in range(count))
+             for role, base in (("layer0.key", 0x1000), ("layer0.value", 0x4000))},
+            {"layer0.key": 0xE000, "layer0.value": 0xF000},
+            {"arena": start + count},
+        )
+
+    return grow
+
+
+def test_growth_adopts_the_rebuilt_root_backing_for_every_page():
     pool, _ = _pool(pages=2)
-    pool._grow_storage = lambda count, start: (
-        {role: tuple(0xD000 + i * 256 for i in range(count))
-         for role in ('layer0.key', 'layer0.value')},
-        {'layer0.key': 0xE000, 'layer0.value': 0xF000},
-        {'arena': 2},
-    )
+    pool._grow_storage = _stable_growth()
+    first = pool.allocate(1, 1)
     pool.grow(2)
-    assert pool.workspace_pages_fit_root_backing((0, 1))
-    assert not pool.workspace_pages_fit_root_backing((0, 2))
-    assert not pool.workspace_pages_fit_root_backing((2, 3))
-    assert pool.workspace_backing_for_pages((0, 1)) == ({'arena': 1}, (0, 1))
-    assert pool.workspace_backing_for_pages((3, 2)) == ({'arena': 2}, (1, 0))
-    assert pool.workspace_backing_for_pages((1, 2)) is None
-    with pytest.raises(ValueError, match='at least one page'):
-        pool.workspace_backing_for_pages(())
-
-
-def test_workspace_lease_can_require_one_backing_chunk():
-    pool, _ = _pool(pages=2)
-    pool._grow_storage = lambda count, start: (
-        {role: tuple(0xD000 + i * 256 for i in range(count))
-         for role in ('layer0.key', 'layer0.value')},
-        {'layer0.key': 0xE000, 'layer0.value': 0xF000}, {'arena': 2},
-    )
-    pool.grow(4)
-    occupied = pool.lease_workspace('occupy', 1)
-    pages = pool.lease_workspace('packed', 3, within_one_chunk=True)
-    assert occupied == (0,)
-    assert all(page >= 2 for page in pages)
-    binding = pool.workspace_backing_for_pages(pages)
-    assert binding is not None and binding[0] == {'arena': 2}
-    pool.release_workspace('packed')
-    pool.release_workspace('occupy')
+    assert pool.backing == {"arena": 4}
+    # Pages from before and after growth share one lease and one base.
+    spanning = pool.allocate(2, 3)
+    assert spanning.block_ids == (1, 2, 3)
+    assert spanning.chunk_start_block_id == 0
+    assert spanning.backing == {"arena": 4}
+    assert first.chunk_start_block_id == 0
+    pool.release(2)
+    pool.release(1)
     pool.close()
 
 
-def test_confined_workspace_grows_once_without_aggregate_deficit_chunk():
+def test_workspace_lease_spans_the_growth_boundary():
     pool, _ = _pool(pages=2)
     pool._max_pages = 6
     pool._growth_chunk_pages = 1
-    grown = []
-    def grow(count, start):
-        grown.append(count)
-        return (
-            {role: tuple(0xD000 + i * 256 for i in range(count))
-             for role in ('layer0.key', 'layer0.value')},
-            {'layer0.key': 0xE000, 'layer0.value': 0xF000}, {'arena': start},
-        )
-    pool._grow_storage = grow
-    pages = pool.lease_workspace('packed', 4, within_one_chunk=True)
-    assert grown == [4]
-    assert pool.workspace_backing_for_pages(pages) is not None
-    pool.release_workspace('packed')
+    grown: list[int] = []
+    pool._grow_storage = _stable_growth(grown)
+    occupied = pool.lease_workspace("occupy", 1)
+    pages = pool.lease_workspace("packed", 3)
+    assert occupied == (0,)
+    # Only the aggregate deficit is grown: one free root page plus two new.
+    assert grown == [2]
+    assert pages == (1, 2, 3)
+    pool.release_workspace("packed")
+    pool.release_workspace("occupy")
     pool.close()
 
 
-@pytest.mark.parametrize('budget', [None, 6 * 128])
-def test_confined_workspace_grows_whole_chunk_or_refuses_budget(budget):
-    pool, _ = _pool(pages=2)
-    pool._max_pages = None if budget is None else budget // pool.page_bytes
-    grown = []
-    def grow(count, start):
-        grown.append(count)
-        return (
-            {role: tuple(0xD000 + i * 256 for i in range(count))
-             for role in ('layer0.key', 'layer0.value')},
-            {'layer0.key': 0xE000, 'layer0.value': 0xF000}, {'arena': start},
-        )
-    pool._grow_storage = grow
-    pool.grow(2)
-    grown.clear()
-    # Four pages are free in aggregate, but neither chunk can hold three.
-    if budget is None:
-        pages = pool.lease_workspace('packed', 3, within_one_chunk=True)
-        assert grown and grown[0] >= 3
-        assert pool.workspace_backing_for_pages(pages) is not None
-        pool.release_workspace('packed')
-    else:
-        with pytest.raises(MemoryError, match='within the pool budget'):
-            pool.lease_workspace('packed', 3, within_one_chunk=True)
-        assert grown == []
-        assert pool.workspace_pages('packed') is None
-    pool.close()
-
-
-@pytest.mark.parametrize("fragmented", [False, True])
-@pytest.mark.parametrize("max_pages", [4, 8])
-def test_private_allocation_grows_a_whole_chunk_or_refuses(
-    monkeypatch, fragmented: bool, max_pages: int
-) -> None:
+@pytest.mark.parametrize("max_pages", [3, 4, 8])
+def test_private_allocation_grows_the_aggregate_deficit_or_refuses(max_pages: int) -> None:
     pool, _ = _pool(pages=2)
     pool._max_pages = max_pages
     pool._growth_chunk_pages = 1
-    grown = []
-
-    def grow(pages, start):
-        grown.append(pages)
-        return (
-            {role: tuple(0xD000 + (start + i) * 256 for i in range(pages))
-             for role in ("layer0.key", "layer0.value")},
-            {"layer0.key": 0xE000, "layer0.value": 0xF000},
-            {"arena": start},
-        )
-
-    pool._grow_storage = grow
-    if fragmented:
-        pool.grow(2)
+    grown: list[int] = []
+    pool._grow_storage = _stable_growth(grown)
     pool.allocate(1, 1)
-    grown.clear()
-    allocate = pool._allocate_within_one_chunk
-    attempts = 0
-
-    def bounded_allocate(*args, **kwargs):
-        nonlocal attempts
-        attempts += 1
-        assert attempts <= 3, "private allocation retried without placement progress"
-        return allocate(*args, **kwargs)
-
-    monkeypatch.setattr(pool, "_allocate_within_one_chunk", bounded_allocate)
-    if max_pages == 4:
+    if max_pages == 3:
         with pytest.raises(MemoryError):
             pool.allocate(2, 3)
-        assert grown == []
         assert set(pool.allocations) == {1}
     else:
         allocation = pool.allocate(2, 3)
-        assert grown == [3]
-        assert len(allocation.block_ids) == 3
-        assert allocation.chunk_start_block_id == (4 if fragmented else 2)
+        assert grown == [2]
+        assert allocation.block_ids == (1, 2, 3)
         pool.release(2)
+    pool.release(1)
+    pool.close()
+
+
+def test_pool_without_a_growth_provider_keeps_its_capacity() -> None:
+    pool, _ = _pool(pages=2)
+    pool.allocate(1, 2)
+    with pytest.raises(MemoryError, match="no growth provider"):
+        pool.allocate(2, 1)
+    with pytest.raises(MemoryError, match="no growth provider"):
+        pool.lease_workspace("packed", 1)
+    assert pool.current_pages == 2
     pool.release(1)
     pool.close()
 
@@ -333,31 +280,25 @@ def test_shared_prefix_admission_grows_only_for_private_suffix() -> None:
     pool.retain_blocks(source.block_ids)
     pool.release(1)
 
-    # The prefix sits in the first storage chunk, which has one page left. A
-    # two-page suffix cannot join it there, and growth cannot help: it appends a
-    # separate chunk, and every KV kernel addresses one chunk from its own base,
-    # so a prefix and suffix split across chunks would index past the first one.
-    # The admission declines instead and the caller falls back to a private
-    # allocation, which is confined to one chunk as a whole and may use the
-    # appended one.
-    with pytest.raises(MemoryError):
-        pool.admit_with_shared_prefix(2, source.block_ids, suffix_pages=2)
-    assert grown == []
-    assert pool.stats.prefix_reused_pages == 0
-
-    private = pool.allocate(3, 2)
+    # One free page remains beside the prefix. Growth extends the same arena,
+    # so a two-page suffix grows only its one-page deficit (rounded up to the
+    # growth chunk) and continues the prefix run across the growth boundary.
+    reused = pool.admit_with_shared_prefix(2, source.block_ids, suffix_pages=2)
     assert grown == [2]
-    assert private.chunk_start_block_id == 3
-
-    # A suffix that does fit beside its prefix still reuses it.
-    reused = pool.admit_with_shared_prefix(4, source.block_ids, suffix_pages=1)
     assert reused.reused_block_ids == source.block_ids
-    assert len(reused.allocated_block_ids) == 1
+    assert reused.block_ids == (0, 1, 2, 3)
     assert reused.chunk_start_block_id == 0
     assert pool.stats.prefix_reused_pages == 2
 
+    private = pool.allocate(3, 1)
+    assert private.block_ids == (4,)
+
+    with pytest.raises(MemoryError):
+        pool.admit_with_shared_prefix(4, source.block_ids, suffix_pages=1)
+    assert pool.stats.prefix_reused_pages == 2
+
+    pool.release(2)
     pool.release(3)
-    pool.release(4)
     pool.release_blocks(source.block_ids)
     pool.close()
 
@@ -715,13 +656,12 @@ def test_growth_without_padding_keeps_the_logical_boundary() -> None:
 
 
 def test_ensure_free_pages_caps_at_the_padded_physical_budget() -> None:
-    """The contiguous-growth target is capped by padded physical pricing."""
+    """The growth target is capped by padded physical pricing."""
 
     pool, _ = _pool(pages=2)
     pool.page_bytes = 1024
     pool._max_pages = 8  # budget_bytes = 8192
     pool._growth_chunk_pages = 1
-    pool._contiguous_growth = True
     # Three logical pages fit (3072 <= 8192); four padded pages do not
     # (4 * 2048 = 8192 exactly fits, 5 * 2048 = 10240 does not).
     pool._physical_bytes_for_pages = lambda pages: pages * 2048
@@ -739,8 +679,8 @@ def test_ensure_free_pages_caps_at_the_padded_physical_budget() -> None:
 # ---------------------------------------------------------------------------
 # Idle reclamation of grown capacity.
 #
-# The pool retracts only a whole growth unit (one appended chunk, or one
-# committed arena segment) whose pages are all free in the ledger. Release is
+# The pool retracts only a whole growth unit (one committed arena segment)
+# whose pages are all free in the ledger. Release is
 # two-phase: the provider publishes the retained pointer tables and returns a
 # handle without freeing anything, the pool retracts its ledger, and only then
 # does the provider free what the pool no longer owns. These tests drive that
@@ -822,7 +762,6 @@ def _shrinkable_pool(
     pages: int = 2,
     growth: int = 2,
     max_pages: int | None = 8,
-    contiguous_growth: bool = False,
     shrink: bool = True,
     abort=None,
 ):
@@ -847,19 +786,19 @@ def _shrinkable_pool(
         before_shrink=lambda: invalidated.append(pool.current_pages),
         max_pages=max_pages,
         growth_chunk_pages=growth,
-        contiguous_growth=contiguous_growth,
     )
     return pool, provider, invalidated
 
 
 def test_shrink_idle_releases_a_free_grown_tail_chunk() -> None:
     pool, provider, invalidated = _shrinkable_pool()
-    allocation = pool.allocate(1, 3)
+    allocation = pool.allocate(1, 5)
     assert provider.grown == [3]
     assert pool.current_pages == 5
-    # The allocation landed in the appended chunk, which is the unit the shrink
-    # may retract once it is free.
-    assert allocation.chunk_start_block_id == 2
+    # Growth maps only the three-page deficit behind the same base, and the
+    # lease spans the growth boundary.
+    assert allocation.block_ids == (0, 1, 2, 3, 4)
+    assert allocation.chunk_start_block_id == 0
     pool.release(1)
     generation = pool.global_pool.generation
 
@@ -872,7 +811,7 @@ def test_shrink_idle_releases_a_free_grown_tail_chunk() -> None:
     assert provider.held == 2
     assert pool.current_pages == 2
     assert tuple(pool.chunks[0].block_ids) == (0, 1)
-    assert pool._chunks == [(0, 2, {"arena": 2})]
+    assert pool.backing == {"arena": 2}
     assert pool._release_points == [2]
     assert pool.stats.shrink_events == 1
     assert pool.stats.retired_pages == 3
@@ -892,7 +831,7 @@ def test_shrink_idle_keeps_capacity_a_live_lease_still_uses() -> None:
     pool, provider, _invalidated = _shrinkable_pool()
     pool.allocate(1, 2)
     live = pool.allocate(2, 2)
-    assert live.chunk_start_block_id == 2
+    assert live.block_ids == (2, 3)
     assert pool.current_pages == 4
 
     assert pool.shrink_idle(now_seconds=1.0) == 0
@@ -950,7 +889,7 @@ def test_shrink_idle_waits_for_an_in_flight_graph_epoch() -> None:
 def test_shrink_idle_honours_the_idle_grace_period() -> None:
     pool, provider, _invalidated = _shrinkable_pool()
     pool.idle_grace_seconds = 30.0
-    pool.allocate(1, 3, now_seconds=100.0)
+    pool.allocate(1, 5, now_seconds=100.0)
     pool.release(1, now_seconds=110.0)
 
     assert pool.shrink_idle(now_seconds=139.0) == 0
@@ -962,7 +901,7 @@ def test_shrink_idle_honours_the_idle_grace_period() -> None:
 
 def test_shrink_idle_without_a_release_provider_keeps_grown_capacity() -> None:
     pool, provider, _invalidated = _shrinkable_pool(shrink=False)
-    pool.allocate(1, 3)
+    pool.allocate(1, 5)
     pool.release(1)
 
     # No provider means no way to retract physical backing, so the grown chunk
@@ -975,11 +914,11 @@ def test_shrink_idle_without_a_release_provider_keeps_grown_capacity() -> None:
 
 def test_shrink_idle_prepare_failure_leaves_the_pool_unchanged() -> None:
     pool, provider, _invalidated = _shrinkable_pool()
-    pool.allocate(1, 3)
+    pool.allocate(1, 5)
     pool.release(1)
     generation = pool.global_pool.generation
     release_points = list(pool._release_points)
-    chunks = list(pool._chunks)
+    backing = pool.backing
     provider.failure = RuntimeError("unmap failed")
 
     with pytest.raises(RuntimeError, match="unmap failed"):
@@ -990,7 +929,7 @@ def test_shrink_idle_prepare_failure_leaves_the_pool_unchanged() -> None:
     assert provider.held == 5
     assert pool.global_pool.generation == generation
     assert pool._release_points == release_points
-    assert pool._chunks == chunks
+    assert pool.backing == backing
     assert pool.stats.shrink_events == 0
 
     provider.failure = None
@@ -1002,7 +941,7 @@ def test_shrink_idle_release_failure_keeps_the_retracted_ledger() -> None:
     """A free failure after retraction leaks storage; it cannot corrupt the pool."""
 
     pool, provider, _invalidated = _shrinkable_pool()
-    pool.allocate(1, 3)
+    pool.allocate(1, 5)
     pool.release(1)
     provider.release_failure = RuntimeError("hipFree failed")
 
@@ -1018,7 +957,7 @@ def test_shrink_idle_release_failure_keeps_the_retracted_ledger() -> None:
     assert pool.current_pages == 2
     assert pool.stats.shrink_events == 1
     assert pool.storage_view().planes[0].shape == (2,)
-    assert pool._chunks == [(0, 2, {"arena": 2})]
+    assert pool.backing == {"arena": 2}
     pool.global_pool.assert_conserved()
     # The pool still serves the retained capacity, and a later growth works.
     assert pool.allocate(2, 2).block_ids == (0, 1)
@@ -1030,7 +969,7 @@ def test_shrink_idle_release_failure_keeps_the_retracted_ledger() -> None:
 
 def test_shrink_idle_fails_closed_when_the_provider_cannot_restore() -> None:
     pool, provider, _invalidated = _shrinkable_pool()
-    pool.allocate(1, 3)
+    pool.allocate(1, 5)
     pool.release(1)
 
     def unrestorable(target: int):
@@ -1066,7 +1005,7 @@ def test_shrink_idle_holds_the_ledger_lock_against_direct_ledger_access() -> Non
     """
 
     pool, provider, _invalidated = _shrinkable_pool()
-    pool.allocate(1, 3)
+    pool.allocate(1, 5)
     pool.release(1)
     attempting = threading.Event()
     intruder_done = threading.Event()
@@ -1113,7 +1052,7 @@ def test_shrink_idle_holds_the_ledger_lock_against_direct_ledger_access() -> Non
 
 
 def test_shrink_idle_retracts_a_merged_arena_and_grows_again() -> None:
-    pool, provider, _invalidated = _shrinkable_pool(contiguous_growth=True)
+    pool, provider, _invalidated = _shrinkable_pool()
     allocation = pool.allocate(1, 3)
     assert pool.current_pages == 4
     assert allocation.chunk_start_block_id == 0
@@ -1121,7 +1060,7 @@ def test_shrink_idle_retracts_a_merged_arena_and_grows_again() -> None:
 
     assert pool.shrink_idle(now_seconds=1.0) == 2
     assert pool.backing == {"arena": 2}
-    assert pool._chunks == [(0, 2, {"arena": 2})]
+    assert pool.backing == {"arena": 2}
     assert pool._release_points == [2]
 
     # A later request grows again from the retained floor instead of reusing a
@@ -1138,7 +1077,7 @@ def test_shrink_idle_retracts_a_merged_arena_and_grows_again() -> None:
 
 def test_shrink_idle_stops_at_the_load_time_floor() -> None:
     pool, provider, _invalidated = _shrinkable_pool()
-    pool.allocate(1, 3)
+    pool.allocate(1, 5)
     pool.release(1)
     assert pool.shrink_idle(now_seconds=1.0) == 3
     assert pool.shrink_idle(now_seconds=2.0) == 0
@@ -1155,7 +1094,7 @@ def test_shrink_idle_adoption_failure_fails_closed_and_aborts_the_prepare() -> N
     pool, provider, _invalidated = _shrinkable_pool(
         abort=lambda handle: aborted.append(handle)
     )
-    pool.allocate(1, 3)
+    pool.allocate(1, 5)
     pool.release(1)
     real_truncate = pool.global_pool.truncate_pages
 

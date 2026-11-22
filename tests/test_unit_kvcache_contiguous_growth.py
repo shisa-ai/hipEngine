@@ -4,7 +4,6 @@ from tests.test_unit_kvcache_global_device_pool import _pool
 
 def test_stable_address_growth_extends_shared_prefix():
     pool, closed = _pool(pages=2)
-    pool._contiguous_growth = True
     pool._max_pages = 8
     pool._growth_chunk_pages = 1
     root = {"arena": "stable"}

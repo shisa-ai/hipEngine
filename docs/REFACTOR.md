@@ -1684,37 +1684,6 @@ verifies strict fallback and batch-invariant behavior, retire omitted-profile le
 duplicate environment adapters, retaining registered strict fallbacks. Verify public resolution and
 fallback attribution across registered, failed and missing-plan cases before removing compatibility.
 
-### R0207 — Migrate remaining chunk-local KV consumers before allocator retirement
-
-Owner: `hipengine/kvcache/`.
-
-Scope: `dense_pool`, `layer_outer`.
-
-**Deferred storage migration:** replace base-pointer execution with page-table views across chunks
-and replace DMS transient ownership before removing unused legacy factories, chunk allocation or
-identity branches. Keep same-arena checks until snapshot restore proves equivalent ownership;
-missing benchmark coverage is not a refusal reason.
-
-gfx1100 baseline: ordinary BF16 and compact INT8 public requests grow the pool
-under a small initial page floor. Ordinary compact INT8 and DMS compact INT8
-both exercise 512-token prefix reuse, cancellation, refill and clean teardown.
-The non-VMM BF16 comparison grows separate physical chunks, but each request
-still receives pages from one chunk. This is deliberate containment, not a
-cross-chunk addressing result. The first remaining consumer boundary is
-`Qwen35GGUFResidentSession.bind_device_kv_allocation()`: it materializes one
-backing's base pointers and a chunk-relative logical block table. Do not relax
-`GlobalDeviceKVPool._allocate_within_one_chunk()` before that consumer and its
-append/decode leaves can bind the page views.
-
-Done when: `uv run pytest tests/test_unit_kvcache_global_device_pool.py
-tests/test_unit_gguf_vmm_kv_pool.py tests/test_unit_gguf_global_pool_growth.py
-tests/test_unit_gguf_device_kv_binding.py tests/test_unit_gguf_prefix_cache_runner.py -q`. Then
-exercise real ordinary/DMS growth, prefix reuse, cancellation and teardown. Preserve the original
-BF16 long-context and no-mirror INT8 global-adapter gates on both gfx1100 and gfx1151:
-graph-pointer, lifecycle, cancellation, pressure, SLO and production load. Only after remaining
-registered packages migrate may compatibility fixtures retire. Registered strict/unfused/serial
-numerical fallbacks remain independent of allocator cleanup.
-
 ### R0523-C4 — Closed: intermittent gfx1100 c4 packed-decode nondeterminism
 
 Owner: `hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip`.

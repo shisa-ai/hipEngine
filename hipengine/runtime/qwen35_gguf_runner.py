@@ -132,7 +132,6 @@ from hipengine.runtime.qwen35_gguf_planning import (
     qwen35_gguf_resident_breakdown,
 )
 from hipengine.runtime.qwen35_gguf_kv import (
-    Qwen35GGUFDeviceKVPageView,
     Qwen35GGUFKVChunkBacking,
     Qwen35GGUFKVChunkLayout,
     VmmPlaneBuffer,
@@ -2619,9 +2618,7 @@ def _lease_packed_workspace_growth(
     key = f"{_GGUF_PACKED_WORKSPACE_LEASE_KEY}.growth.{next(_PACKED_WORKSPACE_GROWTH_LEASES)}"
     try:
         pages = (
-            lease(key, int(needed_pages), within_one_chunk=True)
-            if isinstance(kv_pool, GlobalDeviceKVPool)
-            else lease(key, int(needed_pages))
+            lease(key, int(needed_pages))
         )
     except (MemoryError, MemoryAdmissionRefused):
         return None
@@ -16020,47 +16017,6 @@ class Qwen35GGUFResidentSession:
 
         return graph_lifetime_of(self).close_live_graphs()
 
-    def device_kv_page_view(self) -> Qwen35GGUFDeviceKVPageView:
-        """Prepare request-local KV indirection before a consumer captures a graph."""
-
-        pool = self._device_kv_pool
-        allocation = self._device_kv_allocation
-        if not isinstance(pool, GlobalDeviceKVPool) or allocation is None:
-            raise RuntimeError("GGUF device page view requires a bound global KV allocation")
-        binding = getattr(self, "_device_kv_page_view", None)
-        if binding is not None:
-            return binding[0]
-        pointers = pool.request_page_pointers(allocation)
-        page_count = len(allocation.block_ids)
-        planes = np.asarray(tuple(pointers.values()), dtype=np.uint64)
-        block_table = np.arange(page_count, dtype=np.int32)
-        host = np.concatenate((planes.view(np.uint8).ravel(), block_table.view(np.uint8)))
-        runtime = self.runtime or get_hip_runtime()
-        charge = pool.reserve_resident_bytes("request_kv_page_view", host.nbytes)
-        buffer = None
-        try:
-            buffer = malloc(host.nbytes, runtime=runtime)
-            copy_host_array_to_device(buffer, host, host.nbytes, runtime=runtime)
-        except BaseException:
-            if buffer is not None:
-                free(buffer, runtime=runtime)
-            pool.release_private_workspace(charge)
-            raise
-        view = Qwen35GGUFDeviceKVPageView(buffer, tuple(pointers), page_count)
-        self._device_kv_page_view = (view, charge)
-        return view
-
-    def _release_device_kv_page_view(self) -> None:
-        binding = getattr(self, "_device_kv_page_view", None)
-        if binding is None:
-            return
-        if graph_lifetime_of(self).pinned_count:
-            raise RuntimeError("cannot release GGUF page view while graphs remain pinned")
-        view, charge = binding
-        free(view.buffer, runtime=self.runtime or get_hip_runtime())
-        self._device_kv_page_view = None
-        self._device_kv_pool.release_private_workspace(charge)
-
     def unbind_device_kv_allocation(self) -> DeviceKVPoolAllocation:
         """Detach scheduler-owned KV after all graph pins have been invalidated."""
 
@@ -16071,7 +16027,6 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident session has no device KV allocation")
         if graph_lifetime_of(self).pinned_count:
             raise RuntimeError("cannot detach GGUF device KV while graphs remain pinned")
-        self._release_device_kv_page_view()
         empty = tuple(None for _ in self.scratch.full_key_caches)
         self.scratch = replace(
             self.scratch,
@@ -16199,9 +16154,9 @@ class Qwen35GGUFResidentSession:
         configured_budget_mib = getattr(self, "kv_pool_memory_budget_mib", None)
         # A stable-address VMM arena grows into one root binding, so its initial
         # commit is a floor and the INT8 scale tensors are rebuilt as it grows.
-        # A plain hipMalloc provider still needs scale planes sized for the
-        # declared context at allocation time, because growth appends a separate
-        # chunk that a scale tensor cannot cover.
+        # Without VMM the pool is one fixed hipMalloc allocation: every KV
+        # consumer addresses ``plane_base + page * stride``, and a second
+        # allocation would have a different base.
         use_vmm = virtual_memory_supported(runtime)
         admission_granularity: int | None = None
         admission_plane_page_nbytes: dict[str, int] = {}
@@ -16214,7 +16169,7 @@ class Qwen35GGUFResidentSession:
                 if exc.code != HIP_ERROR_NOT_SUPPORTED:
                     raise
                 # Symbols exist but the driver refuses VMM; price and allocate
-                # as a plain chunk provider instead.
+                # one fixed hipMalloc backing instead.
                 use_vmm = False
             else:
                 admission_plane_page_nbytes = {
@@ -16355,10 +16310,13 @@ class Qwen35GGUFResidentSession:
                     raise
                 # The runtime exports every VMM symbol but the driver refuses
                 # the operation. The allocator already released whatever it had
-                # reserved, so fall back to chunk-local storage instead of
-                # failing the session.
+                # reserved, so fall back to one fixed backing instead of failing
+                # the session.
                 use_vmm = False
         if not use_vmm:
+            # No stable-address growth: the initial backing is the whole page
+            # pool (``HIPENGINE_KV_POOL_INITIAL_PAGES`` sizes it). ``max_pages``
+            # stays the KV byte budget, which private packed workspaces share.
             backing = _allocate_qwen35_gguf_kv_chunk(
                 _kv_allocation_config(self.runner),
                 runtime=runtime,
@@ -16368,7 +16326,6 @@ class Qwen35GGUFResidentSession:
             )
             plane_owners = {}
             plane_page_nbytes = {}
-        backings = [backing]
         plane_page_pointers: dict[str, tuple[int, ...]] = {}
 
         def add_plane(role: str, buffer: DeviceBuffer | None) -> None:
@@ -16546,76 +16503,6 @@ class Qwen35GGUFResidentSession:
                 raise
             return retained
 
-        def grow_storage_chunk(
-            pages: int,
-            start_block_id: int,
-        ) -> tuple[dict[str, tuple[int, ...]], dict[str, int], object]:
-            """Append a fresh hipMalloc chunk and rebuild indirection tables."""
-
-            # `pointer_tables` is rebound below, which without this declaration
-            # makes it a local and turns the `old_tables = pointer_tables` read
-            # into an UnboundLocalError the first time the pool actually grows.
-            nonlocal descriptor_generation, pointer_tables
-            count = int(pages)
-            start = int(start_block_id)
-            if count <= 0 or start < 0:
-                raise ValueError("global KV growth requires positive pages and a valid start")
-            chunk = _allocate_qwen35_gguf_kv_chunk(
-                _kv_allocation_config(self.runner),
-                runtime=runtime,
-                start_block_id=start,
-                pages=count,
-                layout=layout,
-            )
-            appended: dict[str, tuple[int, ...]] = {}
-
-            def add_appended(role: str, buffer: DeviceBuffer | None) -> None:
-                if buffer is None:
-                    return
-                page_nbytes = int(buffer.nbytes) // count
-                appended[role] = tuple(
-                    int(buffer.ptr) + page_id * page_nbytes
-                    for page_id in range(count)
-                )
-
-            for layer_id in range(len(layout.layer_storage_dtypes)):
-                add_appended(f"layer{layer_id}.key_payload", chunk.full_key_caches[layer_id])
-                add_appended(f"layer{layer_id}.value_payload", chunk.full_value_caches[layer_id])
-                add_appended(f"layer{layer_id}.bf16_mirror_key", chunk.full_bf16_mirror_key_caches[layer_id])
-                add_appended(f"layer{layer_id}.bf16_mirror_value", chunk.full_bf16_mirror_value_caches[layer_id])
-                add_appended(f"layer{layer_id}.key_scale", chunk.full_k_scale_caches[layer_id])
-                add_appended(f"layer{layer_id}.value_scale", chunk.full_v_scale_caches[layer_id])
-
-            try:
-                new_tables = _upload_pointer_tables(appended)
-            except BaseException:
-                _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
-                raise
-            next_generation = descriptor_generation + 1
-            try:
-                _upload_descriptor(next_generation, start + count)
-            except BaseException:
-                for table in reversed(tuple(new_tables.values())):
-                    free(table, runtime=runtime)
-                _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
-                raise
-            old_tables = pointer_tables
-            for role, extra in appended.items():
-                plane_page_pointers[role] += extra
-            pointer_tables = new_tables
-            descriptor_generation = next_generation
-            for table in reversed(tuple(old_tables.values())):
-                free(table, runtime=runtime)
-            backings.append(chunk)
-            # The appended chunk carries its own device buffers, and every KV
-            # kernel addresses a chunk from its own base, so the pool needs the
-            # backing to keep each allocation inside one chunk.
-            return (
-                appended,
-                {role: int(table.ptr) for role, table in new_tables.items()},
-                chunk,
-            )
-
         def grow_storage_vmm(
             pages: int,
             start_block_id: int,
@@ -16704,7 +16591,7 @@ class Qwen35GGUFResidentSession:
                 new_backing,
             )
 
-        grow_storage = grow_storage_vmm if use_vmm else grow_storage_chunk
+        grow_storage = grow_storage_vmm if use_vmm else None
 
         def _synchronize_before_release() -> None:
             """Drain the device before storage a captured graph may address is freed.
@@ -16742,83 +16629,16 @@ class Qwen35GGUFResidentSession:
                 f"{len(failures)} device free(s) failed"
             ) from failures[0]
 
-        # Both shrink providers are two-phase, because only the pool knows when
+        # The shrink provider is two-phase, because only the pool knows when
         # the ledger has adopted the retained publication:
         #
         #   shrink_storage(target) -> (pointer_tables, root_backing, handle)
         #       validate the target, publish the retained tables and descriptor,
         #       free nothing. Fallible, and a failure leaves everything as it was.
         #   release_storage(handle)
-        #       free the tables and chunks the pool no longer owns. Called after
-        #       the ledger and the pool's chunk bookkeeping were retracted, so a
-        #       failure can only leak device memory, never leave the ledger
-        #       pointing at freed storage.
-
-        def shrink_storage_chunk(
-            target_pages: int,
-        ) -> tuple[dict[str, int], object | None, object]:
-            """Publish retained tables for a chunk-confined pool; free nothing.
-
-            The handle is ``(target, new_tables, released_chunks,
-            next_descriptor_generation)``.
-            """
-
-            nonlocal descriptor_generation, pointer_tables
-            target = int(target_pages)
-            current = len(next(iter(plane_page_pointers.values())))
-            if target <= 0 or target >= current:
-                raise ValueError(
-                    "global KV shrink requires a positive target below the current capacity"
-                )
-            # The pool retracts whole growth units, so the released chunks are a
-            # suffix that begins exactly at the retained capacity.
-            released_chunks = [
-                chunk for chunk in backings if int(chunk.start_block_id) >= target
-            ]
-            if not released_chunks:
-                raise ValueError("global KV shrink target releases no storage chunk")
-            if int(released_chunks[0].start_block_id) != target:
-                raise ValueError(
-                    "global KV shrink target is not an allocated chunk boundary"
-                )
-            _synchronize_before_release()
-            new_tables = _upload_retained_tables(target)
-            next_generation = descriptor_generation + 1
-            try:
-                _upload_descriptor(next_generation, target)
-            except BaseException:
-                for table in reversed(tuple(new_tables.values())):
-                    free(table, runtime=runtime)
-                raise
-            return (
-                {role: int(table.ptr) for role, table in new_tables.items()},
-                None,
-                (target, new_tables, tuple(released_chunks), next_generation),
-            )
-
-        def release_storage_chunk(handle: object) -> None:
-            """Free the released chunks and the superseded pointer tables."""
-
-            nonlocal descriptor_generation, pointer_tables
-            target, new_tables, released_chunks, next_generation = handle
-            old_tables = pointer_tables
-            for role in sorted(plane_page_pointers):
-                plane_page_pointers[role] = plane_page_pointers[role][:target]
-            pointer_tables = new_tables
-            descriptor_generation = next_generation
-            # Stop tracking the released chunks before freeing them: a failed free
-            # leaks device memory, whereas a stale entry would double-free on
-            # close.
-            del backings[len(backings) - len(released_chunks) :]
-            failures: list[BaseException] = []
-            for table in reversed(tuple(old_tables.values())):
-                _free_quietly(table, failures)
-            for chunk in reversed(released_chunks):
-                try:
-                    _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
-                except BaseException as exc:  # noqa: BLE001 - reported below
-                    failures.append(exc)
-            _raise_release_failures("its storage chunks", failures)
+        #       free the tables the pool no longer owns. Called after the ledger
+        #       was retracted, so a failure can only leak device memory, never
+        #       leave the ledger pointing at freed storage.
 
         def shrink_storage_vmm(
             target_pages: int,
@@ -16926,13 +16746,13 @@ class Qwen35GGUFResidentSession:
                 _free_quietly(table, failures)
             _raise_release_failures("its arena commit", failures)
 
-        shrink_storage = shrink_storage_vmm if use_vmm else shrink_storage_chunk
-        release_storage = release_storage_vmm if use_vmm else release_storage_chunk
+        shrink_storage = shrink_storage_vmm if use_vmm else None
+        release_storage = release_storage_vmm if use_vmm else None
 
         def abort_shrink(handle: object) -> None:
             """Free the pointer tables a prepare published, and nothing else.
 
-            Both prepares publish the retained tables and free nothing, so when
+            The prepare publishes the retained tables and frees nothing, so when
             the pool cannot adopt them the tables are the only unowned storage.
             The prepare is never undone: the VMM provider has already unmapped
             the arena, and the pool reports a storage fault instead of trying to
@@ -16956,12 +16776,10 @@ class Qwen35GGUFResidentSession:
             _free_quietly(descriptor, failures)
             for table in reversed(tuple(pointer_tables.values())):
                 _free_quietly(table, failures)
-            chunks = (backing,) if use_vmm else tuple(reversed(backings))
-            for chunk in chunks:
-                try:
-                    _free_qwen35_gguf_kv_chunk(chunk, runtime=runtime)
-                except BaseException as error:
-                    failures.append(error)
+            try:
+                _free_qwen35_gguf_kv_chunk(backing, runtime=runtime)
+            except BaseException as error:
+                failures.append(error)
             if failures:
                 raise BaseExceptionGroup("global KV pool storage close failed", failures)
 
@@ -17013,10 +16831,6 @@ class Qwen35GGUFResidentSession:
             max_pages=max_pages,
             growth_chunk_pages=growth_chunk_pages,
             on_pressure=self._on_device_kv_pool_pressure,
-            # Only a stable-address VMM arena may merge its growth into one root
-            # binding. A hipMalloc provider keeps chunk-local confinement so an
-            # allocation never straddles two incompatible bases.
-            contiguous_growth=use_vmm,
             physical_bytes_for_pages=physical_bytes_for_pages,
         )
 

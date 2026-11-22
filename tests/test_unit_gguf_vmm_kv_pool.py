@@ -143,14 +143,12 @@ def test_vmm_growth_preserves_pointer_values_across_shared_prefix_admissions(
 
         first = pool.allocate(1, initial_pages)
         assert first.pool_page_capacity == initial_pages
-        assert len(pool._chunks) == 1
 
         second = pool.admit_with_shared_prefix(
             2, first.block_ids, suffix_pages=3
         )
         assert second.block_ids[:initial_pages] == first.block_ids
         assert pool.current_pages > initial_pages
-        assert len(pool._chunks) == 1
         assert second.chunk_start_block_id == 0
 
         # Previously published page pointers must not move.
@@ -229,28 +227,33 @@ def test_virtual_reservation_is_not_counted_as_physical_memory(monkeypatch) -> N
     assert memory_stats()["current_allocated_bytes"] == before
 
 
-def test_runtime_without_vmm_keeps_chunk_local_confinement(monkeypatch) -> None:
-    """An unsupported runtime must not turn on contiguous growth."""
+def test_runtime_without_vmm_allocates_one_fixed_backing(monkeypatch) -> None:
+    """Without stable addresses the pool is one allocation that never grows."""
 
     session, _allocator = _session(monkeypatch)
     # A runtime without a HIP library cannot provide stable addresses.
     session.runtime = SimpleNamespace(memset=lambda *args: None)
     pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
     try:
-        assert pool._contiguous_growth is False
         assert pool.current_pages == 4
+        allocation = pool.allocate(1, 4)
+        assert allocation.backing is pool.backing
+        with pytest.raises(MemoryError, match="no growth provider"):
+            pool.allocate(2, 1)
+        assert pool.current_pages == 4
+        pool.release(1)
     finally:
         pool.close()
 
 
-def test_supported_symbols_with_unsupported_driver_falls_back_to_chunks(
+def test_supported_symbols_with_unsupported_driver_falls_back_to_fixed_backing(
     monkeypatch,
 ) -> None:
     """Exported VMM symbols do not prove driver support.
 
     A runtime that exports every entry point but returns ``hipErrorNotSupported``
-    (801) must release whatever it reserved and fall back to chunk-local storage
-    instead of failing the session.
+    (801) must release whatever it reserved and fall back to one fixed hipMalloc
+    backing instead of failing the session.
     """
 
     library = FakeSessionVmmLibrary()
@@ -258,8 +261,9 @@ def test_supported_symbols_with_unsupported_driver_falls_back_to_chunks(
     session, allocator = _session(monkeypatch, library=library)
     pool = session.create_global_device_kv_pool(page_capacity=4, generation=1)
     try:
-        assert pool._contiguous_growth is False
         assert pool.current_pages == 4
+        with pytest.raises(MemoryError, match="no growth provider"):
+            pool.grow(1)
         # The failed VMM attempt left no address reservation behind.
         assert library.reserved_sizes == []
     finally:
@@ -355,7 +359,6 @@ def test_growth_commit_failure_rolls_back_physical_and_state(
         assert pool.current_pages == baseline_pages
         assert _committed_snapshot(pool) == baseline_committed
         assert dict(allocator.uploaded) == baseline_uploads
-        assert len(pool._chunks) == 1
     finally:
         pool.close()
 

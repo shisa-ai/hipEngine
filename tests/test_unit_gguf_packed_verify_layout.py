@@ -2811,22 +2811,19 @@ def test_packed_state_leases_available_arena_without_eager_reservation(monkeypat
     assert state.buffers == ()
 
 
-def test_packed_state_replaces_incompatible_eager_growth_with_one_chunk(monkeypatch):
+def test_packed_state_extends_eager_pages_across_the_growth_boundary(monkeypatch):
+    """One stable-address backing serves eager and grown pages by global id."""
+
     layout = _lease_test_layout()
     backing = _lease_test_backing(layout)
     leases = []
     released = []
     def lease(key, count):
         leases.append((key, count))
-        return (8, 9) if count == 2 else (10, 11, 12, 13)
-    def binding(pages):
-        if pages == (0, 1, 8, 9):
-            return None
-        assert pages == (10, 11, 12, 13)
-        return backing, (0, 1, 2, 3)
+        return (8, 9)
     pool = SimpleNamespace(
         backing=backing, workspace_pages=lambda key: (0, 1),
-        lease_workspace=lease, workspace_backing_for_pages=binding,
+        lease_workspace=lease,
         release_workspace=lambda key: released.append(key),
     )
     monkeypatch.setattr(gguf_runner, 'malloc', lambda *args, **kwargs: pytest.fail('private allocation'))
@@ -2834,128 +2831,34 @@ def test_packed_state_replaces_incompatible_eager_growth_with_one_chunk(monkeypa
         _lease_test_runner(), slot_count=2, max_sequence_length=512,
         runtime=SimpleNamespace(), kv_layout=layout, kv_pool=pool,
     )
-    assert [count for _, count in leases] == [2, 4]
-    assert released == [leases[0][0]]
-    assert state.growth_lease_key == leases[1][0]
+    assert [count for _, count in leases] == [2]
+    assert released == []
+    assert state.growth_lease_key == leases[0][0]
     assert state.kv_backing_kind == 'pool_lease'
-    assert state.page_ids == (0, 1, 2, 3)
-
-
-@pytest.mark.parametrize('replacement_refused', [False, True])
-def test_packed_incompatible_growth_release_is_not_retried(replacement_refused):
-    from hipengine.runtime.gguf_packed_backing import select_packed_arena_backing
-
-    released = []
-    growth_calls = []
-
-    def release(key):
-        released.append(key)
-        raise RuntimeError('release failed')
-
-    def grow(pool, *, needed_pages):
-        growth_calls.append(needed_pages)
-        return ('growth', (8, 9)) if len(growth_calls) == 1 else ('replacement', (10, 11, 12, 13))
-
-    def bind(pages):
-        return None
-
-    pool = SimpleNamespace(
-        workspace_pages=lambda key: (0, 1),
-        workspace_backing_for_pages=bind,
-        release_workspace=release,
-    )
-    if replacement_refused:
-        # Let the first cleanup succeed so failure is in replacement refusal.
-        def release(key):
-            released.append(key)
-            if key == 'replacement':
-                raise RuntimeError('release failed')
-        pool.release_workspace = release
-    with pytest.raises(RuntimeError, match='release failed'):
-        select_packed_arena_backing(
-            pool, total_pages=4, layout=object(), eager_key='eager',
-            lease_growth=grow, on_shortfall=lambda count: None,
-        )
-    assert released == (['growth', 'replacement'] if replacement_refused else ['growth'])
-
-
-def test_packed_replacement_binding_failure_releases_new_lease(monkeypatch):
-    layout = _lease_test_layout()
-    backing = _lease_test_backing(layout)
-    leases = []
-    released = []
-    def lease(key, count):
-        leases.append((key, count))
-        return (8, 9) if count == 2 else (10, 11, 12, 13)
-    def binding(pages):
-        if pages == (0, 1, 8, 9):
-            return None
-        raise RuntimeError('binding failed')
-    pool = SimpleNamespace(
-        backing=backing, workspace_pages=lambda key: (0, 1),
-        lease_workspace=lease, workspace_backing_for_pages=binding,
-        release_workspace=lambda key: released.append(key),
-    )
-    monkeypatch.setattr(gguf_runner, 'malloc', lambda *args, **kwargs: pytest.fail('private allocation'))
-    with pytest.raises(RuntimeError, match='binding failed'):
-        _GGUFPackedTargetState.allocate(
-            _lease_test_runner(), slot_count=2, max_sequence_length=512,
-            runtime=SimpleNamespace(), kv_layout=layout, kv_pool=pool,
-        )
-    assert [count for _, count in leases] == [2, 4]
-    assert released == [key for key, _ in leases]
-    assert len(set(released)) == 2
-
-
-def test_packed_state_binds_appended_chunk_with_local_page_offsets(monkeypatch):
-    layout = _lease_test_layout()
-    backing = _lease_test_backing(layout)
-    pool = SimpleNamespace(
-        backing=SimpleNamespace(layout='wrong root'),
-        workspace_pages=lambda key: (10, 11, 12, 13),
-        workspace_backing_for_pages=lambda pages: (backing, (2, 3, 4, 5)),
-    )
-    monkeypatch.setattr(gguf_runner, 'malloc', lambda *args, **kwargs: pytest.fail('private allocation'))
-    state = _GGUFPackedTargetState.allocate(
-        _lease_test_runner(), slot_count=2, max_sequence_length=512,
-        runtime=SimpleNamespace(), kv_layout=layout, kv_pool=pool,
-    )
-    assert state.page_ids == (2, 3, 4, 5)
+    assert state.page_ids == (0, 1, 8, 9)
     assert state.full_key_caches == backing.full_key_caches
     assert state.copy_segments(0, start_position=250, rows=12) == (
-        (250, 2 * 256 + 250, 6), (256, 3 * 256, 6),
+        (250, 0 * 256 + 250, 6), (256, 1 * 256, 6),
     )
     assert state.buffers == ()
 
 
-def test_packed_state_releases_cross_chunk_lease_before_private_fallback(monkeypatch):
-    layout = _lease_test_layout()
-    backing = _lease_test_backing(layout)
+def test_packed_state_releases_growth_when_the_root_layout_does_not_match():
+    from hipengine.runtime.gguf_packed_backing import select_packed_arena_backing
+
     released = []
-    reserved = []
     pool = SimpleNamespace(
-        backing=backing, workspace_pages=lambda key: None,
-        lease_workspace=lambda key, pages: (0, 1, 8, 9),
-        workspace_pages_fit_root_backing=lambda pages: False,
-        release_workspace=lambda key: released.append(key),
-        reserve_private_workspace=lambda nbytes: reserved.append(nbytes) or 'private',
+        backing=SimpleNamespace(layout='other layout'),
+        workspace_pages=lambda key: None,
+        release_workspace=released.append,
     )
-    count = 0
-    def malloc(nbytes, **kwargs):
-        nonlocal count
-        count += 1
-        return DeviceBuffer(ptr=0x500000 + count * 0x10000, nbytes=int(nbytes))
-    monkeypatch.setattr(gguf_runner, 'malloc', malloc)
-    monkeypatch.setattr(gguf_kv, 'malloc', malloc)
-    state = _GGUFPackedTargetState.allocate(
-        _lease_test_runner(), slot_count=2, max_sequence_length=512,
-        runtime=SimpleNamespace(), kv_layout=layout, kv_pool=pool,
-    )
-    assert len(released) == 1
-    assert reserved and state.backing_lease.token == 'private'
-    assert state.kv_backing_kind == 'private'
-    assert state.growth_lease_key is None
-    assert state.page_ids == (0, 1, 2, 3)
+    with pytest.raises(RuntimeError, match='layout-compatible'):
+        select_packed_arena_backing(
+            pool, total_pages=4, layout='packed layout', eager_key='eager',
+            lease_growth=lambda pool, *, needed_pages: ('growth', (0, 1, 2, 3)),
+            on_shortfall=lambda count: None,
+        )
+    assert released == ['growth']
 
 
 def test_gguf_packed_target_state_allocate_private_without_lease(monkeypatch) -> None:

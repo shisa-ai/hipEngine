@@ -222,17 +222,6 @@ class GlobalKVPoolSet:
         except IndexError as exc:
             raise IndexError(f"KV page_id {page_id} is outside the global pool") from exc
 
-    def page_pointers_for(self, page_ids: tuple[int, ...]) -> dict[str, tuple[int, ...]]:
-        """Resolve a list of page IDs against every payload and metadata plane."""
-
-        with self._lock:
-            for page_id in page_ids:
-                self._get_page(page_id)
-            return {
-                role: tuple(pointers[page_id] for page_id in page_ids)
-                for role, pointers in sorted(self._plane_page_pointers.items())
-            }
-
     def append_pages(
         self,
         plane_page_pointers: dict[str, tuple[int, ...]],
@@ -374,7 +363,6 @@ class GlobalKVPoolSet:
         growth_credit_pages: int,
         shared_page_ids: tuple[int, ...] = (),
         require_contiguous: bool = False,
-        within_page_range: tuple[int, int] | None = None,
     ) -> GlobalPageLease:
         """Lease private and shared pages, optionally requiring one contiguous run.
 
@@ -398,17 +386,10 @@ class GlobalKVPoolSet:
                 page = self._get_page(page_id)
                 if page.credit_owner_id is not None or page.state is KVPageState.FREE:
                     raise ValueError(f"KV page {page_id} is not shareable")
-            if within_page_range is not None:
-                low, high = int(within_page_range[0]), int(within_page_range[1])
-                if any(not (low <= page_id < high) for page_id in shared):
-                    raise MemoryError(
-                        "shared KV pages fall outside the requested page range"
-                    )
             acquired = self._select_free(
                 private_count + credit_count,
                 after=(shared[-1] if shared else None),
                 require_contiguous=bool(require_contiguous),
-                within=within_page_range,
             )
             private = acquired[:private_count]
             if require_contiguous and (*shared, *private) != _contiguous_run(
@@ -654,7 +635,6 @@ class GlobalKVPoolSet:
         *,
         after: int | None = None,
         require_contiguous: bool = False,
-        within: tuple[int, int] | None = None,
     ) -> tuple[int, ...]:
         """Choose free pages without claiming them.
 
@@ -663,18 +643,9 @@ class GlobalKVPoolSet:
         fallback preserves the previous placement policy. ``require_contiguous``
         selects only from a single free run and reports a placement failure when the
         pool has enough pages but no run of the requested size.
-
-        ``within`` restricts the choice to a half-open page-id range. A pool that
-        grew by appending storage chunks addresses each chunk from its own base, so
-        a caller whose kernels index one chunk asks for pages from one chunk.
         """
 
         candidates = self._free_page_ids
-        if within is not None:
-            low, high = int(within[0]), int(within[1])
-            candidates = {
-                page_id for page_id in self._free_page_ids if low <= page_id < high
-            }
         if count > len(candidates):
             raise MemoryError(
                 f"global KV page pool cannot allocate {count} pages with "
