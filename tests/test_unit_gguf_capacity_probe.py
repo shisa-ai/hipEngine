@@ -62,6 +62,7 @@ def _drive(
     )
     monkeypatch.setattr(probe, "_probe_gemma4", _record("gemma4"))
     monkeypatch.setattr(probe, "_probe_qwen35", _record("qwen35"))
+    monkeypatch.setattr(probe, "_probe_inkling2", _record("inkling2"))
     monkeypatch.setattr(
         sys,
         "argv",
@@ -88,6 +89,15 @@ def test_the_qwen35_family_routes_to_the_qwen35_branch(
     monkeypatch: pytest.MonkeyPatch, architecture: str
 ) -> None:
     assert _drive(monkeypatch, architecture)["branch"] == "qwen35"
+
+
+@pytest.mark.parametrize("architecture", ["inkling2", "inkling2_loop"])
+def test_inkling_routes_to_the_packed_fp32_probe(monkeypatch, architecture):
+    record = _drive(monkeypatch, architecture, "--prompt-length", "65")
+    assert record["branch"] == "inkling2"
+    assert record["result"]["kv_storage"] == "fp32"
+    assert record["prompt_length"] == 65
+    assert record["max_sequence_length"] == 262144
 
 
 def test_an_unknown_architecture_fails_by_name_before_allocating(

@@ -68,6 +68,20 @@ class Inkling2DeviceAttention:
             storage_dtype=DType.FP32,
         )
 
+    def reserve_capacity(self):
+        """Allocate the banks and depth-sized scores without advancing a visit."""
+        if self.closed:
+            raise RuntimeError("Inkling 2 attention state is closed")
+        for visit, (cap, _, kv_heads, dim, _) in enumerate(self.geometry):
+            if visit not in self.banks:
+                self.banks[visit] = self._make_bank(cap, kv_heads, dim)
+        if self.split is not None and any(cap >= _SPLIT_MIN_LIVE for cap, *_ in self.geometry):
+            self._reserve_scores()
+
+    def _reserve_scores(self):
+        if not self.scores:
+            self.scores = self._allocate(4 * max(capacity * heads for capacity, heads, *_ in self.geometry))
+
     def step(self, visit, position, q, key, value, bias, sink, *, undo=None, gain=None, projection=None):
         if self.closed:
             raise RuntimeError("Inkling 2 attention state is closed")
@@ -81,8 +95,8 @@ class Inkling2DeviceAttention:
             raise ValueError("invalid Inkling 2 attention input shapes")
         if gain is not None and gain.shape != (nq * d,):
             raise ValueError("invalid Inkling 2 attention gain shape")
-        if use_split and not self.scores:
-            self.scores = self._allocate(4 * max(capacity * heads for capacity, heads, *_ in self.geometry))
+        if use_split:
+            self._reserve_scores()
         if visit not in self.banks:
             self.banks[visit] = self._make_bank(cap, nk, d)
         keys, values, spans = self.banks[visit]

@@ -34,7 +34,8 @@ protocol's only option is the expensive tier-2 point it exists to avoid.
 The qwen4exp branch prepares the public serving pool and runs a short request
 cohort, then checks full-vocabulary logits on its c1 runner. It certifies fixed
 resident allocations and the exercised transient shapes, not arbitrary prefix
-cache growth or all deep-context workspaces.
+cache growth or all deep-context workspaces. Inkling GGUF reserves all
+per-visit KV and depth-sized score allocations before its short prompt.
 """
 
 from __future__ import annotations
@@ -109,7 +110,9 @@ def main() -> int:
     metadata_path = discover_gguf_files(args.model)[0] if args.model.is_dir() else args.model
     architecture = GGUFReader(metadata_path).info.architecture
     result["architecture"] = architecture
-    args.kv_storage = args.kv_storage or ("bf16" if architecture == "qwen4exp" else "int8_per_token_head")
+    inkling = architecture in ("inkling2", "inkling2_loop")
+    default_kv = "fp32" if inkling else "bf16" if architecture == "qwen4exp" else "int8_per_token_head"
+    args.kv_storage = args.kv_storage or default_kv
     result["kv_storage"] = args.kv_storage
     if args.sidecar is not None and architecture != "qwen4exp":
         parser.error("--sidecar is implemented only for the qwen4exp capacity probe")
@@ -129,6 +132,13 @@ def main() -> int:
         result["kv_storage"] = None
         result["kv_storage_note"] = "the generator's own route; --kv-storage does not apply to gemma4"
         _probe_gemma4(args, result, prompt_ids, np=np)
+    elif inkling:
+        if args.kv_storage not in ("auto", "fp32"):
+            parser.error("Inkling GGUF capacity probe implements FP32 KV only")
+        if args.max_batch_size != 1 or args.prefix_cache != "off":
+            parser.error("Inkling GGUF capacity probe covers one independent request with prefix reuse off")
+        result["kv_storage"] = "fp32"
+        _probe_inkling2(args, result, prompt_ids, np=np)
     elif architecture in ("qwen35", "qwen35moe"):
         _probe_qwen35(args, result, prompt_ids, np=np)
     else:
@@ -137,7 +147,7 @@ def main() -> int:
         # from deep inside a loader that was never going to serve this file.
         raise SystemExit(
             f"unsupported GGUF architecture {architecture!r}: this probe has a "
-            f"tier-1 capacity branch for qwen4exp, gemma4, qwen35 and qwen35moe. Add a "
+            f"tier-1 capacity branch for qwen4exp, gemma4, qwen35, qwen35moe, inkling2 and inkling2_loop. Add a "
             f"branch for {architecture!r} rather than running the expensive "
             f"tier-2 point this probe exists to avoid."
         )
@@ -148,6 +158,58 @@ def main() -> int:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(payload + "\n", encoding="utf-8")
     return 0 if result.get("status") == "pass" else 1
+
+
+def _probe_inkling2(args, result: dict, prompt_ids: list[int], *, np) -> None:
+    """Exercise short prefill and decode with full-capacity per-visit allocations."""
+    from contextlib import closing
+
+    from hipengine import LLM
+    from hipengine.core.memory import memory_stats, reset_memory_stats
+
+    before = memory_stats()["current_allocated_bytes"]
+    reset_memory_stats()
+    llm = None
+    result.update(command=[sys.executable, *sys.argv], probe_implementation="inkling2_packed_request_owner",
+                  capacity_scope="full-depth KV and score allocation; exercised short prefill and decode scratch")
+    try:
+        llm = LLM(model=str(args.model), max_sequence_length=args.max_sequence_length,
+                  max_active_requests=1, prefix_cache="off", speculative_mtp_serving="off")
+        generator = llm._get_text_generator()
+        generator = getattr(generator, "_inner", generator)
+        model = generator.model
+        chunk = generator.prefill_block_width
+        if args.prefill_chunk_size and args.prefill_chunk_size != chunk:
+            raise ValueError(f"public route selected chunk {chunk}; cannot probe chunk {args.prefill_chunk_size}")
+        result.update(generator=type(generator).__name__, prefill_chunk_size=chunk,
+                      max_prefill_rows_exercised=min(chunk, len(prompt_ids)))
+        ids = (prompt_ids[0] % model.mapping.vocab_size,) * len(prompt_ids)
+        with closing(model.session(args.max_sequence_length)) as session:
+            session.attention.reserve_capacity()
+            result["allocated_visit_slots"] = len(session.attention.banks)
+            result["capacity_allocated_bytes"] = memory_stats()["current_allocated_bytes"] - before
+            for begin in range(0, len(ids), chunk):
+                block = ids[begin:begin + chunk]
+                final = begin + len(block) == len(ids)
+                logits = session.step(block[0], logits=final) if len(block) == 1 else session.prefill_block(block, logits=final)
+            first_token = int(np.argmax(logits))
+            finite = True
+            for step in range(args.decode_tokens):
+                finite = finite and logits.shape == (model.mapping.vocab_size,) and bool(np.isfinite(logits).all())
+                if not finite or step + 1 == args.decode_tokens:
+                    break
+                logits = session.step(int(np.argmax(logits)))
+            result.update(status="pass" if finite else "nonfinite_logits", finite_logits=bool(finite),
+                          first_token=first_token, tracked_peak_gib=memory_stats()["peak_allocated_bytes"] / 2**30)
+    except Exception as exc:
+        result.update(status="oom" if isinstance(exc, MemoryError) or "out of memory" in str(exc).lower()
+                      else "error", error=f"{type(exc).__name__}: {exc}")
+    finally:
+        if llm is not None:
+            llm.close()
+        result["memory_after_close"] = memory_stats()
+        if result["memory_after_close"]["current_allocated_bytes"] != before:
+            result.update(status="leaked_allocations", error=result.get("error", "probe did not release its device allocations"))
 
 
 def _request_cohort(llm, prompt_ids, params, width):
