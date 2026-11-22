@@ -2464,7 +2464,8 @@ def test_gguf_packed_target_state_copy_segments_arbitrary_pages() -> None:
         _segment_test_state(page_ids=(1, 2, 3))
 
 
-def test_gguf_session_packed_kv_segments_walk_both_page_tables() -> None:
+@pytest.mark.parametrize('global_pages', [False, True])
+def test_gguf_session_packed_kv_segments_walk_both_page_tables(global_pages) -> None:
     class _RecordingRuntime:
         def __init__(self) -> None:
             self.copies: list[tuple[int, int, int, int]] = []
@@ -2499,6 +2500,19 @@ def test_gguf_session_packed_kv_segments_walk_both_page_tables() -> None:
     )
     packed_state = _segment_test_state(page_ids=(10, 11, 20, 21))
     row_nbytes = 2 * 4 * DType.BF16.itemsize
+    session_pages = {
+        (role, page): base + page * 256 * row_nbytes
+        for role, base in [('layer0.key_payload', 0x200000), ('layer0.value_payload', 0x300000)]
+        for page in (7, 3)
+    }
+    if global_pages:
+        from hipengine.kvcache.device_global import GlobalDeviceKVPool
+
+        pool = object.__new__(GlobalDeviceKVPool)
+        pool.global_pool = SimpleNamespace(page_pointer=lambda role, page: session_pages[role, page])
+        session._device_kv_pool = pool
+        session.scratch.full_key_caches = (DeviceBuffer(ptr=0x400000, nbytes=1 << 20),)
+        session.scratch.full_value_caches = (DeviceBuffer(ptr=0x500000, nbytes=1 << 20),)
     runtime = _RecordingRuntime()
 
     session._copy_session_packed_kv_segments(

@@ -15798,7 +15798,7 @@ class Qwen35GGUFResidentSession:
                 continue
             row_nbytes = sum(
                 int(nbytes)
-                for _source, _destination, nbytes in self._packed_kv_copy_planes(
+                for _role, _source, _destination, nbytes in self._packed_kv_copy_planes(
                     source.scratch,
                     self.scratch,
                     layer_id,
@@ -26569,7 +26569,7 @@ class Qwen35GGUFResidentSession:
         source: object,
         destination: object,
         layer_id: int,
-    ) -> tuple[tuple[object, object, int], ...]:
+    ) -> tuple[tuple[str, object, object, int], ...]:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         layout = getattr(source, "kv_layout", None) or getattr(destination, "kv_layout", None)
@@ -26601,16 +26601,16 @@ class Qwen35GGUFResidentSession:
             if storage == DType.INT8_PER_TOKEN_HEAD and layout.int8_kv_value_bf16
             else (DType.INT8.itemsize if storage == DType.INT8_PER_TOKEN_HEAD else DType.BF16.itemsize)
         )
-        plane_specs: list[tuple[str, int]] = [
-            ("full_key_caches", key_row_nbytes),
-            ("full_value_caches", value_row_nbytes),
+        plane_specs: list[tuple[str, str, int]] = [
+            ("key_payload", "full_key_caches", key_row_nbytes),
+            ("value_payload", "full_value_caches", value_row_nbytes),
         ]
         if int(layer_id) in frozenset(layout.bf16_mirror_layer_indices):
             mirror_row_nbytes = payload_elements * DType.BF16.itemsize
             plane_specs.extend(
                 (
-                    ("full_bf16_mirror_key_caches", mirror_row_nbytes),
-                    ("full_bf16_mirror_value_caches", mirror_row_nbytes),
+                    ("bf16_mirror_key", "full_bf16_mirror_key_caches", mirror_row_nbytes),
+                    ("bf16_mirror_value", "full_bf16_mirror_value_caches", mirror_row_nbytes),
                 )
             )
         if storage == DType.INT8_PER_TOKEN_HEAD:
@@ -26622,12 +26622,12 @@ class Qwen35GGUFResidentSession:
             scale_row_nbytes = int(cfg.head_count_kv) * group_factor * layout.scale_dtype.itemsize
             plane_specs.extend(
                 (
-                    ("full_k_scale_caches", scale_row_nbytes),
-                    ("full_v_scale_caches", scale_row_nbytes),
+                    ("key_scale", "full_k_scale_caches", scale_row_nbytes),
+                    ("value_scale", "full_v_scale_caches", scale_row_nbytes),
                 )
             )
-        planes: list[tuple[object, object, int]] = []
-        for field_name, row_nbytes in plane_specs:
+        planes: list[tuple[str, object, object, int]] = []
+        for role, field_name, row_nbytes in plane_specs:
             if field_name in {"full_key_caches", "full_value_caches"} and not hasattr(source, field_name):
                 source_buffer = source.full_cache(int(layer_id))[
                     0 if field_name == "full_key_caches" else 1
@@ -26644,7 +26644,7 @@ class Qwen35GGUFResidentSession:
                 raise RuntimeError(
                     f"GGUF packed KV copy plane {field_name} is missing at layer {layer_id}"
                 )
-            planes.append((source_buffer, destination_buffer, int(row_nbytes)))
+            planes.append((f"layer{layer_id}.{role}", source_buffer, destination_buffer, int(row_nbytes)))
         return tuple(planes)
 
     def _copy_packed_kv_rows(
@@ -26658,17 +26658,28 @@ class Qwen35GGUFResidentSession:
         rows: int,
         runtime: HipRuntime,
         stream: int,
+        session_page: tuple[GlobalDeviceKVPool, int, int] | None = None,
+        packed_to_session: bool = False,
     ) -> None:
         if int(rows) <= 0:
             return
-        for source_buffer, destination_buffer, row_nbytes in self._packed_kv_copy_planes(
+        for role, source_buffer, destination_buffer, row_nbytes in self._packed_kv_copy_planes(
             source,
             destination,
             layer_id,
         ):
+            src = int(source_buffer.ptr) + int(source_start) * row_nbytes
+            dst = int(destination_buffer.ptr) + int(destination_start) * row_nbytes
+            if session_page is not None:
+                pool, page_id, page_row = session_page
+                address = pool.global_pool.page_pointer(role, page_id) + page_row * row_nbytes
+                if packed_to_session:
+                    dst = address
+                else:
+                    src = address
             runtime.memcpy_async(
-                int(destination_buffer.ptr) + int(destination_start) * row_nbytes,
-                int(source_buffer.ptr) + int(source_start) * row_nbytes,
+                dst,
+                src,
                 int(rows) * row_nbytes,
                 HipMemcpyKind.DEVICE_TO_DEVICE,
                 int(stream),
@@ -26695,11 +26706,24 @@ class Qwen35GGUFResidentSession:
         either backing is a set of arbitrary arena pages.
         """
 
-        for logical_start, session_physical, segment_rows in _gguf_device_kv_copy_segments(
-            session,
-            start_position=start_position,
-            rows=rows,
-        ):
+        allocation = getattr(session, "_device_kv_allocation", None)
+        pool = getattr(session, "_device_kv_pool", None)
+        if allocation is not None and isinstance(pool, GlobalDeviceKVPool):
+            # Validate and split the whole logical range before issuing a copy.
+            start, stop = int(start_position), int(start_position) + int(rows)
+            if start < 0 or stop < start or stop > 256 * len(allocation.block_ids):
+                raise ValueError("GGUF device KV allocation does not cover the copy range")
+            segments = []
+            while start < stop:
+                take = min(stop - start, 256 - start % 256)
+                segments.append((start, 0, take))
+                start += take
+        else:
+            pool = None
+            segments = _gguf_device_kv_copy_segments(
+                session, start_position=start_position, rows=rows,
+            )
+        for logical_start, session_physical, segment_rows in segments:
             for packed_logical, packed_physical, take in packed_state.copy_segments(
                 slot_index,
                 start_position=logical_start,
@@ -26708,6 +26732,10 @@ class Qwen35GGUFResidentSession:
                 session_start = int(session_physical) + (
                     int(packed_logical) - int(logical_start)
                 )
+                session_page = None
+                if pool is not None:
+                    page_index, page_row = divmod(int(packed_logical), 256)
+                    session_page = (pool, int(allocation.block_ids[page_index]), page_row)
                 if packed_to_session:
                     self._copy_packed_kv_rows(
                         packed_state,
@@ -26718,6 +26746,8 @@ class Qwen35GGUFResidentSession:
                         rows=int(take),
                         runtime=runtime,
                         stream=stream,
+                        session_page=session_page,
+                        packed_to_session=True,
                     )
                 else:
                     self._copy_packed_kv_rows(
@@ -26729,6 +26759,7 @@ class Qwen35GGUFResidentSession:
                         rows=int(take),
                         runtime=runtime,
                         stream=stream,
+                        session_page=session_page,
                     )
 
     def _packed_verify_initial_linear_state(
