@@ -34,7 +34,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
     prefill_block_width = 64
 
     def __init__(self, *, backend, model_path, weight_index, model_plugin, max_sequence_length=None,
-                 nvfp4_q8_dot=False):
+                 fast_experts=False):
         reader = GGUFReader(weight_index.path)
         weights = Inkling2GGUFWeights(reader)
         m = weights.mapping
@@ -62,7 +62,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
             blas = Rocblas.load()
             owned.callback(blas.close)
             projection = owned.enter_context(Inkling2GGUFDeviceProjections(
-                weights, runtime=runtime, blas=blas, backend=backend, nvfp4_q8_dot=nvfp4_q8_dot))
+                weights, runtime=runtime, blas=blas, backend=backend, fast_experts=fast_experts))
             model = self.model = Inkling2GGUFText(weights, projection=projection)
             model.attention_factory = lambda cap: Inkling2DeviceAttention(
                 runtime=runtime, launch=attn, split=split, block=block, write=write, geometry=[
@@ -119,7 +119,9 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
         return replace(out, telemetry=GenerationTelemetry(
             decode_state=DecodeState(prompt_tokens=out.prompt_tokens, generated_tokens=len(out.generated_token_ids)),
             diagnostics={"execution_path": "inkling2_gguf_packed_hip", "kv_storage": "fp32", "speculation": "off",
-                         "expert_mix": "ordered_device" if self.model.ffn_device_output else "ordered_host"},
+                         "expert_mix": "ordered_device" if self.model.ffn_device_output else "ordered_host",
+                         "expert_activation": ("split_device" if self.model.projection.supports_device_activation
+                                               else "split_host")},
         ))
 
     def close(self):
@@ -131,6 +133,7 @@ def register_inkling2_gguf_profiles():
     strict = "selected_register_fp4_f32_f32_out"
     scope = "single_token_top8_nvfp4_n1152_or_2304_m2304"
     evidence = "worklog/entries/20261122T042314.583479Z-lhl-inkling2-mini-fbe423.md"
+    activation_evidence = "worklog/entries/20261122T051118.872751Z-lhl-inkling2-mini-978416.md"
     registered = registered_runtime_profile_keys()
     for backend in ("hip_gfx1100", "hip_gfx1151"):
         for profile, variant in (("strict", strict), ("fast", "selected_q8_dot_f32_f32_out")):
@@ -140,10 +143,16 @@ def register_inkling2_gguf_profiles():
             register_runtime_profile_plan(
                 model=model, backend=backend, quant=quant, profile=profile,
                 plan=RuntimeProfilePlan(
-                    selections=(VariantSelection("moe_linear", scope, variant, strict if fast else None,
-                                                 evidence if fast else None, registry_quant="gguf_nvfp4"),),
+                    selections=(
+                        VariantSelection("moe_linear", scope, variant, strict if fast else None,
+                                         evidence if fast else None, registry_quant="gguf_nvfp4"),
+                        VariantSelection("inkling2_expert_pointwise", "selected_split_gate_up",
+                                         "split_activation_device" if fast else "split_activation_host",
+                                         "split_activation_host" if fast else None,
+                                         activation_evidence if fast else None, registry_quant="inkling2_mixed"),
+                    ),
                     kv_policy="fp32", graph_policy="eager",
-                    factory=partial(Inkling2GGUFGenerator, backend=backend, nvfp4_q8_dot=fast),
+                    factory=partial(Inkling2GGUFGenerator, backend=backend, fast_experts=fast),
                 ),
             )
 

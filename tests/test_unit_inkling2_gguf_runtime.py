@@ -16,7 +16,7 @@ def test_gguf_ffn_uses_gate_and_up_halves_and_physical_layer(legacy):
     reader = Mock()
     reader.info = _file(legacy)
     weights = Inkling2GGUFWeights(reader)
-    projection = Mock(supports_device_mix=False)
+    projection = Mock(supports_device_mix=False, supports_device_activation=False)
     layer = weights.mapping.layers[2]
     visit = weights.mapping.plan.visits[4]
     x = np.ones((2, 256), np.float32)
@@ -60,9 +60,11 @@ def test_inkling_gguf_fast_profile_keeps_strict_and_default_distinct(backend):
     fast = resolve_runtime_profile(**key, profile="fast")
     assert not fast.fell_back_to_strict
     assert strict.manifest_sha256 == fast.strict_manifest_sha256
-    selection, = fast.manifest["selections"]
-    assert selection["selected_variant"] == "selected_q8_dot_f32_f32_out"
-    assert selection["strict_fallback_variant"] == "selected_register_fp4_f32_f32_out"
+    selections = {item["layer"]: item for item in fast.manifest["selections"]}
+    assert selections["moe_linear"]["selected_variant"] == "selected_q8_dot_f32_f32_out"
+    assert selections["moe_linear"]["strict_fallback_variant"] == "selected_register_fp4_f32_f32_out"
+    assert selections["inkling2_expert_pointwise"]["selected_variant"] == "split_activation_device"
+    assert selections["inkling2_expert_pointwise"]["strict_fallback_variant"] == "split_activation_host"
 
 
 def test_embedded_inkling_tokenizer_preserves_token_and_control_ids():

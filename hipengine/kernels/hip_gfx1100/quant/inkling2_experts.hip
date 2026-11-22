@@ -254,6 +254,27 @@ __global__ void inkling2_expert_activate(const float* paired, float* activated, 
     activated[i] = gate_cap * tanhf(gate / gate_cap) * sigmoid * up_cap * tanhf(up / up_cap);
 }
 
+__global__ void inkling2_split_activation(const float* paired, float* activated, size_t size, int width,
+                                           float gate_cap, float up_cap) {
+    const size_t i = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i >= size) return;
+    const size_t gate_index = i + i / width * width;
+    const float gate = paired[gate_index], up = paired[gate_index + width];
+    const float e = expf(-fabsf(gate));
+    const float sigmoid = (gate >= 0.0f ? 1.0f : e) / (1.0f + e);
+    activated[i] = (gate_cap * tanhf(gate / gate_cap) * sigmoid) * (up_cap * tanhf(up / up_cap));
+}
+
+extern "C" int hipengine_inkling2_split_activation(const float* paired, float* activated, int routes, int width,
+                                                   float gate_cap, float up_cap) {
+    if (!paired || !activated || routes <= 0 || routes > 65535 || width <= 0 ||
+        !(gate_cap > 0.0f) || !(up_cap > 0.0f)) return hipErrorInvalidValue;
+    const size_t size = size_t(routes) * width;
+    hipLaunchKernelGGL(inkling2_split_activation, dim3(1 + (size - 1) / 256), dim3(256), 0, 0,
+                       paired, activated, size, width, gate_cap, up_cap);
+    return hipGetLastError();
+}
+
 template <bool BATCHED, bool EXACT = false>
 __global__ void inkling2_expert_mix(const float* down, const float* mix, float* out, int count, int width) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;

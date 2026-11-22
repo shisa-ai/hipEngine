@@ -4,7 +4,7 @@ from functools import partial
 
 import numpy as np
 
-from hipengine.kernels.cpu_reference.inkling2_mini import _sigmoid, select_expert_routes
+from hipengine.kernels.cpu_reference.inkling2_mini import select_expert_routes, split_expert_activation
 from hipengine.runtime.inkling2_mini_reference import Inkling2TextReference
 
 
@@ -155,14 +155,15 @@ class Inkling2GGUFText(Inkling2TextReference):
 
     def feed_forward(self, visit, normalized, *, transform_output=None):
         ids, mix = self.route(visit, normalized)
+        if self.projection is not None and self.projection.supports_device_activation:
+            return self.projection.project_experts_mixed(visit, ids, mix, normalized, transform_output=transform_output)
         k = ids.shape[-1]
         project = (self._cpu_selected if self.projection is None else
                    partial(self.projection.project_selected, single_token=normalized.ndim == 1))
         run = partial(project, visit)
         inputs = np.repeat(np.atleast_2d(normalized), k, axis=0)
         gate, up = np.split(run("gate_up", ids.ravel(), inputs), 2, axis=-1)
-        a, b = self.mapping.gate_cap, self.mapping.up_cap
-        activated = (a * np.tanh(gate / a) * _sigmoid(gate)) * (b * np.tanh(up / b))
+        activated = split_expert_activation(gate, up, self.mapping.gate_cap, self.mapping.up_cap)
         if self.ffn_device_output:
             return self.projection.project_down_mixed(visit, ids, mix, activated, transform_output=transform_output)
         down = run("down", ids.ravel(), activated).reshape(*ids.shape, normalized.shape[-1])

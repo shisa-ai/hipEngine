@@ -8,6 +8,7 @@ from pathlib import Path
 
 from hipengine.core.build import build_hip
 from hipengine.core.hip import HIP_SUCCESS, HipError
+from hipengine.kernels.cpu_reference.inkling2_mini import split_expert_activation
 from hipengine.kernels.registry import KernelKey, register
 
 
@@ -94,9 +95,27 @@ def launch_expert_mix_exact(down, mix, out, count, width, *, tokens=1, target_ar
         raise HipError(f"Inkling 2 exact expert mix failed with HIP status {status}")
 
 
+@lru_cache(maxsize=2)
+def _split_activation_symbol(target_arch):
+    fn = _expert_library(target_arch).hipengine_inkling2_split_activation
+    fn.argtypes = [ctypes.c_void_p] * 2 + [ctypes.c_int] * 2 + [ctypes.c_float] * 2
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def launch_split_expert_activation(gate_up, out, routes, width, gate_cap, up_cap, *, target_arch=None):
+    status = _split_activation_symbol(target_arch)(gate_up, out, routes, width, gate_cap, up_cap)
+    if status != HIP_SUCCESS:
+        raise HipError(f"Inkling 2 split expert activation failed with HIP status {status}")
+
+
 for _backend in ("hip_gfx1100", "hip_gfx1151"):
     register(KernelKey(_backend, "inkling2_expert_pointwise", "inkling2_mixed", "ordered_mix_exact"),
              launch_expert_mix_exact)
+    register(KernelKey(_backend, "inkling2_expert_pointwise", "inkling2_mixed", "split_activation_device"),
+             launch_split_expert_activation)
+    register(KernelKey(_backend, "inkling2_expert_pointwise", "inkling2_mixed", "split_activation_host"),
+             split_expert_activation)
 
 
 register(KernelKey("hip_gfx1100", "inkling2_expert_pointwise", "inkling2_mixed", "default"), launch_expert_pointwise)

@@ -9,6 +9,10 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
     return np.exp(-np.logaddexp(0, -x))
 
 
+def split_expert_activation(gate, up, gate_cap, up_cap):
+    return (gate_cap * np.tanh(gate / gate_cap) * _sigmoid(gate)) * (up_cap * np.tanh(up / up_cap))
+
+
 def select_expert_routes(logits, bias, *, top_k, route_scale):
     scores = _sigmoid(logits)
     experts = scores.shape[-1]
