@@ -9,6 +9,19 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
     return np.exp(-np.logaddexp(0, -x))
 
 
+def select_expert_routes(logits, bias, *, top_k, route_scale):
+    scores = _sigmoid(logits)
+    experts = scores.shape[-1]
+    if not 1 <= top_k <= experts:
+        raise ValueError(f"invalid Inkling 2 top-k: {top_k} for {experts} experts")
+    ranking = scores if bias is None else scores + bias
+    # Use expert index to break ties, and accumulate in expert order.
+    ids = np.sort(np.argsort(-ranking, axis=-1, kind="stable")[..., :top_k], axis=-1)
+    mix = np.take_along_axis(scores, ids, axis=-1)
+    mix *= route_scale / (mix.sum(axis=-1, keepdims=True) + np.float32(1e-20))
+    return ids, mix
+
+
 def routed_feed_forward(weights, layer: int, hidden: np.ndarray, *, top_k: int,
                         route_scale: float, gate_cap: float, up_cap: float, project=None, project_dense=None,
                         project_group=None, feed_group=None) -> np.ndarray:
@@ -23,15 +36,7 @@ def routed_feed_forward(weights, layer: int, hidden: np.ndarray, *, top_k: int,
         logits = mat @ hidden if hidden.ndim == 1 else hidden @ mat.T
     else:
         logits = project_dense(name, hidden)
-    scores = _sigmoid(logits)
-    experts = scores.shape[-1]
-    if not 1 <= top_k <= experts:
-        raise ValueError(f"invalid Inkling 2 top-k: {top_k} for {experts} experts")
-    ranking = scores + weights.dense(prefix + "bias")
-    # Use expert index to break ties, and accumulate in expert order.
-    ids = np.sort(np.argsort(-ranking, axis=-1, kind="stable")[..., :top_k], axis=-1)
-    mix = np.take_along_axis(scores, ids, axis=-1)
-    mix *= route_scale / (mix.sum(axis=-1, keepdims=True) + np.float32(1e-20))
+    ids, mix = select_expert_routes(logits, weights.dense(prefix + "bias"), top_k=top_k, route_scale=route_scale)
     if feed_group is not None:
         return feed_group(layer, ids, mix, hidden, gate_cap, up_cap)
 

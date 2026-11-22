@@ -58,10 +58,10 @@ class _VisitState:
 
 
 class Inkling2TextReference:
-    def __init__(self, config, weights: Inkling2TextWeights):
+    def __init__(self, config, weights: Inkling2TextWeights, *, plan=None):
         self.config = config["text_config"]
         self.weights = weights
-        self.plan = Inkling2VisitPlan.from_config(config)
+        self.plan = Inkling2VisitPlan.from_config(config) if plan is None else plan
         self.project_expert = None
         self.project_experts_group = None
         self.feed_experts_group = None
@@ -91,6 +91,33 @@ class Inkling2TextReference:
     def head_shape(self, visit: Inkling2Visit):
         prefix = "swa_" if visit.is_local else ""
         return tuple(self.config[prefix + k] for k in ("num_attention_heads", "num_key_value_heads", "head_dim"))
+
+    def loop_queries(self, visit):
+        i = 2 * (visit.weight_layer - self.config["loop_config"]["core_start"])
+        q, mlp = self.weights.dense("middle_cycle_cross_pass_queries", slice(i, i + 2))
+        k, v = self.weights.dense("middle_cycle_cross_pass_kv_queries", slice(i, i + 2))
+        return np.stack((q, k, v, mlp))
+
+    @property
+    def ffn_device_output(self):
+        return self.feed_experts_group is not None
+
+    def feed_forward(self, visit, normalized, *, transform_output=None):
+        c = self.config
+        feed_group = self.feed_experts_group
+        if transform_output is not None:
+            feed_group = partial(feed_group, transform_output=transform_output)
+
+        def feed(x):
+            return routed_feed_forward(self.weights, visit.weight_layer, x, top_k=c["num_experts_per_tok"],
+                                       route_scale=c["route_scale"], gate_cap=c["mlp_gate_softcap"],
+                                       up_cap=c["mlp_up_softcap"], project=self.project_expert,
+                                       project_dense=self.project, project_group=self.project_experts_group,
+                                       feed_group=feed_group)
+
+        if normalized.ndim == 1 or feed_group is not None:
+            return feed(normalized)
+        return np.stack([feed(row) for row in normalized])
 
 
 class Inkling2TextSession:
@@ -216,10 +243,7 @@ class Inkling2TextSession:
                 capture(boundary, h)
             messages = None
             if visit.message_pass is not None:
-                i = 2 * (layer - loop_start)
-                q, mlp = w.dense("middle_cycle_cross_pass_queries", slice(i, i + 2))
-                k, v = w.dense("middle_cycle_cross_pass_kv_queries", slice(i, i + 2))
-                messages = _read_blocks(np.stack((q, k, v, mlp)), previous, previous_partial)
+                messages = _read_blocks(self.model.loop_queries(visit), previous, previous_partial)
             h = self._layer(visit, h, blocks, messages)
 
         self.position += width
@@ -237,7 +261,7 @@ class Inkling2TextSession:
             return None
         raw = self.model.project_logits(h)
         cap = c["final_logit_softcapping"]
-        return cap * np.tanh(raw / cap)
+        return cap * np.tanh(raw / cap) if cap else raw
 
     def _layer(self, visit, h, blocks, messages):
         c, w = self.model.config, self.model.weights
@@ -312,22 +336,9 @@ class Inkling2TextSession:
             m, = merge_controllers((m,), ("mlp",), (messages[..., 3, :],))
         normalized = norm(m, "mlp_norm")
 
-        feed_group = self.model.feed_experts_group
-        convolve_on_device = feed_group is not None and self.convolution is not None
-        if convolve_on_device:
-            feed_group = partial(feed_group, transform_output=device_conv("mlp_sconv"))
-
-        def feed(x):
-            return routed_feed_forward(w, layer, x, top_k=c["num_experts_per_tok"],
-                                       route_scale=c["route_scale"], gate_cap=c["mlp_gate_softcap"],
-                                       up_cap=c["mlp_up_softcap"], project=self.model.project_expert,
-                                       project_dense=self.model.project, project_group=self.model.project_experts_group,
-                                       feed_group=feed_group)
-
-        if normalized.ndim == 1 or feed_group is not None:
-            m = feed(normalized)
-        else:
-            m = np.stack([feed(row) for row in normalized])
+        convolve_on_device = self.model.ffn_device_output and self.convolution is not None
+        m = self.model.feed_forward(visit, normalized,
+                                    transform_output=device_conv("mlp_sconv") if convolve_on_device else None)
         return a + (m if convolve_on_device else static_conv("mlp_sconv", m))
 
     def _conv_rows(self, visit, name, x, taps, *, dynamic=False):

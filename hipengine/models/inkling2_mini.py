@@ -24,6 +24,16 @@ INKLING2_MINI = register_model(Inkling2MiniModel())
 
 
 @dataclass(frozen=True, slots=True)
+class Inkling2GGUFModel(Inkling2MiniModel):
+    name: str = "inkling2_gguf"
+    architectures: tuple[str, ...] = ("inkling2", "inkling2_loop")
+    default_quant: str = "gguf_inkling2"
+
+
+INKLING2_GGUF = register_model(Inkling2GGUFModel())
+
+
+@dataclass(frozen=True, slots=True)
 class Inkling2Visit:
     """One decoder visit; KV and convolution state share the visit's slot ID."""
 
