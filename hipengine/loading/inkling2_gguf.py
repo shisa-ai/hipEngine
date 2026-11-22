@@ -264,7 +264,9 @@ class Inkling2GGUFWeights:
         self.mapping = build_inkling2_gguf_map(reader.info)
         self._raw: dict[str, np.ndarray] = {}
 
-    def raw(self, tensor: GGUFTensorInfo) -> np.ndarray:
+    def raw(self, tensor: GGUFTensorInfo, *, cache=True) -> np.ndarray:
+        if not cache:
+            return self.reader.tensor_data(tensor.name)
         if tensor.name not in self._raw:
             self._raw[tensor.name] = self.reader.tensor_data(tensor.name)
         return self._raw[tensor.name]

@@ -13,6 +13,10 @@ from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.inkling2_device_dense import Inkling2DeviceDense
 from hipengine.quant.gguf import GGMLQuantizationType as Q
 
+# Do not hand HIP a whole file-backed expert bank. Read each window before
+# submitting its transfer, and reuse this host staging across physical banks.
+_UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024
+
 
 class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     """Share dense transfer scratch; upload physical expert banks only once."""
@@ -33,6 +37,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 launch = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
                 self._selected_launches[quant] = self._bind_packed(quant, launch)
         self._bank_scales = {}
+        self._upload_staging = None
 
     def _bind_packed(self, quant, launch):
         if quant == Q.NVFP4:
@@ -53,7 +58,18 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         host = np.ascontiguousarray(array)
         buf = malloc(host.nbytes, runtime=self._runtime)
         try:
-            self._runtime.memcpy(buf.ptr, host.ctypes.data, host.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+            if isinstance(array, np.memmap) and host.nbytes > _UPLOAD_CHUNK_BYTES:
+                if self._upload_staging is None:
+                    self._upload_staging = np.empty(_UPLOAD_CHUNK_BYTES, dtype=np.uint8)
+                raw = host.view(np.uint8).reshape(-1)
+                for begin in range(0, raw.size, _UPLOAD_CHUNK_BYTES):
+                    payload = raw[begin:begin + _UPLOAD_CHUNK_BYTES]
+                    staging = self._upload_staging[:payload.size]
+                    staging[:] = payload
+                    self._runtime.memcpy(buf.ptr + begin, staging.ctypes.data, staging.nbytes,
+                                         HipMemcpyKind.HOST_TO_DEVICE)
+            else:
+                self._runtime.memcpy(buf.ptr, host.ctypes.data, host.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
         except BaseException:
             free(buf, runtime=self._runtime)
             raise
@@ -67,7 +83,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 raise ValueError(f"invalid Inkling GGUF matrix or row limit for {name}")
             rows = slice(limit)
             if tensor.ggml_type == Q.Q8_0:
-                data, packed = self._weights.raw(tensor)[rows], Q.Q8_0
+                data, packed = self._weights.raw(tensor, cache=False)[rows], Q.Q8_0
             else:
                 data, packed = self._weights.decode(tensor, rows), False
             self._matrices[key] = self._upload(data), (data.shape[0], tensor.shape[1]), packed
@@ -87,9 +103,16 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             scales = None if bank.scale is None else self._weights.decode(bank.scale)
             if scales is not None and not np.isfinite(scales).all():
                 raise ValueError(f"non-finite Inkling GGUF expert scales for {weight.name}")
-            self._matrices[key] = self._upload(self._weights.raw(weight)), weight.shape, weight.ggml_type
+            packed = self._upload(self._weights.raw(weight, cache=False))
+            self._matrices[key] = packed, weight.shape, weight.ggml_type
             self._bank_scales[key] = scales
         return self._matrices[key][0], self._bank_scales[key]
+
+    def close(self):
+        try:
+            super().close()
+        finally:
+            self._upload_staging = None
 
     @property
     def packed_bank_bytes(self):
