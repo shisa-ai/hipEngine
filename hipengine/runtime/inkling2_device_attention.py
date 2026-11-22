@@ -52,10 +52,17 @@ class Inkling2DeviceAttention:
         self.rt.memcpy(ptr, arr.ctypes.data, arr.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
 
     def _make_bank(self, cap, nk, d):
-        keys, values = (self._allocate(cap * nk * d * 4) for _ in range(2))
-        offsets = self._allocate(cap * 4)
-        positions = self._allocate(cap * 4)
-        evicted = self._allocate(cap)
+        kv_bytes = cap * nk * d * 4
+        # Preserve vector alignment for both FP32 arrays, including odd geometries.
+        values_offset = (kv_bytes + 15) & ~15
+        offsets_offset = values_offset + kv_bytes
+        positions_offset = offsets_offset + cap * 4
+        evicted_offset = positions_offset + cap * 4
+        keys = self._allocate(evicted_offset + cap)
+        values = keys + values_offset
+        offsets = keys + offsets_offset
+        positions = keys + positions_offset
+        evicted = keys + evicted_offset
         self._upload(offsets, np.arange(cap), np.int32)
         self.rt.memset(evicted, 0, cap)
         return keys, values, KVLiveSpans(

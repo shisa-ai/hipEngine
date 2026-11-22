@@ -57,10 +57,20 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
     runtime = get_hip_runtime()
     copies = []
     exchanges = []
+    allocations = {}
 
     class TracedRuntime:
         def __getattr__(self, name):
             return getattr(runtime, name)
+
+        def malloc(self, size):
+            ptr = runtime.malloc(size)
+            allocations[ptr] = size
+            return ptr
+
+        def free(self, ptr):
+            runtime.free(ptr)
+            del allocations[ptr]
 
         def memcpy(self, dst, src, size, kind):
             copies.append(kind)
@@ -111,7 +121,17 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
             np.testing.assert_array_equal(gated_out.view(np.uint32), (original * gain.reshape(nq, dim)).view(np.uint32))
             copies.clear()
             exchanges.clear()
+            existing = set(allocations) if not pos else None
             out = owner.step(0, pos, q, k, v, bias, sink, undo=undo if pos >= 3 else None)
+            if existing is not None:
+                keys_ptr, values_ptr, spans = owner.banks[0]
+                assert set(allocations) - existing == {keys_ptr}
+                assert values_ptr >= keys_ptr + capacity * nk * dim * 4
+                assert values_ptr % 16 == 0
+                assert spans.base_offsets.ptr >= values_ptr + capacity * nk * dim * 4
+                assert spans.token_positions.ptr >= spans.base_offsets.ptr + capacity * 4
+                assert spans.evict_mask.ptr >= spans.token_positions.ptr + capacity * 4
+                assert spans.evict_mask.ptr + capacity <= keys_ptr + allocations[keys_ptr]
             if pos:
                 assert all(kind == HipMemcpyKind.DEVICE_TO_DEVICE for kind in copies)
             assert exchanges == [HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST, "wait"]
@@ -136,3 +156,4 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
         gated.close()
         owner.close()
     assert not owner.banks
+    assert not allocations
