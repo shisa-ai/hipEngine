@@ -129,9 +129,11 @@ class Inkling2DeviceAttention:
                     undo.device(position, self.rt, ptr + slot * nk * d * 4, nk * d * 4)
                 undo.device(position, self.rt, spans.token_positions.ptr + slot * 4, 4)
         self.staging[:2].view(np.int32)[:] = (live, position)
+        # No live key is farther away than live - 1 in this ring.
+        extent = min(extent, live)
         ptrs = []
         cursor = 2
-        for array in (q, key, value, bias, sink):
+        for array in (q, key, value, bias[:, :extent], sink):
             ptrs.append(self.scratch + cursor * 4)
             end = cursor + array.size
             self.staging[cursor:end].reshape(array.shape)[...] = array

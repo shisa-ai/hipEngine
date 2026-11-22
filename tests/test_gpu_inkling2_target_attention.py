@@ -67,6 +67,7 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
     runtime = get_hip_runtime()
     copies = []
     exchanges = []
+    upload_sizes = []
     allocations = {}
 
     class TracedRuntime:
@@ -88,6 +89,8 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
 
         def memcpy_async(self, dst, src, size, kind, stream):
             exchanges.append(kind)
+            if kind == HipMemcpyKind.HOST_TO_DEVICE:
+                upload_sizes.append(size)
             runtime.memcpy_async(dst, src, size, kind, stream)
 
         def stream_synchronize(self, stream):
@@ -131,6 +134,7 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
             np.testing.assert_array_equal(gated_out.view(np.uint32), (original * gain.reshape(nq, dim)).view(np.uint32))
             copies.clear()
             exchanges.clear()
+            upload_sizes.clear()
             existing = set(allocations) if not pos else None
             out = owner.step(0, pos, q, k, v, bias, sink, undo=undo if pos >= 3 else None)
             if existing is not None:
@@ -145,6 +149,9 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
             if pos:
                 assert all(kind == HipMemcpyKind.DEVICE_TO_DEVICE for kind in copies)
             assert exchanges == [HipMemcpyKind.HOST_TO_DEVICE, HipMemcpyKind.DEVICE_TO_HOST, "wait"]
+            live_extent = min(extent, capacity, pos + 1)
+            assert upload_sizes == [8 + q.nbytes + k.nbytes + v.nbytes + sink.nbytes
+                                    + bias[:, :live_extent].nbytes]
             if pos >= 3:
                 replay.append((pos, (q, k, v, bias, sink), out))
             np.testing.assert_array_equal(out.view(np.uint32), original.view(np.uint32))
