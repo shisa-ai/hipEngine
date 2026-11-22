@@ -61,11 +61,15 @@ def launch_tiled_attention(*args, gain=0, target_arch=None):
 
 
 @lru_cache(maxsize=2)
-def _build_split(target_arch):
+def _split_library(target_arch):
     path = Path(__file__).with_name("inkling2_split_attention.hip")
-    lib = build_hip(sources=[path], family="inkling2_split_attention", profile="decode",
-                    target_arch=target_arch, output_name="inkling2_split_attention.so")
-    fn = lib.hipengine_inkling2_split_attention
+    return build_hip(sources=[path], family="inkling2_split_attention", profile="decode",
+                     target_arch=target_arch, output_name="inkling2_split_attention.so")
+
+
+@lru_cache(maxsize=2)
+def _build_split(target_arch):
+    fn = _split_library(target_arch).hipengine_inkling2_split_attention
     fn.argtypes = [ctypes.c_void_p] * 13 + [ctypes.c_int] * 5
     fn.restype = ctypes.c_int
     return fn
@@ -79,6 +83,24 @@ def launch_split_attention(q, keys, values, bias, sink, out, spans, nq, nk, dim,
                             scores, gain, nq, nk, dim, extent, live)
     if status != HIP_SUCCESS:
         raise HipError(status, "Inkling 2 split attention launch failed")
+
+
+def launch_split_chunked_attention(q, keys, values, bias, sink, out, spans, nq, nk, dim, extent, scores, live,
+                                   *, partial, gain=0, target_arch=None):
+    if not scores or not partial or not 0 < live <= spans.max_live_count:
+        raise ValueError("invalid Inkling 2 chunked attention scratch or live span count")
+    status = _build_split_chunked(target_arch)(q, keys, values, bias, sink, out, *_span_pointers(spans),
+                                                scores, gain, partial, nq, nk, dim, extent, live)
+    if status != HIP_SUCCESS:
+        raise HipError(status, "Inkling 2 chunked attention launch failed")
+
+
+@lru_cache(maxsize=2)
+def _build_split_chunked(target_arch):
+    fn = _split_library(target_arch).hipengine_inkling2_split_chunked_attention
+    fn.argtypes = [ctypes.c_void_p] * 14 + [ctypes.c_int] * 5
+    fn.restype = ctypes.c_int
+    return fn
 
 
 def launch_cache_write(key, value, keys, values, spans: KVLiveSpans, width, *, target_arch=None):
@@ -109,3 +131,5 @@ for _backend in ("hip_gfx1100", "hip_gfx1151"):
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "default"), launch_target_attention)
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "tiled"), launch_tiled_attention)
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "split"), launch_split_attention)
+    register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "split_chunked"),
+             launch_split_chunked_attention)

@@ -16,14 +16,17 @@ from hipengine.loading.inkling2_activation_transfer import Inkling2ActivationTra
 
 # A second launch starts paying for itself at 16 live positions on gfx1100.
 _SPLIT_MIN_LIVE = 16
+_CHUNKED_MIN_LIVE = 513
+# One FP32 value vector, maximum and denominator per 64 slots and head.
+_VALUE_CHUNK = 64
 
 
 class Inkling2DeviceAttention:
-    def __init__(self, *, runtime, launch, write, geometry, split=None, block=None, device=None):
+    def __init__(self, *, runtime, launch, write, geometry, split=None, split_chunked=None, block=None, device=None):
         self.rt, self.launch, self.write = runtime, launch, write
-        self.split, self.block = split, block
+        self.split, self.split_chunked, self.block = split, split_chunked, block
         self._block_scratch = None
-        self.scores = 0
+        self.scores = self.value_partials = 0
         self.device = Device("hip") if device is None else device
         self.geometry = tuple(geometry)  # (capacity, query heads, KV heads, head width, bias extent) by state slot
         self.banks = {}
@@ -84,10 +87,18 @@ class Inkling2DeviceAttention:
                 self.banks[visit] = self._make_bank(cap, kv_heads, dim)
         if self.split is not None and any(cap >= _SPLIT_MIN_LIVE for cap, *_ in self.geometry):
             self._reserve_scores()
+        if self.split_chunked is not None and any(cap >= _CHUNKED_MIN_LIVE for cap, *_ in self.geometry):
+            self._reserve_value_partials()
 
     def _reserve_scores(self):
         if not self.scores:
             self.scores = self._allocate(4 * max(capacity * heads for capacity, heads, *_ in self.geometry))
+
+    def _reserve_value_partials(self):
+        if not self.value_partials:
+            cells = max(heads * ((cap + _VALUE_CHUNK - 1) // _VALUE_CHUNK) * (dim + 2)
+                        for cap, heads, _, dim, _ in self.geometry)
+            self.value_partials = self._allocate(4 * cells)
 
     def step(self, visit, position, q, key, value, bias, sink, *, undo=None, gain=None, projection=None):
         if self.closed:
@@ -97,6 +108,7 @@ class Inkling2DeviceAttention:
         cap, nq, nk, d, extent = self.geometry[visit]
         live = min(position + 1, cap)
         use_split = self.split is not None and live >= _SPLIT_MIN_LIVE
+        use_chunked = use_split and self.split_chunked is not None and live >= _CHUNKED_MIN_LIVE
         expected = ((nq, d), (nk, d), (nk, d), (nq, extent), (nq,))
         if tuple(a.shape for a in (q, key, value, bias, sink)) != expected:
             raise ValueError("invalid Inkling 2 attention input shapes")
@@ -104,6 +116,8 @@ class Inkling2DeviceAttention:
             raise ValueError("invalid Inkling 2 attention gain shape")
         if use_split:
             self._reserve_scores()
+        if use_chunked:
+            self._reserve_value_partials()
         if visit not in self.banks:
             self.banks[visit] = self._make_bank(cap, nk, d)
         keys, values, spans = self.banks[visit]
@@ -135,7 +149,9 @@ class Inkling2DeviceAttention:
             dst, out, consume = projection
         with self.transfer.exchange(self.scratch, dst, self.staging[:cursor], out, pinned=True):
             self.write(key_ptr, value_ptr, keys, values, spans, nk * d)
-            if use_split:
+            if use_chunked:
+                self.split_chunked(*args, self.scores, live, partial=self.value_partials, gain=gain_ptr)
+            elif use_split:
                 self.split(*args, self.scores, live, gain=gain_ptr)
             else:
                 self.launch(*args, gain=gain_ptr)

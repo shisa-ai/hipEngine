@@ -65,6 +65,8 @@ def test_inkling_gguf_fast_profile_keeps_strict_and_default_distinct(backend):
     assert selections["moe_linear"]["strict_fallback_variant"] == "selected_register_fp4_f32_f32_out"
     assert selections["inkling2_expert_pointwise"]["selected_variant"] == "split_activation_device"
     assert selections["inkling2_expert_pointwise"]["strict_fallback_variant"] == "split_activation_host"
+    assert selections["inkling2_target_attention"]["selected_variant"] == "split_chunked"
+    assert selections["inkling2_target_attention"]["strict_fallback_variant"] == "split"
 
 
 def test_embedded_inkling_tokenizer_preserves_token_and_control_ids():

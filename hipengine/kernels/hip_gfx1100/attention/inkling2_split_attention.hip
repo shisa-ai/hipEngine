@@ -88,6 +88,111 @@ __global__ void split_values(const float* value, const float* scores, const floa
     }
 }
 
+namespace {
+constexpr int value_chunk = 64;
+
+__global__ void split_chunk_values(const float* value, const float* scores, float* partial,
+                                   const int32_t* offsets, const int32_t* count, const int32_t* positions,
+                                   const uint8_t* evicted, const int32_t* row, int nq, int nk, int dim,
+                                   int stride, int splits) {
+    const int tid = threadIdx.x, head = blockIdx.y;
+    const int kh = head / (nq / nk);
+    const int start = blockIdx.x * value_chunk;
+    __shared__ float reduced[value_chunk], weights[value_chunk];
+    __shared__ int physical[value_chunk];
+    float score = -INFINITY;
+    if (tid < value_chunk) {
+        const int slot = start + tid;
+        const bool active = slot < *count && !evicted[slot] && *row >= positions[slot];
+        physical[tid] = active ? offsets[slot] : -1;
+        score = active ? scores[size_t(head) * stride + slot] : -INFINITY;
+        reduced[tid] = score;
+    }
+    __syncthreads();
+    for (int half = value_chunk / 2; half; half /= 2) {
+        if (tid < half) reduced[tid] = fmaxf(reduced[tid], reduced[tid + half]);
+        __syncthreads();
+    }
+    const float high = reduced[0];
+    __syncthreads();
+    if (tid < value_chunk) {
+        const float w = physical[tid] >= 0 ? expf(score - high) : 0.0f;
+        weights[tid] = reduced[tid] = w;
+    }
+    __syncthreads();
+    float* dst = partial + (size_t(head) * splits + blockIdx.x) * (dim + 2);
+    if (tid < dim) {
+        float acc = 0.0f;
+        for (int j = 0; j < value_chunk; ++j) {
+            const int slot = physical[j];
+            if (slot >= 0) acc = fmaf(weights[j], value[(size_t(slot) * nk + kh) * dim + tid], acc);
+        }
+        dst[tid] = acc;
+    }
+    for (int half = value_chunk / 2; half; half /= 2) {
+        if (tid < half) reduced[tid] += reduced[tid + half];
+        __syncthreads();
+    }
+    if (!tid) {
+        dst[dim] = high;
+        dst[dim + 1] = reduced[0];
+    }
+}
+
+__global__ void split_merge_values(const float* partial, const float* sink, float* out, const float* gain,
+                                   int dim, int splits) {
+    const int head = blockIdx.x, tid = threadIdx.x;
+    const int stride = dim + 2;
+    partial += size_t(head) * splits * stride;
+    __shared__ float scalar, scales[32];
+    if (!tid) {
+        float high = sink[head];
+        for (int i = 0; i < splits; ++i) high = fmaxf(high, partial[size_t(i) * stride + dim]);
+        scalar = high;
+    }
+    __syncthreads();
+    const float high = scalar;
+    float sum = expf(sink[head] - high), acc = 0.0f;
+    for (int base = 0; base < splits; base += 32) {
+        const int n = min(32, splits - base);
+        if (tid < n) scales[tid] = expf(partial[size_t(base + tid) * stride + dim] - high);
+        __syncthreads();
+        for (int j = 0; j < n; ++j) {
+            const float* item = partial + size_t(base + j) * stride;
+            if (tid < dim) acc = fmaf(scales[j], item[tid], acc);
+            if (!tid) sum = fmaf(scales[j], item[dim + 1], sum);
+        }
+        __syncthreads();
+    }
+    if (!tid) scalar = sum;
+    __syncthreads();
+    if (tid < dim) {
+        const int i = head * dim + tid;
+        const float result = acc / scalar;
+        out[i] = gain ? __fmul_rn(result, gain[i]) : result;
+    }
+}
+}  // namespace
+
+extern "C" int hipengine_inkling2_split_chunked_attention(
+    const float* q, const float* k, const float* v, const float* bias, const float* sink, float* out,
+    const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
+    const int32_t* row, float* scores, const float* gain, float* partial,
+    int nq, int nk, int dim, int extent, int live) {
+    if (live <= 0 || nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 || !partial) {
+        return hipErrorInvalidValue;
+    }
+    hipLaunchKernelGGL(split_scores, dim3(1 + (live - 1) / 4, nq), dim3(128), 0, 0,
+                       q, k, bias, scores, offsets, count, positions, evicted, row, nq, nk, dim, extent, live);
+    if (auto status = hipGetLastError()) return status;
+    const int splits = 1 + (live - 1) / value_chunk;
+    hipLaunchKernelGGL(split_chunk_values, dim3(splits, nq), dim3(128), 0, 0,
+                       v, scores, partial, offsets, count, positions, evicted, row, nq, nk, dim, live, splits);
+    if (auto status = hipGetLastError()) return status;
+    hipLaunchKernelGGL(split_merge_values, dim3(nq), dim3(128), 0, 0, partial, sink, out, gain, dim, splits);
+    return hipGetLastError();
+}
+
 extern "C" int hipengine_inkling2_split_attention(
     const float* q, const float* k, const float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,

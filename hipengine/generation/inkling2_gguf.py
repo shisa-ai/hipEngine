@@ -34,7 +34,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
     prefill_block_width = 64
 
     def __init__(self, *, backend, model_path, weight_index, model_plugin, max_sequence_length=None,
-                 fast_experts=False):
+                 fast=False):
         reader = GGUFReader(weight_index.path)
         weights = Inkling2GGUFWeights(reader)
         m = weights.mapping
@@ -52,6 +52,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
 
         attn = primitive("inkling2_target_attention", "tiled")
         split = primitive("inkling2_target_attention", "split")
+        split_chunked = primitive("inkling2_target_attention", "split_chunked") if fast else None
         block = primitive("inkling2_target_attention", "block")
         write = primitive("inkling2_target_kv_write", "default")
         conv = primitive("inkling2_short_conv", "default")
@@ -62,10 +63,10 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
             blas = Rocblas.load()
             owned.callback(blas.close)
             projection = owned.enter_context(Inkling2GGUFDeviceProjections(
-                weights, runtime=runtime, blas=blas, backend=backend, fast_experts=fast_experts))
+                weights, runtime=runtime, blas=blas, backend=backend, fast_experts=fast))
             model = self.model = Inkling2GGUFText(weights, projection=projection)
             model.attention_factory = lambda cap: Inkling2DeviceAttention(
-                runtime=runtime, launch=attn, split=split, block=block, write=write, geometry=[
+                runtime=runtime, launch=attn, split=split, split_chunked=split_chunked, block=block, write=write, geometry=[
                     (min(cap, m.sliding_window) if v.is_local else cap, *model.head_shape(v),
                      m.sliding_window if v.is_local else m.relative_extent) for v in visits
                 ])
@@ -134,6 +135,7 @@ def register_inkling2_gguf_profiles():
     scope = "single_token_top8_nvfp4_n1152_or_2304_m2304"
     evidence = "worklog/entries/20261122T042314.583479Z-lhl-inkling2-mini-fbe423.md"
     activation_evidence = "worklog/entries/20261122T051118.872751Z-lhl-inkling2-mini-978416.md"
+    chunked_evidence = "worklog/entries/20261122T161527.676605Z-lhl-inkling2-mini-854a03.md"
     registered = registered_runtime_profile_keys()
     for backend in ("hip_gfx1100", "hip_gfx1151"):
         for profile, variant in (("strict", strict), ("fast", "selected_q8_dot_f32_f32_out")):
@@ -150,9 +152,12 @@ def register_inkling2_gguf_profiles():
                                          "split_activation_device" if fast else "split_activation_host",
                                          "split_activation_host" if fast else None,
                                          activation_evidence if fast else None, registry_quant="inkling2_mixed"),
+                        VariantSelection("inkling2_target_attention", "decode_live_ge_513",
+                                         "split_chunked" if fast else "split", "split" if fast else None,
+                                         chunked_evidence if fast else None, registry_quant="inkling2_mixed"),
                     ),
                     kv_policy="fp32", graph_policy="eager",
-                    factory=partial(Inkling2GGUFGenerator, backend=backend, fast_experts=fast),
+                    factory=partial(Inkling2GGUFGenerator, backend=backend, fast=fast),
                 ),
             )
 

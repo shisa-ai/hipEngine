@@ -167,3 +167,68 @@ def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(
         owner.close()
     assert not owner.banks
     assert not allocations
+
+
+def test_chunked_target_attention_selects_by_live_span_and_replays_after_wrap():
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP unavailable: {exc}")
+    from functools import partial
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.backends import hip_target_arch_for_backend, resolve_backend
+    from hipengine.kernels.hip_gfx1100.attention import inkling2_target_attention as attn
+    from hipengine.runtime.inkling2_undo import Inkling2UndoJournal
+
+    backend = resolve_backend("auto", execution_device=True)
+    if backend not in ("hip_gfx1100", "hip_gfx1151"):
+        pytest.skip("test requires gfx1100 or gfx1151")
+    arch = hip_target_arch_for_backend(backend)
+    cap, n, nq, nk, d, extent = 519, 525, 4, 2, 67, 39
+    rng = np.random.default_rng(77)
+    q, k, v, bias, sink = (rng.standard_normal((n, *shape), dtype=np.float32) for shape in
+                           ((nq, d), (nk, d), (nk, d), (nq, extent), (nq,)))
+    options = dict(runtime=get_hip_runtime(), geometry=[(cap, nq, nk, d, extent)],
+                   launch=partial(attn.launch_tiled_attention, target_arch=arch),
+                   split=partial(attn.launch_split_attention, target_arch=arch),
+                   write=partial(attn.launch_cache_write, target_arch=arch),
+                   block=partial(attn.launch_attention_block, target_arch=arch))
+    calls = []
+
+    def chunked(*args, **kwargs):
+        calls.append((args[-1], kwargs["partial"]))
+        return attn.launch_split_chunked_attention(*args, target_arch=arch, **kwargs)
+
+    arrays = q, k, v, bias, sink
+    start = 510
+    with (
+        closing(Inkling2DeviceAttention(**options)) as ordered,
+        closing(Inkling2DeviceAttention(**options, split_chunked=chunked)) as first,
+        closing(Inkling2DeviceAttention(**options, split_chunked=chunked)) as second,
+    ):
+        for owner in (ordered, first, second):
+            owner.step_block(0, 0, *(a[:start] for a in arrays))
+        assert first.value_partials == second.value_partials == 0
+        undo = Inkling2UndoJournal()
+        replay = []
+        try:
+            for i in range(start, n):
+                row = tuple(a[i] for a in arrays)
+                ref = ordered.step(0, i, *row)
+                got = first.step(0, i, *row, undo=undo if i >= cap else None)
+                other = second.step(0, i, *row)
+                if i < 512:
+                    np.testing.assert_array_equal(got.view(np.uint32), ref.view(np.uint32))
+                    assert not calls
+                np.testing.assert_array_equal(got.view(np.uint32), other.view(np.uint32))
+                np.testing.assert_allclose(got, ref, atol=2e-6, rtol=1e-5)
+                if i >= cap:
+                    replay.append((i, row, got))
+        finally:
+            undo.finish(cap)
+        assert calls[0][0] == 513
+        assert {ptr for _, ptr in calls} == {first.value_partials, second.value_partials}
+        assert first.value_partials != second.value_partials
+        for i, row, out in replay:
+            np.testing.assert_array_equal(first.step(0, i, *row).view(np.uint32), out.view(np.uint32))
