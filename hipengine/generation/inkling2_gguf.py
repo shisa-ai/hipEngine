@@ -8,6 +8,9 @@ from tokenizers.decoders import DecodeStream
 
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.rocblas import Rocblas
+from hipengine.execution_profiles import (
+    RuntimeProfileKey, RuntimeProfilePlan, VariantSelection, register_runtime_profile_plan, registered_runtime_profile_keys,
+)
 from hipengine.generation.inkling2_mini import Inkling2ReferenceGenerator
 from hipengine.generation.registry import DecodeState, GenerationStreamChunk, GenerationTelemetry, register_text_generator
 from hipengine.kernels.backends import hip_target_arch_for_backend
@@ -30,7 +33,8 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
     vision = None
     prefill_block_width = 64
 
-    def __init__(self, *, backend, model_path, weight_index, model_plugin, max_sequence_length=None):
+    def __init__(self, *, backend, model_path, weight_index, model_plugin, max_sequence_length=None,
+                 nvfp4_q8_dot=False):
         reader = GGUFReader(weight_index.path)
         weights = Inkling2GGUFWeights(reader)
         m = weights.mapping
@@ -57,8 +61,8 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
         with ExitStack() as owned:
             blas = Rocblas.load()
             owned.callback(blas.close)
-            projection = owned.enter_context(Inkling2GGUFDeviceProjections(weights, runtime=runtime, blas=blas,
-                                                                          backend=backend))
+            projection = owned.enter_context(Inkling2GGUFDeviceProjections(
+                weights, runtime=runtime, blas=blas, backend=backend, nvfp4_q8_dot=nvfp4_q8_dot))
             model = self.model = Inkling2GGUFText(weights, projection=projection)
             model.attention_factory = lambda cap: Inkling2DeviceAttention(
                 runtime=runtime, launch=attn, split=split, block=block, write=write, geometry=[
@@ -120,6 +124,28 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
 
     def close(self):
         self._owned.close()
+
+
+def register_inkling2_gguf_profiles():
+    model, quant = INKLING2_GGUF.name, INKLING2_GGUF.default_quant
+    strict = "selected_register_fp4_f32_f32_out"
+    scope = "single_token_top8_nvfp4_n1152_or_2304_m2304"
+    evidence = "worklog/entries/20261122T042314.583479Z-lhl-inkling2-mini-fbe423.md"
+    registered = registered_runtime_profile_keys()
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        for profile, variant in (("strict", strict), ("fast", "selected_q8_dot_f32_f32_out")):
+            if RuntimeProfileKey(model, backend, quant, profile) in registered:
+                continue
+            fast = profile == "fast"
+            register_runtime_profile_plan(
+                model=model, backend=backend, quant=quant, profile=profile,
+                plan=RuntimeProfilePlan(
+                    selections=(VariantSelection("moe_linear", scope, variant, strict if fast else None,
+                                                 evidence if fast else None, registry_quant="gguf_nvfp4"),),
+                    kv_policy="fp32", graph_policy="eager",
+                    factory=partial(Inkling2GGUFGenerator, backend=backend, nvfp4_q8_dot=fast),
+                ),
+            )
 
 
 for _backend in ("hip_gfx1100", "hip_gfx1151"):

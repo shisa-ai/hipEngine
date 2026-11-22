@@ -9,7 +9,7 @@ import numpy as np
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import free, malloc
 from hipengine.kernels.backends import hip_target_arch_for_backend, load_backend_kernel_package
-from hipengine.kernels.hip_gfx1100.quant import gguf_nvfp4_gemv, inkling2_experts  # noqa: F401
+from hipengine.kernels.hip_gfx1100.quant import gguf_nvfp4_gemv, gguf_nvfp4_q8_dot, inkling2_experts  # noqa: F401
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.inkling2_device_dense import Inkling2DeviceDense
@@ -27,7 +27,7 @@ _Q8_DECODE_MIN_OUTPUTS = 1024
 class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     """Share dense transfer scratch; upload physical expert banks only once."""
 
-    def __init__(self, weights, *, runtime, blas, backend):
+    def __init__(self, weights, *, runtime, blas, backend, nvfp4_q8_dot=False):
         super().__init__(weights, runtime=runtime, blas=blas)
         load_backend_kernel_package(backend)
         self._tensors = {t.name: t for t in weights.reader.info.tensors}
@@ -37,6 +37,9 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._bound_launches = {}
         self._selected_launches = {}
         self._tiled_launches = {}
+        self._q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
+                                variant="selected_q8_dot_f32_f32_out") if nvfp4_q8_dot else None)
+        self._q8_dot_scratch = None
         self._k_library = None
         prefill = KernelKey(backend, "linear", "gguf_q8_0", "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out")
         self._q8_prefill = (self._bind_packed(Q.Q8_0, resolve(backend=prefill.backend, layer=prefill.layer,
@@ -156,12 +159,16 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             super().close()
         finally:
             self._upload_staging = None
+            with self._lock:
+                if self._q8_dot_scratch is not None:
+                    free(self._q8_dot_scratch, runtime=self._runtime)
+                    self._q8_dot_scratch = None
 
     @property
     def packed_bank_bytes(self):
         return sum(self._matrices[key][0].nbytes for key in self._bank_scales if key in self._matrices)
 
-    def project_selected(self, visit, projection, expert_ids, hidden):
+    def project_selected(self, visit, projection, expert_ids, hidden, *, single_token=False):
         """Project one FP32 row per selected route, returning results in route order."""
         layer = self._weights.mapping.layers[visit.weight_layer]
         bank = {"gate_up": layer.gate_up, "down": layer.down}[projection]
@@ -178,7 +185,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 if self._closed:
                     raise RuntimeError("Inkling GGUF projection residency is closed")
                 weight, scales = self._bank(bank)
-                return self._project_routes(quant, selected, weight.ptr, scales, ids, hidden, experts, m, n)
+                return self._project_routes(quant, selected, weight.ptr, scales, ids, hidden, experts, m, n, single_token)
         order = np.argsort(ids, kind="stable")
         ids = ids[order]
         boundaries = np.r_[0, np.flatnonzero(ids[1:] != ids[:-1]) + 1, len(ids)]
@@ -223,7 +230,17 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             x[scales_start:scales_start + ids.size] = scales[ids]
         return x, records.nbytes
 
-    def _project_routes(self, quant, launch, weight, scales, ids, hidden, experts, m, n):
+    def _run_selected(self, quant, launch, src, weight, out, ids, scales, routes, experts, n, m, *, single_token):
+        if (self._q8_dot is not None and quant == Q.NVFP4 and single_token and routes == 8
+                and n in (1152, 2304) and m == 2304):
+            # Scratch is owned by the projection lock and is not copied to or from the host.
+            values = routes * n
+            scratch = self._scratch("_q8_dot_scratch", values + values // 32 * 4)
+            self._q8_dot(src, weight, out, ids, scales, routes, experts, n, m, scratch=scratch.ptr)
+        else:
+            launch(src, weight, out, ids, scales, routes, experts, n, m)
+
+    def _project_routes(self, quant, launch, weight, scales, ids, hidden, experts, m, n, single_token):
         tiles = self._route_tiles(quant, ids)
         x, record_bytes = self._stage_routes(ids, hidden, scales, tiles=tiles)
         y = np.empty((ids.size, m), np.float32)
@@ -233,7 +250,8 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         scales_ptr = ids_ptr + record_bytes if scales is not None else 0
         with self._transfer.exchange(inp.ptr, out.ptr, x, y, pinned=True):
             if tiles is None:
-                launch(inp.ptr, weight, out.ptr, ids_ptr, scales_ptr, ids.size, experts, n, m)
+                self._run_selected(quant, launch, inp.ptr, weight, out.ptr, ids_ptr, scales_ptr, ids.size,
+                                   experts, n, m, single_token=single_token)
             else:
                 self._tiled_launches[quant](inp.ptr, weight, out.ptr, ids_ptr, scales_ptr, len(tiles), ids.size,
                                             experts, n, m)
@@ -273,8 +291,9 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                     count = min(tile, tokens - row)
                     offset = row * k * itemsize
                     if tiles is None:
-                        launch(inp.ptr + offset * n, weight.ptr, route_out, ids_ptr + offset,
-                               scales_ptr + offset if scales_ptr else 0, count * k, experts, n, m)
+                        self._run_selected(quant, launch, inp.ptr + offset * n, weight.ptr, route_out, ids_ptr + offset,
+                                           scales_ptr + offset if scales_ptr else 0, count * k, experts, n, m,
+                                           single_token=ids.ndim == 1)
                     else:
                         # The tile builder admits only route lists that fit one selected launch.
                         self._tiled_launches[quant](inp.ptr, weight.ptr, route_out, ids_ptr, scales_ptr, len(tiles),

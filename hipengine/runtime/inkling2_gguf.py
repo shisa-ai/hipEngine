@@ -156,7 +156,8 @@ class Inkling2GGUFText(Inkling2TextReference):
     def feed_forward(self, visit, normalized, *, transform_output=None):
         ids, mix = self.route(visit, normalized)
         k = ids.shape[-1]
-        project = self._cpu_selected if self.projection is None else self.projection.project_selected
+        project = (self._cpu_selected if self.projection is None else
+                   partial(self.projection.project_selected, single_token=normalized.ndim == 1))
         run = partial(project, visit)
         inputs = np.repeat(np.atleast_2d(normalized), k, axis=0)
         gate, up = np.split(run("gate_up", ids.ravel(), inputs), 2, axis=-1)

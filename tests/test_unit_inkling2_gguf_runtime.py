@@ -48,6 +48,23 @@ def test_both_gguf_architectures_register_the_packed_generator(architecture):
         assert factory.keywords == {"backend": backend}
 
 
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+def test_inkling_gguf_fast_profile_keeps_strict_and_default_distinct(backend):
+    from hipengine.execution_profiles import resolve_default_execution_profile, resolve_runtime_profile
+
+    register_builtin_generators()
+    plugin = resolve_model("inkling2")
+    key = dict(model=plugin.name, backend=backend, quant=plugin.default_quant)
+    assert resolve_default_execution_profile(**key) is None
+    strict = resolve_runtime_profile(**key, profile="strict")
+    fast = resolve_runtime_profile(**key, profile="fast")
+    assert not fast.fell_back_to_strict
+    assert strict.manifest_sha256 == fast.strict_manifest_sha256
+    selection, = fast.manifest["selections"]
+    assert selection["selected_variant"] == "selected_q8_dot_f32_f32_out"
+    assert selection["strict_fallback_variant"] == "selected_register_fp4_f32_f32_out"
+
+
 def test_embedded_inkling_tokenizer_preserves_token_and_control_ids():
     info = Mock()
     info.metadata = {
