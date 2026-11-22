@@ -270,6 +270,7 @@ def qwen35_paged_full_attn_decode_context_bf16_spans(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    _page_pointers: bool = False,
 ) -> None:
     """Decode paged BF16 full attention using ``KVLiveSpans`` metadata.
 
@@ -281,7 +282,11 @@ def qwen35_paged_full_attn_decode_context_bf16_spans(
     _check_decode_shape(spans, max_context_len, block_size, num_q_heads, num_kv_heads, head_dim)
     library = library or build_qwen35_paged_attn_decode(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_CONTEXT)
+    symbol = (
+        "hipengine_qwen35_paged_full_attn_decode_context_bf16_page_ptrs_spans"
+        if _page_pointers else _SYMBOL_CONTEXT
+    )
+    fn = getattr(library, symbol)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -316,6 +321,11 @@ def qwen35_paged_full_attn_decode_context_bf16_spans(
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def qwen35_paged_full_attn_decode_context_bf16_page_ptrs_spans(*args, **kwargs) -> None:
+    """Read independently allocated BF16 pages without changing reduction order."""
+    qwen35_paged_full_attn_decode_context_bf16_spans(*args, **kwargs, _page_pointers=True)
 
 
 def qwen35_paged_full_attn_decode_context_bf16_batch_spans(
@@ -4879,6 +4889,12 @@ def _int8_hadamard_group32_prefill_gqa_symbol(spans: KVLiveSpans) -> str:
 
 
 def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        register(
+            KernelKey(backend, "paged_attn_decode", "bf16", "context_page_ptrs_spans"),
+            qwen35_paged_full_attn_decode_context_bf16_page_ptrs_spans,
+            replace=replace,
+        )
     register(
         KernelKey("hip_gfx1100", "full_attn_gate_mul", "w4_paro", "bf16"),
         qwen35_full_attn_gate_mul_bf16,

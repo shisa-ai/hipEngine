@@ -352,6 +352,59 @@ def test_f32_append_targets_independent_bf16_pages(hip_test_target_arch) -> None
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("head_dim", [128, 256])
+def test_bf16_decode_through_independent_pages_matches_contiguous(head_dim, hip_test_target_arch):
+    from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND, hip_target_arch_environment
+    from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+        qwen35_paged_full_attn_decode_context_bf16_spans as reference,
+    )
+
+    decode = resolve(backend=HIP_TARGET_ARCH_BACKEND[hip_test_target_arch], layer="paged_attn_decode",
+                     quant="bf16", variant="context_page_ptrs_spans")
+    runtime = get_hip_runtime()
+    buffers = []
+    rng = np.random.default_rng(947)
+
+    def upload(array):
+        result = malloc(array.nbytes, runtime=runtime)
+        buffers.append(result)
+        copy_host_to_device(result, host_array_ptr(array), runtime=runtime)
+        return result
+
+    try:
+        values = rng.uniform(-0.5, 0.5, (2, 2, 256, head_dim)).astype(np.float32)
+        planes = (values.view(np.uint32) >> 16).astype(np.uint16)
+        contiguous = [upload(plane) for plane in planes]
+        tables = []
+        for plane in planes:
+            pages = [upload(page) for page in plane]
+            tables.append(upload(np.array([p.ptr for p in pages], dtype=np.uint64)))
+        table = upload(np.array([1, 0], dtype=np.int32))
+        count = upload(np.array([257], dtype=np.int64))
+        query = upload(rng.uniform(-0.5, 0.5, (2, head_dim)).astype(np.float32))
+        a, b = (upload(np.zeros((2, head_dim), dtype=np.float32)) for _ in range(2))
+        spans = KVLiveSpans.paged_uniform(
+            block_table=_tensor(table.ptr, (2,), DType.INT32),
+            live_counts=_tensor(count.ptr, (1,), DType.INT64),
+            max_live_count=257, storage_dtype=DType.BF16,
+        )
+        with hip_target_arch_environment(hip_test_target_arch):
+            for fn, inputs, output in ((reference, contiguous, a), (decode, tables, b)):
+                fn(query.ptr, inputs[0].ptr, inputs[1].ptr, output.ptr, spans,
+                   257, 256, 2, 1, head_dim, head_dim ** -0.5, runtime=runtime)
+            runtime.device_synchronize()
+        expected = np.empty((2, head_dim), dtype=np.float32)
+        got = np.empty_like(expected)
+        copy_device_to_host(host_array_ptr(expected), a, runtime=runtime)
+        copy_device_to_host(host_array_ptr(got), b, runtime=runtime)
+        assert np.any(expected != 0)
+        np.testing.assert_array_equal(got, expected)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize("context_len", [1, 255, 256, 257])
 def test_dense_and_generic_head_major_copy_are_byte_exact(context_len: int) -> None:
     runtime = get_hip_runtime()

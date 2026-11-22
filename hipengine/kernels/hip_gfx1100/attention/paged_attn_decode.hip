@@ -187,6 +187,7 @@ __device__ __forceinline__ float paged_key_dot_vec8(
   return acc;
 }
 
+template <bool PagePointers>
 __global__ void qwen35_paged_full_attn_decode_context_tensor_kernel(
     const float* query,
     const uint16_t* key_cache,
@@ -231,14 +232,19 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_kernel(
     const int64_t logical_block = token >> 8;
     const int64_t block_offset = token & 255;
     const int64_t physical_block = static_cast<int64_t>(block_table[logical_block]);
-    const int64_t token_offset = (physical_block << 8) + block_offset;
+    const uint16_t* key_page = key_cache;
+    int64_t token_offset = (physical_block << 8) + block_offset;
+    if constexpr (PagePointers) {
+      key_page = reinterpret_cast<const uint16_t*>(reinterpret_cast<const uintptr_t*>(key_cache)[physical_block]);
+      token_offset = block_offset;
+    }
     const int64_t k_offset = (token_offset * num_kv_heads + kv_head) * head_dim;
     float acc = 0.0f;
     for (int64_t dim = lane_id * 4; dim < head_dim; dim += warpSize * 4) {
-      acc += q_shared[dim + 0] * bf16_bits_to_float(key_cache[k_offset + dim + 0]);
-      acc += q_shared[dim + 1] * bf16_bits_to_float(key_cache[k_offset + dim + 1]);
-      acc += q_shared[dim + 2] * bf16_bits_to_float(key_cache[k_offset + dim + 2]);
-      acc += q_shared[dim + 3] * bf16_bits_to_float(key_cache[k_offset + dim + 3]);
+      acc += q_shared[dim + 0] * bf16_bits_to_float(key_page[k_offset + dim + 0]);
+      acc += q_shared[dim + 1] * bf16_bits_to_float(key_page[k_offset + dim + 1]);
+      acc += q_shared[dim + 2] * bf16_bits_to_float(key_page[k_offset + dim + 2]);
+      acc += q_shared[dim + 3] * bf16_bits_to_float(key_page[k_offset + dim + 3]);
     }
     // Warp shuffle reduction
     for (int offset = warpSize / 2; offset > 0; offset /= 2) {
@@ -311,8 +317,14 @@ __global__ void qwen35_paged_full_attn_decode_context_tensor_kernel(
       const int64_t logical_block = token >> 8;
       const int64_t block_offset = token & 255;
       const int64_t physical_block = static_cast<int64_t>(block_table[logical_block]);
-      const int64_t v_offset = (((physical_block << 8) + block_offset) * num_kv_heads + kv_head) * head_dim + dim;
-      acc += scores[token] * bf16_bits_to_float(value_cache[v_offset]);
+      const uint16_t* value_page = value_cache;
+      int64_t token_offset = (physical_block << 8) + block_offset;
+      if constexpr (PagePointers) {
+        value_page = reinterpret_cast<const uint16_t*>(reinterpret_cast<const uintptr_t*>(value_cache)[physical_block]);
+        token_offset = block_offset;
+      }
+      const int64_t v_offset = (token_offset * num_kv_heads + kv_head) * head_dim + dim;
+      acc += scores[token] * bf16_bits_to_float(value_page[v_offset]);
     }
     out[q_offset + dim] = acc;
   }
@@ -6290,7 +6302,7 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_spans(
   const int threads = 256;
   const size_t shared_bytes = static_cast<size_t>(max_context_len + 8 + head_dim) * sizeof(float);
   hipLaunchKernelGGL(
-      qwen35_paged_full_attn_decode_context_tensor_kernel,
+      qwen35_paged_full_attn_decode_context_tensor_kernel<false>,
       dim3(static_cast<unsigned int>(num_q_heads)),
       dim3(threads),
       shared_bytes,
@@ -6307,6 +6319,24 @@ extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_spans(
       num_kv_heads,
       head_dim,
       scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_paged_full_attn_decode_context_bf16_page_ptrs_spans(
+    const float* query, const uint16_t* key_pages, const uint16_t* value_pages,
+    float* out, const int32_t* base_offsets, const int64_t* live_counts,
+    int64_t max_context_len, int64_t block_size, int64_t block_table_len,
+    int64_t num_q_heads, int64_t num_kv_heads, int64_t head_dim, float scale,
+    hipStream_t stream) {
+  if (!valid_paged_attn_shape(max_context_len, block_size, block_table_len, num_q_heads, num_kv_heads, head_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 256;
+  const size_t shared_bytes = static_cast<size_t>(max_context_len + 8 + head_dim) * sizeof(float);
+  hipLaunchKernelGGL(qwen35_paged_full_attn_decode_context_tensor_kernel<true>,
+                    dim3(static_cast<unsigned int>(num_q_heads)), dim3(threads), shared_bytes, stream,
+                    query, key_pages, value_pages, base_offsets, live_counts, out,
+                    max_context_len, block_size, num_q_heads, num_kv_heads, head_dim, scale);
   return static_cast<int>(hipGetLastError());
 }
 
