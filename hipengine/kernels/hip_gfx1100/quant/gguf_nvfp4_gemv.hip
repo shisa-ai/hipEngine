@@ -21,9 +21,10 @@ __device__ __forceinline__ int decode_fp4(unsigned code) {
     return code & 8 ? -value : value;
 }
 
+template<bool selected>
 __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_gemv_f32_kernel(
         const float * x, const uint8_t * weights, float * out, int in_features, int out_features,
-        size_t output_values, float outer_scale) {
+        size_t output_values, float outer_scale, const int32_t * ids, const float * scales, int experts) {
     const size_t index = static_cast<size_t>(blockIdx.x) * waves_per_block + threadIdx.x / wave;
     if (index >= output_values) {
         return;
@@ -32,7 +33,19 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_gemv_f32_ke
     const int batch = index / out_features;
     const int row = index % out_features;
     const int blocks = in_features / values_per_block;
-    const uint8_t * packed = weights + static_cast<size_t>(row) * blocks * bytes_per_block;
+    size_t weight_row = row;
+    if constexpr (selected) {
+        const int expert = ids[batch];
+        if (expert < 0 || expert >= experts) {
+            if (lane == 0) {
+                out[index] = 0;
+            }
+            return;
+        }
+        weight_row += static_cast<size_t>(expert) * out_features;
+        outer_scale = scales ? scales[batch] : 1.0f;
+    }
+    const uint8_t * packed = weights + weight_row * blocks * bytes_per_block;
     const float * input = x + static_cast<size_t>(batch) * in_features;
     const int group = lane / 8;
     const int first = group * 16 + lane % 8;
@@ -52,13 +65,12 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_gemv_f32_ke
         out[index] = sum * outer_scale;
     }
 }
-}  // namespace
 
-extern "C" int hipengine_gguf_nvfp4_gemv_f32_f32_out(
-        const float * x, const uint8_t * weights, float * out, int batch,
-        int in_features, int out_features, float outer_scale, hipStream_t stream) {
+template<bool selected>
+int launch(const float * x, const uint8_t * weights, float * out, int batch, int in_features, int out_features,
+           float outer_scale, hipStream_t stream, const int32_t * ids, const float * scales, int experts) {
     if (!x || !weights || !out || batch <= 0 || in_features <= 0 || in_features % values_per_block
-            || out_features <= 0) {
+            || out_features <= 0 || (selected && (!ids || experts <= 0))) {
         return hipErrorInvalidValue;
     }
     const size_t output_values = static_cast<size_t>(batch) * out_features;
@@ -66,7 +78,21 @@ extern "C" int hipengine_gguf_nvfp4_gemv_f32_f32_out(
     if (blocks > INT32_MAX) {
         return hipErrorInvalidValue;
     }
-    hipLaunchKernelGGL(gguf_nvfp4_gemv_f32_kernel, dim3(blocks), dim3(wave * waves_per_block),
-                       0, stream, x, weights, out, in_features, out_features, output_values, outer_scale);
+    hipLaunchKernelGGL((gguf_nvfp4_gemv_f32_kernel<selected>), dim3(blocks), dim3(wave * waves_per_block),
+                       0, stream, x, weights, out, in_features, out_features, output_values, outer_scale,
+                       ids, scales, experts);
     return hipGetLastError();
+}
+}  // namespace
+
+extern "C" int hipengine_gguf_nvfp4_gemv_f32_f32_out(
+        const float * x, const uint8_t * weights, float * out, int batch,
+        int in_features, int out_features, float outer_scale, hipStream_t stream) {
+    return launch<false>(x, weights, out, batch, in_features, out_features, outer_scale, stream, nullptr, nullptr, 0);
+}
+
+extern "C" int hipengine_gguf_nvfp4_selected_f32_f32_out(
+        const float * x, const uint8_t * weights, float * out, const int32_t * ids, const float * scales,
+        int batch, int experts, int in_features, int out_features, hipStream_t stream) {
+    return launch<true>(x, weights, out, batch, in_features, out_features, 1.0f, stream, ids, scales, experts);
 }

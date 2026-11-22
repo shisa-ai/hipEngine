@@ -217,7 +217,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | Source | Purpose |
 | --- | --- |
 | `quant/gguf_k_gemv.hip` | Raw Q5_K, Q6_K, and Q8_0 projections, including selected experts. |
-| `quant/gguf_nvfp4_gemv.hip` | Raw GGUF NVFP4 projection with FP32 inputs and outputs and a post-dot scale (`linear/gguf_nvfp4/gemv_f32_f32_out`). |
+| `quant/gguf_nvfp4_gemv.hip` | Raw GGUF NVFP4 FP32 projections with post-dot scaling. `moe_linear/gguf_nvfp4/selected_f32_f32_out` reads a bank in route order; `linear/gguf_nvfp4/gemv_f32_f32_out` addresses one matrix. |
 | `quant/gguf_q3_k_gemv.hip` | Raw Q3_K selected-expert projections. |
 | `quant/gguf_q4_k_gemv.hip` | Q4_K projections with paired, activation, and residual composites. |
 | `quant/gguf_q4_k_moe_ffn_fused.hip` | Fused Q4_K selected-expert feed-forward chain. |

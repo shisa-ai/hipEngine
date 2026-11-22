@@ -58,3 +58,44 @@ def test_nvfp4_projects_raw_gguf_rows(batch, columns, nout, outer):
     ref_logp = log_probs(expected)
     gpu_logp = log_probs(actual.astype(np.float64))
     assert np.max((np.exp(ref_logp) * (ref_logp - gpu_logp)).sum(axis=-1)) <= 0.05
+
+
+@pytest.mark.parametrize("out_features", [19, 2304])
+def test_selected_nvfp4_exactly_matches_scalar_launches(out_features):
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP runtime unavailable: {exc}")
+    backend = resolve_backend("auto", execution_device=True)
+    if backend not in ("hip_gfx1100", "hip_gfx1151"):
+        pytest.skip("test requires gfx1100 or gfx1151")
+    from hipengine.kernels.hip_gfx1100.quant import gguf_nvfp4_gemv  # noqa: F401
+
+    rng = np.random.default_rng(893)
+    experts, in_features = 3, 1152
+    ids = np.array([2, 0, 0, 1, 2], np.int32)
+    scales = np.array([0.5, -0.02, 0, -1.25, 0.011], np.float32)
+    x = rng.normal(0, 0.02, (len(ids), in_features)).astype(np.float32)
+    raw = rng.integers(0, 256, (experts, out_features, in_features // 64, 36), dtype=np.uint8)
+    observed = np.empty((len(ids), out_features), np.float32)
+    expected = np.empty_like(observed)
+    scalar = resolve(backend=backend, layer="linear", quant="gguf_nvfp4", variant="gemv_f32_f32_out")
+    selected = resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4", variant="selected_f32_f32_out")
+    runtime = get_hip_runtime()
+    pointers = []
+    try:
+        for arr in (x, raw, ids, scales, observed):
+            ptr = runtime.malloc(arr.nbytes)
+            pointers.append(ptr)
+            runtime.memcpy(ptr, arr.ctypes.data, arr.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+        x_ptr, w_ptr, ids_ptr, scales_ptr, out_ptr = pointers
+        for i, (expert, scale) in enumerate(zip(ids, scales, strict=True)):
+            scalar(x_ptr + i * x.strides[0], w_ptr + int(expert) * raw.strides[0],
+                   out_ptr + i * expected.strides[0], 1, in_features, out_features, outer_scale=float(scale))
+        runtime.memcpy(expected.ctypes.data, out_ptr, expected.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+        selected(x_ptr, w_ptr, out_ptr, ids_ptr, scales_ptr, len(ids), experts, in_features, out_features)
+        runtime.memcpy(observed.ctypes.data, out_ptr, observed.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+    finally:
+        for ptr in reversed(pointers):
+            runtime.free(ptr)
+    np.testing.assert_array_equal(observed.view(np.uint32), expected.view(np.uint32))

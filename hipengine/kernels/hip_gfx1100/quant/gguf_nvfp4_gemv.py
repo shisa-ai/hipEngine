@@ -13,10 +13,14 @@ from hipengine.kernels.registry import KernelKey, register
 
 
 @lru_cache(maxsize=None)
+def _library(target_arch):
+    return build_hip(sources=[Path(__file__).with_suffix(".hip")], family="gguf_nvfp4_gemv",
+                     profile="decode", target_arch=target_arch, output_name="gguf_nvfp4_gemv.so")
+
+
+@lru_cache(maxsize=None)
 def _projection(target_arch):
-    library = build_hip(sources=[Path(__file__).with_suffix(".hip")], family="gguf_nvfp4_gemv",
-                        profile="decode", target_arch=target_arch, output_name="gguf_nvfp4_gemv.so")
-    fn = library.hipengine_gguf_nvfp4_gemv_f32_f32_out
+    fn = _library(target_arch).hipengine_gguf_nvfp4_gemv_f32_f32_out
     fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int] * 3 + [ctypes.c_float, ctypes.c_void_p]
     fn.restype = ctypes.c_int
     return fn
@@ -28,6 +32,22 @@ def _launch(x, weight, output, rows, in_features, out_features, *, target_arch, 
         raise HipError(f"GGUF NVFP4 projection failed with HIP status {status}")
 
 
+@lru_cache(maxsize=None)
+def _selected(target_arch):
+    fn = _library(target_arch).hipengine_gguf_nvfp4_selected_f32_f32_out
+    fn.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_int] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def _launch_selected(x, weight, output, ids, scales, rows, experts, in_features, out_features, *, target_arch, stream=0):
+    status = _selected(target_arch)(x, weight, output, ids, scales, rows, experts, in_features, out_features, stream)
+    if status != HIP_SUCCESS:
+        raise HipError(f"GGUF NVFP4 selected projection failed with HIP status {status}")
+
+
 for _backend in ("hip_gfx1100", "hip_gfx1151"):
-    register(KernelKey(_backend, "linear", "gguf_nvfp4", "gemv_f32_f32_out"),
-             partial(_launch, target_arch=hip_target_arch_for_backend(_backend)))
+    _arch = hip_target_arch_for_backend(_backend)
+    register(KernelKey(_backend, "linear", "gguf_nvfp4", "gemv_f32_f32_out"), partial(_launch, target_arch=_arch))
+    register(KernelKey(_backend, "moe_linear", "gguf_nvfp4", "selected_f32_f32_out"),
+             partial(_launch_selected, target_arch=_arch))

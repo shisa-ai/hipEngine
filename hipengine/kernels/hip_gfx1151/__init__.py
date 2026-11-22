@@ -944,6 +944,9 @@ _SOURCE_BACKEND = "hip_gfx1100"
 # independent gfx1151 parity gate; the proposal graph remains unadmitted here.
 _GFX1151_ALIAS_EXCLUSIONS = frozenset(
     {
+        # NVFP4 launchers already bind the backend's exact build target.
+        ("linear", "gguf_nvfp4", "gemv_f32_f32_out"),
+        ("moe_linear", "gguf_nvfp4", "selected_f32_f32_out"),
         # The dense-H5120 narrow Q4T16 col4 rowtile and the dense-H5120
         # down+residual rowtile were admitted on 2026-09-12: independent gfx1151
         # shape crossovers (rows 2-4, bit-exact) and complete-model gates now

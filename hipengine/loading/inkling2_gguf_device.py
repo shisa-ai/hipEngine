@@ -11,7 +11,7 @@ from hipengine.core.memory import free, malloc
 from hipengine.kernels.backends import hip_target_arch_for_backend, load_backend_kernel_package
 from hipengine.kernels.hip_gfx1100.quant import gguf_nvfp4_gemv  # noqa: F401
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.inkling2_device_dense import Inkling2DeviceDense
 from hipengine.quant.gguf import GGMLQuantizationType as Q
 
@@ -27,6 +27,9 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._launches = {q: resolve(backend=backend, layer="linear", quant=f"gguf_{q.name.lower()}",
                                     variant="gemv_f32_f32_out") for q in (Q.NVFP4, Q.Q8_0, Q.Q5_K)}
         self._bound_launches = {}
+        selected_key = KernelKey(backend, "moe_linear", "gguf_nvfp4", "selected_f32_f32_out")
+        self._selected_nvfp4 = (resolve(backend=backend, layer=selected_key.layer, quant=selected_key.quant,
+                                        variant=selected_key.variant) if is_registered(selected_key) else None)
         self._bank_scales = {}
 
     def _packed_launch(self, quant):
@@ -92,12 +95,20 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         if (ids.ndim != 1 or ids.dtype.kind not in "iu" or not len(ids) or np.any(ids < 0) or np.any(ids >= experts)
                 or hidden.shape != (len(ids), n)):
             raise ValueError("invalid Inkling GGUF selected projection geometry")
+        quant = Q(bank.weight.ggml_type)
+        selected = self._selected_nvfp4 if quant == Q.NVFP4 else None
+        if selected is not None:
+            ids = np.ascontiguousarray(ids, dtype=np.int32)
+            with self._lock:
+                if self._closed:
+                    raise RuntimeError("Inkling GGUF projection residency is closed")
+                weight, scales = self._bank(bank)
+                return self._project_nvfp4_routes(selected, weight.ptr, scales, ids, hidden, experts, m, n)
         order = np.argsort(ids, kind="stable")
         ids = ids[order]
         boundaries = np.r_[0, np.flatnonzero(ids[1:] != ids[:-1]) + 1, len(ids)]
         x = np.ascontiguousarray(hidden[order], dtype=np.float32)
         y = np.empty((len(ids), m), np.float32)
-        quant = Q(bank.weight.ggml_type)
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling GGUF projection residency is closed")
@@ -117,3 +128,21 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         result = np.empty_like(y)
         result[order] = y
         return result
+
+    def _project_nvfp4_routes(self, launch, weight, scales, ids, hidden, experts, m, n):
+        # One transfer for the activations and route metadata, all 4-byte aligned.
+        input_values = hidden.size
+        routes = len(ids)
+        x = np.empty(input_values + routes * (2 if scales is not None else 1), np.float32)
+        x[:input_values].reshape(hidden.shape)[...] = hidden
+        x[input_values:input_values + routes].view(np.int32)[:] = ids
+        if scales is not None:
+            x[input_values + routes:] = scales[ids]
+        y = np.empty((routes, m), np.float32)
+        inp = self._scratch("_input", x.nbytes)
+        out = self._scratch("_output", y.nbytes)
+        ids_ptr = inp.ptr + input_values * x.itemsize
+        scales_ptr = ids_ptr + ids.nbytes if scales is not None else 0
+        with self._transfer.exchange(inp.ptr, out.ptr, x, y, pinned=True):
+            launch(inp.ptr, weight, out.ptr, ids_ptr, scales_ptr, routes, experts, n, m)
+        return y
