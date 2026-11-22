@@ -69,9 +69,10 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_gemv_f32_ke
     }
 }
 
+template<bool shared_input = false>
 __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_selected_tile4_f32_kernel(
         const float* x, const uint8_t* weights, float* out, const int32_t* records, const float* scales,
-        int routes, int experts, int in_features, int out_features) {
+        int routes, int experts, int in_features, int out_features, int routes_per_input) {
     const int row = blockIdx.x * waves_per_block + threadIdx.x / wave;
     if (row >= out_features) return;
     const int32_t* tile = records + blockIdx.y * (route_tile + 1);
@@ -90,7 +91,9 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_selected_ti
     for (int t = 0; t < route_tile; ++t) {
         route[t] = tile[t + 1];
         const bool valid = route[t] >= 0 && route[t] < routes;
-        inputs[t] = x + static_cast<size_t>(valid ? route[t] : first_route) * in_features + first;
+        int input_row = valid ? route[t] : first_route;
+        if constexpr (shared_input) input_row /= routes_per_input;
+        inputs[t] = x + static_cast<size_t>(input_row) * in_features + first;
     }
     for (int b = 0; b < blocks; ++b) {
         const float scale = decode_scale(packed[group]);
@@ -131,6 +134,19 @@ int launch(const float * x, const uint8_t * weights, float * out, int batch, int
                        ids, scales, experts);
     return hipGetLastError();
 }
+template<bool shared_input>
+int launch_tile4(const float* x, const uint8_t* weights, float* out, const int32_t* tiles, const float* scales,
+                 int tile_count, int routes, int experts, int in_features, int out_features,
+                 int routes_per_input, hipStream_t stream) {
+    if (!x || !weights || !out || !tiles || tile_count <= 0 || tile_count > 65535 || routes <= 0 || experts <= 0 ||
+            in_features <= 0 || in_features % values_per_block || out_features <= 0 ||
+            routes_per_input <= 0 || routes % routes_per_input) return hipErrorInvalidValue;
+    const dim3 grid(1 + (out_features - 1) / waves_per_block, tile_count);
+    hipLaunchKernelGGL((gguf_nvfp4_selected_tile4_f32_kernel<shared_input>), grid, dim3(wave * waves_per_block),
+                       0, stream, x, weights, out, tiles, scales, routes, experts, in_features, out_features,
+                       routes_per_input);
+    return hipGetLastError();
+}
 }  // namespace
 
 extern "C" int hipengine_gguf_nvfp4_gemv_f32_f32_out(
@@ -154,10 +170,14 @@ extern "C" int hipengine_gguf_nvfp4_selected_register_fp4_f32_f32_out(
 extern "C" int hipengine_gguf_nvfp4_selected_tile4_f32_f32_out(
         const float* x, const uint8_t* weights, float* out, const int32_t* tiles, const float* scales,
         int tile_count, int routes, int experts, int in_features, int out_features, hipStream_t stream) {
-    if (!x || !weights || !out || !tiles || tile_count <= 0 || tile_count > 65535 || routes <= 0 || experts <= 0 ||
-            in_features <= 0 || in_features % values_per_block || out_features <= 0) return hipErrorInvalidValue;
-    const dim3 grid(1 + (out_features - 1) / waves_per_block, tile_count);
-    hipLaunchKernelGGL(gguf_nvfp4_selected_tile4_f32_kernel, grid, dim3(wave * waves_per_block),
-                       0, stream, x, weights, out, tiles, scales, routes, experts, in_features, out_features);
-    return hipGetLastError();
+    return launch_tile4<false>(x, weights, out, tiles, scales, tile_count, routes, experts, in_features,
+                              out_features, 1, stream);
+}
+
+extern "C" int hipengine_gguf_nvfp4_selected_tile4_shared_input_f32_f32_out(
+        const float* x, const uint8_t* weights, float* out, const int32_t* tiles, const float* scales,
+        int tile_count, int routes, int experts, int in_features, int out_features, int routes_per_input,
+        hipStream_t stream) {
+    return launch_tile4<true>(x, weights, out, tiles, scales, tile_count, routes, experts, in_features,
+                             out_features, routes_per_input, stream);
 }

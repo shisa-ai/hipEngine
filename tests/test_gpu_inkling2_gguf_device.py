@@ -123,7 +123,11 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
                         inp = rng.normal(0, 0.1, (*shape[:-1], 256)).astype(np.float32)
                         mix = rng.uniform(0, 1, shape).astype(np.float32)
                         expanded = np.repeat(np.atleast_2d(inp), shape[-1], axis=0)
-                        gate, up = np.split(owner.project_selected(visit, "gate_up", ids.ravel(), expanded), 2, axis=-1)
+                        packed = owner.project_selected(visit, "gate_up", ids.ravel(), expanded)
+                        shared = owner.project_selected(visit, "gate_up", ids.ravel(), np.atleast_2d(inp),
+                                                        routes_per_input=shape[-1])
+                        np.testing.assert_array_equal(shared.view(np.uint32), packed.view(np.uint32))
+                        gate, up = np.split(packed, 2, axis=-1)
                         a, b = mapping.gate_cap, mapping.up_cap
                         activated = (a * np.tanh(gate / a) * _sigmoid(gate)) * (b * np.tanh(up / b))
                         want = owner.project_down_mixed(visit, ids, mix, activated)

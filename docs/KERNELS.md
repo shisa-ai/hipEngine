@@ -217,7 +217,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | Source | Purpose |
 | --- | --- |
 | `quant/gguf_k_gemv.hip` | Raw Q5_K, Q6_K, and Q8_0 projections. Q5_K and Q8_0 also expose individual-route and four-route expert tiles under `moe_linear`. |
-| `quant/gguf_nvfp4_gemv.hip` | Raw GGUF NVFP4 FP32 projections with post-dot scaling. The `moe_linear/gguf_nvfp4` selected variants use individual routes (including a register-based FP4 table) or four routes of the same expert, writing in route order. `linear/gguf_nvfp4/gemv_f32_f32_out` addresses one matrix. |
+| `quant/gguf_nvfp4_gemv.hip` | Raw GGUF NVFP4 FP32 projections with post-dot scaling. The `moe_linear/gguf_nvfp4` selected variants use individual routes (including a register-based FP4 table) or four routes of the same expert, writing in route order. The shared-input tile reads one activation row per token for gate/up prefill. `linear/gguf_nvfp4/gemv_f32_f32_out` addresses one matrix. |
 | `quant/gguf_nvfp4_q8_dot.hip` | Blockwise Q8 activation packing and signed integer dot products for raw NVFP4 experts. Inkling GGUF's `fast` profile selects this for single-token, eight-route projections at its supported widths. The FP32 projection remains the default and strict fallback. |
 | `quant/inkling2_experts.hip` | Inkling packed expert projections and pointwise operations. GGUF uses `ordered_mix_exact` for separately rounded FP32 multiply/add in route order. Its `fast` profile applies `split_activation_device` between the selected gate/up and down projections without transferring intermediates; strict uses `split_activation_host`. |
 | `quant/gguf_q3_k_gemv.hip` | Raw Q3_K selected-expert projections. |

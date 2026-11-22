@@ -106,8 +106,8 @@ def test_selected_nvfp4_exactly_matches_scalar_launches(out_features):
     np.testing.assert_array_equal(observed.view(np.uint32), expected.view(np.uint32))
 
 
-@pytest.mark.parametrize("scaled,nout", [(True, 19), (False, 2304)])
-def test_tiled_nvfp4_reuses_rows_without_changing_route_results(scaled, nout):
+@pytest.mark.parametrize("scaled,nout,repeats", [(True, 19, 3), (False, 2304, 4)])
+def test_tiled_nvfp4_reuses_rows_without_changing_route_results(scaled, nout, repeats):
     try:
         ctypes.CDLL("libamdhip64.so")
     except OSError as exc:
@@ -125,25 +125,32 @@ def test_tiled_nvfp4_reuses_rows_without_changing_route_results(scaled, nout):
     assert records.tolist() == [[0, 1, 2, 10, -1], [1, 3, 6, 9, -1], [3, 0, 4, 5, 7], [3, 8, 11, -1, -1]]
     scales = rng.uniform(-1.0, 1.0, ids.size).astype(np.float32)
     scales[0] = 0.0
-    x = rng.normal(0, 0.02, (ids.size, width)).astype(np.float32)
+    tokens = rng.normal(0, 0.02, (ids.size // repeats, width)).astype(np.float32)
+    x = np.repeat(tokens, repeats, axis=0)
     raw = rng.integers(0, 256, (experts, nout, width // 64, 36), dtype=np.uint8)
     actual = np.full((ids.size, nout), np.nan, np.float32)
     expected = np.empty_like(actual)
     key = dict(backend=backend, layer="moe_linear", quant="gguf_nvfp4")
     selected = resolve(**key, variant="selected_f32_f32_out")
     tiled = resolve(**key, variant="selected_tile4_f32_f32_out")
+    shared = resolve(**key, variant="selected_tile4_shared_input_f32_f32_out")
     rt = get_hip_runtime()
     ptrs = []
     try:
-        for arr in (x, raw, ids, scales, records, actual, actual):
+        for arr in (x, raw, ids, scales, records, actual, actual, tokens):
             ptr = rt.malloc(arr.nbytes)
             ptrs.append(ptr)
             rt.memcpy(ptr, arr.ctypes.data, arr.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
-        x_ptr, w_ptr, id_ptr, scale_ptr, records_ptr, expected_ptr, actual_ptr = ptrs
+        x_ptr, w_ptr, id_ptr, scale_ptr, records_ptr, expected_ptr, actual_ptr, tokens_ptr = ptrs
         scale_ptr = scale_ptr if scaled else 0
         selected(x_ptr, w_ptr, expected_ptr, id_ptr, scale_ptr, ids.size, experts, width, nout)
         tiled(x_ptr, w_ptr, actual_ptr, records_ptr, scale_ptr, len(records), ids.size, experts, width, nout)
         rt.memcpy(expected.ctypes.data, expected_ptr, expected.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+        rt.memcpy(actual.ctypes.data, actual_ptr, actual.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+        np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+        rt.memset(actual_ptr, 0xff, actual.nbytes)
+        shared(tokens_ptr, w_ptr, actual_ptr, records_ptr, scale_ptr, len(records), ids.size, experts, width, nout,
+               routes_per_input=repeats)
         rt.memcpy(actual.ctypes.data, actual_ptr, actual.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
     finally:
         for ptr in reversed(ptrs):

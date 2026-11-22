@@ -37,6 +37,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._bound_launches = {}
         self._selected_launches = {}
         self._tiled_launches = {}
+        self._shared_tiled_launches = {}
         self._q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
                                 variant="selected_q8_dot_f32_f32_out") if fast_experts else None)
         self._q8_dot_scratch = None
@@ -51,7 +52,8 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                            if is_registered(decode) else None)
         for quant in self._launches:
             for variant, launches in (("selected_f32_f32_out", self._selected_launches),
-                                      ("selected_tile4_f32_f32_out", self._tiled_launches)):
+                                      ("selected_tile4_f32_f32_out", self._tiled_launches),
+                                      ("selected_tile4_shared_input_f32_f32_out", self._shared_tiled_launches)):
                 key = KernelKey(backend, "moe_linear", f"gguf_{quant.name.lower()}", variant)
                 if is_registered(key):
                     launch = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
@@ -180,14 +182,15 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     def packed_bank_bytes(self):
         return sum(self._matrices[key][0].nbytes for key in self._bank_scales if key in self._matrices)
 
-    def project_selected(self, visit, projection, expert_ids, hidden, *, single_token=False):
-        """Project one FP32 row per selected route, returning results in route order."""
+    def project_selected(self, visit, projection, expert_ids, hidden, *, single_token=False, routes_per_input=1):
+        """Project selected routes in order, optionally sharing one FP32 row per token."""
         layer = self._weights.mapping.layers[visit.weight_layer]
         bank = {"gate_up": layer.gate_up, "down": layer.down}[projection]
         experts, m, n = bank.weight.shape
         ids = np.asarray(expert_ids)
         if (ids.ndim != 1 or ids.dtype.kind not in "iu" or not len(ids) or np.any(ids < 0) or np.any(ids >= experts)
-                or hidden.shape != (len(ids), n)):
+                or routes_per_input <= 0 or ids.size % routes_per_input
+                or hidden.shape != (len(ids) // routes_per_input, n)):
             raise ValueError("invalid Inkling GGUF selected projection geometry")
         quant = Q(bank.weight.ggml_type)
         selected = self._selected_launches.get(quant) if len(ids) <= _MAX_SELECTED_ROUTES else None
@@ -197,11 +200,12 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 if self._closed:
                     raise RuntimeError("Inkling GGUF projection residency is closed")
                 weight, scales = self._bank(bank)
-                return self._project_routes(quant, selected, weight.ptr, scales, ids, hidden, experts, m, n, single_token)
+                return self._project_routes(quant, selected, weight.ptr, scales, ids, hidden, experts, m, n, single_token,
+                                            routes_per_input)
         order = np.argsort(ids, kind="stable")
         ids = ids[order]
         boundaries = np.r_[0, np.flatnonzero(ids[1:] != ids[:-1]) + 1, len(ids)]
-        x = np.ascontiguousarray(hidden[order], dtype=np.float32)
+        x = np.ascontiguousarray(hidden[order // routes_per_input], dtype=np.float32)
         y = np.empty((len(ids), m), np.float32)
         with self._lock:
             if self._closed:
@@ -253,8 +257,14 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         else:
             launch(src, weight, out, ids, scales, routes, experts, n, m)
 
-    def _project_routes(self, quant, launch, weight, scales, ids, hidden, experts, m, n, single_token):
+    def _route_input(self, quant, hidden, tiles, repeats):
+        if repeats > 1 and (tiles is None or quant not in self._shared_tiled_launches):
+            return np.repeat(hidden, repeats, axis=0), 1
+        return hidden, repeats
+
+    def _project_routes(self, quant, launch, weight, scales, ids, hidden, experts, m, n, single_token, repeats):
         tiles = self._route_tiles(quant, ids)
+        hidden, repeats = self._route_input(quant, hidden, tiles, repeats)
         x, record_bytes = self._stage_routes(ids, hidden, scales, tiles=tiles)
         y = np.empty((ids.size, m), np.float32)
         inp = self._scratch("_input", x.nbytes)
@@ -263,14 +273,17 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         scales_ptr = ids_ptr + record_bytes if scales is not None else 0
         with self._transfer.exchange(inp.ptr, out.ptr, x, y, pinned=True):
             self._launch_routes(quant, launch, inp.ptr, weight, out.ptr, ids_ptr, scales_ptr, ids.size,
-                                experts, n, m, tiles, single_token)
+                                experts, n, m, tiles, single_token, routes_per_input=repeats)
         return y
 
     def _launch_routes(self, quant, launch, src, weight, out, ids_ptr, scales_ptr, routes, experts, n, m,
-                       tiles, single_token):
+                       tiles, single_token, *, routes_per_input=1):
         if tiles is None:
             self._run_selected(quant, launch, src, weight, out, ids_ptr, scales_ptr, routes, experts, n, m,
                                single_token=single_token)
+        elif routes_per_input > 1:
+            self._shared_tiled_launches[quant](src, weight, out, ids_ptr, scales_ptr, len(tiles), routes, experts, n, m,
+                                               routes_per_input=routes_per_input)
         else:
             self._tiled_launches[quant](src, weight, out, ids_ptr, scales_ptr, len(tiles), routes, experts, n, m)
 
@@ -289,28 +302,30 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             raise ValueError("invalid Inkling GGUF fused expert projection geometry")
         flat_ids = np.ascontiguousarray(ids.ravel(), dtype=np.int32)
         routes, k = ids.size, ids.shape[-1]
-        expanded = np.repeat(np.atleast_2d(hidden), k, axis=0)
         result = np.empty((*ids.shape[:-1], dm), np.float32)
         itemsize = result.itemsize
 
-        def prepare(bank, x, *, extra=0):
+        def prepare(bank, x, *, repeats=1, extra=0):
             quant = Q(bank.weight.ggml_type)
             weight, scales = self._bank(bank)
             tiles = self._route_tiles(quant, flat_ids)
+            x, repeats = self._route_input(quant, x, tiles, repeats)
             data, rec_bytes = self._stage_routes(flat_ids, x, scales, extra=extra, tiles=tiles)
+            input_bytes = 0 if x is None else x.size * itemsize
             experts, m, n = bank.weight.shape
 
-            def launch(src, dst, metadata):
+            def launch(src, dst, uploaded):
+                metadata = uploaded + input_bytes
                 self._launch_routes(quant, self._selected_launches[quant], src, weight.ptr, dst, metadata,
                                     metadata + rec_bytes if scales is not None else 0,
-                                    routes, experts, n, m, tiles, ids.ndim == 1)
+                                    routes, experts, n, m, tiles, ids.ndim == 1, routes_per_input=repeats)
 
             return data, launch
 
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling GGUF projection residency is closed")
-            gate_data, launch_gate = prepare(gate, expanded)
+            gate_data, launch_gate = prepare(gate, np.atleast_2d(hidden), repeats=k)
             down_data, launch_down = prepare(down, None, extra=routes)
             down_data[-routes:] = mix.ravel()
             packed = np.concatenate((gate_data, down_data))
@@ -322,7 +337,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             active = interim + intermediate_bytes
             mix_ptr = inp + packed.nbytes - routes * itemsize
             with self._transfer.exchange(inp, out, packed, result, pinned=True):
-                launch_gate(inp, interim, inp + expanded.size * itemsize)
+                launch_gate(inp, interim, inp)
                 self._activation(interim, active, routes, dn, mapping.gate_cap, mapping.up_cap)
                 launch_down(active, interim, inp + gate_data.nbytes)
                 self._mix(interim, mix_ptr, out, k, dm, tokens=routes // k)

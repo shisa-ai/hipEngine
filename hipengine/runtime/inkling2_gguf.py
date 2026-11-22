@@ -161,8 +161,12 @@ class Inkling2GGUFText(Inkling2TextReference):
         project = (self._cpu_selected if self.projection is None else
                    partial(self.projection.project_selected, single_token=normalized.ndim == 1))
         run = partial(project, visit)
-        inputs = np.repeat(np.atleast_2d(normalized), k, axis=0)
-        gate, up = np.split(run("gate_up", ids.ravel(), inputs), 2, axis=-1)
+        inputs = np.atleast_2d(normalized)
+        if self.projection is None:
+            paired = run("gate_up", ids.ravel(), np.repeat(inputs, k, axis=0))
+        else:
+            paired = run("gate_up", ids.ravel(), inputs, routes_per_input=k)
+        gate, up = np.split(paired, 2, axis=-1)
         activated = split_expert_activation(gate, up, self.mapping.gate_cap, self.mapping.up_cap)
         if self.ffn_device_output:
             return self.projection.project_down_mixed(visit, ids, mix, activated, transform_output=transform_output)
