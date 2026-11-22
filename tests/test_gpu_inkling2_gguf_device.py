@@ -72,6 +72,23 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
             owner.project(dense.name, x[0, :])
             owner.project(head.name, x, limit=mapping.vocab_size)
             assert spy.call_count == 3
+            # Force the minimum down in this small fixture to cover an aligned
+            # head prefix plus a scalar tail without enlarging the model.
+            with monkeypatch.context() as scope:
+                scope.setattr(device, "_Q8_DECODE_MIN_OUTPUTS", 128)
+                launch_decode = owner._q8_decode
+                decode_spy = Mock(wraps=launch_decode)
+                owner._q8_decode = decode_spy
+                for width in (123, 240, 251):
+                    actual = owner.project(dense.name, x[0], limit=width)
+                    try:
+                        owner._q8_decode = None
+                        expected = owner.project(dense.name, x[0], limit=width)
+                    finally:
+                        owner._q8_decode = decode_spy
+                    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+                assert [call.args[-1] for call in decode_spy.call_args_list] == [240, 248]
+                owner._q8_decode = launch_decode
             for visit in (mapping.plan.visits[2], mapping.plan.visits[4], mapping.plan.visits[6]):
                 for projection in ("gate_up", "down"):
                     observed = owner.project_selected(visit, projection, expert_ids, x)

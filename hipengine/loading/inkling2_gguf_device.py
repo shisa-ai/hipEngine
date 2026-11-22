@@ -20,6 +20,8 @@ from hipengine.quant.gguf import GGMLQuantizationType as Q
 # submitting its transfer, and reuse this host staging across physical banks.
 _UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024
 _MAX_SELECTED_ROUTES = 65535
+# Leave narrow projections on the scalar kernel: pack8 can lose on W7900.
+_Q8_DECODE_MIN_OUTPUTS = 1024
 
 
 class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
@@ -40,6 +42,10 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._q8_prefill = (self._bind_packed(Q.Q8_0, resolve(backend=prefill.backend, layer=prefill.layer,
                                                            quant=prefill.quant, variant=prefill.variant))
                             if is_registered(prefill) else None)
+        decode = KernelKey(backend, "linear", "gguf_q8_0", "pack8_gemv_f32_f32_out")
+        self._q8_decode = (self._bind_packed(Q.Q8_0, resolve(backend=decode.backend, layer=decode.layer,
+                                                           quant=decode.quant, variant=decode.variant))
+                           if is_registered(decode) else None)
         for quant in self._launches:
             for variant, launches in (("selected_f32_f32_out", self._selected_launches),
                                       ("selected_tile4_f32_f32_out", self._tiled_launches)):
@@ -112,11 +118,22 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
 
     def _launch_projection(self, src, dst, rows, ndim, matrix, native_bf16):
         weight, (m, n), packed = matrix
-        if packed:
-            launch = self._q8_prefill if packed == Q.Q8_0 and rows > 1 and m % 8 == 0 else None
-            (launch or self._packed_launch(packed))(src, weight.ptr, dst, rows, n, m)
-        else:
+        if not packed:
             super()._launch_projection(src, dst, rows, ndim, matrix, native_bf16)
+            return
+        if packed == Q.Q8_0:
+            if self._q8_prefill is not None and rows > 1 and m % 8 == 0:
+                self._q8_prefill(src, weight.ptr, dst, rows, n, m)
+                return
+            if self._q8_decode is not None and rows == 1 and m >= _Q8_DECODE_MIN_OUTPUTS:
+                aligned = m - m % 8
+                self._q8_decode(src, weight.ptr, dst, rows, n, aligned)
+                if aligned != m:
+                    row_bytes = weight.nbytes // m
+                    self._packed_launch(packed)(src, weight.ptr + aligned * row_bytes, dst + 4 * aligned,
+                                                rows, n, m - aligned)
+                return
+        self._packed_launch(packed)(src, weight.ptr, dst, rows, n, m)
 
     def _bank(self, bank):
         weight = bank.weight
