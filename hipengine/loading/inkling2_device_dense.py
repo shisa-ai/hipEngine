@@ -76,7 +76,7 @@ class Inkling2DeviceDense:
             return y
 
     @contextmanager
-    def project_device(self, name, width, *, native_bf16=None, transform_output=None):
+    def project_device(self, name, width, *, rows=None, native_bf16=None, transform_output=None):
         """Borrow projection scratch until the input owner downloads the result."""
         with self._lock:
             if self._closed:
@@ -85,11 +85,13 @@ class Inkling2DeviceDense:
             outputs, inputs = matrix[1]
             if width != inputs:
                 raise ValueError(f"Inkling 2 dense projection {name} expects {inputs} input values per row")
-            result = np.empty(outputs, dtype=np.float32)
+            if rows is not None and rows <= 0:
+                raise ValueError("Inkling 2 device projection requires positive row count")
+            result = np.empty(outputs if rows is None else (rows, outputs), dtype=np.float32)
             out = self._scratch("_output", result.nbytes)
 
             def consume(ptr):
-                self._launch_projection(ptr, out.ptr, 1, 1, matrix, native_bf16)
+                self._launch_projection(ptr, out.ptr, 1 if rows is None else rows, result.ndim, matrix, native_bf16)
                 if transform_output is not None:
                     transform_output(out.ptr, result.shape)
 

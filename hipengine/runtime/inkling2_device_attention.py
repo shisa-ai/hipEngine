@@ -144,7 +144,7 @@ class Inkling2DeviceAttention:
         self.positions[visit] = position + 1
         return out
 
-    def step_block(self, visit, position, q, key, value, bias, sink, *, undo=None):
+    def step_block(self, visit, position, q, key, value, bias, sink, *, undo=None, gain=None, projection=None):
         if self.closed:
             raise RuntimeError("Inkling 2 attention state is closed")
         if position != self.positions.get(visit, 0):
@@ -155,8 +155,12 @@ class Inkling2DeviceAttention:
         arrays = q, key, value, bias, sink
         if not 0 < rows <= 65535 or tuple(a.shape for a in arrays) != expected:
             raise ValueError("invalid Inkling 2 attention block input shapes")
+        if gain is not None and gain.shape != (rows, nq * d):
+            raise ValueError("invalid Inkling 2 attention block gain shape")
         if self.block is None or undo is not None:
-            return np.stack([self.step(visit, position + i, *a, undo=undo)
+            if projection is not None:
+                raise ValueError("Inkling 2 projected block attention requires committed block dispatch")
+            return np.stack([self.step(visit, position + i, *a, undo=undo, gain=None if gain is None else gain[i])
                              for i, a in enumerate(zip(*arrays, strict=True))])
         if visit not in self.banks:
             self.banks[visit] = self._make_bank(cap, nk, d)
@@ -166,10 +170,11 @@ class Inkling2DeviceAttention:
         live = min(position + rows, cap)
         extent = min(extent, live)
         arrays = q, key, value, bias[..., :extent], sink
+        if gain is not None:
+            arrays += (gain,)
         host = np.empty(2 + sum(a.size for a in arrays), dtype=np.float32)
         host[:2].view(np.int32)[:] = (live, position)
-        result = np.empty((rows, nq, d), dtype=np.float32)
-        need = host.nbytes + result.nbytes
+        need = host.nbytes + rows * nq * d * host.itemsize
         scratch = self._block_scratch
         if scratch is None or scratch.nbytes < need:
             self._close_block_scratch()
@@ -181,11 +186,19 @@ class Inkling2DeviceAttention:
             end = cursor + a.size
             host[cursor:end].reshape(a.shape)[...] = a
             cursor = end
-        query, block_k, block_v, rel, sinks = ptrs
+        query, block_k, block_v, rel, sinks = ptrs[:5]
+        gain_ptr = ptrs[5] if gain is not None else 0
         spans = replace(spans, live_counts=Tensor(inp, (1,), DType.INT32, self.device),
                         row_positions=Tensor(inp + 4, (1,), DType.INT32, self.device))
-        with self.transfer.exchange(inp, out, host, result, pinned=True):
-            self.block(query, keys, values, rel, sinks, out, spans, nq, nk, d, extent, block_k, block_v, rows)
+        if projection is None:
+            dst, result, consume = out, np.empty((rows, nq, d), dtype=np.float32), None
+        else:
+            dst, result, consume = projection
+        with self.transfer.exchange(inp, dst, host, result, pinned=True):
+            self.block(query, keys, values, rel, sinks, out, spans, nq, nk, d, extent, block_k, block_v, rows,
+                       gain=gain_ptr)
+            if consume is not None:
+                consume(out)
         self.positions[visit] = position + rows
         return result
 

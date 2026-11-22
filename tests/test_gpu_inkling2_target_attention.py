@@ -28,9 +28,9 @@ def test_committed_attention_block_sees_causal_kv_before_ring_commit(capacity):
                  launch=attn.launch_tiled_attention, write=attn.launch_cache_write, split=attn.launch_split_attention)
     staged_extents = []
 
-    def block(*args):
+    def block(*args, **kwargs):
         staged_extents.append(args[-4])
-        attn.launch_attention_block(*args)
+        attn.launch_attention_block(*args, **kwargs)
 
     with (
         closing(Inkling2DeviceAttention(**owner)) as serial,
@@ -38,11 +38,13 @@ def test_committed_attention_block_sees_causal_kv_before_ring_commit(capacity):
     ):
         reference = np.stack([serial.step(0, i, *row) for i, row in enumerate(zip(*args, strict=True))])
         actual = []
+        gain = rng.uniform(-0.25, 1.0, (n, nq * dim)).astype(np.float32)
         blocks = ((0, 2), (2, capacity + 6), (capacity + 6, n - 1))
         for i, j in blocks:
-            actual.extend(batch.step_block(0, i, *(a[i:j] for a in args)))
+            actual.extend(batch.step_block(0, i, *(a[i:j] for a in args), gain=gain[i:j]))
         actual.append(batch.step(0, n - 1, *(a[-1] for a in args)))
         assert staged_extents == [min(extent, capacity, end) for _, end in blocks]
+        reference[:-1] *= gain[:-1].reshape(-1, nq, dim)
         np.testing.assert_array_equal(np.asarray(actual).view(np.uint32), reference.view(np.uint32))
 
 

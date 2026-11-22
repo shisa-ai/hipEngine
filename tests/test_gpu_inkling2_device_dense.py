@@ -13,7 +13,7 @@ def test_device_dense_vector_and_block_match_cpu(monkeypatch):
         ctypes.CDLL("librocblas.so")
     except OSError as exc:
         pytest.skip(f"HIP or rocBLAS unavailable: {exc}")
-    from hipengine.core.hip import HipError, get_hip_runtime
+    from hipengine.core.hip import HipError, HipMemcpyKind, get_hip_runtime
     from hipengine.core.rocblas import Rocblas
     from hipengine.kernels.backends import resolve_backend
     from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_f32_bf16w_f32_out
@@ -77,6 +77,22 @@ def test_device_dense_vector_and_block_match_cpu(monkeypatch):
                     expected = owner.project_many(names, intermediate, native_bf16=native, pinned=True)
                     for a, b in zip(actual, expected, strict=True):
                         np.testing.assert_array_equal(a.view(np.uint32), b.view(np.uint32))
+            runtime = get_hip_runtime()
+            for x in (rows[:1], rows):
+                expected = owner.project("head", x)
+                seen = []
+                source = runtime.malloc(x.nbytes)
+                try:
+                    runtime.memcpy(source, x.ctypes.data, x.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+                    with owner.project_device("head", x.shape[-1], rows=len(x),
+                                              transform_output=lambda ptr, shape: seen.append((ptr, shape))) as lease:
+                        dst, actual, consume = lease
+                        consume(source)
+                        runtime.memcpy(actual.ctypes.data, dst, actual.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+                        assert seen == [(dst, expected.shape)]
+                    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+                finally:
+                    runtime.free(source)
         assert owner._transfer.host_input is owner._transfer.host_output is None
         with pytest.raises(RuntimeError, match="closed"):
             owner.project("head", rows)

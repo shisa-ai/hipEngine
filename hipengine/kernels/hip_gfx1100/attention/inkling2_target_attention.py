@@ -90,14 +90,15 @@ def launch_cache_write(key, value, keys, values, spans: KVLiveSpans, width, *, t
 @lru_cache(maxsize=2)
 def _build_block(target_arch):
     fn = _library(target_arch).hipengine_inkling2_target_attention_block
-    fn.argtypes = [ctypes.c_void_p] * 13 + [ctypes.c_int] * 6
+    fn.argtypes = [ctypes.c_void_p] * 14 + [ctypes.c_int] * 6
     fn.restype = ctypes.c_int
     return fn
 
 
-def launch_attention_block(q, k, v, bias, sink, out, spans, nq, nk, dim, extent, block_k, block_v, rows, *, target_arch=None):
-    status = _build_block(target_arch)(q, k, v, bias, sink, out, *_span_pointers(spans), block_k, block_v,
-                            nq, nk, dim, extent, rows, spans.max_live_count)
+def launch_attention_block(q, k, v, bias, sink, out, spans, nq, nk, dim, extent, block_k, block_v, rows,
+                           *, gain=0, target_arch=None):
+    status = _build_block(target_arch)(q, k, v, bias, sink, out, *_span_pointers(spans), block_k, block_v, gain,
+                                       nq, nk, dim, extent, rows, spans.max_live_count)
     if status != HIP_SUCCESS:
         raise HipError(status, "Inkling 2 block attention launch failed")
 

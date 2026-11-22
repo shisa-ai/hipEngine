@@ -88,6 +88,7 @@ __global__ void inkling2_target_attention_tiled(
     const int live = Block ? min(*count, position + 1) : *count;
     if constexpr (Block) {
         q += size_t(blockIdx.y) * nq * dim;
+        if (gain) gain += size_t(blockIdx.y) * nq * dim;
         bias += size_t(blockIdx.y) * nq * extent;
         sink += size_t(blockIdx.y) * nq;
         out += size_t(blockIdx.y) * nq * dim;
@@ -190,12 +191,12 @@ __global__ void inkling2_target_cache_commit_block(
 extern "C" int hipengine_inkling2_target_attention_block(
     const float* q, float* k, float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
-    const int32_t* row, const float* block_k, const float* block_v,
+    const int32_t* row, const float* block_k, const float* block_v, const float* gain,
     int nq, int nk, int dim, int extent, int rows, int capacity) {
     if (nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 || extent <= 0 ||
         rows <= 0 || rows > 65535 || capacity <= 0) return hipErrorInvalidValue;
     hipLaunchKernelGGL(inkling2_target_attention_tiled<true>, dim3(nq, rows), dim3(128), 0, 0,
-                       q, k, v, bias, sink, out, offsets, count, positions, evicted, row, nullptr, nq, nk, dim, extent,
+                       q, k, v, bias, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim, extent,
                        block_k, block_v, capacity);
     const hipError_t status = hipGetLastError();
     if (status != hipSuccess) return status;

@@ -68,6 +68,7 @@ class Inkling2TextReference:
         self.convolution_factory = None
         self.attention_factory = None
         self.project_device = None
+        self.project_block_device = None
 
     def project(self, name, hidden, *, limit=None):
         weight = self.weights.dense(name) if limit is None else self.weights.dense(name, slice(limit))
@@ -314,12 +315,20 @@ class Inkling2TextSession:
             q, k, v = (norm(x, name) for x, name in zip(merged, norm_names, strict=True))
 
         attention_project = None
-        if q.ndim == 1 and self.model.project_device is not None and self.attention is not None and self.convolution is not None:
-            def attention_project(pos, q, k, v, bias, sink, gain):
-                with self.model.project_device(prefix + "attn.wo_ud.weight", gain.size,
-                                               transform_output=device_conv("attn_sconv")) as projection:
-                    return self.attention.step(visit.state_slot, pos, q, k, v, bias, sink,
-                                               undo=self._undo, gain=gain, projection=projection)
+        if self.attention is not None and self.convolution is not None:
+            if q.ndim == 1 and self.model.project_device is not None:
+                def attention_project(pos, q, k, v, bias, sink, gain):
+                    with self.model.project_device(prefix + "attn.wo_ud.weight", gain.size,
+                                                   transform_output=device_conv("attn_sconv")) as projection:
+                        return self.attention.step(visit.state_slot, pos, q, k, v, bias, sink,
+                                                   undo=self._undo, gain=gain, projection=projection)
+            elif (q.ndim == 2 and self.model.project_block_device is not None
+                  and self.attention.block is not None and self._undo is None):
+                def attention_project(pos, q, k, v, bias, sink, gain):
+                    with self.model.project_block_device(prefix + "attn.wo_ud.weight", gain.shape[-1], rows=len(q),
+                                                         transform_output=device_conv("attn_sconv")) as projection:
+                        return self.attention.step_block(visit.state_slot, pos, q, k, v, bias, sink,
+                                                         gain=gain, projection=projection)
 
         a = self._attention(visit, self.states[visit.state_slot], get, q, k, v, attention_project=attention_project)
         if attention_project is None:
