@@ -354,6 +354,66 @@ def test_append_targets_independent_bf16_pages(hip_test_target_arch, value_bf16)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_prompt_append_targets_independent_bf16_pages(hip_test_target_arch) -> None:
+    from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND, hip_target_arch_environment
+    from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
+        qwen35_write_paged_kv_mixed_value_bf16_prompt_spans as reference,
+    )
+
+    write = resolve(backend=HIP_TARGET_ARCH_BACKEND[hip_test_target_arch], layer="paged_kv_write",
+                    quant="bf16", variant="mixed_bf16_prompt_page_ptrs_spans")
+    runtime = get_hip_runtime()
+    buffers = []
+    block_size, width = 256, 8
+    positions = np.array([255, 256, 257, -1], dtype=np.int64)
+    keys = np.arange(len(positions) * width, dtype=np.float32).reshape(-1, width)
+    values = ((-keys - 1).view(np.uint32) >> 16).astype(np.uint16)
+    sentinel = np.full((block_size, width), 0xA55A, dtype=np.uint16)
+
+    def upload(array):
+        buffer = malloc(array.nbytes, runtime=runtime)
+        buffers.append(buffer)
+        copy_host_to_device(buffer, host_array_ptr(array), runtime=runtime)
+        return buffer
+
+    try:
+        positions_gpu = upload(positions)
+        row_tables = upload(np.tile(np.array([1, 0], dtype=np.int32), (len(positions), 1)))
+        spans = KVLiveSpans.paged_uniform(
+            block_table=_tensor(row_tables.ptr, (len(positions), 2), DType.INT32),
+            live_counts=_tensor(positions_gpu.ptr, (len(positions),), DType.INT64),
+            max_live_count=258, storage_dtype=DType.BF16,
+        )
+        pages = [[upload(sentinel), upload(sentinel)] for _ in range(2)]
+        tables = [upload(np.asarray([page.ptr for page in plane], dtype=np.uint64))
+                  for plane in pages]
+        contiguous = [upload(np.stack((sentinel, sentinel))) for _ in range(2)]
+        key_src, value_src = upload(keys), upload(values)
+        with hip_target_arch_environment(hip_test_target_arch):
+            for fn, destinations in ((reference, contiguous), (write, tables)):
+                fn(key_src.ptr, value_src.ptr, destinations[0].ptr, destinations[1].ptr,
+                   spans, len(positions), block_size, 1, width, runtime=runtime)
+            runtime.device_synchronize()
+        for plane, parent, rows in zip(
+            pages, contiguous, ((keys.view(np.uint32) >> 16).astype(np.uint16), values),
+            strict=True,
+        ):
+            expected = np.stack((sentinel, sentinel))
+            expected[1][255] = rows[0]
+            expected[0][:2] = rows[1:3]
+            parent_out = np.empty_like(expected)
+            copy_device_to_host(host_array_ptr(parent_out), parent, runtime=runtime)
+            np.testing.assert_array_equal(parent_out, expected)
+            for page, expected_page in zip(plane, parent_out, strict=True):
+                out = np.empty_like(sentinel)
+                copy_device_to_host(host_array_ptr(out), page, runtime=runtime)
+                np.testing.assert_array_equal(out, expected_page)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize("head_dim", [128, 256])
 def test_bf16_decode_through_independent_pages_matches_contiguous(head_dim, hip_test_target_arch):
     from hipengine.kernels.backends import HIP_TARGET_ARCH_BACKEND, hip_target_arch_environment
