@@ -110,10 +110,7 @@ class Inkling2DeviceConvolution:
         active = np.concatenate((k.ravel(), kt.ravel(), v.ravel(), vt.ravel()), dtype=np.float32)
         result = np.empty((2, rows, channels), dtype=np.float32)
         need = active.nbytes + result.nbytes
-        scratch = self._block_scratch
-        if scratch is None or scratch.nbytes < need:
-            self._close_block_scratch()
-            self._block_scratch = scratch = malloc(1 << (need - 1).bit_length(), runtime=self.rt)
+        scratch = self._reserve_block_scratch(need)
         inp, out = scratch.ptr, scratch.ptr + active.nbytes
         row_bytes = rows * channels * active.itemsize
         vptr = inp + row_bytes + kt.size * active.itemsize
@@ -124,6 +121,25 @@ class Inkling2DeviceConvolution:
             self.launch_block(vh.ptr, vptr, vptr + row_bytes, out + row_bytes, channels, self.width, scale, rows,
                               dynamic_taps=dynamic)
         return result[0], result[1]
+
+    def _reserve_block_scratch(self, nbytes):
+        scratch = self._block_scratch
+        if scratch is None or scratch.nbytes < nbytes:
+            self._close_block_scratch()
+            self._block_scratch = scratch = malloc(1 << (nbytes - 1).bit_length(), runtime=self.rt)
+        return scratch
+
+    def step_static_block(self, visit, name, x, taps, *, position=0, undo=None):
+        """Exchange an activation block once and convolve it in place."""
+        if x.ndim != 2 or not all(x.shape):
+            raise ValueError("Inkling 2 static convolution block expects nonempty rows")
+        self._history(visit, name, x.shape[1:], taps)
+        active = np.ascontiguousarray(x, dtype=np.float32)
+        result = np.empty_like(active)
+        scratch = self._reserve_block_scratch(active.nbytes)
+        with self.transfer.exchange(scratch.ptr, scratch.ptr, active, result, pinned=True):
+            self.apply_static(visit, name, taps, scratch.ptr, active.shape, position=position, undo=undo)
+        return result
 
     def _close_block_scratch(self):
         if self._block_scratch is not None:

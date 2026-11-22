@@ -344,6 +344,8 @@ class Inkling2TextSession:
     def _conv_rows(self, visit, name, x, taps, *, dynamic=False):
         if x.ndim == 1:
             return self._convolve(visit, name, x, taps, dynamic=dynamic)
+        if not dynamic and self.convolution is not None and self._undo is None:
+            return self.convolution.step_static_block(visit.state_slot, name, x, taps, position=self.position)
         return np.stack([self._convolve(visit, name, row, taps[i] if dynamic else taps, dynamic=dynamic, offset=i)
                          for i, row in enumerate(x)])
 

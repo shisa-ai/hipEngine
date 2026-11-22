@@ -47,6 +47,10 @@ def test_static_block_convolution_uses_one_launch_and_preserves_history():
             actual[-1] = batched.step(0, "attn", x[-1], taps, position=12)
             assert block_sizes == [2, 5, 5]
             np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+            exchanged = np.concatenate([batched.step_static_block(3, "mlp", x[i:j], taps, position=i)
+                                        for i, j in ((0, 3), (3, 10), (10, 13))])
+            np.testing.assert_array_equal(exchanged.view(np.uint32), expected.view(np.uint32))
+            assert block_sizes == [2, 5, 5, 3, 7, 3]
     finally:
         free(stage, runtime=runtime)
 
