@@ -4,10 +4,12 @@ from contextlib import ExitStack
 from dataclasses import replace
 from functools import partial
 
+from tokenizers.decoders import DecodeStream
+
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.rocblas import Rocblas
 from hipengine.generation.inkling2_mini import Inkling2ReferenceGenerator
-from hipengine.generation.registry import DecodeState, GenerationTelemetry, register_text_generator
+from hipengine.generation.registry import DecodeState, GenerationStreamChunk, GenerationTelemetry, register_text_generator
 from hipengine.kernels.backends import hip_target_arch_for_backend
 from hipengine.kernels.hip_gfx1100.attention import inkling2_target_attention  # noqa: F401
 from hipengine.kernels.hip_gfx1100.quant import inkling2_short_conv  # noqa: F401
@@ -67,15 +69,51 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
                 runtime=runtime, launch=conv, launch_block=conv_block, channels=channels, width=m.conv_taps)
             self._owned = owned.pop_all()
 
-    def _generate_batch(self, request, *, drafter=None):
+    def _prepare_text_rows(self, request, *, speculative=False):
         if request.kv_storage == "fp32":
             request = replace(request, kv_storage="auto")
-        return super()._generate_batch(request, drafter=drafter)
+        return super()._prepare_text_rows(request, speculative=speculative)
 
-    def _generate_row_with_session(self, request, row, ids, session, draft, **options):
-        out = super()._generate_row_with_session(request, row, ids, session, draft, **options)
+    def stream_detailed(self, request):
+        request, rows = self._prepare_text_rows(request)
+        if len(rows) != 1:
+            raise ValueError("Inkling 2 GGUF streaming requires exactly one prompt")
+        decoder = DecodeStream(skip_special_tokens=True)
+        prefixes = {sequence[:n] for sequence in request.stop_token_sequences for n in range(1, len(sequence))}
+        max_prefix = max(map(len, prefixes), default=0)
+        pending = []
+        published = ""
+        with ExitStack() as owned:
+            steps = self._iterate_row(request, 0, rows[0])
+            owned.callback(steps.close)
+            while True:
+                try:
+                    token = next(steps)
+                except StopIteration as done:
+                    output = done.value
+                    finish = output.finish_details
+                    trim = len(finish.stop_sequence) or int(finish.eos_token_id is not None)
+                    ids = output.generated_token_ids
+                    visible = ids[:-trim] if trim else ids
+                    text = self.detokenize(visible)
+                    if not text.startswith(published):
+                        raise RuntimeError("Inkling 2 GGUF incremental text disagrees with full decoding")
+                    yield GenerationStreamChunk(text=text[len(published):], finish_details=finish,
+                                                telemetry=output.telemetry, generated_token_ids=ids)
+                    return
+                pending.append(token)
+                hold = next((n for n in range(min(len(pending), max_prefix), 0, -1)
+                             if tuple(pending[-n:]) in prefixes), 0)
+                emit_count = len(pending) - hold
+                text = "".join(decoder.step(self.tokenizer, tok) or "" for tok in pending[:emit_count])
+                del pending[:emit_count]
+                if text:
+                    published += text
+                    yield GenerationStreamChunk(text=text)
+
+    def _decorate_output(self, out):
         return replace(out, telemetry=GenerationTelemetry(
-            decode_state=DecodeState(prompt_tokens=len(ids), generated_tokens=len(out.generated_token_ids)),
+            decode_state=DecodeState(prompt_tokens=out.prompt_tokens, generated_tokens=len(out.generated_token_ids)),
             diagnostics={"execution_path": "inkling2_gguf_packed_hip", "kv_storage": "fp32", "speculation": "off"},
         ))
 

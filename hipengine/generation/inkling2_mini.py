@@ -60,7 +60,11 @@ class Inkling2ReferenceGenerator:
         return Inkling2DSpark(self.model, self.draft_path)
 
     def _generate_batch(self, request, *, drafter=None):
-        self._validate_request(request, speculative=drafter is not None)
+        request, rows = self._prepare_text_rows(request, speculative=drafter is not None)
+        return tuple(self._generate_row(request, i, ids, drafter=drafter) for i, ids in enumerate(rows))
+
+    def _prepare_text_rows(self, request, *, speculative=False):
+        self._validate_request(request, speculative=speculative)
         if request.eos_token_id is None:
             request = replace(request, eos_token_id=self.eos_token_id)
         rows = tuple(request.prompt_token_ids(i, self.tokenize) for i in range(len(request.prompts)))
@@ -69,7 +73,7 @@ class Inkling2ReferenceGenerator:
                 raise ValueError("the Inkling 2 prompt produced no token IDs")
             if len(ids) + request.max_tokens > self.max_sequence_length:
                 raise ValueError(f"Inkling 2 prompt and completion exceed the {self.max_sequence_length}-token context")
-        return tuple(self._generate_row(request, i, ids, drafter=drafter) for i, ids in enumerate(rows))
+        return request, rows
 
     def generate_multimodal_detailed(self, prompt, image, request):
         return self._generate_image(prompt, image, request)
@@ -129,7 +133,15 @@ class Inkling2ReferenceGenerator:
         if blockers:
             raise NotImplementedError("Inkling 2 CPU reference does not implement: " + ", ".join(blockers))
 
-    def _generate_row(self, request, row, ids, *, image_start=0, features=None, drafter=None):
+    def _generate_row(self, request, row, ids, **options):
+        steps = self._iterate_row(request, row, ids, **options)
+        while True:
+            try:
+                next(steps)
+            except StopIteration as done:
+                return done.value
+
+    def _iterate_row(self, request, row, ids, *, image_start=0, features=None, drafter=None):
         raise_if_generation_deadline_expired(request)
         capacity = len(ids) + request.max_tokens - 1
         session = self.model.session(capacity) if request.max_tokens else None
@@ -137,8 +149,9 @@ class Inkling2ReferenceGenerator:
         try:
             if session is not None and drafter is not None:
                 draft = drafter.session(capacity)
-            return self._generate_row_with_session(request, row, ids, session, draft,
-                                                   image_start=image_start, features=features, drafter=drafter)
+            output = yield from self._iterate_row_with_session(request, row, ids, session, draft,
+                                                               image_start=image_start, features=features, drafter=drafter)
+            return self._decorate_output(output)
         finally:
             try:
                 close = getattr(draft, "close", None)
@@ -149,7 +162,10 @@ class Inkling2ReferenceGenerator:
                 if callable(close):
                     close()
 
-    def _generate_row_with_session(self, request, row, ids, session, draft, *, image_start, features, drafter):
+    def _decorate_output(self, output):
+        return output
+
+    def _iterate_row_with_session(self, request, row, ids, session, draft, *, image_start, features, drafter):
         generated = []
         reason, eos, stop_sequence, mode = "length", None, (), None
         proposed = accepted = blocks = 0
@@ -224,7 +240,11 @@ class Inkling2ReferenceGenerator:
                         accepted += 1
                     else:
                         candidates.clear()
-                if emit(sampled):
+                finished = emit(sampled)
+                if not finished:
+                    yield token
+                    raise_if_generation_deadline_expired(request)
+                else:
                     break
                 remaining = request.max_tokens - i - 1
                 if remaining:
