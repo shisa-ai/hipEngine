@@ -99,3 +99,48 @@ def test_selected_nvfp4_exactly_matches_scalar_launches(out_features):
         for ptr in reversed(pointers):
             runtime.free(ptr)
     np.testing.assert_array_equal(observed.view(np.uint32), expected.view(np.uint32))
+
+
+@pytest.mark.parametrize("scaled,nout", [(True, 19), (False, 2304)])
+def test_tiled_nvfp4_reuses_rows_without_changing_route_results(scaled, nout):
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP runtime unavailable: {exc}")
+    backend = resolve_backend("auto", execution_device=True)
+    if backend not in ("hip_gfx1100", "hip_gfx1151"):
+        pytest.skip("test requires gfx1100 or gfx1151")
+    from hipengine.kernels.hip_gfx1100.quant import gguf_nvfp4_gemv  # noqa: F401
+    from hipengine.loading.inkling2_device_experts import build_expert_route_tiles
+
+    rng = np.random.default_rng(51003)
+    experts, width = 4, 2304
+    ids = np.array([3, 0, 0, 1, 3, 3, 1, 3, 3, 1, 0, 3], np.int32)
+    records = build_expert_route_tiles(ids, 4)
+    assert records.tolist() == [[0, 1, 2, 10, -1], [1, 3, 6, 9, -1], [3, 0, 4, 5, 7], [3, 8, 11, -1, -1]]
+    scales = rng.uniform(-1.0, 1.0, ids.size).astype(np.float32)
+    scales[0] = 0.0
+    x = rng.normal(0, 0.02, (ids.size, width)).astype(np.float32)
+    raw = rng.integers(0, 256, (experts, nout, width // 64, 36), dtype=np.uint8)
+    actual = np.full((ids.size, nout), np.nan, np.float32)
+    expected = np.empty_like(actual)
+    key = dict(backend=backend, layer="moe_linear", quant="gguf_nvfp4")
+    selected = resolve(**key, variant="selected_f32_f32_out")
+    tiled = resolve(**key, variant="selected_tile4_f32_f32_out")
+    rt = get_hip_runtime()
+    ptrs = []
+    try:
+        for arr in (x, raw, ids, scales, records, actual, actual):
+            ptr = rt.malloc(arr.nbytes)
+            ptrs.append(ptr)
+            rt.memcpy(ptr, arr.ctypes.data, arr.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+        x_ptr, w_ptr, id_ptr, scale_ptr, records_ptr, expected_ptr, actual_ptr = ptrs
+        scale_ptr = scale_ptr if scaled else 0
+        selected(x_ptr, w_ptr, expected_ptr, id_ptr, scale_ptr, ids.size, experts, width, nout)
+        tiled(x_ptr, w_ptr, actual_ptr, records_ptr, scale_ptr, len(records), ids.size, experts, width, nout)
+        rt.memcpy(expected.ctypes.data, expected_ptr, expected.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+        rt.memcpy(actual.ctypes.data, actual_ptr, actual.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+    finally:
+        for ptr in reversed(ptrs):
+            rt.free(ptr)
+    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))

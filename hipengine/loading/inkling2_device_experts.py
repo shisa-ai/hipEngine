@@ -26,7 +26,7 @@ class _ResidentBank:
     expanded_scales: bool = False
 
 
-def _tile_routes(ids, width):
+def build_expert_route_tiles(ids, width):
     """Build fixed-width records of same-expert routes, padded with -1."""
     flat = ids.ravel()
     ordered = np.argsort(flat, kind="stable").astype(np.int32)
@@ -183,7 +183,8 @@ class Inkling2DeviceExperts:
             count = ids.shape[-1]
             # Reserve weight-sharing tiles for prompt blocks; short verification is unchanged.
             tile_width = self._tile_width
-            tiles = _tile_routes(ids, tile_width) if self._tiled is not None and tokens >= 16 and ids.size <= 65535 else None
+            tiles = (build_expert_route_tiles(ids, tile_width)
+                     if self._tiled is not None and tokens >= 16 and ids.size <= 65535 else None)
             header = 2 * ids.size
             if tiles is not None:
                 host[header:header + tiles.size].view(np.int32)[:] = tiles.ravel()

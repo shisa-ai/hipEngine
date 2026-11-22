@@ -46,8 +46,24 @@ def _launch_selected(x, weight, output, ids, scales, rows, experts, in_features,
         raise HipError(f"GGUF NVFP4 selected projection failed with HIP status {status}")
 
 
+@lru_cache(maxsize=None)
+def _tiled(target_arch):
+    fn = _library(target_arch).hipengine_gguf_nvfp4_selected_tile4_f32_f32_out
+    fn.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_int] * 5 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def _launch_tiled(x, weight, output, records, scales, tiles, rows, experts, n, m, *, target_arch, stream=0):
+    status = _tiled(target_arch)(x, weight, output, records, scales, tiles, rows, experts, n, m, stream)
+    if status != HIP_SUCCESS:
+        raise HipError(f"GGUF NVFP4 tiled projection failed with HIP status {status}")
+
+
 for _backend in ("hip_gfx1100", "hip_gfx1151"):
     _arch = hip_target_arch_for_backend(_backend)
     register(KernelKey(_backend, "linear", "gguf_nvfp4", "gemv_f32_f32_out"), partial(_launch, target_arch=_arch))
     register(KernelKey(_backend, "moe_linear", "gguf_nvfp4", "selected_f32_f32_out"),
              partial(_launch_selected, target_arch=_arch))
+    register(KernelKey(_backend, "moe_linear", "gguf_nvfp4", "selected_tile4_f32_f32_out"),
+             partial(_launch_tiled, target_arch=_arch))
