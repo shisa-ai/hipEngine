@@ -59,5 +59,22 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy)
                                          for expert, h in zip(expert_ids, x, strict=True)])
                     np.testing.assert_allclose(observed, expected, rtol=1e-5, atol=2e-5)
             assert owner.packed_bank_bytes == sum(t.nbytes for t in matrices[1:])
+            # The final physical banks have different formats in the two layouts.
+            visit = mapping.plan.visits[6]
+            layer = mapping.layers[visit.weight_layer]
+            for stem in ("gate_up", "down"):
+                bank = getattr(layer, stem)
+                quant = Q(bank.weight.ggml_type)
+                launch = owner._selected_launches[quant]
+                spy = Mock(wraps=launch)
+                owner._selected_launches[quant] = spy
+                try:
+                    grouped = owner.project_selected(visit, stem, expert_ids, x)
+                    assert spy.call_count == 1
+                    owner._selected_launches.pop(quant)
+                    scalar = owner.project_selected(visit, stem, expert_ids, x)
+                finally:
+                    owner._selected_launches[quant] = launch
+                np.testing.assert_array_equal(grouped.view(np.uint32), scalar.view(np.uint32))
     finally:
         blas.close()

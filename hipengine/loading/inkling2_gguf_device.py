@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from functools import partial
-
 import numpy as np
 
 from hipengine.core.hip import HipMemcpyKind
@@ -27,17 +25,28 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._launches = {q: resolve(backend=backend, layer="linear", quant=f"gguf_{q.name.lower()}",
                                     variant="gemv_f32_f32_out") for q in (Q.NVFP4, Q.Q8_0, Q.Q5_K)}
         self._bound_launches = {}
-        selected_key = KernelKey(backend, "moe_linear", "gguf_nvfp4", "selected_f32_f32_out")
-        self._selected_nvfp4 = (resolve(backend=backend, layer=selected_key.layer, quant=selected_key.quant,
-                                        variant=selected_key.variant) if is_registered(selected_key) else None)
+        self._selected_launches = {}
+        self._k_library = None
+        for quant in self._launches:
+            key = KernelKey(backend, "moe_linear", f"gguf_{quant.name.lower()}", "selected_f32_f32_out")
+            if is_registered(key):
+                launch = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+                self._selected_launches[quant] = self._bind_packed(quant, launch)
         self._bank_scales = {}
+
+    def _bind_packed(self, quant, launch):
+        if quant == Q.NVFP4:
+            return launch
+
+        def run(*args, **kwargs):
+            if self._k_library is None:
+                self._k_library = build_gguf_k_gemv(target_arch=self._target_arch)
+            return launch(*args, library=self._k_library, runtime=self._runtime, **kwargs)
+        return run
 
     def _packed_launch(self, quant):
         if quant not in self._bound_launches:
-            launch = self._launches[quant]
-            if quant in (Q.Q8_0, Q.Q5_K):
-                launch = partial(launch, library=build_gguf_k_gemv(target_arch=self._target_arch), runtime=self._runtime)
-            self._bound_launches[quant] = launch
+            self._bound_launches[quant] = self._bind_packed(quant, self._launches[quant])
         return self._bound_launches[quant]
 
     def _upload(self, array):
@@ -96,14 +105,14 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 or hidden.shape != (len(ids), n)):
             raise ValueError("invalid Inkling GGUF selected projection geometry")
         quant = Q(bank.weight.ggml_type)
-        selected = self._selected_nvfp4 if quant == Q.NVFP4 else None
+        selected = self._selected_launches.get(quant) if len(ids) <= 65535 else None
         if selected is not None:
             ids = np.ascontiguousarray(ids, dtype=np.int32)
             with self._lock:
                 if self._closed:
                     raise RuntimeError("Inkling GGUF projection residency is closed")
                 weight, scales = self._bank(bank)
-                return self._project_nvfp4_routes(selected, weight.ptr, scales, ids, hidden, experts, m, n)
+                return self._project_routes(selected, weight.ptr, scales, ids, hidden, experts, m, n)
         order = np.argsort(ids, kind="stable")
         ids = ids[order]
         boundaries = np.r_[0, np.flatnonzero(ids[1:] != ids[:-1]) + 1, len(ids)]
@@ -129,7 +138,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         result[order] = y
         return result
 
-    def _project_nvfp4_routes(self, launch, weight, scales, ids, hidden, experts, m, n):
+    def _project_routes(self, launch, weight, scales, ids, hidden, experts, m, n):
         # One transfer for the activations and route metadata, all 4-byte aligned.
         input_values = hidden.size
         routes = len(ids)

@@ -102,6 +102,22 @@ def _make_wrapper(quant: str, symbol: str):
     return wrapper
 
 
+def _make_selected_raw_f32(quant):
+    def launch(x, weight, output, ids, scales, rows, experts, in_features, out_features, *,
+               threads=128, stream=0, library=None, runtime=None):
+        _validate(quant, rows, in_features, out_features, threads)
+        if not ids or not 1 <= rows <= 65535 or not 1 <= experts <= 2**31 - 1:
+            raise ValueError("invalid GGUF K selected route geometry")
+        library = library or build_gguf_k_gemv(load=True)
+        runtime = runtime or get_hip_runtime()
+        symbol = f"hipengine_{quant}_selected_raw_f32_f32_out"
+        fn = _cached_fn(library, symbol, [_VOID] * 5 + [_I64, ctypes.c_int, _I64, _I64, _I64, _VOID])
+        launch_census.record_launch(quant, symbol, rows, in_features, out_features)
+        _check_launch(runtime, fn(x, weight, output, ids, scales, rows, experts,
+                                  in_features, out_features, threads, stream))
+    return launch
+
+
 def _validate_h7c_raw_q6_role(
     output_dtype: str,
     rows: int,
@@ -1066,6 +1082,9 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     for quant in ("gguf_q8_0", "gguf_q5_k", "gguf_q6_k"):
         for variant, fn in _WRAPPERS[quant].items():
             register(KernelKey("hip_gfx1100", "linear", quant, variant), fn, replace=replace)
+    for quant in ("gguf_q8_0", "gguf_q5_k"):
+        register(KernelKey("hip_gfx1100", "moe_linear", quant, "selected_f32_f32_out"),
+                 _make_selected_raw_f32(quant), replace=replace)
     # The grouped row4 GEMV is also reachable through the MoE expert route,
     # which resolves `moe_linear`. It is the only grouped kernel Q5_K has, and
     # one MoE layer of a dynamic quant can carry Q5_K expert weights while the

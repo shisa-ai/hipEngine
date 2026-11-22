@@ -425,7 +425,7 @@ __global__ void gguf_q8_0_exact_prefill_tiled_out_kernel(
   }
 }
 
-template <typename scalar_t, typename out_t, int qtype>
+template <typename scalar_t, typename out_t, int qtype, bool selected = false>
 __launch_bounds__(256, 2)
 __global__ void gguf_k_prefill_out_kernel(
     const scalar_t* __restrict__ x,
@@ -433,7 +433,10 @@ __global__ void gguf_k_prefill_out_kernel(
     out_t* __restrict__ out,
     int rows,
     int in_features,
-    int out_features) {
+    int out_features,
+    const int32_t* __restrict__ ids,
+    const float* __restrict__ scales,
+    int experts) {
   const int out_col = blockIdx.x;
   const int row = blockIdx.y;
   if (out_col >= out_features || row >= rows) return;
@@ -446,10 +449,18 @@ __global__ void gguf_k_prefill_out_kernel(
   } else {
     row_bytes = (in_features / QK_K) * Q6_K_BLOCK_BYTES;
   }
-  const uint8_t* __restrict__ weight_row =
-      qweight + static_cast<int64_t>(out_col) * row_bytes;
-  const scalar_t* __restrict__ x_row =
-      x + static_cast<int64_t>(row) * in_features;
+  const int64_t output_index = static_cast<int64_t>(row) * out_features + out_col;
+  int64_t weight_index = out_col;
+  if constexpr (selected) {
+    const int expert = ids[row];
+    if (expert < 0 || expert >= experts) {
+      if (threadIdx.x == 0) store_output<out_t>(out, output_index, 0.0f);
+      return;
+    }
+    weight_index += static_cast<int64_t>(expert) * out_features;
+  }
+  const uint8_t* __restrict__ weight_row = qweight + weight_index * row_bytes;
+  const scalar_t* __restrict__ x_row = x + static_cast<int64_t>(row) * in_features;
 
   float acc = 0.0f;
   for (int k = threadIdx.x; k < in_features; k += blockDim.x) {
@@ -466,7 +477,11 @@ __global__ void gguf_k_prefill_out_kernel(
   }
   const float total = reduce_block_sum(acc);
   if (threadIdx.x == 0) {
-    store_output<out_t>(out, static_cast<int64_t>(row) * out_features + out_col, total);
+    if constexpr (selected) {
+      store_output<out_t>(out, output_index, scales ? total * scales[row] : total);
+    } else {
+      store_output<out_t>(out, output_index, total);
+    }
   }
 }
 
@@ -4989,7 +5004,7 @@ int launch_gguf_k_selected_pack8_q8_1_dp4a_gemv_out(
 }
 
 
-template <typename scalar_t, typename out_t, int qtype>
+template <typename scalar_t, typename out_t, int qtype, bool selected = false>
 int launch_gguf_k_gemv_out(
     const scalar_t* x,
     const uint8_t* qweight,
@@ -4998,23 +5013,24 @@ int launch_gguf_k_gemv_out(
     int64_t in_features,
     int64_t out_features,
     int64_t threads,
-    hipStream_t stream) {
+    hipStream_t stream, const int32_t* ids = nullptr, const float* scales = nullptr, int experts = 0) {
   const bool valid_shape = (qtype == 8) ? ((in_features % Q8_0_BLOCK) == 0)
                                        : ((in_features % QK_K) == 0);
   if (x == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
       in_features <= 0 || out_features <= 0 || !valid_shape ||
+      (selected && (!ids || experts <= 0 || rows > 65535)) ||
       (threads != 64 && threads != 128 && threads != 256)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const dim3 block(static_cast<unsigned int>(threads));
   const dim3 grid(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows));
-  gguf_k_prefill_out_kernel<scalar_t, out_t, qtype><<<grid, block, 0, stream>>>(
+  gguf_k_prefill_out_kernel<scalar_t, out_t, qtype, selected><<<grid, block, 0, stream>>>(
       x,
       qweight,
       out,
       static_cast<int>(rows),
       static_cast<int>(in_features),
-      static_cast<int>(out_features));
+      static_cast<int>(out_features), ids, scales, experts);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -5500,6 +5516,18 @@ extern "C" int hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32_t(
       static_cast<float*>(out),
       rows, in_features, out_features, stream);
 }
+
+#define HIPENGINE_GGUF_K_SELECTED_RAW_F32(NAME, QTYPE) \
+extern "C" int hipengine_##NAME##_selected_raw_f32_f32_out( \
+    const float* x, const uint8_t* weights, float* out, const int32_t* ids, const float* scales, \
+    int64_t rows, int experts, int64_t inputs, int64_t outputs, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_out<float, float, QTYPE, true>( \
+      x, weights, out, rows, inputs, outputs, threads, stream, ids, scales, experts); \
+}
+
+HIPENGINE_GGUF_K_SELECTED_RAW_F32(gguf_q8_0, 8)
+HIPENGINE_GGUF_K_SELECTED_RAW_F32(gguf_q5_k, 5)
+#undef HIPENGINE_GGUF_K_SELECTED_RAW_F32
 
 #define HIPENGINE_GGUF_K_EXPORTS(NAME, QTYPE) \
 extern "C" int hipengine_##NAME##_gemv_f32_f32_out( \
