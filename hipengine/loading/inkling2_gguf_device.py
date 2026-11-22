@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from functools import partial
+
 import numpy as np
 
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import free, malloc
 from hipengine.kernels.backends import hip_target_arch_for_backend, load_backend_kernel_package
-from hipengine.kernels.hip_gfx1100.quant import gguf_nvfp4_gemv  # noqa: F401
+from hipengine.kernels.hip_gfx1100.quant import gguf_nvfp4_gemv, inkling2_experts  # noqa: F401
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.inkling2_device_dense import Inkling2DeviceDense
@@ -16,6 +18,7 @@ from hipengine.quant.gguf import GGMLQuantizationType as Q
 # Do not hand HIP a whole file-backed expert bank. Read each window before
 # submitting its transfer, and reuse this host staging across physical banks.
 _UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024
+_MAX_SELECTED_ROUTES = 65535
 
 
 class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
@@ -36,8 +39,18 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             if is_registered(key):
                 launch = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
                 self._selected_launches[quant] = self._bind_packed(quant, launch)
+        self._mix = None
+        key = KernelKey(backend, "inkling2_expert_pointwise", "inkling2_mixed", "ordered_mix_exact")
+        if (is_registered(key) and all(Q(layer.down.weight.ggml_type) in self._selected_launches
+                                       for layer in weights.mapping.layers)):
+            self._mix = partial(resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant),
+                                target_arch=self._target_arch)
         self._bank_scales = {}
         self._upload_staging = None
+
+    @property
+    def supports_device_mix(self):
+        return self._mix is not None
 
     def _bind_packed(self, quant, launch):
         if quant == Q.NVFP4:
@@ -128,7 +141,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 or hidden.shape != (len(ids), n)):
             raise ValueError("invalid Inkling GGUF selected projection geometry")
         quant = Q(bank.weight.ggml_type)
-        selected = self._selected_launches.get(quant) if len(ids) <= 65535 else None
+        selected = self._selected_launches.get(quant) if len(ids) <= _MAX_SELECTED_ROUTES else None
         if selected is not None:
             ids = np.ascontiguousarray(ids, dtype=np.int32)
             with self._lock:
@@ -161,20 +174,62 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         result[order] = y
         return result
 
-    def _project_routes(self, launch, weight, scales, ids, hidden, experts, m, n):
-        # One transfer for the activations and route metadata, all 4-byte aligned.
-        input_values = hidden.size
-        routes = len(ids)
-        x = np.empty(input_values + routes * (2 if scales is not None else 1), np.float32)
-        x[:input_values].reshape(hidden.shape)[...] = hidden
-        x[input_values:input_values + routes].view(np.int32)[:] = ids
+    @staticmethod
+    def _stage_routes(ids, hidden, scales, extra=0):
+        # Activations, route metadata and any mix coefficients share one upload.
+        count = hidden.size
+        x = np.empty(count + ids.size * (2 if scales is not None else 1) + extra, np.float32)
+        x[:count].reshape(hidden.shape)[...] = hidden
+        x[count:count + ids.size].view(np.int32)[:] = ids
         if scales is not None:
-            x[input_values + routes:] = scales[ids]
-        y = np.empty((routes, m), np.float32)
+            x[count + ids.size:count + 2 * ids.size] = scales[ids]
+        return x
+
+    def _project_routes(self, launch, weight, scales, ids, hidden, experts, m, n):
+        x = self._stage_routes(ids, hidden, scales)
+        y = np.empty((ids.size, m), np.float32)
         inp = self._scratch("_input", x.nbytes)
         out = self._scratch("_output", y.nbytes)
-        ids_ptr = inp.ptr + input_values * x.itemsize
+        ids_ptr = inp.ptr + hidden.size * x.itemsize
         scales_ptr = ids_ptr + ids.nbytes if scales is not None else 0
         with self._transfer.exchange(inp.ptr, out.ptr, x, y, pinned=True):
-            launch(inp.ptr, weight, out.ptr, ids_ptr, scales_ptr, routes, experts, n, m)
+            launch(inp.ptr, weight, out.ptr, ids_ptr, scales_ptr, ids.size, experts, n, m)
         return y
+
+    def project_down_mixed(self, visit, ids, mix, activated, *, transform_output=None):
+        """Keep the selected down projection, ordered mix and optional consumer on device."""
+        bank = self._weights.mapping.layers[visit.weight_layer].down
+        experts, m, n = bank.weight.shape
+        if (ids.ndim not in (1, 2) or not ids.size or not 1 <= ids.shape[-1] <= _MAX_SELECTED_ROUTES
+                or ids.dtype.kind not in "iu" or np.any(ids < 0) or np.any(ids >= experts)
+                or mix.shape != ids.shape or activated.shape != (ids.size, n)):
+            raise ValueError("invalid Inkling GGUF mixed down projection geometry")
+        k = ids.shape[-1]
+        flat_ids = np.ascontiguousarray(ids.ravel(), dtype=np.int32)
+        tokens = ids.size // k
+        tile = _MAX_SELECTED_ROUTES // k
+        result = np.empty((*ids.shape[:-1], m), dtype=np.float32)
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling GGUF projection residency is closed")
+            weight, scales = self._bank(bank)
+            launch = self._selected_launches[Q(bank.weight.ggml_type)]
+            x = self._stage_routes(flat_ids, activated, scales, extra=ids.size)
+            x[-ids.size:].reshape(ids.shape)[...] = mix
+            inp = self._scratch("_input", x.nbytes)
+            itemsize = x.itemsize
+            out = self._scratch("_output", result.nbytes + min(tile, tokens) * k * m * itemsize)
+            route_out = out.ptr + result.nbytes
+            ids_ptr = inp.ptr + activated.size * itemsize
+            scales_ptr = ids_ptr + flat_ids.nbytes if scales is not None else 0
+            mix_ptr = inp.ptr + x.nbytes - flat_ids.nbytes
+            with self._transfer.exchange(inp.ptr, out.ptr, x, result, pinned=True):
+                for row in range(0, tokens, tile):
+                    count = min(tile, tokens - row)
+                    offset = row * k * itemsize
+                    launch(inp.ptr + offset * n, weight.ptr, route_out, ids_ptr + offset,
+                           scales_ptr + offset if scales_ptr else 0, count * k, experts, n, m)
+                    self._mix(route_out, mix_ptr + offset, out.ptr + row * m * itemsize, k, m, tokens=count)
+                if transform_output is not None:
+                    transform_output(out.ptr, result.shape)
+        return result

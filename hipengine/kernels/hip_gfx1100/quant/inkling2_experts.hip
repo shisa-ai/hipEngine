@@ -254,7 +254,7 @@ __global__ void inkling2_expert_activate(const float* paired, float* activated, 
     activated[i] = gate_cap * tanhf(gate / gate_cap) * sigmoid * up_cap * tanhf(up / up_cap);
 }
 
-template <bool BATCHED>
+template <bool BATCHED, bool EXACT = false>
 __global__ void inkling2_expert_mix(const float* down, const float* mix, float* out, int count, int width) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= width) return;
@@ -265,8 +265,24 @@ __global__ void inkling2_expert_mix(const float* down, const float* mix, float* 
         out += row * width;
     }
     float value = 0.0f;
-    for (int j = 0; j < count; ++j) value = __fadd_rn(value, __fmul_rn(mix[j], down[size_t(j) * width + i]));
+    if constexpr (EXACT) {
+        // Match separate NumPy multiply/add ufuncs, including cancellation.
+        #pragma clang fp contract(off)
+        for (int j = 0; j < count; ++j) value = value + mix[j] * down[size_t(j) * width + i];
+    } else {
+        for (int j = 0; j < count; ++j) value = __fadd_rn(value, __fmul_rn(mix[j], down[size_t(j) * width + i]));
+    }
     out[i] = value;
+}
+
+extern "C" int hipengine_inkling2_expert_mix_exact(const float* down, const float* mix, float* out,
+                                                    int count, int width, int tokens) {
+    if (!down || !mix || !out || count <= 0 || width <= 0 || tokens <= 0 || tokens > 65535) {
+        return hipErrorInvalidValue;
+    }
+    hipLaunchKernelGGL((inkling2_expert_mix<true, true>), dim3(1 + (width - 1) / 256, tokens),
+                       dim3(256), 0, 0, down, mix, out, count, width);
+    return hipGetLastError();
 }
 
 extern "C" int hipengine_inkling2_expert_pointwise(const float* x, const float* mix, float* out,

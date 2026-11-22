@@ -114,7 +114,8 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
     def _decorate_output(self, out):
         return replace(out, telemetry=GenerationTelemetry(
             decode_state=DecodeState(prompt_tokens=out.prompt_tokens, generated_tokens=len(out.generated_token_ids)),
-            diagnostics={"execution_path": "inkling2_gguf_packed_hip", "kv_storage": "fp32", "speculation": "off"},
+            diagnostics={"execution_path": "inkling2_gguf_packed_hip", "kv_storage": "fp32", "speculation": "off",
+                         "expert_mix": "ordered_device" if self.model.ffn_device_output else "ordered_host"},
         ))
 
     def close(self):

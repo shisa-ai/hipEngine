@@ -11,11 +11,11 @@ from hipengine.core.hip import HIP_SUCCESS, HipError
 from hipengine.kernels.registry import KernelKey, register
 
 
-@lru_cache(maxsize=1)
-def _expert_library():
+@lru_cache(maxsize=2)
+def _expert_library(target_arch=None):
     path = Path(__file__).with_suffix(".hip")
     return build_hip(sources=[path], family="inkling2_experts", profile="decode",
-                     output_name="inkling2_experts.so")
+                     target_arch=target_arch, output_name="inkling2_experts.so")
 
 
 @lru_cache(maxsize=1)
@@ -78,6 +78,25 @@ def launch_expert_pointwise(x, mix, out, count, width, gate_cap=0.0, up_cap=0.0,
     status = _pointwise_symbol()(x, mix, out, count, width, gate_cap, up_cap, tokens)
     if status != HIP_SUCCESS:
         raise HipError(f"Inkling 2 expert pointwise operation failed with HIP status {status}")
+
+
+@lru_cache(maxsize=2)
+def _mix_exact_symbol(target_arch):
+    fn = _expert_library(target_arch).hipengine_inkling2_expert_mix_exact
+    fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int] * 3
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def launch_expert_mix_exact(down, mix, out, count, width, *, tokens=1, target_arch=None):
+    status = _mix_exact_symbol(target_arch)(down, mix, out, count, width, tokens)
+    if status != HIP_SUCCESS:
+        raise HipError(f"Inkling 2 exact expert mix failed with HIP status {status}")
+
+
+for _backend in ("hip_gfx1100", "hip_gfx1151"):
+    register(KernelKey(_backend, "inkling2_expert_pointwise", "inkling2_mixed", "ordered_mix_exact"),
+             launch_expert_mix_exact)
 
 
 register(KernelKey("hip_gfx1100", "inkling2_expert_pointwise", "inkling2_mixed", "default"), launch_expert_pointwise)

@@ -8,13 +8,14 @@ from hipengine.core.hip import get_hip_runtime
 from hipengine.core.rocblas import Rocblas
 from hipengine.kernels.backends import resolve_backend
 from hipengine.loading.inkling2_gguf import Inkling2GGUFWeights
+from hipengine.loading import inkling2_gguf_device as device
 from hipengine.loading.inkling2_gguf_device import Inkling2GGUFDeviceProjections
 from hipengine.quant.gguf import GGMLQuantizationType as Q
 from tests.test_unit_inkling2_gguf import _file
 
 
 @pytest.mark.parametrize("legacy", [True, False])
-def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy):
+def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy, monkeypatch):
     try:
         ctypes.CDLL("libamdhip64.so")
         ctypes.CDLL("librocblas.so")
@@ -59,6 +60,22 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy)
                                          for expert, h in zip(expert_ids, x, strict=True)])
                     np.testing.assert_allclose(observed, expected, rtol=1e-5, atol=2e-5)
             assert owner.packed_bank_bytes == sum(t.nbytes for t in matrices[1:])
+            for visit in (mapping.plan.visits[2], mapping.plan.visits[6]):
+                for ids in (expert_ids[:2], np.array([[1, 0], [0, 1], [1, 1]], np.int32)):
+                    activated = rng.normal(0, 0.1, (ids.size, 256)).astype(np.float32)
+                    mix = rng.uniform(0.0, 1.0, ids.shape).astype(np.float32)
+                    down = owner.project_selected(visit, "down", ids.ravel(), activated).reshape(*ids.shape, 256)
+                    expected = np.zeros((*ids.shape[:-1], 256), dtype=np.float32)
+                    for j in range(ids.shape[-1]):
+                        expected += mix[..., j, None] * down[..., j, :]
+                    transform = Mock()
+                    with monkeypatch.context() as limit:
+                        # Also cover advancing all route and output pointers across the launch limit.
+                        limit.setattr(device, "_MAX_SELECTED_ROUTES", 4)
+                        actual = owner.project_down_mixed(visit, ids, mix, activated, transform_output=transform)
+                    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+                    transform.assert_called_once()
+                    assert transform.call_args.args[1] == expected.shape
             # The final physical banks have different formats in the two layouts.
             visit = mapping.plan.visits[6]
             layer = mapping.layers[visit.weight_layer]

@@ -16,7 +16,7 @@ def test_gguf_ffn_uses_gate_and_up_halves_and_physical_layer(legacy):
     reader = Mock()
     reader.info = _file(legacy)
     weights = Inkling2GGUFWeights(reader)
-    projection = Mock()
+    projection = Mock(supports_device_mix=False)
     layer = weights.mapping.layers[2]
     visit = weights.mapping.plan.visits[4]
     x = np.ones((2, 256), np.float32)

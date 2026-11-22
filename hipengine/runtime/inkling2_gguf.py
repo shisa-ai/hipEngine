@@ -149,6 +149,10 @@ class Inkling2GGUFText(Inkling2TextReference):
         return np.stack([self.gguf.project_expert(visit, projection, e, x)
                          for e, x in zip(ids, inputs, strict=True)])
 
+    @property
+    def ffn_device_output(self):
+        return self.projection is not None and self.projection.supports_device_mix
+
     def feed_forward(self, visit, normalized, *, transform_output=None):
         ids, mix = self.route(visit, normalized)
         k = ids.shape[-1]
@@ -158,6 +162,8 @@ class Inkling2GGUFText(Inkling2TextReference):
         gate, up = np.split(run("gate_up", ids.ravel(), inputs), 2, axis=-1)
         a, b = self.mapping.gate_cap, self.mapping.up_cap
         activated = (a * np.tanh(gate / a) * _sigmoid(gate)) * (b * np.tanh(up / b))
+        if self.ffn_device_output:
+            return self.projection.project_down_mixed(visit, ids, mix, activated, transform_output=transform_output)
         down = run("down", ids.ravel(), activated).reshape(*ids.shape, normalized.shape[-1])
         result = np.zeros_like(normalized)
         for i in range(k):
