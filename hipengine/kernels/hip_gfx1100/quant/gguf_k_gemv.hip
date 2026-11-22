@@ -485,6 +485,53 @@ __global__ void gguf_k_prefill_out_kernel(
   }
 }
 
+// Each route shares the decoded weight but keeps the selected parent's K
+// order and the same wave sums, added in ascending wave order.
+template <int qtype>
+__launch_bounds__(128, 2)
+__global__ void gguf_k_selected_tile4_f32_kernel(
+    const float* x, const uint8_t* weights, float* out, const int32_t* tiles,
+    const float* scales, int rows, int experts, int inputs, int outputs) {
+  constexpr int tile_width = 4;
+  constexpr int waves = 4;
+  const int out_col = blockIdx.x;
+  const int tid = threadIdx.x;
+  const int32_t* tile = tiles + blockIdx.y * (tile_width + 1);
+  const int expert = tile[0], first = tile[1];
+  if (expert < 0 || expert >= experts || first < 0 || first >= rows) return;
+  const int64_t row_bytes = qtype == 8 ? int64_t(inputs / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES
+                                       : int64_t(inputs / QK_K) * Q5_K_BLOCK_BYTES;
+  const uint8_t* w = weights + (int64_t(expert) * outputs + out_col) * row_bytes;
+  const float* xrows[tile_width];
+  int routes[tile_width];
+  float acc[tile_width] = {};
+  #pragma unroll
+  for (int r = 0; r < tile_width; ++r) {
+    routes[r] = tile[r + 1];
+    const int row = routes[r] >= 0 && routes[r] < rows ? routes[r] : first;
+    xrows[r] = x + int64_t(row) * inputs;
+  }
+  for (int k = tid; k < inputs; k += blockDim.x) {
+    const float wv = qtype == 8 ? q8_0_weight(w, k) : q5_k_weight(w, k);
+    #pragma unroll
+    for (int r = 0; r < tile_width; ++r) acc[r] += xrows[r][k] * wv;
+  }
+  __shared__ float wave_sums[tile_width][waves];
+  #pragma unroll
+  for (int r = 0; r < tile_width; ++r) {
+    for (int offset = 16; offset > 0; offset >>= 1) acc[r] += __shfl_down(acc[r], offset);
+    if ((tid & 31) == 0) wave_sums[r][tid >> 5] = acc[r];
+  }
+  __syncthreads();
+  if (tid < tile_width && routes[tid] >= 0 && routes[tid] < rows) {
+    float total = 0.0f;
+    #pragma unroll
+    for (int wave = 0; wave < waves; ++wave) total += wave_sums[tid][wave];
+    const int row = routes[tid];
+    out[int64_t(row) * outputs + out_col] = scales ? total * scales[row] : total;
+  }
+}
+
 // Small-B weight-load-amortized variant of gguf_k_prefill_out_kernel.  One
 // block per output column, ROW_TILE row accumulators, each weight element
 // dequantized exactly once and reused across all rows.  See the Q4_K
@@ -5523,6 +5570,16 @@ extern "C" int hipengine_##NAME##_selected_raw_f32_f32_out( \
     int64_t rows, int experts, int64_t inputs, int64_t outputs, int64_t threads, hipStream_t stream) { \
   return launch_gguf_k_gemv_out<float, float, QTYPE, true>( \
       x, weights, out, rows, inputs, outputs, threads, stream, ids, scales, experts); \
+} \
+extern "C" int hipengine_##NAME##_selected_tile4_raw_f32_f32_out( \
+    const float* x, const uint8_t* weights, float* out, const int32_t* tiles, const float* scales, \
+    int tile_count, int rows, int experts, int inputs, int outputs, hipStream_t stream) { \
+  constexpr int block_size = QTYPE == 8 ? Q8_0_BLOCK : QK_K; \
+  if (!x || !weights || !out || !tiles || tile_count <= 0 || tile_count > 65535 || rows <= 0 || \
+      experts <= 0 || inputs <= 0 || inputs % block_size || outputs <= 0) return hipErrorInvalidValue; \
+  gguf_k_selected_tile4_f32_kernel<QTYPE><<<dim3(outputs, tile_count), 128, 0, stream>>>( \
+      x, weights, out, tiles, scales, rows, experts, inputs, outputs); \
+  return hipGetLastError(); \
 }
 
 HIPENGINE_GGUF_K_SELECTED_RAW_F32(gguf_q8_0, 8)

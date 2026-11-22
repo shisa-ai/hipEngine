@@ -216,7 +216,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 
 | Source | Purpose |
 | --- | --- |
-| `quant/gguf_k_gemv.hip` | Raw Q5_K, Q6_K, and Q8_0 projections. Q5_K and Q8_0 also expose the FP32 selected-route variant `moe_linear/*/selected_f32_f32_out`. |
+| `quant/gguf_k_gemv.hip` | Raw Q5_K, Q6_K, and Q8_0 projections. Q5_K and Q8_0 also expose individual-route and four-route expert tiles under `moe_linear`. |
 | `quant/gguf_nvfp4_gemv.hip` | Raw GGUF NVFP4 FP32 projections with post-dot scaling. The `moe_linear/gguf_nvfp4` selected variants use individual routes or four routes of the same expert, writing in route order. `linear/gguf_nvfp4/gemv_f32_f32_out` addresses one matrix. |
 | `quant/inkling2_experts.hip` | Inkling packed expert projections and pointwise operations. GGUF uses `inkling2_expert_pointwise/inkling2_mixed/ordered_mix_exact` for a separately rounded FP32 multiply/add in route order; the unfused path mixes on the host. |
 | `quant/gguf_q3_k_gemv.hip` | Raw Q3_K selected-expert projections. |

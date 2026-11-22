@@ -112,5 +112,19 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
                 finally:
                     owner._selected_launches[quant] = launch
                 np.testing.assert_array_equal(grouped.view(np.uint32), scalar.view(np.uint32))
+                assert quant in owner._tiled_launches
+                # Two experts with multiple full tiles and nonuniform tails.
+                many_ids = np.array([0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1], np.int32)
+                many_x = rng.normal(0, 0.1, (many_ids.size, 256)).astype(np.float32)
+                tiled_launch = owner._tiled_launches[quant]
+                try:
+                    owner._tiled_launches[quant] = Mock(wraps=tiled_launch)
+                    candidate = owner.project_selected(visit, stem, many_ids, many_x)
+                    owner._tiled_launches[quant].assert_called_once()
+                    owner._tiled_launches.pop(quant)
+                    control = owner.project_selected(visit, stem, many_ids, many_x)
+                finally:
+                    owner._tiled_launches[quant] = tiled_launch
+                np.testing.assert_array_equal(candidate.view(np.uint32), control.view(np.uint32))
     finally:
         blas.close()

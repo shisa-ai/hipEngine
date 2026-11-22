@@ -118,6 +118,22 @@ def _make_selected_raw_f32(quant):
     return launch
 
 
+def _make_selected_tile4_raw_f32(quant):
+    def launch(x, weight, output, records, scales, tiles, rows, experts, in_features, out_features, *,
+               stream=0, library=None, runtime=None):
+        _validate(quant, rows, in_features, out_features, 128)
+        if not records or not 1 <= tiles <= min(rows, 65535) or not 1 <= experts <= 2**31 - 1:
+            raise ValueError("invalid GGUF K tiled route geometry")
+        library = library or build_gguf_k_gemv(load=True)
+        runtime = runtime or get_hip_runtime()
+        symbol = f"hipengine_{quant}_selected_tile4_raw_f32_f32_out"
+        fn = _cached_fn(library, symbol, [_VOID] * 5 + [ctypes.c_int] * 5 + [_VOID])
+        launch_census.record_launch(quant, symbol, rows, in_features, out_features)
+        _check_launch(runtime, fn(x, weight, output, records, scales, tiles, rows, experts,
+                                  in_features, out_features, stream))
+    return launch
+
+
 def _validate_h7c_raw_q6_role(
     output_dtype: str,
     rows: int,
@@ -1085,6 +1101,8 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     for quant in ("gguf_q8_0", "gguf_q5_k"):
         register(KernelKey("hip_gfx1100", "moe_linear", quant, "selected_f32_f32_out"),
                  _make_selected_raw_f32(quant), replace=replace)
+        register(KernelKey("hip_gfx1100", "moe_linear", quant, "selected_tile4_f32_f32_out"),
+                 _make_selected_tile4_raw_f32(quant), replace=replace)
     # The grouped row4 GEMV is also reachable through the MoE expert route,
     # which resolves `moe_linear`. It is the only grouped kernel Q5_K has, and
     # one MoE layer of a dynamic quant can carry Q5_K expert weights while the
