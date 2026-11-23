@@ -1,6 +1,6 @@
 """Per-visit device KV state for Inkling 2 target attention."""
 
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 
 import numpy as np
@@ -37,6 +37,7 @@ class Inkling2DeviceAttention:
                                     for cap, nq, nk, d, e in self.geometry):
             raise ValueError("unsupported gfx1100 Inkling 2 target attention geometry")
         self.closed = False
+        self._borrowed_output = False
         with ExitStack() as owner:
             self.owner = owner
             self.transfer = Inkling2ActivationTransfer(runtime)
@@ -102,9 +103,26 @@ class Inkling2DeviceAttention:
                         for cap, heads, _, dim, _ in self.geometry)
             self.value_partials = self._allocate(4 * cells)
 
-    def step(self, visit, position, q, key, value, bias, sink, *, undo=None, gain=None, projection=None):
-        if self.closed:
-            raise RuntimeError("Inkling 2 attention state is closed")
+    @contextmanager
+    def resident_step(self, visit, position, q, key, value, bias, sink, *, gain=None):
+        """Borrow a queued output. The consumer must fence stream zero before returning."""
+        if self._borrowed_output:
+            raise RuntimeError("Inkling 2 attention output is already borrowed")
+        try:
+            result = self.step(visit, position, q, key, value, bias, sink, gain=gain, _resident=True)
+            self._borrowed_output = True
+            yield result
+        except BaseException:
+            self.rt.stream_synchronize(0)
+            raise
+        finally:
+            self._borrowed_output = False
+
+    def step(self, visit, position, q, key, value, bias, sink, *, undo=None, gain=None, projection=None, _resident=False):
+        if self.closed or self._borrowed_output:
+            raise RuntimeError("Inkling 2 attention state is closed or still has a borrowed output")
+        if _resident and (undo is not None or projection is not None):
+            raise ValueError("Inkling 2 resident attention requires a committed step without a projection consumer")
         if position != self.positions.get(visit, 0):
             raise ValueError("Inkling 2 attention position must advance in order")
         cap, nq, nk, d, extent = self.geometry[visit]
@@ -147,11 +165,7 @@ class Inkling2DeviceAttention:
             self.staging[cursor:cursor + gain.size] = gain
             cursor += gain.size
         args = (q_ptr, keys, values, bias_ptr, sink_ptr, self.out, spans, nq, nk, d, extent)
-        if projection is None:
-            dst, out, consume = self.out, np.empty((nq, d), dtype=np.float32), None
-        else:
-            dst, out, consume = projection
-        with self.transfer.exchange(self.scratch, dst, self.staging[:cursor], out, pinned=True):
+        def launch():
             self.write(key_ptr, value_ptr, keys, values, spans, nk * d)
             if use_chunked:
                 self.split_chunked(*args, self.scores, live, partial=self.value_partials, gain=gain_ptr)
@@ -159,6 +173,18 @@ class Inkling2DeviceAttention:
                 self.split(*args, self.scores, live, gain=gain_ptr)
             else:
                 self.launch(*args, gain=gain_ptr)
+
+        if _resident:
+            self.transfer.enqueue_upload(self.scratch, self.staging[:cursor])
+            launch()
+            self.positions[visit] = position + 1
+            return self.out
+        if projection is None:
+            dst, out, consume = self.out, np.empty((nq, d), dtype=np.float32), None
+        else:
+            dst, out, consume = projection
+        with self.transfer.exchange(self.scratch, dst, self.staging[:cursor], out, pinned=True):
+            launch()
             if consume is not None:
                 consume(self.out)
         self.positions[visit] = position + 1
@@ -166,8 +192,8 @@ class Inkling2DeviceAttention:
 
     def step_block(self, visit, position, q, key, value, bias, sink, *, undo=None, gain=None, gate_logits=None,
                    projection=None):
-        if self.closed:
-            raise RuntimeError("Inkling 2 attention state is closed")
+        if self.closed or self._borrowed_output:
+            raise RuntimeError("Inkling 2 attention state is closed or still has a borrowed output")
         if position != self.positions.get(visit, 0):
             raise ValueError("Inkling 2 attention position must advance in order")
         cap, nq, nk, d, extent = self.geometry[visit]

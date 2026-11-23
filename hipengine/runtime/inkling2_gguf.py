@@ -130,6 +130,8 @@ class Inkling2GGUFText(Inkling2TextReference):
                         outputs = self._project_decode_controllers(inputs)
                     elif kind == "attention_inputs":
                         outputs = self._project_decode_attention(inputs)
+                    elif kind == "attention_output":
+                        outputs = self._project_decode_attention_output(inputs)
                     elif kind == "experts":
                         outputs = self._feed_forward_decode_rows(visit, inputs)
                     else:
@@ -150,6 +152,13 @@ class Inkling2GGUFText(Inkling2TextReference):
         return self.projection.project_shared_attention_rows([
             (tuple((tuple(tensors[name].name for name in names), x) for names, x in groups), transforms)
             for groups, transforms in inputs])
+
+    def _project_decode_attention_output(self, inputs):
+        name, _, width, _ = inputs[0]
+        if any(other != name or n != width for other, _, n, _ in inputs):
+            raise ValueError("Inkling GGUF attention output projection geometry differs across rows")
+        return self.projection.project_resident_attention_rows(self.weights.names[name].name, width,
+                                                               [(ptr, consume) for _, ptr, _, consume in inputs])
 
     def head_shape(self, visit):
         layer = self.mapping.layers[visit.weight_layer]

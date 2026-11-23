@@ -48,6 +48,46 @@ def test_committed_attention_block_sees_causal_kv_before_ring_commit(capacity):
         np.testing.assert_array_equal(np.asarray(actual).view(np.uint32), reference.view(np.uint32))
 
 
+@pytest.mark.parametrize("capacity", [3, 17])
+def test_resident_attention_rows_keep_separate_outputs_after_wrap(capacity):
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP unavailable: {exc}")
+    from functools import partial
+
+    from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
+    from hipengine.kernels.backends import hip_target_arch_for_backend, resolve_backend
+    from hipengine.kernels.hip_gfx1100.attention import inkling2_target_attention as attn
+
+    backend = resolve_backend("auto", execution_device=True)
+    if backend not in ("hip_gfx1100", "hip_gfx1151"):
+        pytest.skip("test requires gfx1100 or gfx1151")
+    arch = hip_target_arch_for_backend(backend)
+    rt = get_hip_runtime()
+    owner = dict(runtime=rt, geometry=[(capacity, 4, 2, 67, 15)],
+                 launch=partial(attn.launch_tiled_attention, target_arch=arch),
+                 write=partial(attn.launch_cache_write, target_arch=arch),
+                 split=partial(attn.launch_split_attention, target_arch=arch))
+    rng = np.random.default_rng(85)
+    args = [rng.standard_normal((2, capacity + 3, *shape), dtype=np.float32)
+            for shape in ((4, 67), (2, 67), (2, 67), (4, 15), (4,))]
+    with (closing(Inkling2DeviceAttention(**owner)) as left, closing(Inkling2DeviceAttention(**owner)) as right,
+          closing(Inkling2DeviceAttention(**owner)) as ref_left, closing(Inkling2DeviceAttention(**owner)) as ref_right):
+        for pos in range(capacity + 3):
+            a, b = ([x[r, pos] for x in args] for r in range(2))
+            want_a, want_b = ref_left.step(0, pos, *a), ref_right.step(0, pos, *b)
+            out_a, out_b = np.empty_like(want_a), np.empty_like(want_b)
+            with left.resident_step(0, pos, *a) as pa, right.resident_step(0, pos, *b) as pb:
+                assert pa != pb
+                with pytest.raises(RuntimeError, match="borrowed output"):
+                    left.step(0, pos + 1, *a)
+                rt.memcpy(out_a.ctypes.data, pa, out_a.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+                rt.memcpy(out_b.ctypes.data, pb, out_b.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+            np.testing.assert_array_equal(out_a.view(np.uint32), want_a.view(np.uint32))
+            np.testing.assert_array_equal(out_b.view(np.uint32), want_b.view(np.uint32))
+
+
 @pytest.mark.parametrize("capacity", [3, 17, 49])
 def test_committed_block_can_apply_sigmoid_to_gate_logits(capacity):
     try:

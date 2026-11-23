@@ -222,6 +222,31 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         return tuple(tuple(tuple(outputs[i][j] if idx is None else outputs[i][j][idx] for i, j, idx in group)
                            for group in row) for row in locations)
 
+    def project_resident_attention_rows(self, name, width, inputs):
+        """Project borrowed attention vectors, consume each row, and fence the result."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling GGUF projection residency is closed")
+            matrix = self._matrix(name, None)
+            _, (m, n), packed = matrix
+            if not inputs or n != width:
+                raise ValueError("Inkling GGUF resident attention output projection has invalid geometry")
+            y = np.empty((len(inputs), m), dtype=np.float32)
+            out = self._scratch("_output", y.nbytes).ptr
+            if self._q8_prefill is not None and len(inputs) > 1 and packed == Q.Q8_0 and m % 8 == 0:
+                row_bytes = n * y.itemsize
+                inp = self._scratch("_input", len(inputs) * row_bytes).ptr
+                for i, (ptr, _) in enumerate(inputs):
+                    self._runtime.memcpy_async(inp + i * row_bytes, ptr, row_bytes, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
+                self._launch_projection(inp, out, len(inputs), 2, matrix, None)
+            else:
+                for i, (ptr, _) in enumerate(inputs):
+                    self._launch_projection(ptr, out + i * y.strides[0], 1, 1, matrix, None)
+            for i, (_, consume) in enumerate(inputs):
+                consume(out + i * y.strides[0], (m,))
+            self._transfer.download(out, y)
+            return y
+
     def _launch_projection(self, src, dst, rows, ndim, matrix, native_bf16):
         weight, (m, n), packed = matrix
         if not packed:

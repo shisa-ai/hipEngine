@@ -347,9 +347,11 @@ class Inkling2TextSession:
                 inputs, ("attn", "k", "v"), tuple(messages[..., i, :] for i in range(3))))
             q, k, v = (norm(x, name) for x, name in zip(merged, norm_names, strict=True))
 
-        attention_project = None
+        attention_project = attention_output = None
         if self.attention is not None and self.convolution is not None:
-            if q.ndim == 1 and self.model.project_device is not None:
+            if stage_controllers and q.ndim == 1 and self.model.project_device is not None:
+                attention_output = prefix + "attn.wo_ud.weight", device_conv("attn_sconv")
+            elif q.ndim == 1 and self.model.project_device is not None:
                 def attention_project(pos, q, k, v, bias, sink, gate):
                     gain = _sigmoid(gate)
                     with self.model.project_device(prefix + "attn.wo_ud.weight", gate.size,
@@ -367,8 +369,9 @@ class Inkling2TextSession:
                                                          projection=projection, **gate_kwargs)
 
         a = yield from self._attention(visit, self.states[visit.state_slot], get, q, k, v,
-                                       attention_project=attention_project, stage_projections=stage_controllers)
-        if attention_project is None:
+                                       attention_project=attention_project, attention_output=attention_output,
+                                       stage_projections=stage_controllers)
+        if attention_project is None and attention_output is None:
             if self.convolution is None:
                 a = static_conv("attn_sconv", project("attn.wo_ud.weight", a))
             else:
@@ -394,7 +397,8 @@ class Inkling2TextSession:
         return np.stack([self._convolve(visit, name, row, taps[i] if dynamic else taps, dynamic=dynamic, offset=i)
                          for i, row in enumerate(x)])
 
-    def _attention(self, visit, s, get, qi, ki, vi, *, attention_project=None, stage_projections=False):
+    def _attention(self, visit, s, get, qi, ki, vi, *, attention_project=None, attention_output=None,
+                   stage_projections=False):
         c = self.model.config
         nh, nkv, dim = self.model.head_shape(visit)
         ksize = c["sconv_kernel_size"]
@@ -493,6 +497,10 @@ class Inkling2TextSession:
 
         extent = c["sliding_window_size"] if visit.is_local else c["rel_extent"]
         bias = (rel @ weight("rel_logits_proj.proj"))[..., :extent]
+        if attention_output is not None:
+            name, consume = attention_output
+            with self.attention.resident_step(visit.state_slot, pos, q, key, value, bias, sink, gain=_sigmoid(gate)) as ptr:
+                return (yield visit, "attention_output", (name, ptr, gate.size, consume))
         if attention_project is not None:
             return attention_project(pos, q, key, value, bias, sink, gate)
         gain = _sigmoid(gate)
