@@ -29,6 +29,17 @@ class _ResidentBank:
 def build_expert_route_tiles(ids, width):
     """Build fixed-width records of same-expert routes, padded with -1."""
     flat = ids.ravel()
+    # Decode-sized route lists are cheaper to group without NumPy temporaries.
+    if 0 < flat.size <= 32 and width in (2, 4) and flat.dtype == np.int32:
+        groups = {}
+        for route, expert in enumerate(flat.tolist()):
+            groups.setdefault(expert, []).append(route)
+        records = []
+        for expert, routes in sorted(groups.items()):
+            for start in range(0, len(routes), width):
+                tile = routes[start:start + width]
+                records.append([expert, *tile, *([-1] * (width - len(tile)))])
+        return np.asarray(records, dtype=np.int32)
     ordered = np.argsort(flat, kind="stable").astype(np.int32)
     experts = flat[ordered]
     i = np.arange(flat.size, dtype=np.int32)
