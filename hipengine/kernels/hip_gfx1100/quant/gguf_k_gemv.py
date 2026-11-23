@@ -1108,8 +1108,8 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
                  _make_selected_raw_f32(quant), replace=replace)
         register(KernelKey("hip_gfx1100", "moe_linear", quant, "selected_tile4_f32_f32_out"),
                  _make_selected_tile4_raw_f32(quant), replace=replace)
-    register(KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_k", "selected_tile4_shared_input_f32_f32_out"),
-             _make_selected_tile4_raw_f32("gguf_q5_k", shared_input=True), replace=replace)
+        register(KernelKey("hip_gfx1100", "moe_linear", quant, "selected_tile4_shared_input_f32_f32_out"),
+                 _make_selected_tile4_raw_f32(quant, shared_input=True), replace=replace)
     # The grouped row4 GEMV is also reachable through the MoE expert route,
     # which resolves `moe_linear`. A dynamic quant can carry Q5_K experts in
     # one layer while the rest of the model is Q4_K.

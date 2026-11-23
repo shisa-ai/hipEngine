@@ -5609,18 +5609,17 @@ extern "C" int hipengine_##NAME##_selected_tile4_raw_f32_f32_out( \
     int tile_count, int rows, int experts, int inputs, int outputs, hipStream_t stream) { \
   return launch_selected_tile4<QTYPE>(x, weights, out, tiles, scales, tile_count, rows, experts, inputs, \
                                        outputs, 1, stream); \
+} \
+extern "C" int hipengine_##NAME##_selected_tile4_shared_input_raw_f32_f32_out( \
+    const float* x, const uint8_t* weights, float* out, const int32_t* tiles, const float* scales, \
+    int tile_count, int rows, int experts, int inputs, int outputs, int routes_per_input, hipStream_t stream) { \
+  return launch_selected_tile4<QTYPE, true>(x, weights, out, tiles, scales, tile_count, rows, experts, inputs, \
+                                             outputs, routes_per_input, stream); \
 }
 
 HIPENGINE_GGUF_K_SELECTED_RAW_F32(gguf_q8_0, 8)
 HIPENGINE_GGUF_K_SELECTED_RAW_F32(gguf_q5_k, 5)
 #undef HIPENGINE_GGUF_K_SELECTED_RAW_F32
-
-extern "C" int hipengine_gguf_q5_k_selected_tile4_shared_input_raw_f32_f32_out(
-    const float* x, const uint8_t* weights, float* out, const int32_t* tiles, const float* scales,
-    int tile_count, int rows, int experts, int inputs, int outputs, int routes_per_input, hipStream_t stream) {
-  return launch_selected_tile4<5, true>(x, weights, out, tiles, scales, tile_count, rows, experts, inputs,
-                                        outputs, routes_per_input, stream);
-}
 
 #define HIPENGINE_GGUF_K_EXPORTS(NAME, QTYPE) \
 extern "C" int hipengine_##NAME##_gemv_f32_f32_out( \

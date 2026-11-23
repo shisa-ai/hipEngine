@@ -223,6 +223,18 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
                 finally:
                     owner._tiled_launches[quant] = tiled_launch
                 np.testing.assert_array_equal(candidate.view(np.uint32), control.view(np.uint32))
+                if stem == "gate_up":
+                    ids = many_ids[:16]
+                    tokens = many_x[:8]
+                    expected = owner.project_selected(visit, stem, ids, np.repeat(tokens, 2, axis=0))
+                    shared = owner._shared_tiled_launches[quant]
+                    try:
+                        owner._shared_tiled_launches[quant] = Mock(wraps=shared)
+                        compact = owner.project_selected(visit, stem, ids, tokens, routes_per_input=2)
+                        owner._shared_tiled_launches[quant].assert_called_once()
+                    finally:
+                        owner._shared_tiled_launches[quant] = shared
+                    np.testing.assert_array_equal(compact.view(np.uint32), expected.view(np.uint32))
     finally:
         blas.close()
 
@@ -279,13 +291,12 @@ def test_selected_tiles_match_individual_routes_at_pair_boundary(quant, outputs)
         tiled(xp, wp, out, tp, sp, len(tiles), len(ids), 2, x.shape[1], outputs, runtime=runtime, library=library)
         runtime.memcpy(scores.ctypes.data, out, scores.nbytes, Copy.DEVICE_TO_HOST)
         np.testing.assert_array_equal(scores.view(np.uint32), expected)
-        if q5:
-            shared = _make_selected_tile4_raw_f32(quant, shared_input=True)
-            compact = upload(tokens)
-            with pytest.raises(ValueError, match="routes per input"):
-                shared(compact, wp, out, tp, sp, len(tiles), len(ids), 2, x.shape[1], outputs,
-                       routes_per_input=3, runtime=runtime, library=library)
+        shared = _make_selected_tile4_raw_f32(quant, shared_input=True)
+        compact = upload(tokens)
+        with pytest.raises(ValueError, match="routes per input"):
             shared(compact, wp, out, tp, sp, len(tiles), len(ids), 2, x.shape[1], outputs,
-                   routes_per_input=2, runtime=runtime, library=library)
-            runtime.memcpy(scores.ctypes.data, out, scores.nbytes, Copy.DEVICE_TO_HOST)
-            np.testing.assert_array_equal(scores.view(np.uint32), expected)
+                   routes_per_input=3, runtime=runtime, library=library)
+        shared(compact, wp, out, tp, sp, len(tiles), len(ids), 2, x.shape[1], outputs,
+               routes_per_input=2, runtime=runtime, library=library)
+        runtime.memcpy(scores.ctypes.data, out, scores.nbytes, Copy.DEVICE_TO_HOST)
+        np.testing.assert_array_equal(scores.view(np.uint32), expected)
