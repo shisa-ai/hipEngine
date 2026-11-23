@@ -27,6 +27,19 @@ def _softmax(x):
     return p / p.sum(axis=-1, keepdims=True)
 
 
+def _blend_controller(x, message, forget, gain):
+    if (x.ndim != 2 or not x.shape == message.shape == forget.shape == gain.shape
+            or not x.dtype == message.dtype == forget.dtype == gain.dtype == np.float32):
+        return (1 - np.tanh(forget)) * x + np.tanh(gain) * message
+    # Reuse the two fresh tanh results without mutating the controller inputs.
+    a, b = np.tanh(forget), np.tanh(gain)
+    np.subtract(1, a, out=a)
+    np.multiply(a, x, out=a)
+    np.multiply(b, message, out=b)
+    np.add(a, b, out=a)
+    return a
+
+
 def _mix_residual_rows(query, values):
     divisor = sqrt(values.shape[-1])
     if values.ndim == 2:
@@ -342,9 +355,6 @@ class Inkling2TextSession:
         def controller_input(x, message):
             return np.concatenate((_rms(x, eps), _rms(message, eps)), axis=-1)
 
-        def blend(x, message, forget, gain):
-            return (1 - np.tanh(forget)) * x + np.tanh(gain) * message
-
         def merge_controllers(inputs, names, incoming):
             chains = []
             for x, name, message in zip(inputs, names, incoming, strict=True):
@@ -355,7 +365,7 @@ class Inkling2TextSession:
                 controls = yield visit, "controllers", tuple(chains)
             else:
                 controls = self.model.project_chains(chains)
-            return tuple(blend(x, message, forget, gain)
+            return tuple(_blend_controller(x, message, forget, gain)
                          for x, message, (forget, gain) in zip(inputs, incoming, controls, strict=True))
 
         def norm(x, name):

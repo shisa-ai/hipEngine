@@ -56,6 +56,29 @@ def _config():
     }}
 
 
+@pytest.mark.parametrize("mode", ["scalar", "matrix", "strided", "promoted", "broadcast"])
+def test_controller_blend_keeps_numpy_bits_and_inputs(mode):
+    from hipengine.runtime.inkling2_mini_reference import _blend_controller
+
+    data = np.random.default_rng(92).standard_normal((4, 7, 146), dtype=np.float32)
+    data[0, 0, :3] = (0.0, -0.0, 0.0)
+    x, message, forget, gain = data
+    if mode == "scalar":
+        x, message, forget, gain = data[:, 0]
+    elif mode == "strided":
+        x, message, forget, gain = data[..., ::-2]
+    elif mode == "promoted":
+        message = message.astype(np.float64)
+    elif mode == "broadcast":
+        gain = gain[:1]
+    for row in (x, message, forget, gain):
+        row.setflags(write=False)
+    expected = (1 - np.tanh(forget)) * x + np.tanh(gain) * message
+    actual = _blend_controller(x, message, forget, gain)
+    assert actual.shape == expected.shape and actual.dtype == expected.dtype
+    assert actual.tobytes() == expected.tobytes()
+
+
 @pytest.mark.parametrize("shape", [(65,), (8, 128), (3, 2048)])
 @pytest.mark.parametrize("stride", [1, 2])
 def test_rms_preserves_numpy_mean_reduction_bits(shape, stride):
