@@ -57,6 +57,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
         write = primitive("inkling2_target_kv_write", "default")
         conv = primitive("inkling2_short_conv", "default")
         conv_block = primitive("inkling2_short_conv", "block")
+        conv_dynamic = primitive("inkling2_short_conv", "projected_dynamic")
         visits = sorted(m.plan.visits, key=lambda v: v.state_slot)
         channels = max(m.hidden_size, max(layer.kv_heads * layer.head_dim for layer in m.layers))
         with ExitStack() as owned:
@@ -71,7 +72,8 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
                      m.sliding_window if v.is_local else m.relative_extent) for v in visits
                 ])
             model.convolution_factory = lambda: Inkling2DeviceConvolution(
-                runtime=runtime, launch=conv, launch_block=conv_block, channels=channels, width=m.conv_taps)
+                runtime=runtime, launch=conv, launch_block=conv_block, launch_dynamic=conv_dynamic,
+                channels=channels, width=m.conv_taps)
             self._owned = owned.pop_all()
 
     def _prepare_text_rows(self, request, *, speculative=False):

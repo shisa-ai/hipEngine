@@ -104,15 +104,16 @@ class Inkling2DeviceDense:
             raise ValueError("Inkling 2 projection requires one transform slot per output")
         return self._project_groups(((None, names, hidden),), native_bf16, pinned, transform_outputs)[0]
 
-    def project_groups(self, groups, *, native_bf16=None, pinned=False):
-        """Exchange independent inputs and results together, preserving projection order."""
-        return self._project_groups(((None, names, x) for names, x in groups), native_bf16, pinned)
+    def project_groups(self, groups, *, native_bf16=None, pinned=False, transform_groups=None):
+        """Exchange independent inputs and optionally consume each resident output group."""
+        return self._project_groups(((None, names, x) for names, x in groups), native_bf16, pinned,
+                                    transform_groups=transform_groups)
 
     def project_chains(self, chains, *, native_bf16=None, pinned=False):
         """Feed each first projection directly into the remaining projections."""
         return self._project_groups(chains, native_bf16, pinned)
 
-    def _project_groups(self, chains, native_bf16, pinned, transform_outputs=None):
+    def _project_groups(self, chains, native_bf16, pinned, transform_outputs=None, *, transform_groups=None):
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling 2 dense residency is closed")
@@ -140,6 +141,8 @@ class Inkling2DeviceDense:
                 output_count += rows * sum(m for _, (m, _), _ in matrices)
             if not plans:
                 raise ValueError("Inkling 2 projection groups must not be empty")
+            if transform_groups is not None and len(transform_groups) != len(plans):
+                raise ValueError("Inkling 2 projection requires one transform slot per group")
             inputs = plans[0][0] if len(plans) == 1 else np.concatenate([x.ravel() for x, *_ in plans])
             output = np.empty(output_count, dtype=np.float32)
             inp = self._scratch("_input", inputs.nbytes)
@@ -148,7 +151,9 @@ class Inkling2DeviceDense:
             input_offset = output_offset = 0
             results = []
             with self._transfer.exchange(inp.ptr, out.ptr, inputs, output, pinned=pinned):
-                for x, rows, before, matrices in plans:
+                for group_index, (x, rows, before, matrices) in enumerate(plans):
+                    consume_group = None if transform_groups is None else transform_groups[group_index]
+                    resident = [] if consume_group is not None else None
                     src = inp.ptr + input_offset
                     if before is not None:
                         self._launch_projection(src, intermediate, rows, x.ndim, before, native_bf16)
@@ -163,7 +168,11 @@ class Inkling2DeviceDense:
                         if transform_outputs is not None and (consume := transform_outputs[index]) is not None:
                             consume(dst, view.shape)
                         group.append(view)
+                        if resident is not None:
+                            resident.append((dst, view.shape))
                         output_offset = end
+                    if consume_group is not None:
+                        consume_group(*resident)
                     results.append(tuple(group))
                     input_offset += x.nbytes
             return tuple(results)

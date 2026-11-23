@@ -38,6 +38,21 @@ def launch_short_conv_block(history, x, taps, out, channels, width, scale, rows,
         raise HipError(f"Inkling 2 block short convolution failed with HIP status {status}")
 
 
+@lru_cache(maxsize=2)
+def _dynamic_symbol(target_arch):
+    launch = _build(target_arch).hipengine_inkling2_short_conv_dynamic
+    launch.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int] * 4 + [ctypes.c_float]
+    launch.restype = ctypes.c_int
+    return launch
+
+
+def launch_short_conv_dynamic(history, x, fixed, dynamic, heads, dim, width, rows, scale, *, target_arch=None):
+    status = _dynamic_symbol(target_arch)(history, x, fixed, dynamic, heads, dim, width, rows, scale)
+    if status != HIP_SUCCESS:
+        raise HipError(f"Inkling 2 projected dynamic convolution failed with HIP status {status}")
+
+
 for _backend in ("hip_gfx1100", "hip_gfx1151"):
     register(KernelKey(_backend, "inkling2_short_conv", "inkling2_mixed", "default"), launch_short_conv)
     register(KernelKey(_backend, "inkling2_short_conv", "inkling2_mixed", "block"), launch_short_conv_block)
+    register(KernelKey(_backend, "inkling2_short_conv", "inkling2_mixed", "projected_dynamic"), launch_short_conv_dynamic)

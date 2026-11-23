@@ -11,10 +11,11 @@ from hipengine.loading.inkling2_activation_transfer import Inkling2ActivationTra
 
 
 class Inkling2DeviceConvolution:
-    def __init__(self, *, runtime, launch, channels, width, launch_block=None):
+    def __init__(self, *, runtime, launch, channels, width, launch_block=None, launch_dynamic=None):
         if channels <= 0 or width <= 0:
             raise ValueError("Inkling 2 convolution geometry must be positive")
         self.rt, self.launch, self.launch_block = runtime, launch, launch_block
+        self.launch_dynamic = launch_dynamic
         self.channels, self.width = channels, width
         self.histories = {}
         self.static_taps = {}
@@ -146,12 +147,7 @@ class Inkling2DeviceConvolution:
             free(self._block_scratch, runtime=self.rt)
             self._block_scratch = None
 
-    def apply_static(self, visit, name, taps, ptr, shape, *, position=0, undo=None):
-        """Convolve a device buffer in place using immutable taps for this visit."""
-        if len(shape) not in (1, 2) or not all(shape):
-            raise ValueError("Inkling 2 static convolution expects a vector or row matrix")
-        channels = shape[-1]
-        history = self._history(visit, name, (channels,), taps)
+    def _static_tap_ptr(self, visit, name, taps):
         key = visit, name
         if key not in self.static_taps:
             host = np.ascontiguousarray(taps, dtype=np.float32)
@@ -159,7 +155,30 @@ class Inkling2DeviceConvolution:
             self.owner.callback(free, buf, runtime=self.rt)
             self.rt.memcpy(buf.ptr, host.ctypes.data, host.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
             self.static_taps[key] = buf.ptr
-        tap_ptr = self.static_taps[key]
+        return self.static_taps[key]
+
+    def apply_dynamic(self, visit, name, taps, heads, projected, dynamic):
+        """Convolve a resident projection in place using compact per-head tap deltas."""
+        ptr, shape = projected
+        delta_ptr, delta_shape = dynamic
+        if (len(shape) not in (1, 2) or not all(shape) or heads <= 0 or shape[-1] % heads
+                or delta_shape != (*shape[:-1], heads * self.width)):
+            raise ValueError("Inkling 2 projected dynamic convolution shapes do not match")
+        if self.launch_dynamic is None:
+            raise RuntimeError("Inkling 2 projected dynamic convolution kernel is unavailable")
+        channels = shape[-1]
+        history = self._history(visit, name, (channels,), taps)
+        rows = 1 if len(shape) == 1 else shape[0]
+        self.launch_dynamic(history.ptr, ptr, self._static_tap_ptr(visit, name, taps), delta_ptr,
+                            heads, channels // heads, self.width, rows, self._scale(True))
+
+    def apply_static(self, visit, name, taps, ptr, shape, *, position=0, undo=None):
+        """Convolve a device buffer in place using immutable taps for this visit."""
+        if len(shape) not in (1, 2) or not all(shape):
+            raise ValueError("Inkling 2 static convolution expects a vector or row matrix")
+        channels = shape[-1]
+        history = self._history(visit, name, (channels,), taps)
+        tap_ptr = self._static_tap_ptr(visit, name, taps)
         scale = self._scale(False)
         rows = 1 if len(shape) == 1 else shape[0]
         if rows > 1 and undo is None and self.launch_block is not None:

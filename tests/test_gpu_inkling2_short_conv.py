@@ -90,6 +90,63 @@ def test_kv_block_convolution_matches_scalar_across_chunks(dynamic):
         np.testing.assert_array_equal(np.asarray(actual).view(np.uint32), np.asarray(expected).view(np.uint32))
 
 
+@pytest.mark.parametrize("heads,dim,width", [(1, 33, 1), (3, 67, 3), (8, 128, 4)])
+def test_projected_dynamic_convolution_matches_expanded_taps(heads, dim, width):
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP unavailable: {exc}")
+    from functools import partial
+
+    from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
+    from hipengine.core.memory import free, malloc
+    from hipengine.kernels.backends import resolve_backend
+    from hipengine.kernels.hip_gfx1100.quant import inkling2_short_conv as conv
+
+    backend = resolve_backend("auto", execution_device=True)
+    if backend not in ("hip_gfx1100", "hip_gfx1151"):
+        pytest.skip("test requires gfx1100 or gfx1151")
+    arch = backend.removeprefix("hip_")
+    runtime = get_hip_runtime()
+    channels = heads * dim
+    rng = np.random.default_rng(21627)
+    x = rng.standard_normal((12, channels), dtype=np.float32)
+    fixed = rng.standard_normal((heads, dim, width), dtype=np.float32)
+    dyn = rng.standard_normal((12, heads, width), dtype=np.float32)
+    expanded = (fixed + dyn[:, :, None]).reshape(12, channels, width)
+    owner = dict(runtime=runtime, channels=channels, width=width,
+                 launch=partial(conv.launch_short_conv, target_arch=arch))
+    scratch = malloc(x.nbytes + dyn.nbytes, runtime=runtime)
+    try:
+        with (
+            closing(Inkling2DeviceConvolution(**owner)) as serial,
+            closing(Inkling2DeviceConvolution(**owner,
+                launch_dynamic=partial(conv.launch_short_conv_dynamic, target_arch=arch))) as chained,
+        ):
+            cpu = _VisitState(None, None)
+            for slot, role in ((0, "k"), (1, "k"), (0, "v")):
+                expected = np.stack([serial.step(slot, role, row, taps, dynamic=True)
+                                     for row, taps in zip(x, expanded, strict=True)])
+                actual = np.empty_like(expected)
+                taps_ptr = scratch.ptr + x.nbytes
+                runtime.memcpy(scratch.ptr, x.ctypes.data, x.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+                runtime.memcpy(taps_ptr, dyn.ctypes.data, dyn.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+                for i, j in ((0, 1), (1, 8), (8, 11), (11, 12)):
+                    shape = x[i].shape if j - i == 1 else x[i:j].shape
+                    tap_shape = (heads * width,) if j - i == 1 else (j - i, heads * width)
+                    chained.apply_dynamic(slot, role, fixed.reshape(channels, width), heads,
+                                          (scratch.ptr + i * x[0].nbytes, shape),
+                                          (taps_ptr + i * dyn[0].nbytes, tap_shape))
+                runtime.memcpy(actual.ctypes.data, scratch.ptr, actual.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+                np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+                if slot == 0:
+                    ref = np.stack([cpu.convolve(role, row, taps, dynamic=True)
+                                    for row, taps in zip(x, expanded, strict=True)])
+                    np.testing.assert_allclose(actual, ref, rtol=2e-6, atol=2e-6)
+    finally:
+        free(scratch, runtime=runtime)
+
+
 @pytest.mark.parametrize("paired", [False, True])
 def test_device_short_convolution_preserves_separate_visit_histories(monkeypatch, paired):
     try:

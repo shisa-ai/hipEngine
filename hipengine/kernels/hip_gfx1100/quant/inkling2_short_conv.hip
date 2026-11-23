@@ -29,6 +29,39 @@ __global__ void inkling2_short_conv_block(float* history, const float* input, co
     }
 }
 
+__global__ void inkling2_short_conv_dynamic(float* history, float* input, const float* fixed,
+                                            const float* dynamic, int heads, int dim, int width,
+                                            int rows, float scale) {
+    const int ch = blockIdx.x * blockDim.x + threadIdx.x;
+    const int channels = heads * dim;
+    if (ch >= channels) return;
+    const int head = ch / dim;
+    float* h = history + size_t(ch) * width;
+    const float* w = fixed + size_t(ch) * width;
+    for (int row = 0; row < rows; ++row) {
+        float* x = input + size_t(row) * channels + ch;
+        const float* d = dynamic + (size_t(row) * heads + head) * width;
+        for (int i = width - 1; i > 0; --i) h[i] = h[i - 1];
+        h[0] = *x;
+        float sum = 0.0f;
+        for (int i = 0; i < width; ++i) {
+            const float tap = w[i] + d[i];
+            sum += h[i] * tap;
+        }
+        *x = (*x + sum) * scale;
+    }
+}
+
+extern "C" int hipengine_inkling2_short_conv_dynamic(float* history, float* input, const float* fixed,
+                                                     const float* dynamic, int heads, int dim, int width,
+                                                     int rows, float scale) {
+    if (!history || !input || !fixed || !dynamic || heads <= 0 || dim <= 0 || width <= 0 || rows <= 0)
+        return hipErrorInvalidValue;
+    hipLaunchKernelGGL(inkling2_short_conv_dynamic, dim3((heads * dim - 1) / 128 + 1), dim3(128), 0, 0,
+                       history, input, fixed, dynamic, heads, dim, width, rows, scale);
+    return hipGetLastError();
+}
+
 extern "C" int hipengine_inkling2_short_conv_block(float* history, const float* input, const float* taps,
                                                   float* output, int channels, int width, float scale, int rows,
                                                   int dynamic_taps) {

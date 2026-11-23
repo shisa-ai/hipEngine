@@ -70,6 +70,7 @@ class Inkling2TextReference:
         self.project_device = None
         self.project_block_device = None
         self.project_many_transformed = None
+        self.project_groups_transformed = None
 
     def project(self, name, hidden, *, limit=None):
         weight = self.weights.dense(name) if limit is None else self.weights.dense(name, slice(limit))
@@ -375,12 +376,14 @@ class Inkling2TextSession:
         def names_in_layer(names):
             return tuple(attn_prefix + name for name in names)
 
+        def static_taps(name):
+            return weight(f"{name}_sconv.static_w").T.reshape(nkv * dim, ksize)
+
         def kv_taps(name, dynamic=None):
-            conv = f"{name}_sconv."
             if dynamic is None:
-                return weight(conv + "weight")[:, 0, ::-1]
+                return weight(f"{name}_sconv.weight")[:, 0, ::-1]
             dynamic = dynamic.reshape(*leading, nkv, 1, ksize)
-            return (weight(conv + "static_w").T.reshape(nkv, dim, ksize) + dynamic).reshape(*leading, -1, ksize)
+            return (static_taps(name).reshape(nkv, dim, ksize) + dynamic).reshape(*leading, -1, ksize)
 
         query_names = ("wq_du.weight", "wr_du.weight", "attn_sink_proj.weight", "gate_attn.weight")
         key_names, value_names = ("wk_dv.weight",), ("wv_dv.weight",)
@@ -403,9 +406,17 @@ class Inkling2TextSession:
             if dynamic:
                 key_names += ("k_sconv.weight_proj",)
                 value_names += ("v_sconv.weight_proj",)
-            (q, rel, sink, gate), (k, *kd), (v, *vd) = self.model.project_groups(
-                ((names_in_layer(query_names), qi), (names_in_layer(key_names), ki), (names_in_layer(value_names), vi)))
-            kt, vt = kv_taps("k", *kd), kv_taps("v", *vd)
+            groups = ((names_in_layer(query_names), qi), (names_in_layer(key_names), ki), (names_in_layer(value_names), vi))
+            if (dynamic and self.convolution is not None and self.convolution.launch_dynamic is not None
+                    and self.model.project_groups_transformed is not None and self._undo is None):
+                slot = visit.state_slot
+                transforms = (None, partial(self.convolution.apply_dynamic, slot, "k", static_taps("k"), nkv),
+                              partial(self.convolution.apply_dynamic, slot, "v", static_taps("v"), nkv))
+                (q, rel, sink, gate), (k, _), (v, _) = self.model.project_groups_transformed(groups, transforms)
+                projected_conv = True
+            else:
+                (q, rel, sink, gate), (k, *kd), (v, *vd) = self.model.project_groups(groups)
+                kt, vt = kv_taps("k", *kd), kv_taps("v", *vd)
         if self.convolution is None:
             k = self._conv_rows(visit, "k", k, kt, dynamic=dynamic)
             v = self._conv_rows(visit, "v", v, vt, dynamic=dynamic)
