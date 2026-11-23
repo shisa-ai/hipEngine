@@ -69,10 +69,19 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
                     owner._q8_prefill = spy
                 np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
             assert spy.call_count == 3
+            for width in (2, 3, 4):
+                inp = rng.normal(0, 0.1, (width, 256)).astype(np.float32)
+                scalar = np.stack([owner.project(head.name, row, limit=mapping.vocab_size) for row in inp])
+                before = len(owner._matrices)
+                actual = owner.project_decode_head(inp)
+                np.testing.assert_array_equal(actual.view(np.uint32), scalar.view(np.uint32))
+                assert len(owner._matrices) == before
+                assert spy.call_args.args[-3:] == (width, 256, head.shape[0])
+            assert spy.call_count == 6
             # One row and an output tail not divisible by eight use the parent.
             owner.project(dense.name, x[0, :])
             owner.project(head.name, x, limit=mapping.vocab_size)
-            assert spy.call_count == 3
+            assert spy.call_count == 6
             # Force the minimum down in this small fixture to cover an aligned
             # head prefix plus a scalar tail without enlarging the model.
             with monkeypatch.context() as scope:

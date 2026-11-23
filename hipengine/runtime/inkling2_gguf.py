@@ -110,6 +110,15 @@ class Inkling2GGUFText(Inkling2TextReference):
             self.project_many_transformed = self._project_many_transformed
             self.project_groups_transformed = self._project_groups_transformed
 
+    def decode_rows(self, rows):
+        """Advance independent scalar chains and share only the final packed head."""
+        if not rows:
+            return ()
+        if len(rows) == 1 or self.projection is None:
+            return tuple(session.step(token) for session, token in rows)
+        hidden = np.stack([session.step_to_output_hidden(token) for session, token in rows])
+        return tuple(self.cap_logits(row) for row in self.projection.project_decode_head(hidden))
+
     def head_shape(self, visit):
         layer = self.mapping.layers[visit.weight_layer]
         return layer.heads, layer.kv_heads, layer.head_dim

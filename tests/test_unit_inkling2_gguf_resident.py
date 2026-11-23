@@ -45,6 +45,7 @@ def _generator():
     inner = Inkling2GGUFGenerator.__new__(Inkling2GGUFGenerator)
     inner._owned = ExitStack()
     inner.model = SimpleNamespace(session=Session, ffn_device_output=True,
+                                  decode_rows=lambda rows: tuple(s.step(t) for s, t in rows),
                                   projection=SimpleNamespace(supports_device_activation=False))
     inner.tokenizer = Tokenizer(WordLevel({f'x{i}': i for i in range(16)}))
     inner.eos_token_id = 15

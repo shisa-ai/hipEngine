@@ -54,6 +54,11 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._q8_decode = (self._bind_packed(Q.Q8_0, resolve(backend=decode.backend, layer=decode.layer,
                                                            quant=decode.quant, variant=decode.variant))
                            if is_registered(decode) else None)
+        self._head = weights.mapping.root["output.weight"]
+        self._vocab = weights.mapping.vocab_size
+        padded = (self._vocab + 7) // 8 * 8
+        self._tiled_head_rows = (padded if self._head.ggml_type == Q.Q8_0 and self._q8_prefill is not None
+                                 and padded <= self._head.shape[0] else 0)
         for quant in self._launches:
             for variant, launches in (("selected_f32_f32_out", self._selected_launches),
                                       ("selected_tile4_f32_f32_out", self._tiled_launches),
@@ -135,11 +140,35 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 raise ValueError(f"invalid Inkling GGUF matrix or row limit for {name}")
             rows = slice(limit)
             if tensor.ggml_type == Q.Q8_0:
+                # Keep the logical width for scalar and verifier launches, but
+                # upload the head's existing padding once for tiled decode.
+                if name == self._head.name and limit == self._vocab and self._tiled_head_rows:
+                    rows = slice(self._tiled_head_rows)
                 data, packed = self._weights.raw(tensor, cache=False)[rows], Q.Q8_0
             else:
                 data, packed = self._weights.decode(tensor, rows), False
-            self._matrices[key] = self._upload(data), (data.shape[0], tensor.shape[1]), packed
+            outputs = data.shape[0] if limit is None else limit
+            self._matrices[key] = self._upload(data), (outputs, tensor.shape[1]), packed
         return self._matrices[key]
+
+    def project_decode_head(self, hidden):
+        """Share a packed head across independent rows and hide physical padding."""
+        if hidden.ndim != 2 or not len(hidden) or hidden.shape[1] != self._head.shape[1]:
+            raise ValueError("Inkling GGUF decode head expects a nonempty matrix of hidden rows")
+        padded = self._tiled_head_rows
+        if len(hidden) == 1 or not padded:
+            return np.stack([self.project(self._head.name, row, limit=self._vocab, pinned=True) for row in hidden])
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling GGUF projection residency is closed")
+            weight, (_, inputs), _ = self._matrix(self._head.name, self._vocab)
+            x = np.ascontiguousarray(hidden, dtype=np.float32)
+            y = np.empty((len(x), padded), np.float32)
+            inp = self._scratch("_input", x.nbytes).ptr
+            out = self._scratch("_output", y.nbytes).ptr
+            with self._transfer.exchange(inp, out, x, y, pinned=True):
+                self._q8_prefill(inp, weight.ptr, out, len(x), inputs, padded)
+            return y[:, :self._vocab]
 
     def _launch_projection(self, src, dst, rows, ndim, matrix, native_bf16):
         weight, (m, n), packed = matrix
@@ -154,7 +183,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 aligned = m - m % 8
                 self._q8_decode(src, weight.ptr, dst, rows, n, aligned)
                 if aligned != m:
-                    row_bytes = weight.nbytes // m
+                    row_bytes = n // 32 * 34
                     self._packed_launch(packed)(src, weight.ptr + aligned * row_bytes, dst + 4 * aligned,
                                                 rows, n, m - aligned)
                 return

@@ -32,7 +32,7 @@ class _Row:
 
 
 class Inkling2ResidentRunner:
-    """Own one packed HIP session per admitted row; a decode tick is still serial."""
+    """Own one packed HIP session per request, sharing the batched output head."""
 
     def __init__(self, generator, *, capacity):
         self.generator = generator
@@ -115,13 +115,17 @@ class Inkling2ResidentRunner:
     def decode_batch(self, work, *, commit):
         if not commit:
             raise ValueError("Inkling 2 resident decode requires commit=True")
-        return tuple(self._decode(rid, self.rows[rid]) for rid in work.request_ids)
+        rows = [self.rows[rid] for rid in work.request_ids]
+        for rid, row in zip(work.request_ids, rows, strict=True):
+            if row.computed != len(row.prompt) or row.session is None:
+                raise RuntimeError(f"Inkling 2 request {rid} is not prefilled")
+        stepped = [row for row in rows if row.generated]
+        logits = self.generator.model.decode_rows([(row.session, row.generated[-1]) for row in stepped])
+        for row, scores in zip(stepped, logits, strict=True):
+            row.logits = scores
+        return tuple(self._decode(rid, row) for rid, row in zip(work.request_ids, rows, strict=True))
 
     def _decode(self, rid, row):
-        if row.computed != len(row.prompt) or row.session is None:
-            raise RuntimeError(f"Inkling 2 request {rid} is not prefilled")
-        if row.generated:
-            row.logits = row.session.step(row.generated[-1])
         sampled = select_token(row.logits, row.request, row.sampling)
         token = sampled.token_id
         row.generated.append(token)

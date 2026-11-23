@@ -79,6 +79,10 @@ class Inkling2TextReference:
     def project_logits(self, hidden):
         return self.project("unembed.weight", hidden, limit=self.config["unpadded_vocab_size"])
 
+    def cap_logits(self, raw):
+        cap = self.config["final_logit_softcapping"]
+        return cap * np.tanh(raw / cap) if cap else raw
+
     def project_many(self, names, hidden):
         return tuple(self.project(name, hidden) for name in names)
 
@@ -171,16 +175,21 @@ class Inkling2TextSession:
 
     def step(self, token: int, *, embedding: np.ndarray | None = None, logits: bool = True,
              capture=None) -> np.ndarray | None:
+        return self._forward(self._embed_step(token, embedding), 1, logits=logits, capture=capture)
+
+    def step_to_output_hidden(self, token: int) -> np.ndarray:
+        """Commit a scalar decode step, leaving its vocabulary projection to the caller."""
+        return self._forward(self._embed_step(token, None), 1, logits=True, capture=None, output_hidden=True)
+
+    def _embed_step(self, token, embedding):
         if self.position >= self.capacity:
             raise ValueError("Inkling 2 session capacity exceeded")
+        if embedding is not None:
+            return np.asarray(embedding, dtype=np.float32)
         c, w = self.model.config, self.model.weights
-        if embedding is None:
-            if not 0 <= token < c["vocab_size"]:
-                raise ValueError(f"Inkling 2 token out of range: {token}")
-            h = _rms(w.dense("embed.weight", token), c["rms_norm_eps"]) * w.dense("embed_norm.weight")
-        else:
-            h = np.asarray(embedding, dtype=np.float32)
-        return self._forward(h, 1, logits=logits, capture=capture)
+        if not 0 <= token < c["vocab_size"]:
+            raise ValueError(f"Inkling 2 token out of range: {token}")
+        return _rms(w.dense("embed.weight", token), c["rms_norm_eps"]) * w.dense("embed_norm.weight")
 
     def step_block(self, tokens, *, capture=None):
         """Append a nonempty token block and project every row for verification."""
@@ -229,7 +238,7 @@ class Inkling2TextSession:
                 self._undo = None
                 self.position = start + retained
 
-    def _forward(self, h, width, *, logits, capture, last_only=False):
+    def _forward(self, h, width, *, logits, capture, last_only=False, output_hidden=False):
         c, w = self.model.config, self.model.weights
         blocks = []
         loop_start = c["loop_config"]["core_start"]
@@ -262,9 +271,9 @@ class Inkling2TextSession:
                 h = h[-1]
         if not logits:
             return None
-        raw = self.model.project_logits(h)
-        cap = c["final_logit_softcapping"]
-        return cap * np.tanh(raw / cap) if cap else raw
+        if output_hidden:
+            return h
+        return self.model.cap_logits(self.model.project_logits(h))
 
     def _layer(self, visit, h, blocks, messages):
         c, w = self.model.config, self.model.weights
