@@ -56,6 +56,16 @@ def _config():
     }}
 
 
+@pytest.mark.parametrize("shape", [(65,), (8, 128), (3, 2048)])
+@pytest.mark.parametrize("stride", [1, 2])
+def test_rms_preserves_numpy_mean_reduction_bits(shape, stride):
+    rng = np.random.default_rng(94)
+    rows = rng.standard_normal((*shape[:-1], shape[-1] * stride), dtype=np.float32)[..., ::stride]
+    eps = 7e-6
+    expected = rows / np.sqrt(np.mean(rows * rows, axis=-1, keepdims=True) + eps)
+    np.testing.assert_array_equal(_rms(rows, eps).view(np.uint32), expected.view(np.uint32))
+
+
 @pytest.mark.parametrize("shape", [(65,), (3, 2048)])
 @pytest.mark.parametrize("queries", [None, 4])
 def test_read_blocks_reuses_completed_norms_without_rounding_changes(shape, queries):

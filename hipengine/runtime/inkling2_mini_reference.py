@@ -19,7 +19,7 @@ from hipengine.runtime.inkling2_undo import Inkling2UndoJournal
 
 
 def _rms(x, eps=1e-6):
-    return x / np.sqrt(np.mean(x * x, axis=-1, keepdims=True) + eps)
+    return x / np.sqrt((x * x).mean(axis=-1, keepdims=True) + eps)
 
 
 def _softmax(x):
