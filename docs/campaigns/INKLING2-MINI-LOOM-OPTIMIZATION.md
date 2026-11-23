@@ -29,6 +29,8 @@ owns: Inkling 2 Mini performance campaign: same-checkpoint Loom comparison, exte
 
 **Loom source audit.** The [local audit][loom-audit] identified batched convolution with separate history commit, staged current K/V followed by causal attention and ring commit, fused normalization and row preparation, and tiled loop, router, and matrix prefill work. hipEngine already adopted the first two scheduling ideas on the original-checkpoint path. Transfer their state ordering to GGUF; profile the remaining fusion and projection differences rather than restarting those ports.
 
+**Maya Inkling engine.** The [guide][maya-guide] of [alesha-pro/maya-inkling-mini][maya-repo] documents a CUDA engine for the same Unsloth `UD-Q4_K_XL` file as the Loom lane. On one RTX 3090 it reports **128 tok/s plain decode** and **2,742 tok/s prefill at 4,096 tokens**, with `llama.cpp` at 57 and 1,052 on the same card. A token replays as one CUDA graph of 781 launches with routing and every expert on the device, and prompts are read in 2,048-token chunks through FP16 GEMMs, with a grouped expert path for prompts up to 96 tokens. Its matrix-core kernels are `mma.sync` and do not run on AMD, so what transfers is the structure and the order of work; the [local review](../../worklog/entries/20261123T233607.588698Z-lhl-inkling2-mini-826f0a.md) maps it to hipEngine and lists what the author reports did not help. These are author measurements, not reproduced here.
+
 ## Execution order
 
 | Stage | Work | Advance when |
@@ -66,3 +68,5 @@ Record exact commands, profiles and manifests, correctness checks, samples, and 
 [gufo-results]: https://github.com/sebt3/inkling-2-mini-gufo-extension/blob/v0.1.0/PROGRESS.md
 [gufo-readme]: https://github.com/sebt3/inkling-2-mini-gufo-extension/blob/v0.1.0/README.md
 [gufo-thread]: https://www.reddit.com/r/StrixHalo/comments/1y241fs/inkling2mini_on_strix_halo_a_fromscratch_hip/
+[maya-repo]: https://github.com/alesha-pro/maya-inkling-mini
+[maya-guide]: https://github.com/alesha-pro/maya-inkling-mini/blob/fcd523faca0c825131df45100b24eacb47dd2cf1/docs/INKLING2-MINI.md
