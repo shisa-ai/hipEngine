@@ -87,15 +87,17 @@ def test_read_blocks_reuses_completed_norms_without_rounding_changes(shape, quer
     np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
 
 
-def test_scalar_residual_reader_preserves_bits_when_switching_prefixes():
-    from hipengine.runtime.inkling2_mini_reference import _ScalarResidualRows
+@pytest.mark.parametrize("shape", [(65,), (2, 65)])
+@pytest.mark.parametrize("queries", [None, 4])
+def test_residual_reader_preserves_bits_when_switching_prefixes(shape, queries):
+    from hipengine.runtime.inkling2_mini_reference import _ResidualRows
 
     rng = np.random.default_rng(82)
-    partial = rng.standard_normal(65, dtype=np.float32)
-    rows = [_rms(rng.standard_normal(65, dtype=np.float32)) for _ in range(5)]
-    extra = _rms(rng.standard_normal(65, dtype=np.float32))
-    query = rng.standard_normal((4, 65), dtype=np.float32)
-    reader = _ScalarResidualRows(partial, 6)
+    partial = rng.standard_normal(shape, dtype=np.float32)
+    rows = [_rms(rng.standard_normal(shape, dtype=np.float32)) for _ in range(5)]
+    extra = _rms(rng.standard_normal(shape, dtype=np.float32))
+    query = rng.standard_normal((shape[-1],) if queries is None else (queries, shape[-1]), dtype=np.float32)
+    reader = _ResidualRows(partial, 6)
     for blocks in (rows[:2], rows[:4], rows[:1], [extra, *rows[2:]], rows, []):
         want = _read_blocks(query, blocks, partial)
         got = reader.read(query, blocks, partial)

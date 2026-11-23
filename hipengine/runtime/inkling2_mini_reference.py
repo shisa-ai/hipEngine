@@ -27,26 +27,27 @@ def _softmax(x):
     return p / p.sum(axis=-1, keepdims=True)
 
 
-def _scalar_depth_mix(query, values, width):
-    return _softmax((query @ values.T) / sqrt(width)) @ values
+def _mix_residual_rows(query, values):
+    divisor = sqrt(values.shape[-1])
+    if values.ndim == 2:
+        return _softmax((query @ values.T) / divisor) @ values
+    if query.ndim == 1:
+        scores = values @ query / divisor
+        return np.einsum("bp,bpd->bd", _softmax(scores), values)
+    scores = query @ values.swapaxes(-1, -2) / divisor
+    return _softmax(scores) @ values
 
 
 def _read_blocks(query, normalized_blocks, partial):
     values = np.stack((*normalized_blocks, _rms(np.ascontiguousarray(partial))), axis=-2)
-    if partial.ndim == 1:
-        return _scalar_depth_mix(query, values, partial.size)
-    if query.ndim == 1:
-        scores = values @ query / sqrt(partial.shape[-1])
-        return np.einsum("bp,bpd->bd", _softmax(scores), values)
-    scores = query @ values.swapaxes(-1, -2) / sqrt(partial.shape[-1])
-    return _softmax(scores) @ values
+    return _mix_residual_rows(query, values)
 
 
-class _ScalarResidualRows:
-    """Reuse immutable normalized rows within one token's depth traversal."""
+class _ResidualRows:
+    """Reuse immutable normalized rows within one depth traversal."""
 
     def __init__(self, hidden, capacity):
-        self._matrix = np.empty((capacity, hidden.size), dtype=hidden.dtype)
+        self._matrix = np.empty((*hidden.shape[:-1], capacity, hidden.shape[-1]), dtype=hidden.dtype)
         self._sources = []
 
     def read(self, query, blocks, partial):
@@ -58,10 +59,10 @@ class _ScalarResidualRows:
                 if row.dtype != matrix.dtype:
                     sources.clear()
                     return _read_blocks(query, blocks, partial)
-                matrix[i] = row
+                matrix[..., i, :] = row
         sources[:] = blocks
-        matrix[len(blocks)] = _rms(np.ascontiguousarray(partial))
-        return _scalar_depth_mix(query, matrix[:len(blocks) + 1], partial.size)
+        matrix[..., len(blocks), :] = _rms(np.ascontiguousarray(partial))
+        return _mix_residual_rows(query, matrix[..., :len(blocks) + 1, :])
 
 
 def _clip(x, limit):
@@ -161,6 +162,8 @@ class Inkling2TextSession:
         self.capacity = capacity
         self.position = 0
         self._undo = None
+        stride = model.config["n_layers_per_attn_res_block"]
+        self._residual_capacity = 1 + sum(v.weight_layer % stride == 0 for v in model.plan.visits)
         self.attention = model.attention_factory(capacity) if model.attention_factory is not None else None
         try:
             self.states = tuple(self._new_state(v) for v in sorted(model.plan.visits, key=lambda v: v.state_slot))
@@ -270,7 +273,7 @@ class Inkling2TextSession:
 
     def _traverse(self, h, capture, *, stage_experts=False):
         blocks = []
-        read_blocks = _ScalarResidualRows(h, len(self.model.plan.visits) + 1).read if h.ndim == 1 else _read_blocks
+        read_blocks = _ResidualRows(h, self._residual_capacity).read
         loop_start = self.model.config["loop_config"]["core_start"]
         for boundary, visit in enumerate(self.model.plan.visits):
             layer = visit.weight_layer
