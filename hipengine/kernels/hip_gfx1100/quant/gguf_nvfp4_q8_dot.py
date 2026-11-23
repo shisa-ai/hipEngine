@@ -10,12 +10,13 @@ from hipengine.kernels.backends import hip_target_arch_for_backend
 from hipengine.kernels.registry import KernelKey, register
 
 
-@lru_cache(maxsize=2)
-def _symbol(arch):
+@lru_cache(maxsize=4)
+def _symbol(arch, *, fused=False):
     library = build_hip(sources=[Path(__file__).with_suffix('.hip')], family='gguf_nvfp4_q8_dot',
                         profile='decode', target_arch=arch, output_name='gguf_nvfp4_q8_dot.so')
-    fn = library.hipengine_gguf_nvfp4_selected_q8_dot
-    fn.argtypes = [ctypes.c_void_p] * 7 + [ctypes.c_int] * 4
+    fn = (library.hipengine_gguf_nvfp4_selected_split_activation_q8_dot if fused
+          else library.hipengine_gguf_nvfp4_selected_q8_dot)
+    fn.argtypes = [ctypes.c_void_p] * 7 + [ctypes.c_int] * 4 + ([ctypes.c_float] * 2 if fused else [])
     fn.restype = ctypes.c_int
     return fn
 
@@ -27,6 +28,17 @@ def launch_q8_dot(x, weight, out, ids, outer, routes, experts, n, m, *, scratch,
         raise HipError(f'GGUF NVFP4 Q8 dot projection failed with HIP status {status}')
 
 
+def launch_split_activation_q8_dot(x, weight, out, ids, outer, routes, experts, n, m,
+                                   gate_cap, up_cap, *, scratch, target_arch):
+    status = _symbol(target_arch, fused=True)(x, scratch, scratch + routes * n, weight, out,
+                                              ids, outer, routes, n, m, experts, gate_cap, up_cap)
+    if status != HIP_SUCCESS:
+        raise HipError(f'GGUF NVFP4 split activation Q8 dot projection failed with HIP status {status}')
+
+
 for _backend in ('hip_gfx1100', 'hip_gfx1151'):
+    _arch = hip_target_arch_for_backend(_backend)
     register(KernelKey(_backend, 'moe_linear', 'gguf_nvfp4', 'selected_q8_dot_f32_f32_out'),
-             partial(launch_q8_dot, target_arch=hip_target_arch_for_backend(_backend)))
+             partial(launch_q8_dot, target_arch=_arch))
+    register(KernelKey(_backend, 'moe_linear', 'gguf_nvfp4', 'selected_split_activation_q8_dot_f32_f32_out'),
+             partial(launch_split_activation_q8_dot, target_arch=_arch))

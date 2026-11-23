@@ -40,6 +40,8 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._shared_tiled_launches = {}
         self._q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
                                 variant="selected_q8_dot_f32_f32_out") if fast_experts else None)
+        self._split_q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
+                                      variant="selected_split_activation_q8_dot_f32_f32_out") if fast_experts else None)
         self._q8_dot_scratch = None
         self._k_library = None
         prefill = KernelKey(backend, "linear", "gguf_q8_0", "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out")
@@ -247,13 +249,15 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             x[scales_start:scales_start + ids.size] = scales[ids]
         return x, records.nbytes
 
+    def _q8_scratch_ptr(self, values):
+        # Scratch is owned by the projection lock and is not transferred.
+        return self._scratch("_q8_dot_scratch", values + values // 32 * 4).ptr
+
     def _run_selected(self, quant, launch, src, weight, out, ids, scales, routes, experts, n, m, *, single_token):
         if (self._q8_dot is not None and quant == Q.NVFP4 and single_token and routes == 8
                 and n in (1152, 2304) and m == 2304):
-            # Scratch is owned by the projection lock and is not copied to or from the host.
-            values = routes * n
-            scratch = self._scratch("_q8_dot_scratch", values + values // 32 * 4)
-            self._q8_dot(src, weight, out, ids, scales, routes, experts, n, m, scratch=scratch.ptr)
+            self._q8_dot(src, weight, out, ids, scales, routes, experts, n, m,
+                         scratch=self._q8_scratch_ptr(routes * n))
         else:
             launch(src, weight, out, ids, scales, routes, experts, n, m)
 
@@ -304,8 +308,10 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         routes, k = ids.size, ids.shape[-1]
         result = np.empty((*ids.shape[:-1], dm), np.float32)
         itemsize = result.itemsize
+        split_q8 = (self._split_q8_dot is not None and ids.ndim == 1 and routes == 8 and dn == 1152 and dm == 2304
+                    and down.weight.ggml_type == Q.NVFP4)
 
-        def prepare(bank, x, *, repeats=1, extra=0):
+        def prepare(bank, x, *, repeats=1, extra=0, fused=False):
             quant = Q(bank.weight.ggml_type)
             weight, scales = self._bank(bank)
             tiles = self._route_tiles(quant, flat_ids)
@@ -316,9 +322,13 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
 
             def launch(src, dst, uploaded):
                 metadata = uploaded + input_bytes
-                self._launch_routes(quant, self._selected_launches[quant], src, weight.ptr, dst, metadata,
-                                    metadata + rec_bytes if scales is not None else 0,
-                                    routes, experts, n, m, tiles, ids.ndim == 1, routes_per_input=repeats)
+                outer = metadata + rec_bytes if scales is not None else 0
+                if fused:
+                    self._split_q8_dot(src, weight.ptr, dst, metadata, outer, routes, experts, n, m,
+                                       mapping.gate_cap, mapping.up_cap, scratch=self._q8_scratch_ptr(routes * n))
+                else:
+                    self._launch_routes(quant, self._selected_launches[quant], src, weight.ptr, dst, metadata, outer,
+                                        routes, experts, n, m, tiles, ids.ndim == 1, routes_per_input=repeats)
 
             return data, launch
 
@@ -326,19 +336,23 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             if self._closed:
                 raise RuntimeError("Inkling GGUF projection residency is closed")
             gate_data, launch_gate = prepare(gate, np.atleast_2d(hidden), repeats=k)
-            down_data, launch_down = prepare(down, None, extra=routes)
+            down_data, launch_down = prepare(down, None, extra=routes, fused=split_q8)
             down_data[-routes:] = mix.ravel()
             packed = np.concatenate((gate_data, down_data))
             inp = self._scratch("_input", packed.nbytes).ptr
             # Gate/up and down outputs do not overlap in time; reuse their storage.
             intermediate_bytes = routes * max(gm, dm) * itemsize
-            out = self._scratch("_output", result.nbytes + intermediate_bytes + routes * dn * itemsize).ptr
+            activation_bytes = 0 if split_q8 else routes * dn * itemsize
+            out = self._scratch("_output", result.nbytes + intermediate_bytes + activation_bytes).ptr
             interim = out + result.nbytes
-            active = interim + intermediate_bytes
             mix_ptr = inp + packed.nbytes - routes * itemsize
             with self._transfer.exchange(inp, out, packed, result, pinned=True):
                 launch_gate(inp, interim, inp)
-                self._activation(interim, active, routes, dn, mapping.gate_cap, mapping.up_cap)
+                if split_q8:
+                    active = interim
+                else:
+                    active = interim + intermediate_bytes
+                    self._activation(interim, active, routes, dn, mapping.gate_cap, mapping.up_cap)
                 launch_down(active, interim, inp + gate_data.nbytes)
                 self._mix(interim, mix_ptr, out, k, dm, tokens=routes // k)
                 if transform_output is not None:

@@ -64,3 +64,57 @@ def test_selected_nvfp4_q8_dot_matches_quantized_reference(width, scaled):
         assert (np.abs(actual[i] - expected) <= 4e-6 * bound + 1e-10).all()
         assert actual[i].argmax() == expected.argmax()
     assert not actual[-1].any()
+
+
+@pytest.mark.parametrize("caps", [(8.0, 8.0), (4.0, 25.0)])
+def test_nvfp4_fused_split_activation_pack_matches_unfused(caps):
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP unavailable: {exc}")
+    backend = resolve_backend("auto", execution_device=True)
+    if backend not in ("hip_gfx1100", "hip_gfx1151"):
+        pytest.skip("test requires gfx1100 or gfx1151")
+    from hipengine.kernels.hip_gfx1100.quant import gguf_nvfp4_q8_dot  # noqa: F401
+    from hipengine.kernels.hip_gfx1100.quant.inkling2_experts import launch_split_expert_activation
+
+    key = dict(backend=backend, layer="moe_linear", quant="gguf_nvfp4")
+    launch = resolve(**key, variant="selected_q8_dot_f32_f32_out")
+    fused = resolve(**key, variant="selected_split_activation_q8_dot_f32_f32_out")
+    rt = get_hip_runtime()
+    rng = np.random.default_rng(81357)
+    routes, experts, width, outputs = 8, 3, 1152, 2304
+    paired = np.empty((routes, 2 * width), np.float32)
+    ids = np.array([1, 0, 1, 0, 2, 1, 0, 2], np.int32)
+    scales = rng.uniform(-0.2, 0.2, routes).astype(np.float32)
+    packed = rng.integers(0, 256, (experts, outputs, width // 64, 36), dtype=np.uint8)
+    packed[..., :4] &= 63
+    values = routes * width
+    buffers = [np.empty(n, np.uint8) for n in (paired.nbytes, values * 4, routes * outputs * 4, values * 9 // 8)]
+    with ExitStack() as owned:
+        def alloc(data, upload=False):
+            ptr = rt.malloc(data.nbytes)
+            owned.callback(rt.free, ptr)
+            if upload:
+                rt.memcpy(ptr, data.ctypes.data, data.nbytes, Copy.HOST_TO_DEVICE)
+            return ptr
+
+        gp, xp, yp, qp = map(alloc, buffers)
+        wp, ip, sp = [alloc(x, upload=True) for x in (packed, ids, scales)]
+
+        def read_outputs():
+            observed = [np.empty_like(arr) for arr in buffers[2:]]
+            for host, ptr in zip(observed, (yp, qp), strict=True):
+                rt.memcpy(host.ctypes.data, ptr, host.nbytes, Copy.DEVICE_TO_HOST)
+            return observed
+
+        for magnitude in (1e-7, 0.01, 0.7, 5, 100):
+            paired[:] = rng.normal(0, magnitude, paired.shape)
+            paired[0, :32] = -0.0
+            rt.memcpy(gp, paired.ctypes.data, paired.nbytes, Copy.HOST_TO_DEVICE)
+            launch_split_expert_activation(gp, xp, routes, width, *caps, target_arch=backend.removeprefix("hip_"))
+            launch(xp, wp, yp, ip, sp, routes, experts, width, outputs, scratch=qp)
+            expected = read_outputs()
+            fused(gp, wp, yp, ip, sp, routes, experts, width, outputs, *caps, scratch=qp)
+            for actual, control in zip(read_outputs(), expected, strict=True):
+                np.testing.assert_array_equal(actual, control)

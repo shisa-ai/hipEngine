@@ -137,6 +137,8 @@ def register_inkling2_gguf_profiles():
     scope = "single_token_top8_nvfp4_n1152_or_2304_m2304"
     evidence = "worklog/entries/20261122T042314.583479Z-lhl-inkling2-mini-fbe423.md"
     activation_evidence = "worklog/entries/20261122T051118.872751Z-lhl-inkling2-mini-978416.md"
+    split_q8 = "selected_split_activation_q8_dot_f32_f32_out"
+    split_q8_evidence = "worklog/entries/20261123T024426.568443Z-lhl-inkling2-mini-3f4a1f.md"
     chunked_evidence = "worklog/entries/20261122T161527.676605Z-lhl-inkling2-mini-854a03.md"
     registered = registered_runtime_profile_keys()
     for backend in ("hip_gfx1100", "hip_gfx1151"):
@@ -150,6 +152,9 @@ def register_inkling2_gguf_profiles():
                     selections=(
                         VariantSelection("moe_linear", scope, variant, strict if fast else None,
                                          evidence if fast else None, registry_quant="gguf_nvfp4"),
+                        VariantSelection("moe_linear", "single_token_top8_nvfp4_split_down_n1152_m2304",
+                                         split_q8 if fast else strict, strict if fast else None,
+                                         split_q8_evidence if fast else None, registry_quant="gguf_nvfp4"),
                         VariantSelection("inkling2_expert_pointwise", "selected_split_gate_up",
                                          "split_activation_device" if fast else "split_activation_host",
                                          "split_activation_host" if fast else None,

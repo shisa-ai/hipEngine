@@ -3,12 +3,23 @@
 #include <cstdint>
 
 // Pack 32 activations with codes chosen before rounding the stored scale.
-__global__ void pack_q8(const float* x, int8_t* codes, float* scales, int groups) {
+template <bool SPLIT_ACTIVATION>
+__global__ void pack_q8(const float* x, int8_t* codes, float* scales, int groups,
+                        int width, float gate_cap, float up_cap) {
     const int lane = threadIdx.x & 31;
     const int group = blockIdx.x * 4 + threadIdx.x / 32;
     if (group >= groups) return;
     const int i = 32 * group + lane;
-    const float v = x[i];
+    float v;
+    if constexpr (SPLIT_ACTIVATION) {
+        const int j = i + (i / width) * width;
+        const float gate = x[j], up = x[j + width];
+        const float e = expf(-fabsf(gate));
+        const float sigmoid = (gate >= 0.0f ? 1.0f : e) / (1.0f + e);
+        v = (gate_cap * tanhf(gate / gate_cap) * sigmoid) * (up_cap * tanhf(up / up_cap));
+    } else {
+        v = x[i];
+    }
     float amax = fabsf(v);
     for (int offset = 16; offset; offset /= 2) amax = fmaxf(amax, __shfl_xor(amax, offset, 32));
     const float d = amax / 127.0f;
@@ -76,16 +87,32 @@ __global__ __launch_bounds__(128) void nvfp4_q8_selected(
     if (!lane) output[i] = sum * (outer ? outer[route] : 1.0f);
 }
 
-extern "C" int hipengine_gguf_nvfp4_selected_q8_dot(
-        const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
-        const int32_t* ids, const float* outer, int routes, int n, int m, int experts) {
+template <bool SPLIT_ACTIVATION>
+static int project_q8(const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
+                      const int32_t* ids, const float* outer, int routes, int n, int m, int experts,
+                      float gate_cap = 0.0f, float up_cap = 0.0f) {
     if (!x || !codes || !scales || !weights || !out || !ids || routes != 8 || m != 2304 ||
         (n != 1152 && n != 2304) || experts <= 0) return hipErrorInvalidValue;
     const int groups = routes * (n / 32);
-    hipLaunchKernelGGL(pack_q8, dim3((groups + 3) / 4), dim3(128), 0, 0, x, codes, scales, groups);
+    hipLaunchKernelGGL((pack_q8<SPLIT_ACTIVATION>), dim3((groups + 3) / 4), dim3(128), 0, 0,
+                       x, codes, scales, groups, n, gate_cap, up_cap);
     if (const int status = hipGetLastError()) return status;
     const size_t total = size_t(routes) * m;
     hipLaunchKernelGGL(nvfp4_q8_selected, dim3((total + 3) / 4), dim3(128), 0, 0,
                        codes, scales, weights, out, ids, outer, n, m, experts, total);
     return hipGetLastError();
+}
+
+extern "C" int hipengine_gguf_nvfp4_selected_q8_dot(
+        const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
+        const int32_t* ids, const float* outer, int routes, int n, int m, int experts) {
+    return project_q8<false>(x, codes, scales, weights, out, ids, outer, routes, n, m, experts);
+}
+
+extern "C" int hipengine_gguf_nvfp4_selected_split_activation_q8_dot(
+        const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
+        const int32_t* ids, const float* outer, int routes, int n, int m, int experts,
+        float gate_cap, float up_cap) {
+    if (n != 1152 || !(gate_cap > 0.0f) || !(up_cap > 0.0f)) return hipErrorInvalidValue;
+    return project_q8<true>(x, codes, scales, weights, out, ids, outer, routes, n, m, experts, gate_cap, up_cap);
 }
