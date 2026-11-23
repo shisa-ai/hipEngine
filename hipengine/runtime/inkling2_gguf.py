@@ -1,5 +1,6 @@
 """Bind GGUF tensor layouts to the shared Inkling text traversal."""
 
+from contextlib import ExitStack, closing
 from functools import partial
 
 import numpy as np
@@ -111,12 +112,21 @@ class Inkling2GGUFText(Inkling2TextReference):
             self.project_groups_transformed = self._project_groups_transformed
 
     def decode_rows(self, rows):
-        """Advance independent scalar chains and share only the final packed head."""
-        if not rows:
-            return ()
-        if len(rows) == 1 or self.projection is None:
+        """Advance each visit in lockstep without sharing request state or scalar math."""
+        if len(rows) <= 1 or self.projection is None:
             return tuple(session.step(token) for session, token in rows)
-        hidden = np.stack([session.step_to_output_hidden(token) for session, token in rows])
+        with ExitStack() as owned:
+            cursors = [owned.enter_context(closing(session.stage_decode(token))) for session, token in rows]
+            pending = [next(cursor) for cursor in cursors]
+            for visit in self.plan.visits:
+                inputs = []
+                for actual, hidden, transform in pending:
+                    if actual != visit:
+                        raise RuntimeError("Inkling GGUF decode visits are out of step")
+                    inputs.append((hidden, transform))
+                outputs = self._feed_forward_decode_rows(visit, inputs)
+                pending = [cursor.send(out) for cursor, out in zip(cursors, outputs, strict=True)]
+            hidden = np.stack(pending)
         return tuple(self.cap_logits(row) for row in self.projection.project_decode_head(hidden))
 
     def head_shape(self, visit):
@@ -161,11 +171,25 @@ class Inkling2GGUFText(Inkling2TextReference):
                                                for first, names, x in chains), pinned=True)
 
     def route(self, visit, hidden):
+        logits = self.project(f"layers.{visit.weight_layer}.mlp.gate.weight", hidden)
+        return self._select_routes(visit, logits)
+
+    def _select_routes(self, visit, logits):
         layer = self.mapping.layers[visit.weight_layer]
         bias = layer.tensors.get("exp_probs_b.bias")
-        logits = self.project(f"layers.{visit.weight_layer}.mlp.gate.weight", hidden)
         return select_expert_routes(logits, None if bias is None else self.gguf.decode(bias),
                                     top_k=layer.top_k, route_scale=self.mapping.route_scale)
+
+    def _feed_forward_decode_rows(self, visit, inputs):
+        # One exchange contains separate vector inputs, so the projection
+        # owner still launches the per-row GEMV, not FP32 GEMM.
+        name = f"layers.{visit.weight_layer}.mlp.gate.weight"
+        scores = self.project_groups((((name,), hidden) for hidden, _ in inputs))
+        outputs = []
+        for (hidden, transform), (logits,) in zip(inputs, scores, strict=True):
+            ids, mix = self._select_routes(visit, logits)
+            outputs.append(self._feed_forward_routes(visit, hidden, ids, mix, transform_output=transform))
+        return outputs
 
     def _cpu_selected(self, visit, projection, ids, inputs):
         return np.stack([self.gguf.project_expert(visit, projection, e, x)
@@ -177,6 +201,9 @@ class Inkling2GGUFText(Inkling2TextReference):
 
     def feed_forward(self, visit, normalized, *, transform_output=None):
         ids, mix = self.route(visit, normalized)
+        return self._feed_forward_routes(visit, normalized, ids, mix, transform_output=transform_output)
+
+    def _feed_forward_routes(self, visit, normalized, ids, mix, *, transform_output):
         if self.projection is not None and self.projection.supports_device_activation:
             return self.projection.project_experts_mixed(visit, ids, mix, normalized, transform_output=transform_output)
         k = ids.shape[-1]

@@ -177,9 +177,13 @@ class Inkling2TextSession:
              capture=None) -> np.ndarray | None:
         return self._forward(self._embed_step(token, embedding), 1, logits=logits, capture=capture)
 
-    def step_to_output_hidden(self, token: int) -> np.ndarray:
-        """Commit a scalar decode step, leaving its vocabulary projection to the caller."""
-        return self._forward(self._embed_step(token, None), 1, logits=True, capture=None, output_hidden=True)
+    def stage_decode(self, token: int):
+        """Yield per-visit expert work, then the final normalized output row."""
+        if self._undo is not None:
+            raise RuntimeError("Inkling 2 staged decode requires a committed session")
+        h, blocks = yield from self._traverse(self._embed_step(token, None), None, stage_experts=True)
+        self.position += 1
+        yield self._output_hidden(h, blocks)
 
     def _embed_step(self, token, embedding):
         if self.position >= self.capacity:
@@ -238,10 +242,9 @@ class Inkling2TextSession:
                 self._undo = None
                 self.position = start + retained
 
-    def _forward(self, h, width, *, logits, capture, last_only=False, output_hidden=False):
-        c, w = self.model.config, self.model.weights
+    def _traverse(self, h, capture, *, stage_experts=False):
         blocks = []
-        loop_start = c["loop_config"]["core_start"]
+        loop_start = self.model.config["loop_config"]["core_start"]
         for boundary, visit in enumerate(self.model.plan.visits):
             layer = visit.weight_layer
             if layer == loop_start:
@@ -256,26 +259,41 @@ class Inkling2TextSession:
             messages = None
             if visit.message_pass is not None:
                 messages = _read_blocks(self.model.loop_queries(visit), previous, previous_partial)
-            h = self._layer(visit, h, blocks, messages)
+            a, normalized, transform, finish = self._prepare_layer(visit, h, blocks, messages)
+            if stage_experts:
+                m = yield visit, normalized, transform
+            else:
+                m = self.model.feed_forward(visit, normalized, transform_output=transform)
+            h = a + (m if finish is None else finish(m))
+        return h, blocks
 
+    def _output_hidden(self, h, blocks):
+        c, w = self.model.config, self.model.weights
+        return _rms(_read_blocks(w.dense("attn_res.output_query"), blocks, h), c["rms_norm_eps"]) * w.dense("norm.weight")
+
+    def _forward(self, h, width, *, logits, capture, last_only=False):
+        try:
+            next(self._traverse(h, capture))
+        except StopIteration as done:
+            h, blocks = done.value
+        else:
+            raise RuntimeError("Inkling 2 scalar traversal unexpectedly staged expert work")
         self.position += width
         if not logits and capture is None:
             return None
         if last_only and capture is None:
             h = h[-1]
             blocks = [block[-1] for block in blocks]
-        h = _rms(_read_blocks(w.dense("attn_res.output_query"), blocks, h), c["rms_norm_eps"]) * w.dense("norm.weight")
+        h = self._output_hidden(h, blocks)
         if capture is not None:
             capture(len(self.model.plan.visits), h)
             if last_only:
                 h = h[-1]
         if not logits:
             return None
-        if output_hidden:
-            return h
         return self.model.cap_logits(self.model.project_logits(h))
 
-    def _layer(self, visit, h, blocks, messages):
+    def _prepare_layer(self, visit, h, blocks, messages):
         c, w = self.model.config, self.model.weights
         layer = visit.weight_layer
         prefix = f"layers.{layer}."
@@ -359,10 +377,9 @@ class Inkling2TextSession:
             m, = merge_controllers((m,), ("mlp",), (messages[..., 3, :],))
         normalized = norm(m, "mlp_norm")
 
-        convolve_on_device = self.model.ffn_device_output and self.convolution is not None
-        m = self.model.feed_forward(visit, normalized,
-                                    transform_output=device_conv("mlp_sconv") if convolve_on_device else None)
-        return a + (m if convolve_on_device else static_conv("mlp_sconv", m))
+        if self.model.ffn_device_output and self.convolution is not None:
+            return a, normalized, device_conv("mlp_sconv"), None
+        return a, normalized, None, partial(static_conv, "mlp_sconv")
 
     def _conv_rows(self, visit, name, x, taps, *, dynamic=False):
         if x.ndim == 1:

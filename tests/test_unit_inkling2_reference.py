@@ -97,6 +97,28 @@ def test_reference_decodes_causally_with_separate_local_and_loop_states():
     assert fresh[1] == 0 and logits[1] > 0
 
 
+def test_staged_decode_keeps_independent_positions_and_scalar_math():
+    model = Inkling2TextReference(_config(), TinyWeights())
+    controls = [model.session(6) for _ in range(2)]
+    staged = [model.session(6) for _ in range(2)]
+    for expected, actual, prompt in zip(controls, staged, ((0,), (1, 2, 1)), strict=True):
+        for token in prompt:
+            np.testing.assert_array_equal(actual.step(token), expected.step(token))
+    streams = [session.stage_decode(token) for session, token in zip(staged, (2, 0), strict=True)]
+    jobs = [next(stream) for stream in streams]
+    for visit in model.plan.visits:
+        assert all(current == visit for current, _, _ in jobs)
+        assert [s.position for s in staged] == [1, 3]
+        jobs = [stream.send(model.feed_forward(visit, hidden, transform_output=consume))
+                for stream, (_, hidden, consume) in zip(streams, jobs, strict=True)]
+    for expected, actual, hidden, token, stream in zip(controls, staged, jobs, (2, 0), streams, strict=True):
+        np.testing.assert_array_equal(model.cap_logits(model.project_logits(hidden)), expected.step(token))
+        with pytest.raises(StopIteration):
+            next(stream)
+        assert actual.position == expected.position
+        np.testing.assert_array_equal(actual.step(1), expected.step(1))
+
+
 def test_layer_major_block_matches_serial_logits_taps_and_followup():
     model = Inkling2TextReference(_config(), TinyWeights())
     a, b = model.session(7), model.session(7)
