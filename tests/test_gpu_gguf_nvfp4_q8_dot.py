@@ -71,8 +71,10 @@ def test_selected_nvfp4_q8_dot_matches_quantized_reference(width, scaled, shared
     assert not actual[-1].any()
 
 
-@pytest.mark.parametrize('rows,width,scaled', [(2, 1152, True), (3, 2304, True), (4, 1152, False)])
-def test_counted_nvfp4_shared_q8_gate_matches_independent_rows(rows, width, scaled):
+@pytest.mark.parametrize('rows,width,scaled,split', [(2, 1152, True, False), (3, 2304, True, False),
+                                                       (4, 1152, False, False), (2, 1152, False, True),
+                                                       (3, 1152, True, True), (4, 1152, True, True)])
+def test_counted_nvfp4_q8_matches_independent_rows(rows, width, scaled, split):
     try:
         ctypes.CDLL('libamdhip64.so')
     except OSError as exc:
@@ -84,12 +86,14 @@ def test_counted_nvfp4_shared_q8_gate_matches_independent_rows(rows, width, scal
     from hipengine.loading.inkling2_device_experts import build_expert_route_tiles
 
     key = dict(backend=backend, layer='moe_linear', quant='gguf_nvfp4')
-    scalar = resolve(**key, variant='selected_shared_input_q8_dot_f32_f32_out')
-    grouped = resolve(**key, variant='selected_counted_shared_input_q8_dot_f32_f32_out')
+    kind = 'split_activation' if split else 'shared_input'
+    scalar = resolve(**key, variant=f'selected_{kind}_q8_dot_f32_f32_out')
+    grouped = resolve(**key, variant=f'selected_counted_{kind}_q8_dot_f32_f32_out')
+    caps = (4.0, 25.0) if split else ()
     rt = get_hip_runtime()
     rng = np.random.default_rng(83 + rows)
     experts, outputs = 12, 2304
-    x = rng.normal(0, 0.02, (rows, width)).astype(np.float32)
+    x = rng.normal(0, 0.7, (rows, width * (16 if split else 1))).astype(np.float32)
     x[0, :32] = 0
     ids = np.concatenate([rng.permutation(experts)[:8] for _ in range(rows)]).astype(np.int32)
     tiles = build_expert_route_tiles(ids, 4)
@@ -109,12 +113,13 @@ def test_counted_nvfp4_shared_q8_gate_matches_independent_rows(rows, width, scal
         xp, wp, ip, tp = map(alloc, (x, raw, ids, tiles))
         sp = alloc(scales) if scaled else 0
         yp = alloc(actual, False)
-        scratch = alloc(np.empty(x.size * 9 // 8, np.uint8), False)
+        packed_values = rows * width * (8 if split else 1)
+        scratch = alloc(np.empty(packed_values * 9 // 8, np.uint8), False)
         for i in range(rows):
             scalar(xp + i * x.strides[0], wp, yp + i * 8 * actual.strides[0], ip + i * 32,
-                   sp + i * 32 if sp else 0, 8, experts, width, outputs, scratch=scratch)
+                   sp + i * 32 if sp else 0, 8, experts, width, outputs, *caps, scratch=scratch)
         rt.memcpy(expected.ctypes.data, yp, expected.nbytes, Copy.DEVICE_TO_HOST)
-        grouped(xp, wp, yp, tp, sp, len(tiles), rows, experts, width, outputs, scratch=scratch)
+        grouped(xp, wp, yp, tp, sp, len(tiles), rows, experts, width, outputs, *caps, scratch=scratch)
         rt.memcpy(actual.ctypes.data, yp, actual.nbytes, Copy.DEVICE_TO_HOST)
     np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
 

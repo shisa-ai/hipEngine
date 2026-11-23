@@ -10,11 +10,13 @@ from hipengine.kernels.backends import hip_target_arch_for_backend
 from hipengine.kernels.registry import KernelKey, register
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=10)
 def _symbol(arch, *, fused=False, shared=False, counted=False):
     library = build_hip(sources=[Path(__file__).with_suffix('.hip')], family='gguf_nvfp4_q8_dot',
                         profile='decode', target_arch=arch, output_name='gguf_nvfp4_q8_dot.so')
-    kind = 'counted_shared_input_' if counted else 'split_activation_' if fused else 'shared_input_' if shared else ''
+    kind = 'split_activation_' if fused else 'shared_input_' if shared or counted else ''
+    if counted:
+        kind = 'counted_' + kind
     fn = getattr(library, f'hipengine_gguf_nvfp4_selected_{kind}q8_dot')
     fn.argtypes = [ctypes.c_void_p] * 7 + [ctypes.c_int] * (5 if counted else 4) + ([ctypes.c_float] * 2 if fused else [])
     fn.restype = ctypes.c_int
@@ -52,6 +54,15 @@ def launch_split_activation_q8_dot(x, weight, out, ids, outer, routes, experts, 
         raise HipError(f'GGUF NVFP4 split activation Q8 dot projection failed with HIP status {status}')
 
 
+def launch_counted_split_activation_q8_dot(x, weight, out, records, outer, tiles, rows, experts, n, m,
+                                           gate_cap, up_cap, *, scratch, target_arch):
+    values = rows * 8 * n
+    status = _symbol(target_arch, fused=True, counted=True)(x, scratch, scratch + values, weight, out, records, outer,
+                                                            tiles, rows, n, m, experts, gate_cap, up_cap)
+    if status != HIP_SUCCESS:
+        raise HipError(f'GGUF NVFP4 counted split activation Q8 dot projection failed with HIP status {status}')
+
+
 for _backend in ('hip_gfx1100', 'hip_gfx1151'):
     _arch = hip_target_arch_for_backend(_backend)
     register(KernelKey(_backend, 'moe_linear', 'gguf_nvfp4', 'selected_q8_dot_f32_f32_out'),
@@ -62,3 +73,5 @@ for _backend in ('hip_gfx1100', 'hip_gfx1151'):
              partial(launch_split_activation_q8_dot, target_arch=_arch))
     register(KernelKey(_backend, 'moe_linear', 'gguf_nvfp4', 'selected_counted_shared_input_q8_dot_f32_f32_out'),
              partial(launch_counted_shared_input_q8_dot, target_arch=_arch))
+    register(KernelKey(_backend, 'moe_linear', 'gguf_nvfp4', 'selected_counted_split_activation_q8_dot_f32_f32_out'),
+             partial(launch_counted_split_activation_q8_dot, target_arch=_arch))

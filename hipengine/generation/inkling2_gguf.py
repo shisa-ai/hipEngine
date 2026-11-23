@@ -154,6 +154,8 @@ def register_inkling2_gguf_profiles():
     counted_q8_evidence = "worklog/entries/20261123T045710.390593Z-lhl-inkling2-mini-67cb1a.md"
     split_q8 = "selected_split_activation_q8_dot_f32_f32_out"
     split_q8_evidence = "worklog/entries/20261123T024426.568443Z-lhl-inkling2-mini-3f4a1f.md"
+    counted_split_q8 = "selected_counted_split_activation_q8_dot_f32_f32_out"
+    counted_split_q8_evidence = "worklog/entries/20261123T052005.072756Z-lhl-inkling2-mini-b13bab.md"
     chunked_evidence = "worklog/entries/20261122T161527.676605Z-lhl-inkling2-mini-854a03.md"
     gate_evidence = "worklog/entries/20261123T032340.215296Z-lhl-inkling2-mini-9e502e.md"
     registered = registered_runtime_profile_keys()
@@ -177,6 +179,9 @@ def register_inkling2_gguf_profiles():
                         VariantSelection("moe_linear", "single_token_top8_nvfp4_split_down_n1152_m2304",
                                          split_q8 if fast else strict, strict if fast else None,
                                          split_q8_evidence if fast else None, registry_quant="gguf_nvfp4"),
+                        VariantSelection("moe_linear", "two_to_four_decode_rows_top8_nvfp4_split_down_n1152_m2304",
+                                         counted_split_q8 if fast else strict, strict if fast else None,
+                                         counted_split_q8_evidence if fast else None, registry_quant="gguf_nvfp4"),
                         VariantSelection("inkling2_expert_pointwise", "selected_split_gate_up",
                                          "split_activation_device" if fast else "split_activation_host",
                                          "split_activation_host" if fast else None,

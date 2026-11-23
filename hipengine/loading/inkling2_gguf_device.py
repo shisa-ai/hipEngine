@@ -45,6 +45,9 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._counted_q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
                                         variant="selected_counted_shared_input_q8_dot_f32_f32_out")
                                  if fast_experts else None)
+        self._counted_split_q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
+                                              variant="selected_counted_split_activation_q8_dot_f32_f32_out")
+                                       if fast_experts else None)
         self._split_q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
                                       variant="selected_split_activation_q8_dot_f32_f32_out") if fast_experts else None)
         self._q8_dot_scratch = None
@@ -337,60 +340,79 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling GGUF projection residency is closed")
-            bank = self._weights.mapping.layers[visit.weight_layer].gate_up
+            layer = self._weights.mapping.layers[visit.weight_layer]
+            bank = layer.gate_up
             _, gm, gn = bank.weight.shape
             counted = (self._counted_q8_dot is not None and 2 <= len(inputs) <= 4
                        and bank.weight.ggml_type == Q.NVFP4 and gm == 2304 and gn in (1152, 2304)
                        and all(ids.shape == (8,) for ids, *_ in inputs))
-            plans = [self._plan_expert_chain(visit, ids, mix, hidden, transform, counted=counted)
+            counted_down = (counted and self._counted_split_q8_dot is not None
+                            and layer.down.weight.ggml_type == Q.NVFP4 and layer.down.weight.shape[1:] == (2304, 1152))
+            plans = [self._plan_expert_chain(visit, ids, mix, hidden, transform, counted=counted, counted_down=counted_down)
                      for ids, mix, hidden, transform in inputs]
             payload = [data for parts, *_ in plans for data in parts]
             gate_row_bytes = gate_input_bytes = pack_values = 0
             if counted:
-                gate_data, launch_counted = self._plan_counted_gate(bank, inputs)
+                gate_data, launch_counted = self._plan_counted_gate(bank, inputs, down=layer.down if counted_down else None)
                 payload.insert(0, gate_data)
                 gate_input_bytes = gate_data.nbytes
                 gate_row_bytes = 8 * gm * 4
-                pack_values = len(inputs) * gn
+                pack_values = len(inputs) * (8 * 1152 if counted_down else gn)
             packed = np.concatenate(payload)
             result = np.empty(sum(size for _, _, size, *_ in plans), np.float32)
             if pack_values := max(pack_values, max(plan[4] for plan in plans)):
                 self._q8_scratch_ptr(pack_values)
             inp = self._scratch("_input", packed.nbytes).ptr
             temp_bytes = max(plan[3] for plan in plans)
-            out = self._scratch("_output", result.nbytes + temp_bytes + len(plans) * gate_row_bytes).ptr
+            slab_bytes = len(plans) * gate_row_bytes
+            out = self._scratch("_output", result.nbytes + temp_bytes + slab_bytes * (2 if counted_down else 1)).ptr
             interim = out + result.nbytes
             gate = interim + temp_bytes if counted else 0
+            down_out = gate + slab_bytes if counted_down else 0
+            projection = down_out or gate
             results = []
             input_offset, output_offset = gate_input_bytes, 0
             with self._transfer.exchange(inp, out, packed, result, pinned=True):
                 if counted:
-                    launch_counted(inp, gate)
+                    launch_counted(inp, gate, down_out)
                 for parts, shape, size, _, _, launch in plans:
-                    launch(inp + input_offset, out + output_offset * result.itemsize, interim, gate)
+                    launch(inp + input_offset, out + output_offset * result.itemsize, interim, projection)
                     results.append(result[output_offset:output_offset + size].reshape(shape))
                     input_offset += sum(part.nbytes for part in parts)
                     output_offset += size
-                    gate += gate_row_bytes
+                    projection += gate_row_bytes
             return tuple(results)
 
-    def _plan_counted_gate(self, bank, inputs):
+    def _plan_counted_gate(self, bank, inputs, *, down=None):
         weight, scales = self._bank(bank)
         experts, m, n = bank.weight.shape
         ids = np.concatenate([item[0] for item in inputs], dtype=np.int32)
         hidden = np.stack([item[2] for item in inputs])
         tiles = build_expert_route_tiles(ids, 4)
-        data, rec_bytes = self._stage_routes(ids, hidden, scales, tiles=tiles)
+        down_scales = None
+        if down is not None:
+            down_weight, down_scales = self._bank(down)
+            de, dm, dn = down.weight.shape
+            caps = self._weights.mapping.gate_cap, self._weights.mapping.up_cap
+        data, rec_bytes = self._stage_routes(ids, hidden, scales, tiles=tiles,
+                                             extra=ids.size if down_scales is not None else 0)
+        if down_scales is not None:
+            data[-ids.size:] = down_scales[ids]
 
-        def launch(inp, out):
+        def launch(inp, out, down_out):
             records = inp + hidden.size * 4
             outer = records + rec_bytes if scales is not None else 0
             self._counted_q8_dot(inp, weight.ptr, out, records, outer, len(tiles), len(inputs), experts, n, m,
                                  scratch=self._q8_scratch_ptr(hidden.size))
+            if down is not None:
+                down_outer = inp + data.nbytes - ids.nbytes if down_scales is not None else 0
+                self._counted_split_q8_dot(out, down_weight.ptr, down_out, records, down_outer,
+                                           len(tiles), len(inputs), de, dn, dm, *caps,
+                                           scratch=self._q8_scratch_ptr(ids.size * dn))
 
         return data, launch
 
-    def _plan_expert_chain(self, visit, ids, mix, hidden, transform_output, *, counted=False):
+    def _plan_expert_chain(self, visit, ids, mix, hidden, transform_output, *, counted=False, counted_down=False):
         mapping = self._weights.mapping
         layer = mapping.layers[visit.weight_layer]
         gate, down = layer.gate_up, layer.down
@@ -403,6 +425,13 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         flat_ids = np.ascontiguousarray(ids.ravel(), dtype=np.int32)
         routes, k = ids.size, ids.shape[-1]
         shape = (*ids.shape[:-1], dm)
+        if counted_down:
+            def mix_projected(inp, out, interim, projected):
+                self._mix(projected, inp, out, k, dm, tokens=routes // k)
+                if transform_output is not None:
+                    transform_output(out, shape)
+
+            return ((np.ascontiguousarray(mix, dtype=np.float32),), shape, (routes // k) * dm, 0, 0, mix_projected)
         itemsize = np.dtype(np.float32).itemsize
         single_top8 = ids.ndim == 1 and routes == 8
         shared_q8 = (self._shared_q8_dot is not None and single_top8 and gn in (1152, 2304) and gm == 2304
