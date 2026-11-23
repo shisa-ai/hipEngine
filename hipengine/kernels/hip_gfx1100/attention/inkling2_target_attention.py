@@ -109,24 +109,35 @@ def launch_cache_write(key, value, keys, values, spans: KVLiveSpans, width, *, t
         raise HipError(f"Inkling 2 target KV write failed with HIP status {status}")
 
 
-@lru_cache(maxsize=2)
-def _build_block(target_arch):
-    fn = _library(target_arch).hipengine_inkling2_target_attention_block
+@lru_cache(maxsize=4)
+def _build_block(target_arch, *, sigmoid=False):
+    lib = _library(target_arch)
+    fn = (lib.hipengine_inkling2_target_attention_block_sigmoid if sigmoid
+          else lib.hipengine_inkling2_target_attention_block)
     fn.argtypes = [ctypes.c_void_p] * 14 + [ctypes.c_int] * 6
     fn.restype = ctypes.c_int
     return fn
 
 
-def launch_attention_block(q, k, v, bias, sink, out, spans, nq, nk, dim, extent, block_k, block_v, rows,
-                           *, gain=0, target_arch=None):
-    status = _build_block(target_arch)(q, k, v, bias, sink, out, *_span_pointers(spans), block_k, block_v, gain,
-                                       nq, nk, dim, extent, rows, spans.max_live_count)
+def _launch_attention_block(fn, q, k, v, bias, sink, out, spans, nq, nk, dim, extent, block_k, block_v, rows, gain):
+    status = fn(q, k, v, bias, sink, out, *_span_pointers(spans), block_k, block_v, gain,
+                nq, nk, dim, extent, rows, spans.max_live_count)
     if status != HIP_SUCCESS:
         raise HipError(status, "Inkling 2 block attention launch failed")
 
 
+def launch_attention_block(*args, gain=0, target_arch=None):
+    _launch_attention_block(_build_block(target_arch), *args, gain)
+
+
+def launch_attention_block_sigmoid(*args, gain=0, target_arch=None):
+    _launch_attention_block(_build_block(target_arch, sigmoid=True), *args, gain)
+
+
 for _backend in ("hip_gfx1100", "hip_gfx1151"):
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "block"), launch_attention_block)
+    register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "block_sigmoid"),
+             launch_attention_block_sigmoid)
     register(KernelKey(_backend, "inkling2_target_kv_write", "inkling2_mixed", "default"), launch_cache_write)
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "default"), launch_target_attention)
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "tiled"), launch_tiled_attention)

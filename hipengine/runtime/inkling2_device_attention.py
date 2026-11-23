@@ -22,9 +22,11 @@ _VALUE_CHUNK = 64
 
 
 class Inkling2DeviceAttention:
-    def __init__(self, *, runtime, launch, write, geometry, split=None, split_chunked=None, block=None, device=None):
+    def __init__(self, *, runtime, launch, write, geometry, split=None, split_chunked=None, block=None,
+                 block_sigmoid=None, device=None):
         self.rt, self.launch, self.write = runtime, launch, write
         self.split, self.split_chunked, self.block = split, split_chunked, block
+        self.block_sigmoid = block_sigmoid
         self._block_scratch = None
         self.scores = self.value_partials = 0
         self.device = Device("hip") if device is None else device
@@ -162,7 +164,8 @@ class Inkling2DeviceAttention:
         self.positions[visit] = position + 1
         return out
 
-    def step_block(self, visit, position, q, key, value, bias, sink, *, undo=None, gain=None, projection=None):
+    def step_block(self, visit, position, q, key, value, bias, sink, *, undo=None, gain=None, gate_logits=None,
+                   projection=None):
         if self.closed:
             raise RuntimeError("Inkling 2 attention state is closed")
         if position != self.positions.get(visit, 0):
@@ -173,9 +176,14 @@ class Inkling2DeviceAttention:
         arrays = q, key, value, bias, sink
         if not 0 < rows <= 65535 or tuple(a.shape for a in arrays) != expected:
             raise ValueError("invalid Inkling 2 attention block input shapes")
+        block = self.block
+        if gate_logits is not None:
+            if gain is not None or undo is not None or self.block_sigmoid is None:
+                raise ValueError("Inkling 2 raw gate logits require committed sigmoid block dispatch")
+            gain, block = gate_logits, self.block_sigmoid
         if gain is not None and gain.shape != (rows, nq * d):
             raise ValueError("invalid Inkling 2 attention block gain shape")
-        if self.block is None or undo is not None:
+        if block is None or undo is not None:
             if projection is not None:
                 raise ValueError("Inkling 2 projected block attention requires committed block dispatch")
             return np.stack([self.step(visit, position + i, *a, undo=undo, gain=None if gain is None else gain[i])
@@ -213,8 +221,8 @@ class Inkling2DeviceAttention:
         else:
             dst, result, consume = projection
         with self.transfer.exchange(inp, dst, host, result, pinned=True):
-            self.block(query, keys, values, rel, sinks, out, spans, nq, nk, d, extent, block_k, block_v, rows,
-                       gain=gain_ptr)
+            block(query, keys, values, rel, sinks, out, spans, nq, nk, d, extent, block_k, block_v, rows,
+                  gain=gain_ptr)
             if consume is not None:
                 consume(out)
         self.positions[visit] = position + rows

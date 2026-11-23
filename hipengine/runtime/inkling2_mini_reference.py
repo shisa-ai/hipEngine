@@ -319,18 +319,21 @@ class Inkling2TextSession:
         attention_project = None
         if self.attention is not None and self.convolution is not None:
             if q.ndim == 1 and self.model.project_device is not None:
-                def attention_project(pos, q, k, v, bias, sink, gain):
-                    with self.model.project_device(prefix + "attn.wo_ud.weight", gain.size,
+                def attention_project(pos, q, k, v, bias, sink, gate):
+                    gain = _sigmoid(gate)
+                    with self.model.project_device(prefix + "attn.wo_ud.weight", gate.size,
                                                    transform_output=device_conv("attn_sconv")) as projection:
                         return self.attention.step(visit.state_slot, pos, q, k, v, bias, sink,
                                                    undo=self._undo, gain=gain, projection=projection)
             elif (q.ndim == 2 and self.model.project_block_device is not None
                   and self.attention.block is not None and self._undo is None):
-                def attention_project(pos, q, k, v, bias, sink, gain):
-                    with self.model.project_block_device(prefix + "attn.wo_ud.weight", gain.shape[-1], rows=len(q),
+                def attention_project(pos, q, k, v, bias, sink, gate):
+                    gate_kwargs = ({"gate_logits": gate} if self.attention.block_sigmoid is not None
+                                   else {"gain": _sigmoid(gate)})
+                    with self.model.project_block_device(prefix + "attn.wo_ud.weight", gate.shape[-1], rows=len(q),
                                                          transform_output=device_conv("attn_sconv")) as projection:
                         return self.attention.step_block(visit.state_slot, pos, q, k, v, bias, sink,
-                                                         gain=gain, projection=projection)
+                                                         projection=projection, **gate_kwargs)
 
         a = self._attention(visit, self.states[visit.state_slot], get, q, k, v, attention_project=attention_project)
         if attention_project is None:
@@ -439,9 +442,9 @@ class Inkling2TextSession:
 
         extent = c["sliding_window_size"] if visit.is_local else c["rel_extent"]
         bias = (rel @ weight("rel_logits_proj.proj"))[..., :extent]
-        gain = _sigmoid(gate)
         if attention_project is not None:
-            return attention_project(pos, q, key, value, bias, sink, gain)
+            return attention_project(pos, q, key, value, bias, sink, gate)
+        gain = _sigmoid(gate)
         if batch and self.attention is not None:
             y = self.attention.step_block(visit.state_slot, pos, q, key, value, bias, sink, undo=self._undo)
             y = y.reshape(len(q), -1)

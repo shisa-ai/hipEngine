@@ -48,6 +48,48 @@ def test_committed_attention_block_sees_causal_kv_before_ring_commit(capacity):
         np.testing.assert_array_equal(np.asarray(actual).view(np.uint32), reference.view(np.uint32))
 
 
+@pytest.mark.parametrize("capacity", [3, 17, 49])
+def test_committed_block_can_apply_sigmoid_to_gate_logits(capacity):
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP unavailable: {exc}")
+    from functools import partial
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.backends import hip_target_arch_for_backend, resolve_backend
+    from hipengine.kernels.hip_gfx1100.attention import inkling2_target_attention as attn
+
+    backend = resolve_backend("auto", execution_device=True)
+    if backend not in ("hip_gfx1100", "hip_gfx1151"):
+        pytest.skip("test requires gfx1100 or gfx1151")
+    arch = hip_target_arch_for_backend(backend)
+    nq, nk, dim, extent = 4, 2, 67, 15
+    rng = np.random.default_rng(48)
+    n = capacity + 9
+    args = [rng.standard_normal((n, *shape), dtype=np.float32) for shape in
+            ((nq, dim), (nk, dim), (nk, dim), (nq, extent), (nq,))]
+    logits = rng.uniform(-32.0, 32.0, (n, nq * dim)).astype(np.float32)
+    logits[0, :5] = (-100, -17, 0, 17, 100)
+    gains = (1.0 / (1.0 + np.exp(-logits.astype(np.float64)))).astype(np.float32)
+    owner = dict(runtime=get_hip_runtime(), geometry=[(capacity, nq, nk, dim, extent)],
+                 launch=partial(attn.launch_tiled_attention, target_arch=arch),
+                 write=partial(attn.launch_cache_write, target_arch=arch),
+                 block=partial(attn.launch_attention_block, target_arch=arch))
+    with (
+        closing(Inkling2DeviceAttention(**owner)) as control,
+        closing(Inkling2DeviceAttention(**owner,
+            block_sigmoid=partial(attn.launch_attention_block_sigmoid, target_arch=arch))) as fused,
+    ):
+        for i, j in ((0, 2), (2, capacity + 4), (capacity + 4, n - 1)):
+            rows = tuple(a[i:j] for a in args)
+            expected = control.step_block(0, i, *rows, gain=gains[i:j])
+            actual = fused.step_block(0, i, *rows, gate_logits=logits[i:j])
+            np.testing.assert_allclose(actual, expected, rtol=3e-7, atol=2e-7)
+        np.testing.assert_array_equal(fused.step(0, n - 1, *(a[-1] for a in args)),
+                                      control.step(0, n - 1, *(a[-1] for a in args)))
+
+
 @pytest.mark.parametrize("capacity", [3, 9, 33])
 def test_target_attention_matches_grouped_reference_with_relative_bias_and_sink(capacity):
     try:

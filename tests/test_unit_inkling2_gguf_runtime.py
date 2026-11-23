@@ -72,8 +72,12 @@ def test_inkling_gguf_fast_profile_keeps_strict_and_default_distinct(backend):
                for item in (ordinary, shared, fused))
     assert selections["inkling2_expert_pointwise"]["selected_variant"] == "split_activation_device"
     assert selections["inkling2_expert_pointwise"]["strict_fallback_variant"] == "split_activation_host"
-    assert selections["inkling2_target_attention"]["selected_variant"] == "split_chunked"
-    assert selections["inkling2_target_attention"]["strict_fallback_variant"] == "split"
+    attention = {item["scope"]: item for item in fast.manifest["selections"]
+                 if item["layer"] == "inkling2_target_attention"}
+    assert attention["decode_live_ge_513"]["selected_variant"] == "split_chunked"
+    assert attention["decode_live_ge_513"]["strict_fallback_variant"] == "split"
+    assert attention["committed_projected_prefill_gate"]["selected_variant"] == "block_sigmoid"
+    assert attention["committed_projected_prefill_gate"]["strict_fallback_variant"] == "block"
 
 
 def test_embedded_inkling_tokenizer_preserves_token_and_control_ids():

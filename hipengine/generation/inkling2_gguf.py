@@ -54,6 +54,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
         split = primitive("inkling2_target_attention", "split")
         split_chunked = primitive("inkling2_target_attention", "split_chunked") if fast else None
         block = primitive("inkling2_target_attention", "block")
+        block_sigmoid = primitive("inkling2_target_attention", "block_sigmoid") if fast else None
         write = primitive("inkling2_target_kv_write", "default")
         conv = primitive("inkling2_short_conv", "default")
         conv_block = primitive("inkling2_short_conv", "block")
@@ -67,7 +68,8 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
                 weights, runtime=runtime, blas=blas, backend=backend, fast_experts=fast))
             model = self.model = Inkling2GGUFText(weights, projection=projection)
             model.attention_factory = lambda cap: Inkling2DeviceAttention(
-                runtime=runtime, launch=attn, split=split, split_chunked=split_chunked, block=block, write=write, geometry=[
+                runtime=runtime, launch=attn, split=split, split_chunked=split_chunked, block=block,
+                block_sigmoid=block_sigmoid, write=write, geometry=[
                     (min(cap, m.sliding_window) if v.is_local else cap, *model.head_shape(v),
                      m.sliding_window if v.is_local else m.relative_extent) for v in visits
                 ])
@@ -142,6 +144,7 @@ def register_inkling2_gguf_profiles():
     split_q8 = "selected_split_activation_q8_dot_f32_f32_out"
     split_q8_evidence = "worklog/entries/20261123T024426.568443Z-lhl-inkling2-mini-3f4a1f.md"
     chunked_evidence = "worklog/entries/20261122T161527.676605Z-lhl-inkling2-mini-854a03.md"
+    gate_evidence = "worklog/entries/20261123T032340.215296Z-lhl-inkling2-mini-9e502e.md"
     registered = registered_runtime_profile_keys()
     for backend in ("hip_gfx1100", "hip_gfx1151"):
         for profile, variant in (("strict", strict), ("fast", "selected_q8_dot_f32_f32_out")):
@@ -167,6 +170,9 @@ def register_inkling2_gguf_profiles():
                         VariantSelection("inkling2_target_attention", "decode_live_ge_513",
                                          "split_chunked" if fast else "split", "split" if fast else None,
                                          chunked_evidence if fast else None, registry_quant="inkling2_mixed"),
+                        VariantSelection("inkling2_target_attention", "committed_projected_prefill_gate",
+                                         "block_sigmoid" if fast else "block", "block" if fast else None,
+                                         gate_evidence if fast else None, registry_quant="inkling2_mixed"),
                     ),
                     kv_policy="fp32", graph_policy="eager",
                     factory=partial(Inkling2GGUFGenerator, backend=backend, fast=fast),
