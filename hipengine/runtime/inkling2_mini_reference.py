@@ -488,7 +488,7 @@ class Inkling2TextSession:
                 value_names += ("v_sconv.weight_proj",)
             groups = ((names_in_layer(query_names), qi), (names_in_layer(key_names), ki), (names_in_layer(value_names), vi))
             if (self.convolution is not None and self.model.project_groups_transformed is not None and self._undo is None
-                    and (self.convolution.launch_dynamic is not None if dynamic else not batch)):
+                    and (not dynamic or self.convolution.launch_dynamic is not None)):
                 slot = visit.state_slot
                 if dynamic:
                     transforms = (None, partial(self.convolution.apply_dynamic, slot, "k", static_taps("k"), nkv),

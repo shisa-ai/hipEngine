@@ -126,8 +126,8 @@ def test_reference_decodes_causally_with_separate_local_and_loop_states():
     assert fresh[1] == 0 and logits[1] > 0
 
 
-@pytest.mark.parametrize("staged", [False, True])
-def test_distinct_local_inputs_consume_static_kv_before_download(staged):
+@pytest.mark.parametrize("mode", ["ordinary", "staged", "block"])
+def test_distinct_local_inputs_consume_static_kv_before_download(mode):
     model = Inkling2TextReference(_config(), TinyWeights())
     session = model.session(3)
     visit = model.plan.visits[0]
@@ -150,11 +150,14 @@ def test_distinct_local_inputs_consume_static_kv_before_download(staged):
 
     session.convolution = Convolution()
     model.project_groups_transformed = project
-    q, k, v = np.eye(2, dtype=np.float32)[0], np.eye(2, dtype=np.float32)[1], np.ones(2, dtype=np.float32)
+    eye = np.eye(2, dtype=np.float32)
+    q, k, v = eye[0], eye[1], np.ones(2, dtype=np.float32)
+    if mode == "block":
+        q, k, v = (np.stack((row, row)) for row in (q, k, v))
     layer = f"layers.{visit.weight_layer}."
     traversal = session._attention(visit, session.states[visit.state_slot], lambda name: model.weights.dense(layer + name),
-                                   q, k, v, stage_projections=staged)
-    if staged:
+                                   q, k, v, stage_projections=mode == "staged")
+    if mode == "staged":
         actual_visit, kind, (groups, transforms) = next(traversal)
         assert (actual_visit, kind) == (visit, "attention_inputs")
         with pytest.raises(StopIteration):
@@ -162,7 +165,7 @@ def test_distinct_local_inputs_consume_static_kv_before_download(staged):
     else:
         with pytest.raises(StopIteration):
             next(traversal)
-    assert consumed == [(visit.state_slot, "k", 1, (2,), 0), (visit.state_slot, "v", 2, (2,), 0)]
+    assert consumed == [(visit.state_slot, "k", 1, k.shape, 0), (visit.state_slot, "v", 2, v.shape, 0)]
 
 
 def test_staged_decode_keeps_independent_positions_and_scalar_math():
