@@ -246,3 +246,65 @@ def test_static_convolution_in_place_matches_separate_calls_after_rollback():
         free(scratch, runtime=runtime)
         chained.close()
         baseline.close()
+
+
+def test_shared_static_taps_outlive_one_session_without_sharing_history(monkeypatch):
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP unavailable: {exc}")
+    from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
+    from hipengine.core.memory import free, malloc
+    from hipengine.kernels.backends import resolve_backend
+    from hipengine.kernels.hip_gfx1100.quant.inkling2_short_conv import launch_short_conv
+    from hipengine.runtime.inkling2_device_convolution import Inkling2DeviceConvolutionTaps
+
+    backend = resolve_backend("auto", execution_device=True)
+    if backend not in ("hip_gfx1100", "hip_gfx1151"):
+        pytest.skip("test requires gfx1100 or gfx1151")
+    runtime = get_hip_runtime()
+    copies = []
+    base_copy = type(runtime).memcpy
+
+    def record(self, dst, src, size, kind):
+        if kind == HipMemcpyKind.HOST_TO_DEVICE:
+            copies.append(dst)
+        return base_copy(self, dst, src, size, kind)
+
+    monkeypatch.setattr(type(runtime), "memcpy", record)
+    taps = np.arange(99, dtype=np.float32).reshape(33, 3) / 127
+    rng = np.random.default_rng(727)
+    x, y, z = rng.standard_normal((3, 33), dtype=np.float32)
+    arch = backend.removeprefix("hip_")
+
+    def launch(*args):
+        launch_short_conv(*args, target_arch=arch)
+
+    def session(cache=None):
+        return Inkling2DeviceConvolution(runtime=runtime, launch=launch, channels=33, width=3, tap_cache=cache)
+
+    slot, name = 1, "mlp"
+    buf = malloc(x.nbytes, runtime=runtime)
+    try:
+        with closing(Inkling2DeviceConvolutionTaps(runtime)) as cache, closing(session(cache)) as second, \
+                closing(session()) as control:
+            def apply(owner, row):
+                out = np.empty_like(row)
+                runtime.memcpy(buf.ptr, row.ctypes.data, row.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+                owner.apply_static(slot, name, taps, buf.ptr, row.shape)
+                runtime.memcpy(out.ctypes.data, buf.ptr, out.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+                return out.view(np.uint32)
+
+            with closing(session(cache)) as first:
+                apply(first, x)
+                got = apply(second, y)
+                assert first.histories[slot, name].ptr != second.histories[slot, name].ptr
+                shared_ptr = first._static_tap_ptr(slot, name, taps)
+                assert second._static_tap_ptr(slot, name, taps) == shared_ptr
+            np.testing.assert_array_equal(got, apply(control, y))
+            np.testing.assert_array_equal(apply(second, z), apply(control, z))
+            assert copies.count(shared_ptr) == 1
+        with pytest.raises(RuntimeError, match="taps are closed"):
+            cache.pointer(slot, name, taps)
+    finally:
+        free(buf, runtime=runtime)

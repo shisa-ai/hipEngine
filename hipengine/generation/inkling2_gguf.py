@@ -23,7 +23,7 @@ from hipengine.loading.inkling2_gguf import Inkling2GGUFWeights
 from hipengine.loading.inkling2_gguf_device import Inkling2GGUFDeviceProjections
 from hipengine.models.inkling2_mini import INKLING2_GGUF, INKLING2_MINI
 from hipengine.runtime.inkling2_device_attention import Inkling2DeviceAttention
-from hipengine.runtime.inkling2_device_convolution import Inkling2DeviceConvolution
+from hipengine.runtime.inkling2_device_convolution import Inkling2DeviceConvolution, Inkling2DeviceConvolutionTaps
 from hipengine.runtime.inkling2_gguf import Inkling2GGUFText
 from hipengine.tokenization.inkling2_gguf import inkling2_gguf_tokenizer
 
@@ -81,9 +81,11 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
                     (min(cap, m.sliding_window) if v.is_local else cap, *model.head_shape(v),
                      m.sliding_window if v.is_local else m.relative_extent) for v in visits
                 ])
+            tap_cache = Inkling2DeviceConvolutionTaps(runtime)
+            owned.callback(tap_cache.close)
             model.convolution_factory = lambda: Inkling2DeviceConvolution(
                 runtime=runtime, launch=conv, launch_block=conv_block, launch_dynamic=conv_dynamic,
-                channels=channels, width=m.conv_taps)
+                channels=channels, width=m.conv_taps, tap_cache=tap_cache)
             self._owned = owned.pop_all()
 
     @property

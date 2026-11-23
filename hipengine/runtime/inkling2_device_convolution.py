@@ -2,6 +2,7 @@
 
 from contextlib import ExitStack
 from math import sqrt
+from threading import Lock
 
 import numpy as np
 
@@ -10,18 +11,56 @@ from hipengine.core.memory import free, malloc
 from hipengine.loading.inkling2_activation_transfer import Inkling2ActivationTransfer
 
 
+class Inkling2DeviceConvolutionTaps:
+    """Read-only device taps for sessions borrowing the same model weights."""
+
+    def __init__(self, runtime):
+        self.rt = runtime
+        self._owner = ExitStack()
+        self._pointers = {}
+        self._lock = Lock()
+        self._closed = False
+
+    def pointer(self, visit, name, taps):
+        key = visit, name
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling 2 convolution taps are closed")
+            if key not in self._pointers:
+                host = np.ascontiguousarray(taps, dtype=np.float32)
+                buf = malloc(host.nbytes, runtime=self.rt)
+                try:
+                    self.rt.memcpy(buf.ptr, host.ctypes.data, host.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+                except BaseException:
+                    free(buf, runtime=self.rt)
+                    raise
+                self._owner.callback(free, buf, runtime=self.rt)
+                self._pointers[key] = buf.ptr
+            return self._pointers[key]
+
+    def close(self):
+        with self._lock:
+            self._closed = True
+            self._pointers.clear()
+            self._owner.close()
+
+
 class Inkling2DeviceConvolution:
-    def __init__(self, *, runtime, launch, channels, width, launch_block=None, launch_dynamic=None):
+    def __init__(self, *, runtime, launch, channels, width, launch_block=None, launch_dynamic=None,
+                 tap_cache=None):
         if channels <= 0 or width <= 0:
             raise ValueError("Inkling 2 convolution geometry must be positive")
         self.rt, self.launch, self.launch_block = runtime, launch, launch_block
         self.launch_dynamic = launch_dynamic
         self.channels, self.width = channels, width
         self.histories = {}
-        self.static_taps = {}
         self._block_scratch = None
         self.closed = False
         with ExitStack() as owner:
+            if tap_cache is None:
+                tap_cache = Inkling2DeviceConvolutionTaps(runtime)
+                owner.callback(tap_cache.close)
+            self._tap_cache = tap_cache
             self.transfer = Inkling2ActivationTransfer(runtime)
             owner.callback(self.transfer.close)
 
@@ -148,14 +187,7 @@ class Inkling2DeviceConvolution:
             self._block_scratch = None
 
     def _static_tap_ptr(self, visit, name, taps):
-        key = visit, name
-        if key not in self.static_taps:
-            host = np.ascontiguousarray(taps, dtype=np.float32)
-            buf = malloc(host.nbytes, runtime=self.rt)
-            self.owner.callback(free, buf, runtime=self.rt)
-            self.rt.memcpy(buf.ptr, host.ctypes.data, host.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
-            self.static_taps[key] = buf.ptr
-        return self.static_taps[key]
+        return self._tap_cache.pointer(visit, name, taps)
 
     def apply_dynamic(self, visit, name, taps, heads, projected, dynamic):
         """Convolve a resident projection in place using compact per-head tap deltas."""
@@ -196,4 +228,3 @@ class Inkling2DeviceConvolution:
         finally:
             self.owner.close()
             self.histories.clear()
-            self.static_taps.clear()
