@@ -77,6 +77,25 @@ def test_read_blocks_reuses_completed_norms_without_rounding_changes(shape, quer
     np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
 
 
+def test_scalar_residual_reader_preserves_bits_when_switching_prefixes():
+    from hipengine.runtime.inkling2_mini_reference import _ScalarResidualRows
+
+    rng = np.random.default_rng(82)
+    partial = rng.standard_normal(65, dtype=np.float32)
+    rows = [_rms(rng.standard_normal(65, dtype=np.float32)) for _ in range(5)]
+    extra = _rms(rng.standard_normal(65, dtype=np.float32))
+    query = rng.standard_normal((4, 65), dtype=np.float32)
+    reader = _ScalarResidualRows(partial, 6)
+    for blocks in (rows[:2], rows[:4], rows[:1], [extra, *rows[2:]], rows, []):
+        want = _read_blocks(query, blocks, partial)
+        got = reader.read(query, blocks, partial)
+        np.testing.assert_array_equal(got.view(np.uint32), want.view(np.uint32))
+    # A fallback after a row has already changed must not keep stale sources.
+    promoted = [extra, rows[1].astype(np.float64)]
+    np.testing.assert_array_equal(reader.read(query, promoted, partial), _read_blocks(query, promoted, partial))
+    np.testing.assert_array_equal(reader.read(query, rows[:2], partial), _read_blocks(query, rows[:2], partial))
+
+
 def test_reference_decodes_causally_with_separate_local_and_loop_states():
     reference = Inkling2TextReference(_config(), TinyWeights())
     first = reference.session(3)

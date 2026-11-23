@@ -27,15 +27,41 @@ def _softmax(x):
     return p / p.sum(axis=-1, keepdims=True)
 
 
+def _scalar_depth_mix(query, values, width):
+    return _softmax((query @ values.T) / sqrt(width)) @ values
+
+
 def _read_blocks(query, normalized_blocks, partial):
     values = np.stack((*normalized_blocks, _rms(np.ascontiguousarray(partial))), axis=-2)
     if partial.ndim == 1:
-        return _softmax((query @ values.T) / sqrt(partial.size)) @ values
+        return _scalar_depth_mix(query, values, partial.size)
     if query.ndim == 1:
         scores = values @ query / sqrt(partial.shape[-1])
         return np.einsum("bp,bpd->bd", _softmax(scores), values)
     scores = query @ values.swapaxes(-1, -2) / sqrt(partial.shape[-1])
     return _softmax(scores) @ values
+
+
+class _ScalarResidualRows:
+    """Reuse immutable normalized rows within one token's depth traversal."""
+
+    def __init__(self, hidden, capacity):
+        self._matrix = np.empty((capacity, hidden.size), dtype=hidden.dtype)
+        self._sources = []
+
+    def read(self, query, blocks, partial):
+        matrix, sources = self._matrix, self._sources
+        if partial.dtype != matrix.dtype:
+            return _read_blocks(query, blocks, partial)
+        for i, row in enumerate(blocks):
+            if i >= len(sources) or sources[i] is not row:
+                if row.dtype != matrix.dtype:
+                    sources.clear()
+                    return _read_blocks(query, blocks, partial)
+                matrix[i] = row
+        sources[:] = blocks
+        matrix[len(blocks)] = _rms(np.ascontiguousarray(partial))
+        return _scalar_depth_mix(query, matrix[:len(blocks) + 1], partial.size)
 
 
 def _clip(x, limit):
@@ -181,9 +207,9 @@ class Inkling2TextSession:
         """Yield per-visit controller and expert work, then the final normalized row."""
         if self._undo is not None:
             raise RuntimeError("Inkling 2 staged decode requires a committed session")
-        h, blocks = yield from self._traverse(self._embed_step(token, None), None, stage_experts=True)
+        h, blocks, read_blocks = yield from self._traverse(self._embed_step(token, None), None, stage_experts=True)
         self.position += 1
-        yield self._output_hidden(h, blocks)
+        yield self._output_hidden(h, blocks, read_blocks=read_blocks)
 
     def _embed_step(self, token, embedding):
         if self.position >= self.capacity:
@@ -244,6 +270,7 @@ class Inkling2TextSession:
 
     def _traverse(self, h, capture, *, stage_experts=False):
         blocks = []
+        read_blocks = _ScalarResidualRows(h, len(self.model.plan.visits) + 1).read if h.ndim == 1 else _read_blocks
         loop_start = self.model.config["loop_config"]["core_start"]
         for boundary, visit in enumerate(self.model.plan.visits):
             layer = visit.weight_layer
@@ -258,25 +285,25 @@ class Inkling2TextSession:
                 capture(boundary, h)
             messages = None
             if visit.message_pass is not None:
-                messages = _read_blocks(self.model.loop_queries(visit), previous, previous_partial)
+                messages = read_blocks(self.model.loop_queries(visit), previous, previous_partial)
             a, normalized, transform, finish = yield from self._prepare_layer(
-                visit, h, blocks, messages, stage_controllers=stage_experts)
+                visit, h, blocks, messages, stage_controllers=stage_experts, read_blocks=read_blocks)
             if stage_experts:
                 m = yield visit, "experts", (normalized, transform)
             else:
                 m = self.model.feed_forward(visit, normalized, transform_output=transform)
             h = a + (m if finish is None else finish(m))
-        return h, blocks
+        return h, blocks, read_blocks
 
-    def _output_hidden(self, h, blocks):
+    def _output_hidden(self, h, blocks, *, read_blocks=_read_blocks):
         c, w = self.model.config, self.model.weights
-        return _rms(_read_blocks(w.dense("attn_res.output_query"), blocks, h), c["rms_norm_eps"]) * w.dense("norm.weight")
+        return _rms(read_blocks(w.dense("attn_res.output_query"), blocks, h), c["rms_norm_eps"]) * w.dense("norm.weight")
 
     def _forward(self, h, width, *, logits, capture, last_only=False):
         try:
             next(self._traverse(h, capture))
         except StopIteration as done:
-            h, blocks = done.value
+            h, blocks, read_blocks = done.value
         else:
             raise RuntimeError("Inkling 2 scalar traversal unexpectedly staged work")
         self.position += width
@@ -290,14 +317,14 @@ class Inkling2TextSession:
             # The first sampled score must use the same reduction with or without tap capture.
             h = self._output_hidden(h[-1], [block[-1] for block in blocks])
         else:
-            h = self._output_hidden(h, blocks)
+            h = self._output_hidden(h, blocks, read_blocks=read_blocks)
             if capture is not None:
                 capture(len(self.model.plan.visits), h)
         if not logits:
             return None
         return self.model.cap_logits(self.model.project_logits(h))
 
-    def _prepare_layer(self, visit, h, blocks, messages, *, stage_controllers):
+    def _prepare_layer(self, visit, h, blocks, messages, *, stage_controllers, read_blocks):
         c, w = self.model.config, self.model.weights
         layer = visit.weight_layer
         prefix = f"layers.{layer}."
@@ -340,7 +367,7 @@ class Inkling2TextSession:
             return partial(self.convolution.apply_static, visit.state_slot, name, taps,
                            position=self.position, undo=self._undo)
 
-        a = _read_blocks(w.dense(f"attn_res.attn_queries.{layer - 1}"), blocks, h) if layer else h
+        a = read_blocks(w.dense(f"attn_res.attn_queries.{layer - 1}"), blocks, h) if layer else h
         inputs = (a, a, a) if a.ndim == h.ndim else np.moveaxis(a, -2, 0)
         norm_names = ("attn_norm",) * 3 if visit.is_local else ("q_input_norm", "k_input_norm", "v_input_norm")
         if messages is None and visit.is_local:
@@ -383,7 +410,7 @@ class Inkling2TextSession:
             blocks.append(_rms(np.ascontiguousarray(h)))
         else:
             a = h + a
-        m = _read_blocks(w.dense(f"attn_res.mlp_queries.{layer}"), blocks, a)
+        m = read_blocks(w.dense(f"attn_res.mlp_queries.{layer}"), blocks, a)
         if messages is not None:
             m, = yield from merge_controllers((m,), ("mlp",), (messages[..., 3, :],))
         normalized = norm(m, "mlp_norm")
