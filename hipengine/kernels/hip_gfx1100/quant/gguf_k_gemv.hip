@@ -5587,12 +5587,10 @@ static int launch_selected_tile4(const float* x, const uint8_t* weights, float* 
   if (!x || !weights || !out || !tiles || tile_count <= 0 || tile_count > 65535 || rows <= 0 ||
       experts <= 0 || inputs <= 0 || inputs % block_size || outputs <= 0 ||
       routes_per_input <= 0 || rows % routes_per_input) return hipErrorInvalidValue;
-  if constexpr (qtype == 5) {
-    if (outputs >= 2048 && outputs % 2 == 0) {
-      gguf_k_selected_tile4_f32_kernel<qtype, 2, shared_input><<<dim3(outputs / 2, tile_count), 128, 0, stream>>>(
-          x, weights, out, tiles, scales, rows, experts, inputs, outputs, routes_per_input);
-      return hipGetLastError();
-    }
+  if (outputs >= 2048 && outputs % 2 == 0) {
+    gguf_k_selected_tile4_f32_kernel<qtype, 2, shared_input><<<dim3(outputs / 2, tile_count), 128, 0, stream>>>(
+        x, weights, out, tiles, scales, rows, experts, inputs, outputs, routes_per_input);
+    return hipGetLastError();
   }
   gguf_k_selected_tile4_f32_kernel<qtype, 1, shared_input><<<dim3(outputs, tile_count), 128, 0, stream>>>(
       x, weights, out, tiles, scales, rows, experts, inputs, outputs, routes_per_input);
