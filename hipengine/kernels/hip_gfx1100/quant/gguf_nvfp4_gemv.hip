@@ -179,6 +179,15 @@ int launch_tile4(const float* x, const uint8_t* weights, float* out, const int32
             in_features <= 0 || in_features % values_per_block || out_features <= 0 ||
             routes_per_input <= 0 || routes % routes_per_input) return hipErrorInvalidValue;
     // Reuse activation loads only across complete output groups on wide matrices.
+    if constexpr (!shared_input) {
+        if (out_features >= 2048 && out_features % (8 * waves_per_block) == 0) {
+            const dim3 grid(out_features / (8 * waves_per_block), tile_count);
+            hipLaunchKernelGGL((gguf_nvfp4_selected_tile4_f32_kernel<false, 8>), grid, dim3(wave * waves_per_block),
+                               0, stream, x, weights, out, tiles, scales, routes, experts, in_features, out_features,
+                               routes_per_input);
+            return hipGetLastError();
+        }
+    }
     if (out_features >= 2048 && out_features % (4 * waves_per_block) == 0) {
         const dim3 grid(out_features / (4 * waves_per_block), tile_count);
         hipLaunchKernelGGL((gguf_nvfp4_selected_tile4_f32_kernel<shared_input, 4>), grid, dim3(wave * waves_per_block),
