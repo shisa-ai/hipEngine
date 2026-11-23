@@ -95,6 +95,8 @@ __device__ __forceinline__ void selected_tile_f32(
         if constexpr (shared_input) input_row /= routes_per_input;
         inputs[t] = x + static_cast<size_t>(input_row) * in_features + first;
     }
+    // Expose independent loads from successive blocks without reordering the dot products.
+    #pragma unroll 4
     for (int b = 0; b < blocks; ++b) {
         const float scale = decode_scale(packed[group]);
         const unsigned codes = packed[4 + lane];

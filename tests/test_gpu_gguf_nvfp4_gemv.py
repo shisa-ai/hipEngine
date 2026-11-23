@@ -106,8 +106,8 @@ def test_selected_nvfp4_exactly_matches_scalar_launches(out_features):
     np.testing.assert_array_equal(observed.view(np.uint32), expected.view(np.uint32))
 
 
-@pytest.mark.parametrize("scaled,nout,repeats", [(True, 19, 3), (False, 2304, 4)])
-def test_tiled_nvfp4_reuses_rows_without_changing_route_results(scaled, nout, repeats):
+@pytest.mark.parametrize("scaled,nout,repeats,width", [(True, 19, 3, 2304), (False, 2304, 4, 1152)])
+def test_tiled_nvfp4_reuses_rows_without_changing_route_results(scaled, nout, repeats, width):
     try:
         ctypes.CDLL("libamdhip64.so")
     except OSError as exc:
@@ -119,7 +119,7 @@ def test_tiled_nvfp4_reuses_rows_without_changing_route_results(scaled, nout, re
     from hipengine.loading.inkling2_device_experts import build_expert_route_tiles
 
     rng = np.random.default_rng(51003)
-    experts, width = 4, 2304
+    experts = 4
     ids = np.array([3, 0, 0, 1, 3, 3, 1, 3, 3, 2, 0, 3], np.int32)
     records = build_expert_route_tiles(ids, 4)
     assert records.tolist() == [[0, 1, 2, 10, -1], [1, 3, 6, -1, -1], [2, 9, -1, -1, -1],
