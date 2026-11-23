@@ -779,3 +779,56 @@ def test_gfx1151_tail4_recorded_quality_rejection_stays_scoped() -> None:
     assert different_identity.status == "unmeasured"
     assert different_identity.runtime_action == "admit"
     assert different_identity.evidence is None
+
+
+@pytest.mark.parametrize(
+    ("layout", "scale_dtype", "granularity", "direct_rows"),
+    [
+        ("uniform", "fp32", "per_token_head", 4),
+        ("tail4_hadamard_group32", "fp16", "hadamard_group32", 1),
+    ],
+)
+def test_moe_plugin_declares_the_shared_int8_kv_contracts(
+    layout, scale_dtype, granularity, direct_rows,
+) -> None:
+    """The MoE stack runs the same INT8 full-attention leaves as the dense one.
+
+    Qwen3.6-35B-A3B's 16Q/2KV/D256 attention is a geometry the INT8 append,
+    prefill and split-K decode kernels implement, so explicit
+    ``kv_storage="int8_per_token_head"`` must resolve to a declared contract
+    instead of "no registered kernel implements this contract".
+    """
+
+    from hipengine.models.kv_capabilities import resolve_kv_capability
+    from hipengine.models.qwen35 import Qwen35MoeGGUFModel
+
+    plugin = Qwen35MoeGGUFModel()
+    unseen = ModelArtifactIdentity(
+        path="/models/gguf/never-measured-moe.gguf",
+        size_bytes=None,
+        sha256=None,
+        content_verified=False,
+    )
+    for backend, target_arch in (("hip_gfx1100", "gfx1100"), ("hip_gfx1151", "gfx1151")):
+        resolution = resolve_kv_capability(
+            (),
+            key=KVCapabilityKey(
+                artifact_sha256=None,
+                artifact_size_bytes=None,
+                backend=backend,
+                target_arch=target_arch,
+                weight_quant="gguf_q4_k_m",
+                kv_storage="int8_per_token_head",
+                storage_layout=layout,
+                scale_dtype=scale_dtype,
+                scale_granularity=granularity,
+            ),
+            artifact=unseen,
+            declarations=plugin.kv_capability_declarations,
+        )
+        payload = resolution.as_dict()
+        assert payload["runtime_action"] == "admit", backend
+        assert payload["status"] == "unmeasured", backend
+        assert payload["effective_kv_storage"] == "int8_per_token_head", backend
+        assert payload["declaration"]["max_direct_rows"] == direct_rows, backend
+        assert payload["declaration"]["persistent_bf16_mirror"] is False, backend

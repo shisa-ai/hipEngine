@@ -1107,6 +1107,13 @@ class Qwen35MoeGGUFModel:
     speculative_mtp_serving_evidence: tuple[SpeculativeMTPServingEvidence, ...] = (
         _QWEN36_MOE_Q4KM_MTP_SERVING_EVIDENCE
     )
+    # The MoE stack shares the resident runner's full-attention layers with the
+    # dense plugin: the INT8 append/prompt write, prefill and split-K decode
+    # leaves those declarations name implement the 16Q/2KV/D256 GQA geometry as
+    # well as 24Q/4KV, so the same KV contracts are declared here.
+    kv_capability_declarations: tuple[KVCapabilityDeclaration, ...] = (
+        _QWEN38_GGUF_KV_CAPABILITY_DECLARATIONS
+    )
     # The MoE NextN chain is declared for both gfx1100 and gfx1151: the host
     # ships the same executable MoE MTP contract on either backend.  Width and
     # depth remain the adapter's structural limits, not evidence gates.
