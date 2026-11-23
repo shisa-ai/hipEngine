@@ -48,6 +48,7 @@ __device__ __forceinline__ int dot4(uint32_t a, uint32_t b, int sum) {
 #endif
 }
 
+template <bool SHARED_INPUT>
 __global__ __launch_bounds__(128) void nvfp4_q8_selected(
         const int8_t* x, const float* xs, const uint8_t* weights, float* output,
         const int32_t* ids, const float* outer, int n, int m, int experts, size_t output_count) {
@@ -63,8 +64,10 @@ __global__ __launch_bounds__(128) void nvfp4_q8_selected(
     const size_t row = size_t(expert) * m + channel;
     const uint8_t* packed = weights + row * blocks * 36;
     const int group = (lane % 8) / 2, part = lane & 1;
-    x += size_t(route) * n;
-    xs += size_t(route) * (n / 32);
+    if constexpr (!SHARED_INPUT) {
+        x += size_t(route) * n;
+        xs += size_t(route) * (n / 32);
+    }
     float sum = 0.0f;
     // Eight lanes cover each 64-element block, interleaving four blocks per wave.
     for (int b = lane / 8; b < blocks; b += 4) {
@@ -87,18 +90,18 @@ __global__ __launch_bounds__(128) void nvfp4_q8_selected(
     if (!lane) output[i] = sum * (outer ? outer[route] : 1.0f);
 }
 
-template <bool SPLIT_ACTIVATION>
+template <bool SPLIT_ACTIVATION, bool SHARED_INPUT = false>
 static int project_q8(const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
                       const int32_t* ids, const float* outer, int routes, int n, int m, int experts,
                       float gate_cap = 0.0f, float up_cap = 0.0f) {
     if (!x || !codes || !scales || !weights || !out || !ids || routes != 8 || m != 2304 ||
         (n != 1152 && n != 2304) || experts <= 0) return hipErrorInvalidValue;
-    const int groups = routes * (n / 32);
+    const int groups = (SHARED_INPUT ? 1 : routes) * (n / 32);
     hipLaunchKernelGGL((pack_q8<SPLIT_ACTIVATION>), dim3((groups + 3) / 4), dim3(128), 0, 0,
                        x, codes, scales, groups, n, gate_cap, up_cap);
     if (const int status = hipGetLastError()) return status;
     const size_t total = size_t(routes) * m;
-    hipLaunchKernelGGL(nvfp4_q8_selected, dim3((total + 3) / 4), dim3(128), 0, 0,
+    hipLaunchKernelGGL((nvfp4_q8_selected<SHARED_INPUT>), dim3((total + 3) / 4), dim3(128), 0, 0,
                        codes, scales, weights, out, ids, outer, n, m, experts, total);
     return hipGetLastError();
 }
@@ -107,6 +110,12 @@ extern "C" int hipengine_gguf_nvfp4_selected_q8_dot(
         const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
         const int32_t* ids, const float* outer, int routes, int n, int m, int experts) {
     return project_q8<false>(x, codes, scales, weights, out, ids, outer, routes, n, m, experts);
+}
+
+extern "C" int hipengine_gguf_nvfp4_selected_shared_input_q8_dot(
+        const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
+        const int32_t* ids, const float* outer, int routes, int n, int m, int experts) {
+    return project_q8<false, true>(x, codes, scales, weights, out, ids, outer, routes, n, m, experts);
 }
 
 extern "C" int hipengine_gguf_nvfp4_selected_split_activation_q8_dot(

@@ -40,6 +40,8 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._shared_tiled_launches = {}
         self._q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
                                 variant="selected_q8_dot_f32_f32_out") if fast_experts else None)
+        self._shared_q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
+                                       variant="selected_shared_input_q8_dot_f32_f32_out") if fast_experts else None)
         self._split_q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
                                       variant="selected_split_activation_q8_dot_f32_f32_out") if fast_experts else None)
         self._q8_dot_scratch = None
@@ -308,14 +310,18 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         routes, k = ids.size, ids.shape[-1]
         result = np.empty((*ids.shape[:-1], dm), np.float32)
         itemsize = result.itemsize
-        split_q8 = (self._split_q8_dot is not None and ids.ndim == 1 and routes == 8 and dn == 1152 and dm == 2304
+        single_top8 = ids.ndim == 1 and routes == 8
+        shared_q8 = (self._shared_q8_dot is not None and single_top8 and gn in (1152, 2304) and gm == 2304
+                     and gate.weight.ggml_type == Q.NVFP4)
+        split_q8 = (self._split_q8_dot is not None and single_top8 and dn == 1152 and dm == 2304
                     and down.weight.ggml_type == Q.NVFP4)
 
-        def prepare(bank, x, *, repeats=1, extra=0, fused=False):
+        def prepare(bank, x, *, repeats=1, extra=0, fused=False, shared=False):
             quant = Q(bank.weight.ggml_type)
             weight, scales = self._bank(bank)
             tiles = self._route_tiles(quant, flat_ids)
-            x, repeats = self._route_input(quant, x, tiles, repeats)
+            if not shared:
+                x, repeats = self._route_input(quant, x, tiles, repeats)
             data, rec_bytes = self._stage_routes(flat_ids, x, scales, extra=extra, tiles=tiles)
             input_bytes = 0 if x is None else x.size * itemsize
             experts, m, n = bank.weight.shape
@@ -323,7 +329,10 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             def launch(src, dst, uploaded):
                 metadata = uploaded + input_bytes
                 outer = metadata + rec_bytes if scales is not None else 0
-                if fused:
+                if shared:
+                    self._shared_q8_dot(src, weight.ptr, dst, metadata, outer, routes, experts, n, m,
+                                        scratch=self._q8_scratch_ptr(n))
+                elif fused:
                     self._split_q8_dot(src, weight.ptr, dst, metadata, outer, routes, experts, n, m,
                                        mapping.gate_cap, mapping.up_cap, scratch=self._q8_scratch_ptr(routes * n))
                 else:
@@ -335,7 +344,12 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling GGUF projection residency is closed")
-            gate_data, launch_gate = prepare(gate, np.atleast_2d(hidden), repeats=k)
+            # Reserve the largest Q8 pack before launching either projection; growing scratch
+            # within the exchange would free storage still in use by the gate projection.
+            if shared_q8:
+                down_q8 = dm == 2304 and down.weight.ggml_type == Q.NVFP4
+                self._q8_scratch_ptr(max(gn, routes * dn) if down_q8 else gn)
+            gate_data, launch_gate = prepare(gate, np.atleast_2d(hidden), repeats=k, shared=shared_q8)
             down_data, launch_down = prepare(down, None, extra=routes, fused=split_q8)
             down_data[-routes:] = mix.ravel()
             packed = np.concatenate((gate_data, down_data))

@@ -63,10 +63,13 @@ def test_inkling_gguf_fast_profile_keeps_strict_and_default_distinct(backend):
     selections = {item["layer"]: item for item in fast.manifest["selections"] if item["layer"] != "moe_linear"}
     expert_selections = {item["scope"]: item for item in fast.manifest["selections"] if item["layer"] == "moe_linear"}
     ordinary = expert_selections["single_token_top8_nvfp4_n1152_or_2304_m2304"]
+    shared = expert_selections["single_token_top8_nvfp4_shared_gate_n1152_or_2304_m2304"]
     fused = expert_selections["single_token_top8_nvfp4_split_down_n1152_m2304"]
     assert ordinary["selected_variant"] == "selected_q8_dot_f32_f32_out"
+    assert shared["selected_variant"] == "selected_shared_input_q8_dot_f32_f32_out"
     assert fused["selected_variant"] == "selected_split_activation_q8_dot_f32_f32_out"
-    assert ordinary["strict_fallback_variant"] == fused["strict_fallback_variant"] == "selected_register_fp4_f32_f32_out"
+    assert all(item["strict_fallback_variant"] == "selected_register_fp4_f32_f32_out"
+               for item in (ordinary, shared, fused))
     assert selections["inkling2_expert_pointwise"]["selected_variant"] == "split_activation_device"
     assert selections["inkling2_expert_pointwise"]["strict_fallback_variant"] == "split_activation_host"
     assert selections["inkling2_target_attention"]["selected_variant"] == "split_chunked"
