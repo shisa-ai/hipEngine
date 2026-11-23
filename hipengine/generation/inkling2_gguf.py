@@ -11,6 +11,7 @@ from hipengine.core.rocblas import Rocblas
 from hipengine.execution_profiles import (
     RuntimeProfileKey, RuntimeProfilePlan, VariantSelection, register_runtime_profile_plan, registered_runtime_profile_keys,
 )
+from hipengine.generation.inkling2_gguf_resident import Inkling2ResidentRunner
 from hipengine.generation.inkling2_mini import Inkling2ReferenceGenerator
 from hipengine.generation.registry import DecodeState, GenerationStreamChunk, GenerationTelemetry, register_text_generator
 from hipengine.kernels.backends import hip_target_arch_for_backend
@@ -32,6 +33,11 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
     supports_speculative_mtp = False
     vision = None
     prefill_block_width = 64
+    engine_loop_config_defaults = {
+        "prefill_decode_policy": "fair",
+        "max_prefill_chunk_tokens": 64,
+        "round_prefill_token_budget": 64,
+    }
 
     def __init__(self, *, backend, model_path, weight_index, model_plugin, max_sequence_length=None,
                  fast=False):
@@ -77,6 +83,9 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
                 runtime=runtime, launch=conv, launch_block=conv_block, launch_dynamic=conv_dynamic,
                 channels=channels, width=m.conv_taps)
             self._owned = owned.pop_all()
+
+    def create_resident_model_runner(self, *, capacity=None):
+        return Inkling2ResidentRunner(self, capacity=4 if capacity is None else capacity)
 
     def _prepare_text_rows(self, request, *, speculative=False):
         if request.kv_storage == "fp32":
