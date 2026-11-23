@@ -99,6 +99,23 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
                     np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
                 assert [call.args[-1] for call in decode_spy.call_args_list] == [240, 248]
                 owner._q8_decode = launch_decode
+            controls = [owner.project_groups((((dense.name, head.name), row),), pinned=True) for row in x]
+            rt = get_hip_runtime()
+
+            def zero_query(query, head):
+                rt.memset_async(query[0], 0, 4, 0)
+
+            def zero_head(query, head):
+                rt.memset_async(head[0], 0, 4, 0)
+
+            transforms = ((zero_query,), (zero_head,), None)
+            batched = owner.project_shared_attention_rows([
+                ((((dense.name, head.name), row),), consume) for row, consume in zip(x, transforms, strict=True)])
+            controls[0][0][0][0] = 0
+            controls[1][0][1][0] = 0
+            for ((q, h),), ((expected_q, expected_h),) in zip(batched, controls, strict=True):
+                np.testing.assert_array_equal(q.view(np.uint32), expected_q.view(np.uint32))
+                np.testing.assert_array_equal(h.view(np.uint32), expected_h.view(np.uint32))
             for visit in (mapping.plan.visits[2], mapping.plan.visits[4], mapping.plan.visits[6]):
                 for projection in ("gate_up", "down"):
                     observed = owner.project_selected(visit, projection, expert_ids, x)

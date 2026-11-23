@@ -110,9 +110,13 @@ def test_staged_decode_keeps_independent_positions_and_scalar_math():
         assert all(current == visit for current, _, _ in jobs)
         assert [s.position for s in staged] == [1, 3]
         if visit.message_pass is not None:
-            for chains_per_row in (3, 1):
-                assert all(kind == "controllers" and len(chains) == chains_per_row for _, kind, chains in jobs)
-                jobs = [stream.send(model.project_chains(chains)) for stream, (_, _, chains) in zip(streams, jobs, strict=True)]
+            assert all(kind == "controllers" and len(chains) == 3 for _, kind, chains in jobs)
+            jobs = [stream.send(model.project_chains(chains)) for stream, (_, _, chains) in zip(streams, jobs, strict=True)]
+        assert all(kind == "attention_inputs" and transforms is None for _, kind, (_, transforms) in jobs)
+        jobs = [stream.send(model.project_groups(groups)) for stream, (_, _, (groups, _)) in zip(streams, jobs, strict=True)]
+        if visit.message_pass is not None:
+            assert all(kind == "controllers" and len(chains) == 1 for _, kind, chains in jobs)
+            jobs = [stream.send(model.project_chains(chains)) for stream, (_, _, chains) in zip(streams, jobs, strict=True)]
         assert all(kind == "experts" for _, kind, _ in jobs)
         jobs = [stream.send(model.feed_forward(visit, hidden, transform_output=consume))
                 for stream, (_, _, (hidden, consume)) in zip(streams, jobs, strict=True)]

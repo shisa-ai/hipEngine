@@ -366,7 +366,8 @@ class Inkling2TextSession:
                         return self.attention.step_block(visit.state_slot, pos, q, k, v, bias, sink,
                                                          projection=projection, **gate_kwargs)
 
-        a = self._attention(visit, self.states[visit.state_slot], get, q, k, v, attention_project=attention_project)
+        a = yield from self._attention(visit, self.states[visit.state_slot], get, q, k, v,
+                                       attention_project=attention_project, stage_projections=stage_controllers)
         if attention_project is None:
             if self.convolution is None:
                 a = static_conv("attn_sconv", project("attn.wo_ud.weight", a))
@@ -393,7 +394,7 @@ class Inkling2TextSession:
         return np.stack([self._convolve(visit, name, row, taps[i] if dynamic else taps, dynamic=dynamic, offset=i)
                          for i, row in enumerate(x)])
 
-    def _attention(self, visit, s, get, qi, ki, vi, *, attention_project=None):
+    def _attention(self, visit, s, get, qi, ki, vi, *, attention_project=None, stage_projections=False):
         c = self.model.config
         nh, nkv, dim = self.model.head_shape(visit)
         ksize = c["sconv_kernel_size"]
@@ -431,8 +432,20 @@ class Inkling2TextSession:
                     partial(self.convolution.apply_static, slot, "k", kt, position=pos),
                     partial(self.convolution.apply_static, slot, "v", vt, position=pos),
                 )
-                q, rel, sink, gate, k, v = self.model.project_many_transformed(names, qi, transforms)
+                if stage_projections:
+                    def consume_local(*outputs):
+                        for transform, output in zip(transforms, outputs, strict=True):
+                            if transform is not None:
+                                transform(*output)
+
+                    result = yield visit, "attention_inputs", (((names, qi),), (consume_local,))
+                    (q, rel, sink, gate, k, v), = result
+                else:
+                    q, rel, sink, gate, k, v = self.model.project_many_transformed(names, qi, transforms)
                 projected_conv = True
+            elif stage_projections:
+                result = yield visit, "attention_inputs", (((names, qi),), None)
+                (q, rel, sink, gate, k, v), = result
             else:
                 q, rel, sink, gate, k, v = self.model.project_many(names, qi)
         else:
@@ -445,10 +458,18 @@ class Inkling2TextSession:
                 slot = visit.state_slot
                 transforms = (None, partial(self.convolution.apply_dynamic, slot, "k", static_taps("k"), nkv),
                               partial(self.convolution.apply_dynamic, slot, "v", static_taps("v"), nkv))
-                (q, rel, sink, gate), (k, _), (v, _) = self.model.project_groups_transformed(groups, transforms)
+                if stage_projections:
+                    result = yield visit, "attention_inputs", (groups, transforms)
+                else:
+                    result = self.model.project_groups_transformed(groups, transforms)
+                (q, rel, sink, gate), (k, _), (v, _) = result
                 projected_conv = True
             else:
-                (q, rel, sink, gate), (k, *kd), (v, *vd) = self.model.project_groups(groups)
+                if stage_projections:
+                    result = yield visit, "attention_inputs", (groups, None)
+                else:
+                    result = self.model.project_groups(groups)
+                (q, rel, sink, gate), (k, *kd), (v, *vd) = result
                 kt, vt = kv_taps("k", *kd), kv_taps("v", *vd)
         if self.convolution is None:
             k = self._conv_rows(visit, "k", k, kt, dynamic=dynamic)

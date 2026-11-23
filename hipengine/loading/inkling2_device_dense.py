@@ -113,7 +113,8 @@ class Inkling2DeviceDense:
         """Feed each first projection directly into the remaining projections."""
         return self._project_groups(chains, native_bf16, pinned)
 
-    def _project_groups(self, chains, native_bf16, pinned, transform_outputs=None, *, transform_groups=None):
+    def _project_groups(self, chains, native_bf16, pinned, transform_outputs=None, *, transform_groups=None,
+                        transform_batch=None):
         with self._lock:
             if self._closed:
                 raise RuntimeError("Inkling 2 dense residency is closed")
@@ -150,10 +151,11 @@ class Inkling2DeviceDense:
             intermediate = out.ptr + output.nbytes
             input_offset = output_offset = 0
             results = []
+            resident_batch = [] if transform_batch is not None else None
             with self._transfer.exchange(inp.ptr, out.ptr, inputs, output, pinned=pinned):
                 for group_index, (x, rows, before, matrices) in enumerate(plans):
                     consume_group = None if transform_groups is None else transform_groups[group_index]
-                    resident = [] if consume_group is not None else None
+                    resident = [] if consume_group is not None or resident_batch is not None else None
                     src = inp.ptr + input_offset
                     if before is not None:
                         self._launch_projection(src, intermediate, rows, x.ndim, before, native_bf16)
@@ -173,8 +175,12 @@ class Inkling2DeviceDense:
                         output_offset = end
                     if consume_group is not None:
                         consume_group(*resident)
+                    if resident_batch is not None:
+                        resident_batch.append(tuple(resident))
                     results.append(tuple(group))
                     input_offset += x.nbytes
+                if transform_batch is not None:
+                    transform_batch(resident_batch)
             return tuple(results)
 
     def _launch_projection(self, src, dst, rows, ndim, matrix, native_bf16):

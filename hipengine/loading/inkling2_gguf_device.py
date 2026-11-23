@@ -176,6 +176,52 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 self._q8_prefill(inp, weight.ptr, out, len(x), inputs, padded)
             return y[:, :self._vocab]
 
+    def project_shared_attention_rows(self, inputs):
+        """Project independent attention rows in one exchange, retaining row-local consumers."""
+        plans = []
+        locations = [[] for _ in inputs]
+        for aligned in zip(*(groups for groups, _ in inputs), strict=True):
+            names = aligned[0][0]
+            if any(other != names or x.ndim != 1 for other, x in aligned):
+                raise ValueError("Inkling GGUF shared attention requires matching vector projection groups")
+            grouped, scalar = [], []
+            index = []
+            for name in names:
+                tensor = self._tensors[name]
+                share = self._q8_prefill is not None and tensor.ggml_type == Q.Q8_0 and tensor.shape[0] % 8 == 0
+                target = grouped if share else scalar
+                index.append((share, len(target)))
+                target.append(name)
+            common = len(plans)
+            if grouped:
+                plans.append((None, grouped, np.stack([x for _, x in aligned])))
+            for row, (_, x) in enumerate(aligned):
+                private = len(plans)
+                if scalar:
+                    plans.append((None, scalar, x))
+                locations[row].append(tuple((common if share else private, j, row if share else None)
+                                            for share, j in index))
+
+        def transform_batch(resident):
+            for (_, transforms), row in zip(inputs, locations, strict=True):
+                if transforms is None:
+                    continue
+                for consume, group in zip(transforms, row, strict=True):
+                    if consume is not None:
+                        outputs = []
+                        for i, j, idx in group:
+                            ptr, shape = resident[i][j]
+                            if idx is not None:
+                                ptr += idx * shape[1] * 4
+                                shape = shape[1:]
+                            outputs.append((ptr, shape))
+                        consume(*outputs)
+
+        has_transforms = any(transforms is not None for _, transforms in inputs)
+        outputs = self._project_groups(plans, None, True, transform_batch=transform_batch if has_transforms else None)
+        return tuple(tuple(tuple(outputs[i][j] if idx is None else outputs[i][j][idx] for i, j, idx in group)
+                           for group in row) for row in locations)
+
     def _launch_projection(self, src, dst, rows, ndim, matrix, native_bf16):
         weight, (m, n), packed = matrix
         if not packed:

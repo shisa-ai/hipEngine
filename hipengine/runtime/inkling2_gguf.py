@@ -128,6 +128,8 @@ class Inkling2GGUFText(Inkling2TextReference):
                         inputs.append(item)
                     if kind == "controllers":
                         outputs = self._project_decode_controllers(inputs)
+                    elif kind == "attention_inputs":
+                        outputs = self._project_decode_attention(inputs)
                     elif kind == "experts":
                         outputs = self._feed_forward_decode_rows(visit, inputs)
                     else:
@@ -142,6 +144,12 @@ class Inkling2GGUFText(Inkling2TextReference):
         # Keep the scalar vectors and their down/forget/gain dependencies.
         outputs = iter(self.project_chains(chain for chains in inputs for chain in chains))
         return [tuple(next(outputs) for _ in chains) for chains in inputs]
+
+    def _project_decode_attention(self, inputs):
+        tensors = self.weights.names
+        return self.projection.project_shared_attention_rows([
+            (tuple((tuple(tensors[name].name for name in names), x) for names, x in groups), transforms)
+            for groups, transforms in inputs])
 
     def head_shape(self, visit):
         layer = self.mapping.layers[visit.weight_layer]
