@@ -487,14 +487,14 @@ __global__ void gguf_k_prefill_out_kernel(
 
 // Each route shares the decoded weight but keeps the selected parent's K
 // order and the same wave sums, added in ascending wave order.
-template <int qtype>
+template <int qtype, int output_tile = 1>
 __launch_bounds__(128, 2)
 __global__ void gguf_k_selected_tile4_f32_kernel(
     const float* x, const uint8_t* weights, float* out, const int32_t* tiles,
     const float* scales, int rows, int experts, int inputs, int outputs) {
   constexpr int tile_width = 4;
   constexpr int waves = 4;
-  const int out_col = blockIdx.x;
+  const int out_col = blockIdx.x * output_tile;
   const int tid = threadIdx.x;
   const int32_t* tile = tiles + blockIdx.y * (tile_width + 1);
   const int expert = tile[0], first = tile[1];
@@ -504,7 +504,7 @@ __global__ void gguf_k_selected_tile4_f32_kernel(
   const uint8_t* w = weights + (int64_t(expert) * outputs + out_col) * row_bytes;
   const float* xrows[tile_width];
   int routes[tile_width];
-  float acc[tile_width] = {};
+  float acc[output_tile][tile_width] = {};
   #pragma unroll
   for (int r = 0; r < tile_width; ++r) {
     routes[r] = tile[r + 1];
@@ -512,23 +512,38 @@ __global__ void gguf_k_selected_tile4_f32_kernel(
     xrows[r] = x + int64_t(row) * inputs;
   }
   for (int k = tid; k < inputs; k += blockDim.x) {
-    const float wv = qtype == 8 ? q8_0_weight(w, k) : q5_k_weight(w, k);
+    float wv[output_tile];
     #pragma unroll
-    for (int r = 0; r < tile_width; ++r) acc[r] += xrows[r][k] * wv;
+    for (int c = 0; c < output_tile; ++c) {
+      const uint8_t* wc = w + c * row_bytes;
+      wv[c] = qtype == 8 ? q8_0_weight(wc, k) : q5_k_weight(wc, k);
+    }
+    #pragma unroll
+    for (int r = 0; r < tile_width; ++r) {
+      const float xv = xrows[r][k];
+      #pragma unroll
+      for (int c = 0; c < output_tile; ++c) acc[c][r] += xv * wv[c];
+    }
   }
-  __shared__ float wave_sums[tile_width][waves];
+  __shared__ float wave_sums[output_tile][tile_width][waves];
   #pragma unroll
-  for (int r = 0; r < tile_width; ++r) {
-    for (int offset = 16; offset > 0; offset >>= 1) acc[r] += __shfl_down(acc[r], offset);
-    if ((tid & 31) == 0) wave_sums[r][tid >> 5] = acc[r];
+  for (int c = 0; c < output_tile; ++c) {
+    #pragma unroll
+    for (int r = 0; r < tile_width; ++r) {
+      for (int offset = 16; offset > 0; offset >>= 1) acc[c][r] += __shfl_down(acc[c][r], offset);
+      if ((tid & 31) == 0) wave_sums[c][r][tid >> 5] = acc[c][r];
+    }
   }
   __syncthreads();
   if (tid < tile_width && routes[tid] >= 0 && routes[tid] < rows) {
-    float total = 0.0f;
-    #pragma unroll
-    for (int wave = 0; wave < waves; ++wave) total += wave_sums[tid][wave];
     const int row = routes[tid];
-    out[int64_t(row) * outputs + out_col] = scales ? total * scales[row] : total;
+    #pragma unroll
+    for (int c = 0; c < output_tile; ++c) {
+      float total = 0.0f;
+      #pragma unroll
+      for (int wave = 0; wave < waves; ++wave) total += wave_sums[c][tid][wave];
+      out[int64_t(row) * outputs + out_col + c] = scales ? total * scales[row] : total;
+    }
   }
 }
 
@@ -5577,6 +5592,13 @@ extern "C" int hipengine_##NAME##_selected_tile4_raw_f32_f32_out( \
   constexpr int block_size = QTYPE == 8 ? Q8_0_BLOCK : QK_K; \
   if (!x || !weights || !out || !tiles || tile_count <= 0 || tile_count > 65535 || rows <= 0 || \
       experts <= 0 || inputs <= 0 || inputs % block_size || outputs <= 0) return hipErrorInvalidValue; \
+  if constexpr (QTYPE == 5) { \
+    if (outputs >= 2048 && outputs % 2 == 0) { \
+      gguf_k_selected_tile4_f32_kernel<QTYPE, 2><<<dim3(outputs / 2, tile_count), 128, 0, stream>>>( \
+          x, weights, out, tiles, scales, rows, experts, inputs, outputs); \
+      return hipGetLastError(); \
+    } \
+  } \
   gguf_k_selected_tile4_f32_kernel<QTYPE><<<dim3(outputs, tile_count), 128, 0, stream>>>( \
       x, weights, out, tiles, scales, rows, experts, inputs, outputs); \
   return hipGetLastError(); \

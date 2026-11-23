@@ -1,4 +1,5 @@
 import ctypes
+from contextlib import ExitStack
 from unittest.mock import Mock
 
 import numpy as np
@@ -224,3 +225,52 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
                 np.testing.assert_array_equal(candidate.view(np.uint32), control.view(np.uint32))
     finally:
         blas.close()
+
+
+@pytest.mark.parametrize("outputs", [19, 2047, 2048, 2049, 2304])
+def test_q5_selected_tiles_match_individual_routes_at_pair_boundary(outputs):
+    from hipengine.core.hip import HipMemcpyKind as Copy
+    from hipengine.kernels.backends import hip_target_arch_for_backend
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+        _make_selected_raw_f32, _make_selected_tile4_raw_f32, build_gguf_k_gemv,
+    )
+    from hipengine.loading.inkling2_device_experts import build_expert_route_tiles
+
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP unavailable: {exc}")
+    backend = resolve_backend("auto", execution_device=True)
+    if backend not in ("hip_gfx1100", "hip_gfx1151"):
+        pytest.skip("test requires gfx1100 or gfx1151")
+    runtime = get_hip_runtime()
+    library = build_gguf_k_gemv(target_arch=hip_target_arch_for_backend(backend))
+    rng = np.random.default_rng(1793)
+    ids = np.array([0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0], np.int32)
+    weights = rng.integers(0, 256, (2, outputs, 9, 176), dtype=np.uint8)
+    weights[..., :4] = np.array([0.002, 0.001], dtype="<f2").view(np.uint8)
+    x = rng.standard_normal((len(ids), 2304), dtype=np.float32)
+    scales = rng.uniform(-1, 1, len(ids)).astype(np.float32)
+    tiles = build_expert_route_tiles(ids, 4)
+    scores = np.empty((len(ids), outputs), dtype=np.float32)
+    one = _make_selected_raw_f32("gguf_q5_k")
+    tiled = _make_selected_tile4_raw_f32("gguf_q5_k")
+    with ExitStack() as owned:
+        def allocate(nbytes):
+            ptr = runtime.malloc(nbytes)
+            owned.callback(runtime.free, ptr)
+            return ptr
+
+        def upload(data):
+            ptr = allocate(data.nbytes)
+            runtime.memcpy(ptr, data.ctypes.data, data.nbytes, Copy.HOST_TO_DEVICE)
+            return ptr
+
+        xp, wp, ip, sp, tp = map(upload, (x, weights, ids, scales, tiles))
+        out = allocate(scores.nbytes)
+        one(xp, wp, out, ip, sp, len(ids), 2, x.shape[1], outputs, runtime=runtime, library=library)
+        runtime.memcpy(scores.ctypes.data, out, scores.nbytes, Copy.DEVICE_TO_HOST)
+        expected = scores.view(np.uint32).copy()
+        tiled(xp, wp, out, tp, sp, len(tiles), len(ids), 2, x.shape[1], outputs, runtime=runtime, library=library)
+        runtime.memcpy(scores.ctypes.data, out, scores.nbytes, Copy.DEVICE_TO_HOST)
+        np.testing.assert_array_equal(scores.view(np.uint32), expected)
