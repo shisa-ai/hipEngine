@@ -57,7 +57,7 @@ class Inkling2ReferenceGenerator:
     def _load_drafter(self):
         if not self.supports_speculative_mtp:
             raise NotImplementedError("Inkling 2 DSpark needs mtp_config and mtp.safetensors")
-        return Inkling2DSpark(self.model, self.draft_path)
+        return Inkling2DSpark.from_safetensors(self.model, self.draft_path)
 
     def _generate_batch(self, request, *, drafter=None):
         request, rows = self._prepare_text_rows(request, speculative=drafter is not None)

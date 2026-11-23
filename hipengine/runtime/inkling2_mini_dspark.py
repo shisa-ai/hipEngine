@@ -27,12 +27,16 @@ def markov_step(state, token, hidden, context, base, joint_w, joint_b, out_w, ou
 
 
 class Inkling2DSpark:
-    def __init__(self, model, draft_path):
+    @classmethod
+    def from_safetensors(cls, model, draft_path):
         index = load_weight_index(draft_path)
-        self.cfg = index.config["mtp_config"]
+        return cls(model, Inkling2TextWeights(index, namespace=""), index.config["mtp_config"])
+
+    def __init__(self, model, weights, config):
+        self.cfg = config
         self.target = model
         self.kv_factory = None
-        self.weights = Inkling2TextWeights(index, namespace="")
+        self.weights = weights
         self.taps = tuple(self.cfg["target_layer_ids"])
         if (self.cfg["markov_head_type"] != "rnn_hidden" or self.cfg.get("q_bias") or self.cfg.get("o_bias")
                 or self.cfg["hidden_size"] != model.config["hidden_size"]):
