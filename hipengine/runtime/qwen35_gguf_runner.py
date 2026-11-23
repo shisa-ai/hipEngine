@@ -9134,9 +9134,11 @@ def _gguf_bulk_prefill_initial_hidden_capacity(
 
     A session whose KV allocation is deferred (the serving owner), that is not
     an external-DMS session, has no expert sidecar, and whose plan requires
-    more than one chunk's worth of hidden rows, starts chunk-sized. Everything
-    else keeps the full-prompt capacity it always had, so CLI/standalone
-    sessions, DMS ``dense_pool``/``layer_outer`` prefill, and expert-sidecar
+    more than one chunk's worth of hidden rows, starts chunk-sized. Layer-outer
+    DMS also starts chunk-sized: it reserves prompt plus output context, but its
+    planes only hold the prompt, and its prefill entry grows to that prompt.
+    Everything else keeps the full-prompt capacity it always had, so
+    CLI/standalone sessions, DMS ``dense_pool`` prefill, and expert-sidecar
     prefill are untouched.
 
     The returned capacity is a floor, not a cap: every full-prompt consumer
@@ -9163,6 +9165,15 @@ def _gguf_bulk_prefill_initial_hidden_capacity(
         use_expert_sidecar=use_expert_sidecar,
         dms_prefill_mode=dms_prefill_mode,
     )
+    # Layer-outer DMS reserves the full logical context (prompt plus output)
+    # but its bulk planes only ever hold the prompt. Start chunk-sized and let
+    # the prefill entry grow to the actual prompt; at a 256K configured context
+    # the full-context planes alone exhausted device memory before pass one.
+    dms_layer_outer = (
+        dms_prefill_mode == "layer_outer"
+        and not bool(use_expert_sidecar)
+        and full_prompt_capacity > chunk_rows
+    )
     deferred = (
         bool(defer_kv_allocation)
         and not bool(dms_serving)
@@ -9170,7 +9181,7 @@ def _gguf_bulk_prefill_initial_hidden_capacity(
         and dms_prefill_mode != "layer_outer"
         and full_prompt_capacity > chunk_rows
     )
-    return chunk_rows if deferred else full_prompt_capacity
+    return chunk_rows if (deferred or dms_layer_outer) else full_prompt_capacity
 
 
 # B2: opt-in fused selected-expert MoE FFN megakernel for rows==1 raw-Q4_K decode.
@@ -19021,6 +19032,20 @@ class Qwen35GGUFResidentSession:
                 raise ValueError(
                     f"GGUF bulk prefill requires at least {min_bulk_tokens} tokens; got {len(token_ids)}"
                 )
+            if internal_dms_capture and self.dms_prefill_mode == "layer_outer":
+                try:
+                    # Grow to the prompt before the prefill contexts below bind
+                    # the workspace; both DMS passes then find it covered.
+                    self._ensure_bulk_prefill_workspace()
+                    self._ensure_bulk_prefill_hidden_capacity(
+                        len(token_ids),
+                        runtime=self.runtime or get_hip_runtime(),
+                        consumer="layer-outer DMS prefill",
+                        target_hidden_chunk_sink=target_hidden_chunk_sink,
+                    )
+                except BaseException:
+                    dms_capture.close()
+                    raise
             with (
                 closing(dms_capture) if internal_dms_capture else nullcontext(),
                 q8_t16_two_wave_prefill_session(

@@ -139,7 +139,10 @@ def test_initial_capacity_is_chunk_sized_for_a_deferred_serving_owner() -> None:
             {"defer_kv_allocation": False},
         ),
         ("external_dms_serving", {"dms_serving": True}),
-        ("dms_layer_outer", {"dms_prefill_mode": "layer_outer"}),
+        (
+            "external_dms_dense_pool",
+            {"dms_serving": True, "dms_prefill_mode": "dense_pool"},
+        ),
         ("expert_sidecar", {"use_expert_sidecar": True}),
     ],
 )
@@ -154,6 +157,34 @@ def test_initial_capacity_keeps_full_prompt_storage_on_every_other_route(
         **{"defer_kv_allocation": True, **kwargs},
     )
     assert capacity == CAPACITY, label
+
+
+@pytest.mark.parametrize("dms_serving", [False, True])
+@pytest.mark.parametrize("defer_kv_allocation", [False, True])
+def test_layer_outer_dms_starts_chunk_sized_and_grows_to_the_prompt_ceiling(
+    dms_serving: bool, defer_kv_allocation: bool
+) -> None:
+    """Layer-outer DMS planes hold the prompt, never the reserved output."""
+
+    kwargs = dict(
+        plan_mode="layer_outer_shared_oracle",
+        plan_required_hidden_capacity=CAPACITY,
+        prefill_capacity=CAPACITY,
+        chunk_rows=CHUNK_ROWS,
+        dms_prefill_mode="layer_outer",
+        dms_serving=dms_serving,
+        defer_kv_allocation=defer_kv_allocation,
+    )
+    assert gguf_runner._gguf_bulk_prefill_initial_hidden_capacity(**kwargs) == CHUNK_ROWS
+    assert gguf_runner._gguf_bulk_prefill_full_prompt_capacity(
+        plan_required_hidden_capacity=CAPACITY,
+        prefill_capacity=CAPACITY,
+        dms_prefill_mode="layer_outer",
+    ) == CAPACITY
+    sidecar = gguf_runner._gguf_bulk_prefill_initial_hidden_capacity(
+        **{**kwargs, "use_expert_sidecar": True}
+    )
+    assert sidecar == CAPACITY
 
 
 def test_initial_capacity_leaves_chunk_plans_alone() -> None:
@@ -260,6 +291,97 @@ def test_dms_and_expert_sidecar_construction_is_unchanged(monkeypatch) -> None:
     )
     sidecar._allocate_bulk_prefill_workspace(SimpleNamespace())
     assert sidecar._prefill_hidden_a.nbytes == CAPACITY * ROW_NBYTES
+
+
+@pytest.mark.parametrize("prompt", [1, CHUNK_ROWS, 1_777, CAPACITY])
+def test_layer_outer_dms_session_holds_prompt_rows_not_logical_context(
+    monkeypatch, prompt: int
+) -> None:
+    session, _freed, _allocations = _fake_session(
+        monkeypatch,
+        dms_metadata_path="/tmp/dms.json",
+        dms_prefill_mode="layer_outer",
+        defer_kv_allocation=False,
+    )
+    session._allocate_bulk_prefill_workspace(SimpleNamespace())
+    geometry = session._bulk_prefill_scratch
+    assert session._prefill_hidden_a.nbytes == CHUNK_ROWS * ROW_NBYTES
+    assert session._prefill_token_buf.nbytes == CHUNK_ROWS * 8
+    rows = session._ensure_bulk_prefill_hidden_capacity(prompt)
+    assert rows == max(CHUNK_ROWS, prompt)
+    assert session._prefill_hidden_a.nbytes == rows * ROW_NBYTES
+    assert session._prefill_token_buf.nbytes == rows * 8
+    # Logical context and attention scratch geometry are untouched.
+    assert session.scratch.max_positions == CAPACITY
+    assert session._bulk_prefill_scratch is geometry
+
+
+def _layer_outer_dms_prefill_session(monkeypatch):
+    from contextlib import nullcontext
+
+    session, _freed, _allocations = _fake_session(
+        monkeypatch,
+        dms_metadata_path="/tmp/dms.json",
+        dms_prefill_mode="layer_outer",
+        defer_kv_allocation=False,
+        _dms_source=object(),
+    )
+    session._allocate_bulk_prefill_workspace(SimpleNamespace())
+
+    closed: list[str] = []
+
+    class Collector:
+        requires_teacher_logits = False
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def close(self):
+            closed.append("collector")
+
+    monkeypatch.setattr(gguf_runner, "_ExternalDMSDevicePrefillCollector", Collector)
+    for name in ("_prefill_f16_staging_context", "_wide_f16_activation_context",
+                 "_q6_integer_mmq_context", "_iq_dense_mmq_context",
+                 "_q8_mmq_prefill_context"):
+        setattr(session, name, lambda *args, **kwargs: nullcontext())
+    return session, closed, nullcontext
+
+
+def test_layer_outer_dms_entry_grows_before_contexts_bind(monkeypatch) -> None:
+    session, _closed, nullcontext = _layer_outer_dms_prefill_session(monkeypatch)
+    bound: list[int] = []
+
+    def capture_context(*args, **kwargs):
+        bound.append(session._prefill_hidden_a.nbytes)
+        return nullcontext()
+
+    session._q6_integer_mmq_context = capture_context
+
+    def stop(collector, token_ids, **kwargs):
+        assert session._prefill_hidden_a.nbytes == 1_777 * ROW_NBYTES
+        raise _GrowthProbe("reached layer-outer DMS")
+
+    session._prefill_layer_outer_dms = stop
+    with pytest.raises(_GrowthProbe):
+        session.prefill([1] * 1_777, return_logits=False)
+    assert bound == [1_777 * ROW_NBYTES]
+
+
+def test_layer_outer_dms_entry_reacquires_and_closes_collector_on_failure(
+    monkeypatch,
+) -> None:
+    session, closed, _nullcontext = _layer_outer_dms_prefill_session(monkeypatch)
+    session._release_bulk_prefill_workspace()
+    assert session._bulk_prefill_scratch is None
+
+    def fail(rows, **kwargs):
+        assert session._bulk_prefill_scratch is not None, "workspace re-acquired first"
+        raise MemoryError("injected growth failure")
+
+    session._ensure_bulk_prefill_hidden_capacity = fail
+    with pytest.raises(MemoryError, match="injected"):
+        session.prefill([1] * 1_777, return_logits=False)
+    assert closed == ["collector"]
 
 
 # --------------------------------------------------------------------------

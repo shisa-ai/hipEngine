@@ -35,14 +35,20 @@ class Qwen35GGUFDMSModelRunner(Qwen35GGUFResidentModelRunner):
         result = super().observability_snapshot()
         session = self._session
         backend = None if session is None else getattr(session, "_dms_backend", None)
-        result["retention"] = {"policy": "dms", "storage": self.generator._prepared_kv_signature[0],
+        result["retention"] = {"policy": "dms", "storage": self._compact_storage(),
                                "prefill_mode": self.generator.dms_config.prefill_mode,
                                "compact": None if backend is None else backend.observability_snapshot()}
         return result
 
+    def _compact_storage(self):
+        # The prepared KV signature names the compact codec. Before the first
+        # session is prepared there is none, and DMS defaults to BF16.
+        signature = getattr(self.generator, "_prepared_kv_signature", None)
+        return "bf16" if signature is None else signature[0]
+
     def _execution_metadata(self, row):
         result = super()._execution_metadata(row)
-        result["retention"] = {"policy": "dms", "storage": self.generator._prepared_kv_signature[0],
+        result["retention"] = {"policy": "dms", "storage": self._compact_storage(),
                                "prefill_mode": self.generator.dms_config.prefill_mode,
                                "decision_mode": self.generator.dms_config.decision_mode}
         return result

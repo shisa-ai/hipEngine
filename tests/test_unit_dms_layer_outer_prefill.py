@@ -164,8 +164,11 @@ def test_layer_outer_hidden_workspace_covers_full_prompt(monkeypatch) -> None:
     session, _ = _fake_session(monkeypatch, capacity=73_728)
     session.__dict__["dms_prefill_mode"] = "layer_outer"
     session._allocate_bulk_prefill_workspace(SimpleNamespace())
-    # The hidden plane(s) cover the whole prompt (the real backend policy
-    # additionally reuses one plane in place at these row counts).
+    # Construction is chunk-sized; the DMS prefill entry grows the plane(s) to
+    # cover the whole prompt (the real backend policy additionally reuses one
+    # plane in place at these row counts).
+    assert session._prefill_hidden_a.nbytes == 768 * 5120 * DType.BF16.itemsize
+    session._ensure_bulk_prefill_hidden_capacity(73_728)
     expected = 73_728 * 5120 * DType.BF16.itemsize
     assert session._prefill_hidden_a.nbytes == expected
     assert session._prefill_hidden_b.nbytes == expected
@@ -221,6 +224,10 @@ def test_layer_outer_hidden_alias_env_gates_single_plane(monkeypatch) -> None:
     assert (
         session._prefill_hidden_a.ptr == session._prefill_hidden_b.ptr
     ), "alias-enabled layer_outer route must reuse one physical plane"
+    session._ensure_bulk_prefill_hidden_capacity(8_192)
+    assert (
+        session._prefill_hidden_a.ptr == session._prefill_hidden_b.ptr
+    ), "growth keeps the aliased single plane"
     expected = 8_192 * 5120 * DType.BF16.itemsize
     assert session._prefill_hidden_a.nbytes == expected
 
