@@ -30,7 +30,8 @@ from hipengine.tokenization.inkling2_gguf import inkling2_gguf_tokenizer
 
 class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
     supports_vision = False
-    packed_verification = True
+    # Packed target verification changed ordinary fast output on the GGUF prompt suite.
+    packed_verification = False
     vision = None
     prefill_block_width = 64
     engine_loop_config_defaults = {

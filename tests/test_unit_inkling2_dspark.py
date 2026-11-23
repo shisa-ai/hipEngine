@@ -2,8 +2,10 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from hipengine.generation import GenerationRequest
+from hipengine.generation.inkling2_gguf import Inkling2GGUFGenerator
 from hipengine.generation.inkling2_mini import Inkling2ReferenceGenerator
 
 from hipengine.runtime.inkling2_mini_dspark import markov_step
@@ -24,7 +26,8 @@ def test_markov_head_carries_state_and_adds_target_unembed_correction_before_sof
     np.testing.assert_array_equal(state, [0.5])
 
 
-def test_serial_verification_drops_failed_suffix_and_only_commits_target_tokens():
+@pytest.mark.parametrize("generator", [Inkling2ReferenceGenerator, Inkling2GGUFGenerator])
+def test_serial_verification_drops_failed_suffix_and_only_commits_target_tokens(generator):
     seen = []
     draft_seen = []
 
@@ -37,8 +40,9 @@ def test_serial_verification_drops_failed_suffix_and_only_commits_target_tokens(
             scores[token + 1] = 10
             return scores if logits else None
 
-    gen = Inkling2ReferenceGenerator.__new__(Inkling2ReferenceGenerator)
-    gen.model = SimpleNamespace(session=lambda _: Target())
+    gen = generator.__new__(generator)
+    gen.model = SimpleNamespace(session=lambda _: Target(), ffn_device_output=False,
+                                projection=SimpleNamespace(supports_device_activation=False))
     gen.max_sequence_length = 6
     gen.eos_token_id = 7
     gen.detokenize = lambda tokens: str(tokens)

@@ -282,14 +282,17 @@ class Inkling2TextSession:
         self.position += width
         if not logits and capture is None:
             return None
-        if last_only and capture is None:
-            h = h[-1]
-            blocks = [block[-1] for block in blocks]
-        h = self._output_hidden(h, blocks)
-        if capture is not None:
-            capture(len(self.model.plan.visits), h)
-            if last_only:
-                h = h[-1]
+        if last_only:
+            if capture is not None:
+                capture(len(self.model.plan.visits), self._output_hidden(h, blocks))
+            if not logits:
+                return None
+            # The first sampled score must use the same reduction with or without tap capture.
+            h = self._output_hidden(h[-1], [block[-1] for block in blocks])
+        else:
+            h = self._output_hidden(h, blocks)
+            if capture is not None:
+                capture(len(self.model.plan.visits), h)
         if not logits:
             return None
         return self.model.cap_logits(self.model.project_logits(h))

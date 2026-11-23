@@ -25,7 +25,7 @@ class Inkling2DSparkProvider:
 
     def capabilities(self):
         return {"provider": self.provider_name, "candidate_budget": self._draft.cfg["block_size"] - 1,
-                "verification": "packed_target", "streaming": False}
+                "verification": "serial_target", "streaming": False}
 
     def close(self):
         self._owner.close()

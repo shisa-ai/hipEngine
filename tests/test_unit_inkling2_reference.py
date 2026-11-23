@@ -172,6 +172,25 @@ def test_prefill_block_keeps_state_and_only_projects_final_row():
     np.testing.assert_allclose(packed.step(0), serial.step(0), atol=1e-6)
 
 
+def test_capture_preserves_the_ordinary_prefill_logit_shape_and_values():
+    model = Inkling2TextReference(_config(), TinyWeights())
+    ordinary, captured = model.session(8), model.session(8)
+    finalize = captured._output_hidden
+    taps = {}
+
+    def shape_sensitive(h, blocks):
+        # Model a different reduction order when all rows are normalized together.
+        return finalize(h, blocks) + (np.float32(0.125) if h.ndim == 2 else np.float32(0.0))
+
+    captured._output_hidden = shape_sensitive
+    tokens = (0, 1, 2)
+    want = ordinary.prefill_block(tokens)
+    got = captured.prefill_block(tokens, capture=lambda i, h: taps.update({i: h.copy()}))
+    np.testing.assert_array_equal(got.view(np.uint32), want.view(np.uint32))
+    assert taps[len(model.plan.visits)].shape == (3, 2)
+    assert ordinary.position == captured.position == 3
+
+
 @pytest.mark.parametrize("keep", [0, 1, 3])
 def test_provisional_block_rolls_back_rejected_suffix_across_multiple_wraps(keep):
     model = Inkling2TextReference(_config(), TinyWeights())
