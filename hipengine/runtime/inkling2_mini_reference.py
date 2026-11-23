@@ -487,16 +487,23 @@ class Inkling2TextSession:
                 key_names += ("k_sconv.weight_proj",)
                 value_names += ("v_sconv.weight_proj",)
             groups = ((names_in_layer(query_names), qi), (names_in_layer(key_names), ki), (names_in_layer(value_names), vi))
-            if (dynamic and self.convolution is not None and self.convolution.launch_dynamic is not None
-                    and self.model.project_groups_transformed is not None and self._undo is None):
+            if (self.convolution is not None and self.model.project_groups_transformed is not None and self._undo is None
+                    and (self.convolution.launch_dynamic is not None if dynamic else not batch)):
                 slot = visit.state_slot
-                transforms = (None, partial(self.convolution.apply_dynamic, slot, "k", static_taps("k"), nkv),
-                              partial(self.convolution.apply_dynamic, slot, "v", static_taps("v"), nkv))
+                if dynamic:
+                    transforms = (None, partial(self.convolution.apply_dynamic, slot, "k", static_taps("k"), nkv),
+                                  partial(self.convolution.apply_dynamic, slot, "v", static_taps("v"), nkv))
+                else:
+                    def consume_static(name, projected):
+                        self.convolution.apply_static(slot, name, kv_taps(name), *projected, position=pos)
+
+                    transforms = (None, partial(consume_static, "k"), partial(consume_static, "v"))
                 if stage_projections:
                     result = yield visit, "attention_inputs", (groups, transforms)
                 else:
                     result = self.model.project_groups_transformed(groups, transforms)
-                (q, rel, sink, gate), (k, _), (v, _) = result
+                (q, rel, sink, gate), keys, values = result
+                k, v = keys[0], values[0]
                 projected_conv = True
             else:
                 if stage_projections:

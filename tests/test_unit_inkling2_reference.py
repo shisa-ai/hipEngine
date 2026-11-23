@@ -126,6 +126,45 @@ def test_reference_decodes_causally_with_separate_local_and_loop_states():
     assert fresh[1] == 0 and logits[1] > 0
 
 
+@pytest.mark.parametrize("staged", [False, True])
+def test_distinct_local_inputs_consume_static_kv_before_download(staged):
+    model = Inkling2TextReference(_config(), TinyWeights())
+    session = model.session(3)
+    visit = model.plan.visits[0]
+    assert visit.is_local
+    consumed = []
+
+    class Convolution:
+        def apply_static(self, slot, name, taps, ptr, shape, *, position):
+            consumed.append((slot, name, ptr, shape, position))
+
+        def step_kv(self, *args, **kwargs):
+            pytest.fail("distinct local inputs used a second convolution exchange")
+
+    def project(groups, transforms):
+        outputs = model.project_groups(groups)
+        assert transforms[0] is None
+        for ptr, transform, (row,) in zip((1, 2), transforms[1:], outputs[1:], strict=True):
+            transform((ptr, row.shape))
+        return outputs
+
+    session.convolution = Convolution()
+    model.project_groups_transformed = project
+    q, k, v = np.eye(2, dtype=np.float32)[0], np.eye(2, dtype=np.float32)[1], np.ones(2, dtype=np.float32)
+    layer = f"layers.{visit.weight_layer}."
+    traversal = session._attention(visit, session.states[visit.state_slot], lambda name: model.weights.dense(layer + name),
+                                   q, k, v, stage_projections=staged)
+    if staged:
+        actual_visit, kind, (groups, transforms) = next(traversal)
+        assert (actual_visit, kind) == (visit, "attention_inputs")
+        with pytest.raises(StopIteration):
+            traversal.send(project(groups, transforms))
+    else:
+        with pytest.raises(StopIteration):
+            next(traversal)
+    assert consumed == [(visit.state_slot, "k", 1, (2,), 0), (visit.state_slot, "v", 2, (2,), 0)]
+
+
 def test_staged_decode_keeps_independent_positions_and_scalar_math():
     model = Inkling2TextReference(_config(), TinyWeights())
     controls = [model.session(6) for _ in range(2)]
