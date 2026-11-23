@@ -323,9 +323,37 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             self._tiled_launches[quant](src, weight, out, ids_ptr, scales_ptr, len(tiles), routes, experts, n, m)
 
     def project_experts_mixed(self, visit, ids, mix, hidden, *, transform_output=None):
-        """Keep the gate/up, activation, down projection, and ordered mix on stream zero."""
+        return self.project_experts_mixed_rows(visit, ((ids, mix, hidden, transform_output),))[0]
+
+    def project_experts_mixed_rows(self, visit, inputs):
+        """Share an exchange, not the scalar or prefill arithmetic of any expert chain."""
         if self._activation is None:
             raise RuntimeError("Inkling GGUF split expert activation is not enabled")
+        if not inputs:
+            return ()
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling GGUF projection residency is closed")
+            plans = [self._plan_expert_chain(visit, ids, mix, hidden, transform)
+                     for ids, mix, hidden, transform in inputs]
+            packed = np.concatenate([data for parts, *_ in plans for data in parts])
+            result = np.empty(sum(size for _, _, size, *_ in plans), np.float32)
+            if pack_values := max(plan[4] for plan in plans):
+                self._q8_scratch_ptr(pack_values)
+            inp = self._scratch("_input", packed.nbytes).ptr
+            out = self._scratch("_output", result.nbytes + max(plan[3] for plan in plans)).ptr
+            interim = out + result.nbytes
+            results = []
+            input_offset = output_offset = 0
+            with self._transfer.exchange(inp, out, packed, result, pinned=True):
+                for parts, shape, size, _, _, launch in plans:
+                    launch(inp + input_offset, out + output_offset * result.itemsize, interim)
+                    results.append(result[output_offset:output_offset + size].reshape(shape))
+                    input_offset += sum(part.nbytes for part in parts)
+                    output_offset += size
+            return tuple(results)
+
+    def _plan_expert_chain(self, visit, ids, mix, hidden, transform_output):
         mapping = self._weights.mapping
         layer = mapping.layers[visit.weight_layer]
         gate, down = layer.gate_up, layer.down
@@ -337,8 +365,8 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             raise ValueError("invalid Inkling GGUF fused expert projection geometry")
         flat_ids = np.ascontiguousarray(ids.ravel(), dtype=np.int32)
         routes, k = ids.size, ids.shape[-1]
-        result = np.empty((*ids.shape[:-1], dm), np.float32)
-        itemsize = result.itemsize
+        shape = (*ids.shape[:-1], dm)
+        itemsize = np.dtype(np.float32).itemsize
         single_top8 = ids.ndim == 1 and routes == 8
         shared_q8 = (self._shared_q8_dot is not None and single_top8 and gn in (1152, 2304) and gm == 2304
                      and gate.weight.ggml_type == Q.NVFP4)
@@ -370,37 +398,34 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
 
             return data, launch
 
-        with self._lock:
-            if self._closed:
-                raise RuntimeError("Inkling GGUF projection residency is closed")
-            # Reserve the largest Q8 pack before launching either projection; growing scratch
-            # within the exchange would free storage still in use by the gate projection.
-            if shared_q8:
-                down_q8 = dm == 2304 and down.weight.ggml_type == Q.NVFP4
-                self._q8_scratch_ptr(max(gn, routes * dn) if down_q8 else gn)
-            gate_data, launch_gate = prepare(gate, np.atleast_2d(hidden), repeats=k, shared=shared_q8)
-            down_data, launch_down = prepare(down, None, extra=routes, fused=split_q8)
-            down_data[-routes:] = mix.ravel()
-            packed = np.concatenate((gate_data, down_data))
-            inp = self._scratch("_input", packed.nbytes).ptr
-            # Gate/up and down outputs do not overlap in time; reuse their storage.
-            intermediate_bytes = routes * max(gm, dm) * itemsize
-            activation_bytes = 0 if split_q8 else routes * dn * itemsize
-            out = self._scratch("_output", result.nbytes + intermediate_bytes + activation_bytes).ptr
-            interim = out + result.nbytes
-            mix_ptr = inp + packed.nbytes - routes * itemsize
-            with self._transfer.exchange(inp, out, packed, result, pinned=True):
-                launch_gate(inp, interim, inp)
-                if split_q8:
-                    active = interim
-                else:
-                    active = interim + intermediate_bytes
-                    self._activation(interim, active, routes, dn, mapping.gate_cap, mapping.up_cap)
-                launch_down(active, interim, inp + gate_data.nbytes)
-                self._mix(interim, mix_ptr, out, k, dm, tokens=routes // k)
-                if transform_output is not None:
-                    transform_output(out, result.shape)
-        return result
+        gate_data, launch_gate = prepare(gate, np.atleast_2d(hidden), repeats=k, shared=shared_q8)
+        down_data, launch_down = prepare(down, None, extra=routes, fused=split_q8)
+        down_data[-routes:] = mix.ravel()
+        # Reserve one maximum before any launch: it stays live across the
+        # exchange, and stream order makes interim storage reusable.
+        gate_pack = gn if shared_q8 else (
+            routes * gn if self._q8_dot is not None and single_top8 and gn in (1152, 2304) and gm == 2304
+            and gate.weight.ggml_type == Q.NVFP4 else 0)
+        down_pack = (routes * dn if split_q8 or (
+            self._q8_dot is not None and single_top8 and dn in (1152, 2304) and dm == 2304
+            and down.weight.ggml_type == Q.NVFP4) else 0)
+        intermediate_bytes = routes * max(gm, dm) * itemsize
+        activation_bytes = 0 if split_q8 else routes * dn * itemsize
+        mix_offset = gate_data.nbytes + down_data.nbytes - routes * itemsize
+
+        def launch(inp, out, interim):
+            launch_gate(inp, interim, inp)
+            active = interim
+            if not split_q8:
+                active += intermediate_bytes
+                self._activation(interim, active, routes, dn, mapping.gate_cap, mapping.up_cap)
+            launch_down(active, interim, inp + gate_data.nbytes)
+            self._mix(interim, inp + mix_offset, out, k, dm, tokens=routes // k)
+            if transform_output is not None:
+                transform_output(out, shape)
+
+        return ((gate_data, down_data), shape, (routes // k) * dm, intermediate_bytes + activation_bytes,
+                max(gate_pack, down_pack), launch)
 
     def project_down_mixed(self, visit, ids, mix, activated, *, transform_output=None):
         """Keep the selected down projection, ordered mix and optional consumer on device."""

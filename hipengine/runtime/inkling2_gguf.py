@@ -185,11 +185,12 @@ class Inkling2GGUFText(Inkling2TextReference):
         # owner still launches the per-row GEMV, not FP32 GEMM.
         name = f"layers.{visit.weight_layer}.mlp.gate.weight"
         scores = self.project_groups((((name,), hidden) for hidden, _ in inputs))
-        outputs = []
-        for (hidden, transform), (logits,) in zip(inputs, scores, strict=True):
-            ids, mix = self._select_routes(visit, logits)
-            outputs.append(self._feed_forward_routes(visit, hidden, ids, mix, transform_output=transform))
-        return outputs
+        jobs = [(*self._select_routes(visit, logits), hidden, transform)
+                for (hidden, transform), (logits,) in zip(inputs, scores, strict=True)]
+        if self.projection.supports_device_activation:
+            return self.projection.project_experts_mixed_rows(visit, jobs)
+        return [self._feed_forward_routes(visit, hidden, ids, mix, transform_output=transform)
+                for ids, mix, hidden, transform in jobs]
 
     def _cpu_selected(self, visit, projection, ids, inputs):
         return np.stack([self.gguf.project_expert(visit, projection, e, x)

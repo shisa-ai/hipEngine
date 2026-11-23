@@ -156,6 +156,24 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
                         exchange.assert_called_once()
                         consumer.assert_called_once()
                         assert consumer.call_args.args[1] == want.shape
+                    requests = []
+                    controls = []
+                    for ids in (np.array([0, 1]), np.array([1, 0]), np.array([1, 1])):
+                        row = rng.normal(0, 0.1, (256,)).astype(np.float32)
+                        mix = rng.uniform(0, 1, ids.shape).astype(np.float32)
+                        controls.append(fast.project_experts_mixed(visit, ids, mix, row))
+                        requests.append((ids, mix, row, Mock()))
+                    exchange.reset_mock()
+                    grouped = fast.project_experts_mixed_rows(visit, requests)
+                    exchange.assert_called_once()
+                    ptrs = []
+                    for output, control, (_, _, _, consumer) in zip(grouped, controls, requests, strict=True):
+                        np.testing.assert_array_equal(output.view(np.uint32), control.view(np.uint32))
+                        consumer.assert_called_once()
+                        ptr, shape = consumer.call_args.args
+                        assert shape == control.shape
+                        ptrs.append(ptr)
+                    assert len(set(ptrs)) == len(requests)
             # The final physical banks have different formats in the two layouts.
             visit = mapping.plan.visits[6]
             layer = mapping.layers[visit.weight_layer]
