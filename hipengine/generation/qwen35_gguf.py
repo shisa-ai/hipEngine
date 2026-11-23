@@ -12302,6 +12302,9 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 } if bound_kv_sessions else {}),
             )
         except NotImplementedError:
+            # Named capability miss (KV binding or slot layout); the packed or
+            # serial route decodes these rows instead.
+            self._fallback_reasons["native_rows_capability_miss"] += 1
             return False
         except MemoryAdmissionRefused:
             # Workspace could not back this step; decode via packed/serial

@@ -21761,7 +21761,11 @@ class Qwen35GGUFResidentSession:
         return execution_paths, captures
 
     def native_rows_bound_kv_backing(self, sessions):
-        """Return the BF16 chunk addressable by all compact native rows."""
+        """Return the pool backing when every compact row is a BF16 lease on this owner.
+
+        ``None`` names a capability miss: the native row kernels address one
+        BF16 KV backing through the batch owner's compact slots.
+        """
         backing = None
         for index, session in enumerate(sessions):
             if index == 0:
@@ -21831,7 +21835,7 @@ class Qwen35GGUFResidentSession:
                 raise NotImplementedError("native rows require a bound KV lease per row")
             bound_kv_backing = self.native_rows_bound_kv_backing(bound_kv_sessions)
             if bound_kv_backing is None:
-                raise NotImplementedError("native rows require one shared BF16 KV chunk")
+                raise NotImplementedError("native rows require BF16 KV leases on the batch owner's compact slots")
         current_positions = list(self.row_positions)
         if bound_kv_backing is not None:
             current_positions[:rows] = [int(session.position) for session in bound_kv_sessions]
@@ -30724,14 +30728,13 @@ def _gguf_int8_prefill_direct_enabled() -> bool:
     the route plans chunk-sized hidden storage instead of full-capacity
     layer_outer planes. GGUF adapts its BF16 gate to the direct leaves'
     FP16 gate ABI, and the Hadamard leaf's FP16 output back to the BF16
-    projection consumer. The pre-adapter direct-prefill quality failure
-    remains a reason not to change the arithmetic default in this repair;
-    a new calibrated comparison must separate remaining INT8-read drift
-    from the historical dtype defect. Env "1" selects direct prefill;
-    "0" keeps the oracle route.
+    projection consumer. On by default: the calibrated same-prefix gate and
+    the task gate accepted the direct route for per-token-head and
+    tail-four Hadamard INT8 (R0404). Env "0" restores the BF16-oracle route
+    as a rollback lever; docs/REFACTOR.md R0526 owns its removal.
     """
 
-    return _env_flag(_GGUF_INT8_PREFILL_DIRECT_ENV, False)
+    return _env_flag(_GGUF_INT8_PREFILL_DIRECT_ENV, True)
 
 
 _GGUF_INT8_PREFILL_SLOT_LOCAL_AOTRITON_ENV = (

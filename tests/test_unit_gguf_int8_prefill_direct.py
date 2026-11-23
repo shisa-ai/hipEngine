@@ -8,8 +8,9 @@ hidden plane (10,240 B/token). The PARO runner already carries a
 (``HIPENGINE_QWEN35_INT8_PREFILL_ATTENTION``) that reads the retained
 INT8 store directly instead of a temporary BF16 oracle; this gate ports
 the same structure to the GGUF resident route as
-``HIPENGINE_GGUF_INT8_PREFILL_DIRECT`` (default OFF pending the
-production-profile numerics gate).
+``HIPENGINE_GGUF_INT8_PREFILL_DIRECT``. It is on by default: the calibrated
+same-prefix numerics gate and the task gate accepted it for both INT8 layouts
+(R0404). ``0`` restores the BF16-oracle route as a rollback lever.
 
 When enabled, ``_full_attention_prefill_scratch_for_layer`` returns the
 retained INT8 caches as the attention K/V source with INT8 append and
@@ -56,9 +57,9 @@ def test_int8_prefill_direct_env_gates_plan_to_chunk_outer(monkeypatch) -> None:
 
 
 def test_int8_prefill_direct_env_off_keeps_oracle_plan(monkeypatch) -> None:
-    """Default OFF keeps the oracle-based layer_outer planning unchanged."""
+    """The ``0`` rollback keeps the oracle-based layer_outer planning unchanged."""
 
-    monkeypatch.delenv(DIRECT_ENV, raising=False)
+    monkeypatch.setenv(DIRECT_ENV, "0")
     assert gguf_runner._gguf_int8_prefill_direct_enabled() is False
     plan = gguf_runner._plan_gguf_int8_prefill_lifetime(
         kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
@@ -75,6 +76,11 @@ def test_int8_prefill_direct_env_off_keeps_oracle_plan(monkeypatch) -> None:
     assert plan.mode == "layer_outer_shared_oracle"
     assert plan.required_hidden_capacity == 131_072
     assert plan.oracle_buffer_count == 1
+
+
+def test_int8_prefill_direct_is_the_default(monkeypatch) -> None:
+    monkeypatch.delenv(DIRECT_ENV, raising=False)
+    assert gguf_runner._gguf_int8_prefill_direct_enabled() is True
 
 
 def test_int8_prefill_direct_env_on_flag(monkeypatch) -> None:

@@ -187,7 +187,8 @@ def test_gguf_int8_prefill_plan_preserves_short_bf16_mirror_route() -> None:
     assert plan.projected_peak_delta_bytes == 0
 
 
-def test_qualified_short_no_mirror_session_does_not_inherit_mirror_lifetime() -> None:
+def test_qualified_short_no_mirror_session_does_not_inherit_mirror_lifetime(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_INT8_PREFILL_DIRECT", "0")  # oracle-route planning
     session = SimpleNamespace(
         kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
         kv_scale_granularity="per_token_head",
@@ -213,7 +214,8 @@ def test_qualified_short_no_mirror_session_does_not_inherit_mirror_lifetime() ->
     assert plan.required_hidden_capacity == 512
 
 
-def test_qwen38_session_plan_selects_full_hidden_capacity_without_model_name_gate() -> None:
+def test_qwen38_session_plan_selects_full_hidden_capacity_without_model_name_gate(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_INT8_PREFILL_DIRECT", "0")  # oracle-route planning
     session = SimpleNamespace(
         kv_storage_dtype=DType.INT8_PER_TOKEN_HEAD,
         kv_scale_granularity="per_token_head",

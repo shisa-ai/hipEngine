@@ -282,6 +282,27 @@ folded into a general drafter-quantization setting.
 --max-new-tokens 25` with the control unset, confirm AR-exact output and
 acceptance, then remove the env read and the BF16 fallback branch.
 
+### R0526 — GGUF direct INT8 prefill rollback control
+
+Owner: `hipengine/runtime/qwen35_gguf_runner.py`.
+
+Scope: `HIPENGINE_GGUF_INT8_PREFILL_DIRECT` (default on); the BF16-oracle
+prefill attention branch it selects when set to `0` on mirror-free INT8 KV.
+
+Direct prefill reads the retained INT8 store instead of a temporary BF16 K/V
+oracle. The calibrated same-prefix evaluator and the six-category task gate
+accepted it for per-token-head and tail-four Hadamard INT8 on Qwen3.8-27B
+(gfx1100), and it is the default. The control exists only as an arithmetic
+rollback lever.
+
+Done when: the direct route has served the admitted mirror-free INT8
+configurations as the default without a rollback, including a gfx1151 run.
+**Clearing action:** run
+`python scripts/execution_profile_gguf_int8_direct_prefill_task_gate.py --model "$GGUF_MODEL" --backend <target>`
+(both `--kv-layout` values)
+on each target with the control unset and confirm the candidate arm passes,
+then remove the env read and the oracle branch selected by `0`.
+
 ### R0217 — PM4 diagnostic controls and transport rollback
 
 Owner: `scripts/pm4_graph_bench.py`.
