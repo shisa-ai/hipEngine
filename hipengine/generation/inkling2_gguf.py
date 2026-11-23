@@ -30,7 +30,7 @@ from hipengine.tokenization.inkling2_gguf import inkling2_gguf_tokenizer
 
 class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
     supports_vision = False
-    supports_speculative_mtp = False
+    packed_verification = True
     vision = None
     prefill_block_width = 64
     engine_loop_config_defaults = {
@@ -49,6 +49,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
         self.max_sequence_length = m.max_context if max_sequence_length is None else max_sequence_length
         self.tokenizer, self.eos_token_id = inkling2_gguf_tokenizer(reader.info, m.vocab_size)
         self.model_path = reader.path
+        self._draft_provider = None
         runtime = get_hip_runtime()
         arch = hip_target_arch_for_backend(backend)
 
@@ -83,6 +84,21 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
                 runtime=runtime, launch=conv, launch_block=conv_block, launch_dynamic=conv_dynamic,
                 channels=channels, width=m.conv_taps)
             self._owned = owned.pop_all()
+
+    @property
+    def supports_speculative_mtp(self):
+        return self._draft_provider is not None
+
+    def attach_speculative_provider(self, provider):
+        if self._draft_provider is not None:
+            raise RuntimeError("Inkling GGUF already owns a DSpark provider")
+        self._owned.callback(provider.close)
+        self._draft_provider = provider
+
+    def generate_speculative_mtp_detailed(self, request):
+        if self._draft_provider is None:
+            raise NotImplementedError("Inkling GGUF DSpark requires a compatible draft_model GGUF sidecar")
+        return self._draft_provider.generate_detailed(request)
 
     def create_resident_model_runner(self, *, capacity=None):
         return Inkling2ResidentRunner(self, capacity=4 if capacity is None else capacity)
@@ -130,12 +146,16 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
                     yield GenerationStreamChunk(text=text)
 
     def _decorate_output(self, out):
+        diagnostics = {} if out.telemetry is None else dict(out.telemetry.diagnostics)
+        diagnostics.update(
+            execution_path="inkling2_gguf_packed_hip", kv_storage="fp32",
+            speculation="dspark" if "speculative_mtp" in diagnostics else "off",
+            expert_mix="ordered_device" if self.model.ffn_device_output else "ordered_host",
+            expert_activation="split_device" if self.model.projection.supports_device_activation else "split_host",
+        )
         return replace(out, telemetry=GenerationTelemetry(
             decode_state=DecodeState(prompt_tokens=out.prompt_tokens, generated_tokens=len(out.generated_token_ids)),
-            diagnostics={"execution_path": "inkling2_gguf_packed_hip", "kv_storage": "fp32", "speculation": "off",
-                         "expert_mix": "ordered_device" if self.model.ffn_device_output else "ordered_host",
-                         "expert_activation": ("split_device" if self.model.projection.supports_device_activation
-                                               else "split_host")},
+            diagnostics=diagnostics,
         ))
 
     def close(self):

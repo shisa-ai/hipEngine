@@ -49,6 +49,51 @@ def test_both_gguf_architectures_register_the_packed_generator(architecture):
 
 
 @pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+def test_inkling_gguf_resolves_explicit_dspark_provider(backend):
+    from hipengine.speculative.registry import (
+        register_builtin_speculative_providers, resolve_speculative_provider,
+        resolve_speculative_provider_candidate_budget,
+    )
+
+    plugin = resolve_model("inkling2")
+    register_builtin_speculative_providers()
+    key = dict(provider=plugin.speculative_mtp_provider, target_model=plugin.name,
+               backend=backend, quant=plugin.default_quant)
+    assert key["provider"] == "dspark"
+    assert callable(resolve_speculative_provider(**key))
+    assert resolve_speculative_provider_candidate_budget(**key) == 1
+
+
+def test_inkling_gguf_attachment_preserves_draft_telemetry():
+    from contextlib import ExitStack
+    from hipengine.generation import GenerationOutput
+    from hipengine.generation.inkling2_gguf import Inkling2GGUFGenerator
+    from hipengine.generation.registry import DecodeState, GenerationTelemetry
+
+    provider = Mock()
+    inner = Inkling2GGUFGenerator.__new__(Inkling2GGUFGenerator)
+    inner._draft_provider = None
+    inner.model = Mock(ffn_device_output=True)
+    inner._owned = ExitStack()
+    assert not inner.supports_speculative_mtp
+    with pytest.raises(NotImplementedError, match="draft_model"):
+        inner.generate_speculative_mtp_detailed(Mock())
+    inner.attach_speculative_provider(provider)
+    assert inner.supports_speculative_mtp
+    request = Mock()
+    assert inner.generate_speculative_mtp_detailed(request) is provider.generate_detailed.return_value
+    provider.generate_detailed.assert_called_once_with(request)
+    out = inner._decorate_output(GenerationOutput("a", generated_token_ids=(1,), telemetry=GenerationTelemetry(
+        decode_state=DecodeState(prompt_tokens=0, generated_tokens=1),
+        diagnostics={"speculative_mtp": {"accepted_tokens": 1}},
+    )))
+    assert out.telemetry.diagnostics["speculative_mtp"] == {"accepted_tokens": 1}
+    assert out.telemetry.diagnostics["speculation"] == "dspark"
+    inner.close()
+    provider.close.assert_called_once()
+
+
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
 def test_inkling_gguf_fast_profile_keeps_strict_and_default_distinct(backend):
     from hipengine.execution_profiles import resolve_default_execution_profile, resolve_runtime_profile
 
