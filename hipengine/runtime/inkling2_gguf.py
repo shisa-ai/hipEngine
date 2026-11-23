@@ -119,15 +119,29 @@ class Inkling2GGUFText(Inkling2TextReference):
             cursors = [owned.enter_context(closing(session.stage_decode(token))) for session, token in rows]
             pending = [next(cursor) for cursor in cursors]
             for visit in self.plan.visits:
-                inputs = []
-                for actual, hidden, transform in pending:
-                    if actual != visit:
-                        raise RuntimeError("Inkling GGUF decode visits are out of step")
-                    inputs.append((hidden, transform))
-                outputs = self._feed_forward_decode_rows(visit, inputs)
-                pending = [cursor.send(out) for cursor, out in zip(cursors, outputs, strict=True)]
+                while True:
+                    kind = pending[0][1]
+                    inputs = []
+                    for actual, actual_kind, item in pending:
+                        if actual != visit or actual_kind != kind:
+                            raise RuntimeError("Inkling GGUF decode stages are out of step")
+                        inputs.append(item)
+                    if kind == "controllers":
+                        outputs = self._project_decode_controllers(inputs)
+                    elif kind == "experts":
+                        outputs = self._feed_forward_decode_rows(visit, inputs)
+                    else:
+                        raise RuntimeError(f"Inkling GGUF unknown decode stage: {kind}")
+                    pending = [cursor.send(out) for cursor, out in zip(cursors, outputs, strict=True)]
+                    if kind == "experts":
+                        break
             hidden = np.stack(pending)
         return tuple(self.cap_logits(row) for row in self.projection.project_decode_head(hidden))
+
+    def _project_decode_controllers(self, inputs):
+        # Keep the scalar vectors and their down/forget/gain dependencies.
+        outputs = iter(self.project_chains(chain for chains in inputs for chain in chains))
+        return [tuple(next(outputs) for _ in chains) for chains in inputs]
 
     def head_shape(self, visit):
         layer = self.mapping.layers[visit.weight_layer]

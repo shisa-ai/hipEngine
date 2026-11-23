@@ -178,7 +178,7 @@ class Inkling2TextSession:
         return self._forward(self._embed_step(token, embedding), 1, logits=logits, capture=capture)
 
     def stage_decode(self, token: int):
-        """Yield per-visit expert work, then the final normalized output row."""
+        """Yield per-visit controller and expert work, then the final normalized row."""
         if self._undo is not None:
             raise RuntimeError("Inkling 2 staged decode requires a committed session")
         h, blocks = yield from self._traverse(self._embed_step(token, None), None, stage_experts=True)
@@ -259,9 +259,10 @@ class Inkling2TextSession:
             messages = None
             if visit.message_pass is not None:
                 messages = _read_blocks(self.model.loop_queries(visit), previous, previous_partial)
-            a, normalized, transform, finish = self._prepare_layer(visit, h, blocks, messages)
+            a, normalized, transform, finish = yield from self._prepare_layer(
+                visit, h, blocks, messages, stage_controllers=stage_experts)
             if stage_experts:
-                m = yield visit, normalized, transform
+                m = yield visit, "experts", (normalized, transform)
             else:
                 m = self.model.feed_forward(visit, normalized, transform_output=transform)
             h = a + (m if finish is None else finish(m))
@@ -277,7 +278,7 @@ class Inkling2TextSession:
         except StopIteration as done:
             h, blocks = done.value
         else:
-            raise RuntimeError("Inkling 2 scalar traversal unexpectedly staged expert work")
+            raise RuntimeError("Inkling 2 scalar traversal unexpectedly staged work")
         self.position += width
         if not logits and capture is None:
             return None
@@ -293,7 +294,7 @@ class Inkling2TextSession:
             return None
         return self.model.cap_logits(self.model.project_logits(h))
 
-    def _prepare_layer(self, visit, h, blocks, messages):
+    def _prepare_layer(self, visit, h, blocks, messages, *, stage_controllers):
         c, w = self.model.config, self.model.weights
         layer = visit.weight_layer
         prefix = f"layers.{layer}."
@@ -317,7 +318,10 @@ class Inkling2TextSession:
                 ctl = f"{prefix}controllers.{name}."
                 chains.append((ctl + "down_weight", (ctl + "forget_weight", ctl + "gain_weight"),
                                controller_input(x, message)))
-            controls = self.model.project_chains(chains)
+            if stage_controllers:
+                controls = yield visit, "controllers", tuple(chains)
+            else:
+                controls = self.model.project_chains(chains)
             return tuple(blend(x, message, forget, gain)
                          for x, message, (forget, gain) in zip(inputs, incoming, controls, strict=True))
 
@@ -339,8 +343,8 @@ class Inkling2TextSession:
         if messages is None and visit.is_local:
             q, k, v = (norm(a, "attn_norm"),) * 3
         else:
-            merged = inputs if messages is None else merge_controllers(
-                inputs, ("attn", "k", "v"), tuple(messages[..., i, :] for i in range(3)))
+            merged = inputs if messages is None else (yield from merge_controllers(
+                inputs, ("attn", "k", "v"), tuple(messages[..., i, :] for i in range(3))))
             q, k, v = (norm(x, name) for x, name in zip(merged, norm_names, strict=True))
 
         attention_project = None
@@ -374,7 +378,7 @@ class Inkling2TextSession:
             a = h + a
         m = _read_blocks(w.dense(f"attn_res.mlp_queries.{layer}"), blocks, a)
         if messages is not None:
-            m, = merge_controllers((m,), ("mlp",), (messages[..., 3, :],))
+            m, = yield from merge_controllers((m,), ("mlp",), (messages[..., 3, :],))
         normalized = norm(m, "mlp_norm")
 
         if self.model.ffn_device_output and self.convolution is not None:
