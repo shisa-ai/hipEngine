@@ -150,6 +150,8 @@ def register_inkling2_gguf_profiles():
     activation_evidence = "worklog/entries/20261122T051118.872751Z-lhl-inkling2-mini-978416.md"
     shared_q8 = "selected_shared_input_q8_dot_f32_f32_out"
     shared_q8_evidence = "worklog/entries/20261123T025317.467504Z-lhl-inkling2-mini-e38355.md"
+    counted_q8 = "selected_counted_shared_input_q8_dot_f32_f32_out"
+    counted_q8_evidence = "worklog/entries/20261123T045710.390593Z-lhl-inkling2-mini-67cb1a.md"
     split_q8 = "selected_split_activation_q8_dot_f32_f32_out"
     split_q8_evidence = "worklog/entries/20261123T024426.568443Z-lhl-inkling2-mini-3f4a1f.md"
     chunked_evidence = "worklog/entries/20261122T161527.676605Z-lhl-inkling2-mini-854a03.md"
@@ -169,6 +171,9 @@ def register_inkling2_gguf_profiles():
                         VariantSelection("moe_linear", "single_token_top8_nvfp4_shared_gate_n1152_or_2304_m2304",
                                          shared_q8 if fast else strict, strict if fast else None,
                                          shared_q8_evidence if fast else None, registry_quant="gguf_nvfp4"),
+                        VariantSelection("moe_linear", "two_to_four_decode_rows_top8_nvfp4_gate_n1152_or_2304_m2304",
+                                         counted_q8 if fast else strict, strict if fast else None,
+                                         counted_q8_evidence if fast else None, registry_quant="gguf_nvfp4"),
                         VariantSelection("moe_linear", "single_token_top8_nvfp4_split_down_n1152_m2304",
                                          split_q8 if fast else strict, strict if fast else None,
                                          split_q8_evidence if fast else None, registry_quant="gguf_nvfp4"),

@@ -71,6 +71,54 @@ def test_selected_nvfp4_q8_dot_matches_quantized_reference(width, scaled, shared
     assert not actual[-1].any()
 
 
+@pytest.mark.parametrize('rows,width,scaled', [(2, 1152, True), (3, 2304, True), (4, 1152, False)])
+def test_counted_nvfp4_shared_q8_gate_matches_independent_rows(rows, width, scaled):
+    try:
+        ctypes.CDLL('libamdhip64.so')
+    except OSError as exc:
+        pytest.skip(f'HIP unavailable: {exc}')
+    backend = resolve_backend('auto', execution_device=True)
+    if backend not in ('hip_gfx1100', 'hip_gfx1151'):
+        pytest.skip('test requires gfx1100 or gfx1151')
+    from hipengine.kernels.hip_gfx1100.quant import gguf_nvfp4_q8_dot  # noqa: F401
+    from hipengine.loading.inkling2_device_experts import build_expert_route_tiles
+
+    key = dict(backend=backend, layer='moe_linear', quant='gguf_nvfp4')
+    scalar = resolve(**key, variant='selected_shared_input_q8_dot_f32_f32_out')
+    grouped = resolve(**key, variant='selected_counted_shared_input_q8_dot_f32_f32_out')
+    rt = get_hip_runtime()
+    rng = np.random.default_rng(83 + rows)
+    experts, outputs = 12, 2304
+    x = rng.normal(0, 0.02, (rows, width)).astype(np.float32)
+    x[0, :32] = 0
+    ids = np.concatenate([rng.permutation(experts)[:8] for _ in range(rows)]).astype(np.int32)
+    tiles = build_expert_route_tiles(ids, 4)
+    scales = rng.uniform(-0.2, 0.2, ids.size).astype(np.float32)
+    raw = rng.integers(0, 256, (experts, outputs, width // 64, 36), dtype=np.uint8)
+    raw[..., :4] &= 63
+    actual = np.empty((ids.size, outputs), np.float32)
+    expected = np.empty_like(actual)
+    with ExitStack() as owned:
+        def alloc(data, upload=True):
+            ptr = rt.malloc(data.nbytes)
+            owned.callback(rt.free, ptr)
+            if upload:
+                rt.memcpy(ptr, data.ctypes.data, data.nbytes, Copy.HOST_TO_DEVICE)
+            return ptr
+
+        xp, wp, ip, tp = map(alloc, (x, raw, ids, tiles))
+        sp = alloc(scales) if scaled else 0
+        yp = alloc(actual, False)
+        scratch = alloc(np.empty(x.size * 9 // 8, np.uint8), False)
+        for i in range(rows):
+            scalar(xp + i * x.strides[0], wp, yp + i * 8 * actual.strides[0], ip + i * 32,
+                   sp + i * 32 if sp else 0, 8, experts, width, outputs, scratch=scratch)
+        rt.memcpy(expected.ctypes.data, yp, expected.nbytes, Copy.DEVICE_TO_HOST)
+        grouped(xp, wp, yp, tp, sp, len(tiles), rows, experts, width, outputs, scratch=scratch)
+        rt.memcpy(actual.ctypes.data, yp, actual.nbytes, Copy.DEVICE_TO_HOST)
+    np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
+
+
 @pytest.mark.parametrize("caps", [(8.0, 8.0), (4.0, 25.0)])
 def test_nvfp4_fused_split_activation_pack_matches_unfused(caps):
     try:
