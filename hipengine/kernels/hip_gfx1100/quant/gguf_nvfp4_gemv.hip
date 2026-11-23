@@ -69,11 +69,11 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_gemv_f32_ke
     }
 }
 
-template<bool shared_input, int active_routes>
+template<bool shared_input, int active_routes, int outputs>
 __device__ __forceinline__ void selected_tile_f32(
         const float* x, const uint8_t* weights, float* out, const int32_t* records, const float* scales,
         int routes, int experts, int in_features, int out_features, int routes_per_input) {
-    const int row = blockIdx.x * waves_per_block + threadIdx.x / wave;
+    const int row = outputs * (blockIdx.x * waves_per_block + threadIdx.x / wave);
     if (row >= out_features) return;
     const int32_t* tile = records + blockIdx.y * (route_tile + 1);
     const int expert = tile[0], first_route = tile[1];
@@ -81,11 +81,12 @@ __device__ __forceinline__ void selected_tile_f32(
     const int blocks = in_features / values_per_block;
     const size_t weight_row = static_cast<size_t>(expert) * out_features + row;
     const uint8_t* packed = weights + weight_row * blocks * bytes_per_block;
+    const size_t row_bytes = static_cast<size_t>(blocks) * bytes_per_block;
     const int lane = threadIdx.x % wave;
     const int group = lane / 8;
     const int first = group * 16 + lane % 8;
     const float* inputs[active_routes];
-    float sum[active_routes] = {};
+    float sum[outputs][active_routes] = {};
     int route[active_routes];
     #pragma unroll
     for (int t = 0; t < active_routes; ++t) {
@@ -98,45 +99,58 @@ __device__ __forceinline__ void selected_tile_f32(
     // Expose independent loads from successive blocks without reordering the dot products.
     #pragma unroll 4
     for (int b = 0; b < blocks; ++b) {
-        const float scale = decode_scale(packed[group]);
-        const unsigned codes = packed[4 + lane];
-        const float low = scale * decode_fp4<true>(codes & 15);
-        const float high = scale * decode_fp4<true>(codes >> 4);
+        float low[outputs], high[outputs];
+        #pragma unroll
+        for (int r = 0; r < outputs; ++r) {
+            const auto* block = packed + r * row_bytes;
+            const float scale = decode_scale(block[group]);
+            const unsigned codes = block[4 + lane];
+            low[r] = scale * decode_fp4<true>(codes & 15);
+            high[r] = scale * decode_fp4<true>(codes >> 4);
+        }
         #pragma unroll
         for (int t = 0; t < active_routes; ++t) {
-            sum[t] = fmaf(low, inputs[t][0], sum[t]);
-            sum[t] = fmaf(high, inputs[t][8], sum[t]);
+            const float a = inputs[t][0], b = inputs[t][8];
+            #pragma unroll
+            for (int r = 0; r < outputs; ++r) {
+                sum[r][t] = fmaf(low[r], a, sum[r][t]);
+                sum[r][t] = fmaf(high[r], b, sum[r][t]);
+            }
             inputs[t] += values_per_block;
         }
         packed += bytes_per_block;
     }
     #pragma unroll
     for (int t = 0; t < active_routes; ++t) {
-        for (int shift = wave / 2; shift; shift /= 2) sum[t] += __shfl_down(sum[t], shift, wave);
-        if (lane == 0 && route[t] >= 0 && route[t] < routes) {
-            out[static_cast<size_t>(route[t]) * out_features + row] = sum[t] * (scales ? scales[route[t]] : 1.0f);
+        #pragma unroll
+        for (int r = 0; r < outputs; ++r) {
+            float value = sum[r][t];
+            for (int shift = wave / 2; shift; shift /= 2) value += __shfl_down(value, shift, wave);
+            if (lane == 0 && route[t] >= 0 && route[t] < routes) {
+                out[static_cast<size_t>(route[t]) * out_features + row + r] = value * (scales ? scales[route[t]] : 1.0f);
+            }
         }
     }
 }
 
-template<bool shared_input>
+template<bool shared_input, int outputs>
 __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_selected_tile4_f32_kernel(
         const float* x, const uint8_t* weights, float* out, const int32_t* records, const float* scales,
         int routes, int experts, int in_features, int out_features, int routes_per_input) {
     // Skip trailing padded routes; interior holes still use the per-route validity check.
     const auto* tile = records + blockIdx.y * (route_tile + 1);
     if (tile[4] >= 0) {
-        selected_tile_f32<shared_input, 4>(x, weights, out, records, scales, routes, experts,
-                                           in_features, out_features, routes_per_input);
+        selected_tile_f32<shared_input, 4, outputs>(x, weights, out, records, scales, routes, experts,
+                                                    in_features, out_features, routes_per_input);
     } else if (tile[3] >= 0) {
-        selected_tile_f32<shared_input, 3>(x, weights, out, records, scales, routes, experts,
-                                           in_features, out_features, routes_per_input);
+        selected_tile_f32<shared_input, 3, outputs>(x, weights, out, records, scales, routes, experts,
+                                                    in_features, out_features, routes_per_input);
     } else if (tile[2] >= 0) {
-        selected_tile_f32<shared_input, 2>(x, weights, out, records, scales, routes, experts,
-                                           in_features, out_features, routes_per_input);
+        selected_tile_f32<shared_input, 2, outputs>(x, weights, out, records, scales, routes, experts,
+                                                    in_features, out_features, routes_per_input);
     } else {
-        selected_tile_f32<shared_input, 1>(x, weights, out, records, scales, routes, experts,
-                                           in_features, out_features, routes_per_input);
+        selected_tile_f32<shared_input, 1, outputs>(x, weights, out, records, scales, routes, experts,
+                                                    in_features, out_features, routes_per_input);
     }
 }
 
@@ -164,10 +178,18 @@ int launch_tile4(const float* x, const uint8_t* weights, float* out, const int32
     if (!x || !weights || !out || !tiles || tile_count <= 0 || tile_count > 65535 || routes <= 0 || experts <= 0 ||
             in_features <= 0 || in_features % values_per_block || out_features <= 0 ||
             routes_per_input <= 0 || routes % routes_per_input) return hipErrorInvalidValue;
-    const dim3 grid(1 + (out_features - 1) / waves_per_block, tile_count);
-    hipLaunchKernelGGL((gguf_nvfp4_selected_tile4_f32_kernel<shared_input>), grid, dim3(wave * waves_per_block),
-                       0, stream, x, weights, out, tiles, scales, routes, experts, in_features, out_features,
-                       routes_per_input);
+    // Pair rows only when the grid stays wide and no wave needs a partial pair.
+    if (out_features >= 2048 && out_features % (2 * waves_per_block) == 0) {
+        const dim3 grid(out_features / (2 * waves_per_block), tile_count);
+        hipLaunchKernelGGL((gguf_nvfp4_selected_tile4_f32_kernel<shared_input, 2>), grid, dim3(wave * waves_per_block),
+                           0, stream, x, weights, out, tiles, scales, routes, experts, in_features, out_features,
+                           routes_per_input);
+    } else {
+        const dim3 grid(1 + (out_features - 1) / waves_per_block, tile_count);
+        hipLaunchKernelGGL((gguf_nvfp4_selected_tile4_f32_kernel<shared_input, 1>), grid, dim3(wave * waves_per_block),
+                           0, stream, x, weights, out, tiles, scales, routes, experts, in_features, out_features,
+                           routes_per_input);
+    }
     return hipGetLastError();
 }
 }  // namespace

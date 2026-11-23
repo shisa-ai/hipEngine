@@ -106,7 +106,10 @@ def test_selected_nvfp4_exactly_matches_scalar_launches(out_features):
     np.testing.assert_array_equal(observed.view(np.uint32), expected.view(np.uint32))
 
 
-@pytest.mark.parametrize("scaled,nout,repeats,width", [(True, 19, 3, 2304), (False, 2304, 4, 1152)])
+@pytest.mark.parametrize("scaled,nout,repeats,width", [
+    (True, 19, 3, 2304), (False, 2040, 4, 1152), (True, 2048, 3, 2304),
+    (False, 2051, 4, 1152), (False, 2304, 4, 1152),
+])
 def test_tiled_nvfp4_reuses_rows_without_changing_route_results(scaled, nout, repeats, width):
     try:
         ctypes.CDLL("libamdhip64.so")
