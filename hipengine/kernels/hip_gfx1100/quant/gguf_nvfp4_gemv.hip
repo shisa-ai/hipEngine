@@ -69,8 +69,8 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_gemv_f32_ke
     }
 }
 
-template<bool shared_input = false>
-__global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_selected_tile4_f32_kernel(
+template<bool shared_input, int active_routes>
+__device__ __forceinline__ void selected_tile_f32(
         const float* x, const uint8_t* weights, float* out, const int32_t* records, const float* scales,
         int routes, int experts, int in_features, int out_features, int routes_per_input) {
     const int row = blockIdx.x * waves_per_block + threadIdx.x / wave;
@@ -84,11 +84,11 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_selected_ti
     const int lane = threadIdx.x % wave;
     const int group = lane / 8;
     const int first = group * 16 + lane % 8;
-    const float* inputs[route_tile];
-    float sum[route_tile] = {};
-    int route[route_tile];
+    const float* inputs[active_routes];
+    float sum[active_routes] = {};
+    int route[active_routes];
     #pragma unroll
-    for (int t = 0; t < route_tile; ++t) {
+    for (int t = 0; t < active_routes; ++t) {
         route[t] = tile[t + 1];
         const bool valid = route[t] >= 0 && route[t] < routes;
         int input_row = valid ? route[t] : first_route;
@@ -101,7 +101,7 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_selected_ti
         const float low = scale * decode_fp4<true>(codes & 15);
         const float high = scale * decode_fp4<true>(codes >> 4);
         #pragma unroll
-        for (int t = 0; t < route_tile; ++t) {
+        for (int t = 0; t < active_routes; ++t) {
             sum[t] = fmaf(low, inputs[t][0], sum[t]);
             sum[t] = fmaf(high, inputs[t][8], sum[t]);
             inputs[t] += values_per_block;
@@ -109,11 +109,32 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_selected_ti
         packed += bytes_per_block;
     }
     #pragma unroll
-    for (int t = 0; t < route_tile; ++t) {
+    for (int t = 0; t < active_routes; ++t) {
         for (int shift = wave / 2; shift; shift /= 2) sum[t] += __shfl_down(sum[t], shift, wave);
         if (lane == 0 && route[t] >= 0 && route[t] < routes) {
             out[static_cast<size_t>(route[t]) * out_features + row] = sum[t] * (scales ? scales[route[t]] : 1.0f);
         }
+    }
+}
+
+template<bool shared_input>
+__global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_selected_tile4_f32_kernel(
+        const float* x, const uint8_t* weights, float* out, const int32_t* records, const float* scales,
+        int routes, int experts, int in_features, int out_features, int routes_per_input) {
+    // Skip trailing padded routes; interior holes still use the per-route validity check.
+    const auto* tile = records + blockIdx.y * (route_tile + 1);
+    if (tile[4] >= 0) {
+        selected_tile_f32<shared_input, 4>(x, weights, out, records, scales, routes, experts,
+                                           in_features, out_features, routes_per_input);
+    } else if (tile[3] >= 0) {
+        selected_tile_f32<shared_input, 3>(x, weights, out, records, scales, routes, experts,
+                                           in_features, out_features, routes_per_input);
+    } else if (tile[2] >= 0) {
+        selected_tile_f32<shared_input, 2>(x, weights, out, records, scales, routes, experts,
+                                           in_features, out_features, routes_per_input);
+    } else {
+        selected_tile_f32<shared_input, 1>(x, weights, out, records, scales, routes, experts,
+                                           in_features, out_features, routes_per_input);
     }
 }
 

@@ -120,9 +120,10 @@ def test_tiled_nvfp4_reuses_rows_without_changing_route_results(scaled, nout, re
 
     rng = np.random.default_rng(51003)
     experts, width = 4, 2304
-    ids = np.array([3, 0, 0, 1, 3, 3, 1, 3, 3, 1, 0, 3], np.int32)
+    ids = np.array([3, 0, 0, 1, 3, 3, 1, 3, 3, 2, 0, 3], np.int32)
     records = build_expert_route_tiles(ids, 4)
-    assert records.tolist() == [[0, 1, 2, 10, -1], [1, 3, 6, 9, -1], [3, 0, 4, 5, 7], [3, 8, 11, -1, -1]]
+    assert records.tolist() == [[0, 1, 2, 10, -1], [1, 3, 6, -1, -1], [2, 9, -1, -1, -1],
+                                [3, 0, 4, 5, 7], [3, 8, 11, -1, -1]]
     scales = rng.uniform(-1.0, 1.0, ids.size).astype(np.float32)
     scales[0] = 0.0
     tokens = rng.normal(0, 0.02, (ids.size // repeats, width)).astype(np.float32)
