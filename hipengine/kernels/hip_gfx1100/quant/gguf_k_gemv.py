@@ -118,19 +118,24 @@ def _make_selected_raw_f32(quant):
     return launch
 
 
-def _make_selected_tile4_raw_f32(quant):
+def _make_selected_tile4_raw_f32(quant, *, shared_input=False):
+    layout = "shared_input_" if shared_input else ""
+    symbol = f"hipengine_{quant}_selected_tile4_{layout}raw_f32_f32_out"
+
     def launch(x, weight, output, records, scales, tiles, rows, experts, in_features, out_features, *,
-               stream=0, library=None, runtime=None):
+               routes_per_input=1, stream=0, library=None, runtime=None):
         _validate(quant, rows, in_features, out_features, 128)
         if not records or not 1 <= tiles <= min(rows, 65535) or not 1 <= experts <= 2**31 - 1:
             raise ValueError("invalid GGUF K tiled route geometry")
+        if routes_per_input <= 0 or rows % routes_per_input or (not shared_input and routes_per_input != 1):
+            raise ValueError("invalid GGUF K routes per input")
         library = library or build_gguf_k_gemv(load=True)
         runtime = runtime or get_hip_runtime()
-        symbol = f"hipengine_{quant}_selected_tile4_raw_f32_f32_out"
-        fn = _cached_fn(library, symbol, [_VOID] * 5 + [ctypes.c_int] * 5 + [_VOID])
+        fn = _cached_fn(library, symbol, [_VOID] * 5 + [ctypes.c_int] * (6 if shared_input else 5) + [_VOID])
+        extra = (routes_per_input,) if shared_input else ()
         launch_census.record_launch(quant, symbol, rows, in_features, out_features)
         _check_launch(runtime, fn(x, weight, output, records, scales, tiles, rows, experts,
-                                  in_features, out_features, stream))
+                                  in_features, out_features, *extra, stream))
     return launch
 
 
@@ -1103,10 +1108,11 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
                  _make_selected_raw_f32(quant), replace=replace)
         register(KernelKey("hip_gfx1100", "moe_linear", quant, "selected_tile4_f32_f32_out"),
                  _make_selected_tile4_raw_f32(quant), replace=replace)
+    register(KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_k", "selected_tile4_shared_input_f32_f32_out"),
+             _make_selected_tile4_raw_f32("gguf_q5_k", shared_input=True), replace=replace)
     # The grouped row4 GEMV is also reachable through the MoE expert route,
-    # which resolves `moe_linear`. It is the only grouped kernel Q5_K has, and
-    # one MoE layer of a dynamic quant can carry Q5_K expert weights while the
-    # rest of the model is Q4_K.
+    # which resolves `moe_linear`. A dynamic quant can carry Q5_K experts in
+    # one layer while the rest of the model is Q4_K.
     register(
         KernelKey(
             "hip_gfx1100",

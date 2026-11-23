@@ -487,11 +487,11 @@ __global__ void gguf_k_prefill_out_kernel(
 
 // Each route shares the decoded weight but keeps the selected parent's K
 // order and the same wave sums, added in ascending wave order.
-template <int qtype, int output_tile = 1>
+template <int qtype, int output_tile = 1, bool shared_input = false>
 __launch_bounds__(128, 2)
 __global__ void gguf_k_selected_tile4_f32_kernel(
     const float* x, const uint8_t* weights, float* out, const int32_t* tiles,
-    const float* scales, int rows, int experts, int inputs, int outputs) {
+    const float* scales, int rows, int experts, int inputs, int outputs, int routes_per_input) {
   constexpr int tile_width = 4;
   constexpr int waves = 4;
   const int out_col = blockIdx.x * output_tile;
@@ -509,7 +509,7 @@ __global__ void gguf_k_selected_tile4_f32_kernel(
   for (int r = 0; r < tile_width; ++r) {
     routes[r] = tile[r + 1];
     const int row = routes[r] >= 0 && routes[r] < rows ? routes[r] : first;
-    xrows[r] = x + int64_t(row) * inputs;
+    xrows[r] = x + int64_t(shared_input ? row / routes_per_input : row) * inputs;
   }
   for (int k = tid; k < inputs; k += blockDim.x) {
     float wv[output_tile];
@@ -5579,6 +5579,26 @@ extern "C" int hipengine_gguf_q8_0_iu8_wmma_prefill_f32_f32_t(
       rows, in_features, out_features, stream);
 }
 
+template <int qtype, bool shared_input = false>
+static int launch_selected_tile4(const float* x, const uint8_t* weights, float* out, const int32_t* tiles,
+                                 const float* scales, int tile_count, int rows, int experts, int inputs,
+                                 int outputs, int routes_per_input, hipStream_t stream) {
+  constexpr int block_size = qtype == 8 ? Q8_0_BLOCK : QK_K;
+  if (!x || !weights || !out || !tiles || tile_count <= 0 || tile_count > 65535 || rows <= 0 ||
+      experts <= 0 || inputs <= 0 || inputs % block_size || outputs <= 0 ||
+      routes_per_input <= 0 || rows % routes_per_input) return hipErrorInvalidValue;
+  if constexpr (qtype == 5) {
+    if (outputs >= 2048 && outputs % 2 == 0) {
+      gguf_k_selected_tile4_f32_kernel<qtype, 2, shared_input><<<dim3(outputs / 2, tile_count), 128, 0, stream>>>(
+          x, weights, out, tiles, scales, rows, experts, inputs, outputs, routes_per_input);
+      return hipGetLastError();
+    }
+  }
+  gguf_k_selected_tile4_f32_kernel<qtype, 1, shared_input><<<dim3(outputs, tile_count), 128, 0, stream>>>(
+      x, weights, out, tiles, scales, rows, experts, inputs, outputs, routes_per_input);
+  return hipGetLastError();
+}
+
 #define HIPENGINE_GGUF_K_SELECTED_RAW_F32(NAME, QTYPE) \
 extern "C" int hipengine_##NAME##_selected_raw_f32_f32_out( \
     const float* x, const uint8_t* weights, float* out, const int32_t* ids, const float* scales, \
@@ -5589,24 +5609,20 @@ extern "C" int hipengine_##NAME##_selected_raw_f32_f32_out( \
 extern "C" int hipengine_##NAME##_selected_tile4_raw_f32_f32_out( \
     const float* x, const uint8_t* weights, float* out, const int32_t* tiles, const float* scales, \
     int tile_count, int rows, int experts, int inputs, int outputs, hipStream_t stream) { \
-  constexpr int block_size = QTYPE == 8 ? Q8_0_BLOCK : QK_K; \
-  if (!x || !weights || !out || !tiles || tile_count <= 0 || tile_count > 65535 || rows <= 0 || \
-      experts <= 0 || inputs <= 0 || inputs % block_size || outputs <= 0) return hipErrorInvalidValue; \
-  if constexpr (QTYPE == 5) { \
-    if (outputs >= 2048 && outputs % 2 == 0) { \
-      gguf_k_selected_tile4_f32_kernel<QTYPE, 2><<<dim3(outputs / 2, tile_count), 128, 0, stream>>>( \
-          x, weights, out, tiles, scales, rows, experts, inputs, outputs); \
-      return hipGetLastError(); \
-    } \
-  } \
-  gguf_k_selected_tile4_f32_kernel<QTYPE><<<dim3(outputs, tile_count), 128, 0, stream>>>( \
-      x, weights, out, tiles, scales, rows, experts, inputs, outputs); \
-  return hipGetLastError(); \
+  return launch_selected_tile4<QTYPE>(x, weights, out, tiles, scales, tile_count, rows, experts, inputs, \
+                                       outputs, 1, stream); \
 }
 
 HIPENGINE_GGUF_K_SELECTED_RAW_F32(gguf_q8_0, 8)
 HIPENGINE_GGUF_K_SELECTED_RAW_F32(gguf_q5_k, 5)
 #undef HIPENGINE_GGUF_K_SELECTED_RAW_F32
+
+extern "C" int hipengine_gguf_q5_k_selected_tile4_shared_input_raw_f32_f32_out(
+    const float* x, const uint8_t* weights, float* out, const int32_t* tiles, const float* scales,
+    int tile_count, int rows, int experts, int inputs, int outputs, int routes_per_input, hipStream_t stream) {
+  return launch_selected_tile4<5, true>(x, weights, out, tiles, scales, tile_count, rows, experts, inputs,
+                                        outputs, routes_per_input, stream);
+}
 
 #define HIPENGINE_GGUF_K_EXPORTS(NAME, QTYPE) \
 extern "C" int hipengine_##NAME##_gemv_f32_f32_out( \

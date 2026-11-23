@@ -249,12 +249,14 @@ def test_q5_selected_tiles_match_individual_routes_at_pair_boundary(outputs):
     ids = np.array([0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0], np.int32)
     weights = rng.integers(0, 256, (2, outputs, 9, 176), dtype=np.uint8)
     weights[..., :4] = np.array([0.002, 0.001], dtype="<f2").view(np.uint8)
-    x = rng.standard_normal((len(ids), 2304), dtype=np.float32)
+    tokens = rng.standard_normal((len(ids) // 2, 2304), dtype=np.float32)
+    x = np.repeat(tokens, 2, axis=0)
     scales = rng.uniform(-1, 1, len(ids)).astype(np.float32)
     tiles = build_expert_route_tiles(ids, 4)
     scores = np.empty((len(ids), outputs), dtype=np.float32)
     one = _make_selected_raw_f32("gguf_q5_k")
     tiled = _make_selected_tile4_raw_f32("gguf_q5_k")
+    shared = _make_selected_tile4_raw_f32("gguf_q5_k", shared_input=True)
     with ExitStack() as owned:
         def allocate(nbytes):
             ptr = runtime.malloc(nbytes)
@@ -266,11 +268,18 @@ def test_q5_selected_tiles_match_individual_routes_at_pair_boundary(outputs):
             runtime.memcpy(ptr, data.ctypes.data, data.nbytes, Copy.HOST_TO_DEVICE)
             return ptr
 
-        xp, wp, ip, sp, tp = map(upload, (x, weights, ids, scales, tiles))
+        xp, wp, ip, sp, tp, compact = map(upload, (x, weights, ids, scales, tiles, tokens))
         out = allocate(scores.nbytes)
         one(xp, wp, out, ip, sp, len(ids), 2, x.shape[1], outputs, runtime=runtime, library=library)
         runtime.memcpy(scores.ctypes.data, out, scores.nbytes, Copy.DEVICE_TO_HOST)
         expected = scores.view(np.uint32).copy()
         tiled(xp, wp, out, tp, sp, len(tiles), len(ids), 2, x.shape[1], outputs, runtime=runtime, library=library)
+        runtime.memcpy(scores.ctypes.data, out, scores.nbytes, Copy.DEVICE_TO_HOST)
+        np.testing.assert_array_equal(scores.view(np.uint32), expected)
+        with pytest.raises(ValueError, match="routes per input"):
+            shared(compact, wp, out, tp, sp, len(tiles), len(ids), 2, x.shape[1], outputs,
+                   routes_per_input=3, runtime=runtime, library=library)
+        shared(compact, wp, out, tp, sp, len(tiles), len(ids), 2, x.shape[1], outputs,
+               routes_per_input=2, runtime=runtime, library=library)
         runtime.memcpy(scores.ctypes.data, out, scores.nbytes, Copy.DEVICE_TO_HOST)
         np.testing.assert_array_equal(scores.view(np.uint32), expected)
