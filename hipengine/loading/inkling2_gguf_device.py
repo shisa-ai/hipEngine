@@ -59,6 +59,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._device_routes_requested = bool(device_routes)
         self._device_routes = None
         self._device_route_hidden = None
+        self._device_route_hidden_rep = None
         self._router_logits = None
         self._device_route_interim = None
         self._device_route_out = None
@@ -585,8 +586,8 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
 
     def device_routes_enabled(self):
         if self._device_routes is None:
-            self._device_routes = (self._device_routes_requested and self._shared_q8_dot is not None
-                                   and self._split_q8_dot is not None and self._mix is not None)
+            self._device_routes = (self._device_routes_requested and self._mix is not None
+                                   and (self._shared_q8_dot is not None or bool(self._selected_launches)))
         return self._device_routes
 
     def device_routes_supported(self, visit):
@@ -598,11 +599,15 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             return cached
         try:
             layer = self._weights.mapping.layers[visit.weight_layer]
-            ok = (Q(layer.gate_up.weight.ggml_type) == Q.NVFP4
-                  and Q(layer.down.weight.ggml_type) == Q.NVFP4
-                  and layer.gate_up.weight.shape[1] == 2 * layer.down.weight.shape[2]
-                  and layer.down.weight.shape[2] == 1152 and layer.down.weight.shape[1] == 2304
-                  and layer.gate_up.weight.shape[1] == 2304 and layer.gate_up.weight.shape[2] == 2304)
+            gate_q = Q(layer.gate_up.weight.ggml_type)
+            down_q = Q(layer.down.weight.ggml_type)
+            shape_ok = (layer.gate_up.weight.shape[1] == 2 * layer.down.weight.shape[2]
+                        and layer.down.weight.shape[2] == 1152 and layer.down.weight.shape[1] == 2304
+                        and layer.gate_up.weight.shape[1] == 2304 and layer.gate_up.weight.shape[2] == 2304)
+            nvfp4 = gate_q == Q.NVFP4 and down_q == Q.NVFP4
+            selected = (gate_q in self._selected_launches and down_q in self._selected_launches
+                        and self._activation is not None)
+            ok = shape_ok and (nvfp4 or selected)
         except (AttributeError, IndexError, ValueError):
             ok = False
         if not hasattr(self, "_device_route_support"):
@@ -727,8 +732,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             layer = self._weights.mapping.layers[visit.weight_layer]
             mapping = self._weights.mapping
             gate, down = layer.gate_up, layer.down
-            if Q(gate.weight.ggml_type) != Q.NVFP4 or Q(down.weight.ggml_type) != Q.NVFP4:
-                raise ValueError("device route projection requires NVFP4 gate/up and down banks")
+            gate_q, down_q = Q(gate.weight.ggml_type), Q(down.weight.ggml_type)
             gate_weight, _ = self._bank(gate)
             down_weight, _ = self._bank(down)
             experts, gm, gn = gate.weight.shape
@@ -742,20 +746,38 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 out_ptr = self._scratch("_device_route_out", routes // k * dm * 4).ptr
             out_ptr = int(out_ptr)
             interim = self._scratch("_device_route_interim", routes * gm * 4 + routes * dn * 4).ptr
-            self._shared_q8_dot(int(hidden_ptr), gate_weight.ptr, interim, ids_ptr,
-                                route["gate_scales"] or 0, routes, experts, gn, gm,
-                                scratch=self._q8_scratch_ptr(gn))
-            if self._split_q8_dot is not None:
-                self._split_q8_dot(interim, down_weight.ptr, interim, ids_ptr, route["down_scales"] or 0,
-                                   routes, de, dn, dm, mapping.gate_cap, mapping.up_cap,
-                                   scratch=self._q8_scratch_ptr(routes * dn))
-            else:
-                active = interim + routes * gm * 4
+            if gate_q == Q.NVFP4 and down_q == Q.NVFP4:
+                self._shared_q8_dot(int(hidden_ptr), gate_weight.ptr, interim, ids_ptr,
+                                    route["gate_scales"] or 0, routes, experts, gn, gm,
+                                    scratch=self._q8_scratch_ptr(gn))
+                if self._split_q8_dot is not None:
+                    self._split_q8_dot(interim, down_weight.ptr, interim, ids_ptr, route["down_scales"] or 0,
+                                       routes, de, dn, dm, mapping.gate_cap, mapping.up_cap,
+                                       scratch=self._q8_scratch_ptr(routes * dn))
+                else:
+                    active = interim + routes * gm * 4
+                    if self._activation is None:
+                        raise RuntimeError("device route projection requires split or plain activation")
+                    self._activation(interim, active, routes, dn, mapping.gate_cap, mapping.up_cap)
+                    self._q8_dot(active, down_weight.ptr, interim, ids_ptr, route["down_scales"] or 0,
+                                 routes, de, dn, dm, scratch=self._q8_scratch_ptr(routes * dn))
+            elif gate_q in self._selected_launches and down_q in self._selected_launches:
                 if self._activation is None:
-                    raise RuntimeError("device route projection requires split or plain activation")
+                    raise RuntimeError("device route projection for non-NVFP4 banks needs the split activation")
+                # The selected kernels read one src row per route, so the single
+                # resident hidden row is replicated once per route on device.
+                hidden_rep = self._scratch("_device_route_hidden_rep", routes * gn * 4).ptr
+                for i in range(routes):
+                    self.copy_device(hidden_rep + i * gn * 4, int(hidden_ptr), gn * 4)
+                active = interim + routes * gm * 4
+                self._selected_launches[gate_q](hidden_rep, gate_weight.ptr, interim, ids_ptr, 0,
+                                                routes, experts, gn, gm)
                 self._activation(interim, active, routes, dn, mapping.gate_cap, mapping.up_cap)
-                self._q8_dot(active, down_weight.ptr, interim, ids_ptr, route["down_scales"] or 0,
-                             routes, de, dn, dm, scratch=self._q8_scratch_ptr(routes * dn))
+                self._selected_launches[down_q](active, down_weight.ptr, interim, ids_ptr, 0,
+                                                routes, experts, dn, dm)
+            else:
+                raise ValueError(f"device route projection does not support {gate_q.name} gate/up and "
+                                 f"{down_q.name} down expert banks")
             self._mix(interim, mix_ptr, out_ptr, k, dm, tokens=routes // k)
             if transform_output is not None:
                 rows = routes // k
@@ -768,7 +790,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         finally:
             self._upload_staging = None
             with self._lock:
-                for name in ("_q8_dot_scratch", "_resident", "_device_route_hidden", "_router_logits",
+                for name in ("_q8_dot_scratch", "_resident", "_device_route_hidden", "_device_route_hidden_rep", "_router_logits",
                          "_device_route_interim", "_device_route_out"):
                     buffer = getattr(self, name)
                     if buffer is not None:
