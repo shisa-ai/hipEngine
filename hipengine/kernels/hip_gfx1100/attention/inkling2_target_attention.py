@@ -151,7 +151,58 @@ def launch_attention_block_table_sigmoid(q, k, v, rel, sink, out, spans, nq, nk,
                             extent, block_k, block_v, rows, gain, table, rel_width, stream=stream)
 
 
+# Fixed grid of the decode scores kernel: each of its blocks serves 16 keys per pass, and a session
+# of any length replays the same launch.
+_DECODE_SCORE_BLOCKS = 64
+
+
+@lru_cache(maxsize=2)
+def _build_decode_scores(target_arch):
+    fn = _split_library(target_arch).hipengine_inkling2_decode_table_scores
+    fn.argtypes = [ctypes.c_void_p] * 12 + [ctypes.c_int] * 7 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    return fn
+
+
+@lru_cache(maxsize=2)
+def _build_decode_values(target_arch):
+    fn = _split_library(target_arch).hipengine_inkling2_decode_values
+    fn.argtypes = [ctypes.c_void_p] * 10 + [ctypes.c_int] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def launch_decode_table_attention(q, k, v, rel, sink, out, spans, nq, nk, dim, extent, block_k, block_v, rows,
+                                  *, gain, table, rel_width, scores, gain_out, stream=None, target_arch=None):
+    """One-row attention over device-resident inputs with the bias read from a lag table.
+
+    Bit-exact with ``launch_attention_block_table_sigmoid`` at one row: the same score tree and
+    table dot, the same slot-order online-softmax chain and gain. The row's K/V is committed
+    before attention instead of after; that slot held no live key. ``scores`` takes
+    ``heads * capacity`` floats and ``gain_out`` ``heads * dim``.
+    """
+    if rows != 1:
+        raise ValueError("Inkling 2 decode table attention serves exactly one query row")
+    if not scores or not gain_out or not table:
+        raise ValueError("invalid Inkling 2 decode table attention scratch or lag table")
+    resolved = capture_stream() if stream is None else stream
+    launch_cache_write(block_k, block_v, k, v, spans, nk * dim, stream=resolved, target_arch=target_arch)
+    pointers = _span_pointers(spans)
+    capacity = spans.max_live_count
+    status = _build_decode_scores(target_arch)(
+        q, k, rel, gain, gain_out, scores, *pointers, table, nq, nk, dim, extent, capacity,
+        min(_DECODE_SCORE_BLOCKS, (capacity + 3) // 4), rel_width, resolved)
+    if status != HIP_SUCCESS:
+        raise HipError(status, "Inkling 2 decode table attention scores failed")
+    status = _build_decode_values(target_arch)(
+        v, scores, sink, out, *pointers, gain_out, nq, nk, dim, capacity, resolved)
+    if status != HIP_SUCCESS:
+        raise HipError(status, "Inkling 2 decode table attention values failed")
+
+
 for _backend in ("hip_gfx1100", "hip_gfx1151"):
+    register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "decode_table_sigmoid"),
+             launch_decode_table_attention)
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "block"), launch_attention_block)
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "block_sigmoid"),
              launch_attention_block_sigmoid)

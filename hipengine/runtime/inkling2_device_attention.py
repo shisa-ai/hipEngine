@@ -23,11 +23,13 @@ _VALUE_CHUNK = 64
 
 class Inkling2DeviceAttention:
     def __init__(self, *, runtime, launch, write, geometry, split=None, split_chunked=None, block=None,
-                 block_sigmoid=None, device=None, block_table=None):
+                 block_sigmoid=None, device=None, block_table=None, decode_table=None):
         self.rt, self.launch, self.write = runtime, launch, write
         self.split, self.split_chunked, self.block = split, split_chunked, block
         self.block_sigmoid = block_sigmoid
         self.block_table = block_table
+        self.decode_table = decode_table
+        self.gain = 0
         self._block_scratch = None
         self.scores = self.value_partials = 0
         self.device = Device("hip") if device is None else device
@@ -99,6 +101,11 @@ class Inkling2DeviceAttention:
     def _reserve_scores(self):
         if not self.scores:
             self.scores = self._allocate(4 * max(capacity * heads for capacity, heads, *_ in self.geometry))
+
+    def _gain_buffer(self):
+        if not self.gain:
+            self.gain = self._allocate(4 * max(heads * dim for _, heads, _, dim, _ in self.geometry))
+        return self.gain
 
     def _reserve_value_partials(self):
         if not self.value_partials:
@@ -265,7 +272,7 @@ class Inkling2DeviceAttention:
         """
         if self.closed or self._borrowed_output:
             raise RuntimeError("Inkling 2 attention state is closed or still has a borrowed output")
-        if self.block_table is None:
+        if self.block_table is None and not (rows == 1 and self.decode_table is not None):
             raise RuntimeError("Inkling 2 resident block attention requires the lag-table kernel")
         recording = getattr(self, "capture_headers", None) is not None
         if not recording and position != self.positions.get(visit, 0):
@@ -290,8 +297,16 @@ class Inkling2DeviceAttention:
         extent = min(extent, live if headers is None else cap)
         spans = replace(spans, live_counts=Tensor(header, (1,), DType.INT32, self.device),
                         row_positions=Tensor(header + 4, (1,), DType.INT32, self.device))
-        self.block_table(query, keys, values, rel, sink, out, spans, nq, nk, d, extent, key, value, rows,
-                         gain=gate, table=table, rel_width=rel_width)
+        if rows == 1 and self.decode_table is not None:
+            # One row is decode: scores from the lag table under a fixed grid, then the values.
+            if not self.scores:
+                self._reserve_scores()
+            self.decode_table(query, keys, values, rel, sink, out, spans, nq, nk, d, extent, key, value, rows,
+                              gain=gate, table=table, rel_width=rel_width, scores=self.scores,
+                              gain_out=self._gain_buffer())
+        else:
+            self.block_table(query, keys, values, rel, sink, out, spans, nq, nk, d, extent, key, value, rows,
+                             gain=gate, table=table, rel_width=rel_width)
         self.positions[visit] = position + rows
 
     def _close_block_scratch(self):

@@ -82,6 +82,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
         block = primitive("inkling2_target_attention", "block")
         block_sigmoid = primitive("inkling2_target_attention", "block_sigmoid") if fast else None
         block_table = primitive("inkling2_target_attention", "block_table_sigmoid") if fast else None
+        decode_table = primitive("inkling2_target_attention", "decode_table_sigmoid") if fast else None
         write = primitive("inkling2_target_kv_write", "default")
         conv = primitive("inkling2_short_conv", "default")
         conv_block = primitive("inkling2_short_conv", "block")
@@ -99,7 +100,8 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
             model.decode_graph = _decode_graph_requested()
             model.attention_factory = lambda cap: Inkling2DeviceAttention(
                 runtime=runtime, launch=attn, split=split, split_chunked=split_chunked, block=block,
-                block_sigmoid=block_sigmoid, block_table=block_table, write=write, geometry=[
+                block_sigmoid=block_sigmoid, block_table=block_table, decode_table=decode_table, write=write,
+                geometry=[
                     (min(cap, m.sliding_window) if v.is_local else cap, *model.head_shape(v),
                      m.sliding_window if v.is_local else m.relative_extent) for v in visits
                 ])

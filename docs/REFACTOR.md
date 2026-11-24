@@ -1784,22 +1784,21 @@ Non-NVFP4 expert banks (Q4_K/Q8_0/Q5_K) bounce their normalized rows through the
 ordinary routed path; the device-route fast path covers NVFP4 banks.
 
 Measured 2026-11-25 (W7900, UD-Q4_K_M artifact, fast profile, device routes on, 128 outputs,
-three repetitions after one warmup): 32.9 tok/s after 47 prompt tokens against 18.0 for the
-default path; 14.2 against 17.5 after 1,717. Two things held it at 10.3 tok/s on November 24.
+three repetitions after one warmup): 36.6 tok/s after 47 prompt tokens against 17.9 for the
+default path; 29.4 against 17.3 after 1,717. Three things held it at 10.3 tok/s on November 24.
 Single-row projections went through rocBLAS GEMM, which answers them with a 64x64-tile Tensile
-kernel at 143 µs against 12 µs for GEMV; one-row blocks now take the GEMV entry. Attention runs
-the block kernel at one row, which takes 0.9 ms per visit at 1,717 keys and is 45 ms of the 70 ms
-step; that is the remaining loss at depth. Until the same day every request after the first in a
-process read residual queries that the previous request's prompt blocks had overwritten, because
-they were staged once into shared scratch; the known-answer check scored 2 of 12. The queries now
-live in the projection's residency, the check scores 9 of 12 with the default path's IDs, and
-teacher-forced KL against strict is 1.39e-3 mean against 1.98e-3 for the default `fast` path
-over 640 rows.
+kernel at 143 µs against 12 µs for GEMV; one-row blocks now take the GEMV entry. Attention ran
+the block kernel at one row, 919 µs per visit at 1,717 keys; the `decode_table_sigmoid` route
+takes 160 µs and is bit-exact with it. And every request after the first in a process read
+residual queries that the previous request's prompt blocks had overwritten; the known-answer
+check scored 2 of 12. The queries live in the projection's residency; the check scores 9 of 12
+with the default path's IDs, and teacher-forced KL against strict is 1.39e-3 mean against
+1.98e-3 for the default `fast` path over 640 rows. The step is now 27.6 ms of kernels in about
+2,460 launches at 1,717 keys, 33.7 ms of wall under the graph.
 
-Done when: a decode attention kernel replaces the block kernel on this path and the step is
-faster than the default path at each of the campaign's 47, 575 and 2,057 prompt-token cells, with
-the production numerical gate passed; then the default becomes `1` and the flag is the rollback
-lever. If the step cannot beat the default at depth, remove the path, R0528 with it, and close
+Done when: the step is faster than the default path in paired runs at each of the campaign's 47,
+575 and 2,057 prompt-token cells, with the production numerical gate passed; then the default
+becomes `1` and the flag is the rollback lever. If the step cannot beat the default at depth, remove the path, R0528 with it, and close
 this entry. Validation: `tests/test_unit_inkling2_resident_decode.py` and the known-answer check
 below; its twelve sequential requests are the regression guard for request-order state.
 
@@ -1831,12 +1830,11 @@ request, at 67 and at 1,717 prompt tokens, gave zero logit difference at every o
 and the same IDs. Recording starts at the first decode step.
 
 Decision from [paired runs](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-decode-pairs.json)
-at 47 prompt tokens and 128 outputs, five pairs in each order: the graph decodes at 33.21 tok/s
-against 17.80 for the default path (1.868 and 1.867), one capture of 27.6 ms per request and 126
-replays in 127 steps. It stays at `0`: its 128 output IDs are not the default's, and the resident
-step it replays is slower at depth (14.2 against 17.5 tok/s after 1,717 prompt tokens, R0527). A
-`HIP graph` node costs 3.2 µs here (30.1 ms of wall over 22.5 ms of kernels in 2,392 nodes), so
-fewer nodes are worth as much as the replay itself. `HIPENGINE_SUBMISSION_TRANSPORT=aql` and `pm4`
+at 47 prompt tokens and 128 outputs, five pairs in each order, taken before the decode attention
+kernel: the graph decoded at 33.21 tok/s against 17.80 for the default path (1.868 and 1.867),
+one capture of 27.6 ms per request and 126 replays in 127 steps. It stays at `0`: its 128 output
+IDs are not the default's, and the numerical gate has not admitted the path. A `HIP graph` node
+costs 3.2 µs here, so fewer nodes are worth as much as the replay itself. `HIPENGINE_SUBMISSION_TRANSPORT=aql` and `pm4`
 refuse the graph today: it holds about 321 memcpy nodes per step and the in-tree inspector takes
 kernel nodes only; the step then runs resident eager with the same output.
 

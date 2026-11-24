@@ -206,3 +206,163 @@ extern "C" int hipengine_inkling2_split_attention(
                        v, scores, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim, live);
     return hipGetLastError();
 }
+
+namespace {
+
+constexpr int decode_tile = 32;
+
+// Scores for one query row, with the relative bias evaluated from a lag table. Wave w of block b
+// serves the keys 4*b + w, 4*b + w + 4*blocks, ..., so the grid is fixed for a session and a
+// captured launch serves every later step. Row `nq` of the grid turns raw gate logits into gains.
+__global__ void decode_table_scores(
+    const float* q, const float* k, const float* rel, const float* gate, float* gain, float* scores,
+    const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
+    const int32_t* row, int nq, int nk, int dim, int extent, int stride, int blocks,
+    const float* table, int rel_width) {
+    const int lane = threadIdx.x % 32;
+    const int head = blockIdx.y;
+    if (head == nq) {
+        for (int i = threadIdx.x; i < nq * dim; i += blockDim.x) {
+            const float g = gate[i];
+            const float z = expf(-fabsf(g));
+            gain[i] = (g >= 0.0f ? 1.0f : z) / (1.0f + z);
+        }
+        return;
+    }
+    const int kh = head / (nq / nk);
+    q += head * dim;
+    rel += head * rel_width;
+    float query[4];
+    #pragma unroll
+    for (int g = 0; g < 4; ++g) {
+        const int col = lane + 32 * g;
+        query[g] = col < dim ? q[col] : 0.0f;
+    }
+    const float bias = lane < rel_width ? rel[lane] : 0.0f;
+    scores += size_t(head) * stride;
+    const int live = *count, position = *row;
+    const int first = blockIdx.x * 4 + threadIdx.x / 32, step = 4 * blocks;
+    for (int i = first; i < live; i += step) {
+        const int lag = position - positions[i];
+        if (evicted[i] || lag < 0) continue;
+        const float* key = k + (size_t(offsets[i]) * nk + kh) * dim;
+        float part[4];
+        #pragma unroll
+        for (int g = 0; g < 4; ++g) {
+            const int col = lane + 32 * g;
+            part[g] = col < dim ? __fmul_rn(query[g], key[col]) : 0.0f;
+        }
+        // Match the block kernel's 128-way tree: combine +64, then +32, then the wave.
+        float sum = (part[0] + part[2]) + (part[1] + part[3]);
+        #pragma unroll
+        for (int offset = 16; offset > 0; offset /= 2) sum += __shfl_down(sum, offset, 32);
+        float shift = 0.0f;
+        if (lag < extent) {
+            float bias_part = lane < rel_width ? __fmul_rn(bias, table[lag * rel_width + lane]) : 0.0f;
+            #pragma unroll
+            for (int offset = 16; offset > 0; offset /= 2) bias_part += __shfl_down(bias_part, offset, 32);
+            shift = bias_part;
+        }
+        if (!lane) scores[i] = sum * rsqrtf(float(dim)) + shift;
+    }
+}
+
+// Weighted values for one query row in exact slot order: the online-softmax chain is the block
+// kernel's. Each 32-key tile loads its values before the serial chain consumes them, where the
+// block kernel loads one value vector per chain iteration.
+__global__ void decode_values(const float* value, const float* scores, const float* sink, float* out,
+                              const int32_t* offsets, const int32_t* count, const int32_t* positions,
+                              const uint8_t* evicted, const int32_t* row, const float* gain,
+                              int nq, int nk, int dim, int stride) {
+    const int tid = threadIdx.x, head = blockIdx.x;
+    const int kh = head / (nq / nk);
+    const int live = *count, position = *row;
+    scores += size_t(head) * stride;
+    __shared__ float previous[decode_tile], current[decode_tile];
+    __shared__ int physical[decode_tile];
+    __shared__ float final_denom;
+    float v[decode_tile];
+    bool used[decode_tile];
+    float hi = sink[head], denom = 1.0f, acc = 0.0f;
+    for (int start = 0; start < live; start += decode_tile) {
+        const int n = min(decode_tile, live - start);
+        if (tid < decode_tile) {
+            const int i = start + tid;
+            const bool active = tid < n && !evicted[i] && position >= positions[i];
+            const float score = active ? scores[i] : -INFINITY;
+            const float tile_hi = __shfl(hi, 0, decode_tile);
+            float prefix = fmaxf(tile_hi, score);
+            #pragma unroll
+            for (int delta = 1; delta < decode_tile; delta *= 2) {
+                const float earlier = __shfl_up(prefix, delta, decode_tile);
+                if (tid >= delta) prefix = fmaxf(earlier, prefix);
+            }
+            const float prior = __shfl_up(prefix, 1, decode_tile);
+            const float last = __shfl(prefix, n - 1, decode_tile);
+            if (active) {
+                previous[tid] = expf((tid == 0 ? tile_hi : prior) - prefix);
+                current[tid] = expf(score - prefix);
+            }
+            physical[tid] = active ? offsets[i] : -1;
+            if (!tid) hi = last;
+        }
+        __syncthreads();
+        if (tid < dim) {
+            #pragma unroll
+            for (int j = 0; j < decode_tile; ++j) {
+                const int slot = physical[j];
+                used[j] = j < n && slot >= 0;
+                v[j] = used[j] ? value[(size_t(slot) * nk + kh) * dim + tid] : 0.0f;
+            }
+        }
+        if (!tid) {
+            for (int j = 0; j < n; ++j) {
+                if (physical[j] >= 0) denom = denom * previous[j] + current[j];
+            }
+        }
+        if (tid < dim) {
+            #pragma unroll
+            for (int j = 0; j < decode_tile; ++j) {
+                if (used[j]) acc = acc * previous[j] + current[j] * v[j];
+            }
+        }
+        __syncthreads();
+    }
+    if (!tid) final_denom = denom;
+    __syncthreads();
+    if (tid < dim) {
+        const int i = head * dim + tid;
+        const float result = acc / final_denom;
+        out[i] = gain ? __fmul_rn(result, gain[i]) : result;
+    }
+}
+
+}  // namespace
+
+extern "C" int hipengine_inkling2_decode_table_scores(
+    const float* q, const float* k, const float* rel, const float* gate, float* gain, float* scores,
+    const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
+    const int32_t* row, const float* table, int nq, int nk, int dim, int extent, int stride, int blocks,
+    int rel_width, hipStream_t stream) {
+    if (!q || !k || !rel || !gate || !gain || !scores || !table || nq <= 0 || nk <= 0 || nq % nk || dim <= 0 ||
+        dim > 128 || extent <= 0 || stride <= 0 || blocks <= 0 || rel_width <= 0 || rel_width > 32) {
+        return hipErrorInvalidValue;
+    }
+    hipLaunchKernelGGL(decode_table_scores, dim3(blocks, nq + 1), dim3(128), 0, stream,
+                       q, k, rel, gate, gain, scores, offsets, count, positions, evicted, row, nq, nk, dim,
+                       extent, stride, blocks, table, rel_width);
+    return hipGetLastError();
+}
+
+extern "C" int hipengine_inkling2_decode_values(
+    const float* value, const float* scores, const float* sink, float* out, const int32_t* offsets,
+    const int32_t* count, const int32_t* positions, const uint8_t* evicted, const int32_t* row,
+    const float* gain, int nq, int nk, int dim, int stride, hipStream_t stream) {
+    if (!value || !scores || !sink || !out || nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 ||
+        stride <= 0) {
+        return hipErrorInvalidValue;
+    }
+    hipLaunchKernelGGL(decode_values, dim3(nq), dim3(128), 0, stream,
+                       value, scores, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim, stride);
+    return hipGetLastError();
+}
