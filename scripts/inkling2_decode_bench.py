@@ -121,35 +121,35 @@ def _direction(kind):
     return (getattr(kind, "name", None) or str(kind)).lower()
 
 
-def install_token_counter(generator_class):
-    """Return ``[count]``, advanced once per token the text generator hands its stream.
+def install_step_counter(model_class):
+    """Return ``[count]``, advanced once per decode tick the resident runner executes.
 
-    The stream yields a chunk only for non-empty text and carries token IDs only on its last
-    chunk, so neither the chunk count nor the IDs on the first delta give the token count.
-    Counting where ``generator_class._iterate_row`` yields does. The method is wrapped on the
-    class because the public ``LLM`` object does not hand out the generator instance.
+    The public ``LLM`` stream runs through the engine loop, not the text generator: a tick
+    calls ``Inkling2GGUFText.decode_rows`` once and produces one token for the row, while the
+    first token comes out of prompt processing. Chunks are emitted only for non-empty text and
+    carry token IDs only at the end, so the tick count is the only exact measure of how many
+    tokens the first text delta represents.
     """
     counter = [0]
-    original = generator_class._iterate_row
+    original = model_class.decode_rows
 
-    def counting(self, *args, **kwargs):
-        for token in original(self, *args, **kwargs):
-            counter[0] += 1
-            yield token
+    def counting(self, rows):
+        counter[0] += 1
+        return original(self, rows)
 
-    generator_class._iterate_row = counting
+    model_class.decode_rows = counting
     return counter
 
 
-def stream_once(llm, ids, sampling, *, tokens, counts=False):
+def stream_once(llm, ids, sampling, *, steps, counts=False):
     """Stream one request and return its timings, generated IDs and diagnostics.
 
-    ``tokens`` is the counter from ``install_token_counter``. It is reset here and read when
-    the first non-empty text delta arrives; the tokens generated before that point came out of
-    prompt processing, so they are not decode steps.
+    ``steps`` is the counter from ``install_step_counter``. It is reset here and read when the
+    first non-empty text delta arrives; that delta is the token after the ticks counted, and
+    everything before it came out of prompt processing rather than a decode step.
     """
     counter = CallCounter(HipRuntime) if counts else None
-    tokens[0] = 0
+    steps[0] = 0
     started = time.perf_counter()
     first_at = None
     first_count = 0
@@ -162,7 +162,7 @@ def stream_once(llm, ids, sampling, *, tokens, counts=False):
                 seen = chunk.generated_token_ids
                 if first_at is None and chunk.text:
                     first_at = time.perf_counter()
-                    first_count = tokens[0]
+                    first_count = steps[0] + 1
                     if counter is not None:
                         counter.start()
                 if seen is not None:
@@ -298,8 +298,8 @@ def main(argv=None) -> int:
     llm = LLM(model=str(model), backend=args.backend, execution_profile=profile,
               max_sequence_length=args.max_sequence_length, prefix_cache="off", speculative_mtp_serving="off")
     try:
-        from hipengine.generation.inkling2_gguf import Inkling2GGUFGenerator
-        tokens = install_token_counter(Inkling2GGUFGenerator)
+        from hipengine.runtime.inkling2_gguf import Inkling2GGUFText
+        steps = install_step_counter(Inkling2GGUFText)
         seed = llm.tokenize(_SEED)
         sampling = SamplingParams(temperature=0, max_tokens=args.output_tokens, ignore_eos=True)
         depths = []
@@ -308,8 +308,8 @@ def main(argv=None) -> int:
         for count in args.prompt_tokens:
             ids = prompt_ids(seed, count)
             for _ in range(args.warmup):
-                stream_once(llm, ids, sampling, tokens=tokens)
-            samples = [stream_once(llm, ids, sampling, tokens=tokens, counts=args.counts) for _ in range(args.reps)]
+                stream_once(llm, ids, sampling, steps=steps)
+            samples = [stream_once(llm, ids, sampling, steps=steps, counts=args.counts) for _ in range(args.reps)]
             depths.append({"prompt_tokens": count, **summarize(samples)})
             first_output_ids[str(count)] = samples[0]["output_ids"]
             repetitions.extend({key: value for key, value in sample.items()

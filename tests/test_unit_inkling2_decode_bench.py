@@ -13,15 +13,15 @@ spec.loader.exec_module(bench)
 
 
 class _Stream:
-    """One chunk per token; the token counter advances as each chunk is handed out."""
+    """One chunk per token; ``steps`` holds the decode ticks run before each chunk is handed out."""
 
-    def __init__(self, chunks, tokens):
+    def __init__(self, chunks, steps):
         self._chunks = list(chunks)
-        self._tokens = tokens
+        self._steps = steps
 
     def __iter__(self):
-        for index, chunk in enumerate(self._chunks, 1):
-            self._tokens[0] = index
+        for index, chunk in enumerate(self._chunks):
+            self._steps[0] = index
             yield chunk
 
     def close(self):
@@ -32,11 +32,11 @@ class _LLM:
     def __init__(self, chunks):
         self._chunks = chunks
         self.requests = 0
-        self.tokens = [0]
+        self.steps = [0]
 
     def stream_detailed(self, ids, sampling):
         self.requests += 1
-        return _Stream(self._chunks, self.tokens)
+        return _Stream(self._chunks, self.steps)
 
 
 def chunk(text, ids, diagnostics=None, reason=None):
@@ -55,23 +55,18 @@ def test_prompt_ids_repeats_the_seed_to_the_exact_length():
         bench.prompt_ids([1], 0)
 
 
-def test_install_token_counter_counts_what_the_generator_yields():
-    class Generator:
-        def _iterate_row(self, request, index, row):
-            self.seen = (request, index, row)
-            yield from (7, 8, 9)
+def test_install_step_counter_counts_decode_ticks():
+    class Model:
+        def decode_rows(self, rows):
+            return [len(rows)]
 
-    original = Generator._iterate_row
-    generator = Generator()
-    tokens = bench.install_token_counter(Generator)
-    assert tokens == [0]
-    steps = generator._iterate_row("request", 0, "row")
-    assert next(steps) == 7 and tokens == [1]
-    next(steps)
-    assert tokens == [2]
-    assert list(steps) == [9] and tokens == [3]
-    assert generator.seen == ("request", 0, "row")
-    Generator._iterate_row = original
+    original = Model.decode_rows
+    steps = bench.install_step_counter(Model)
+    assert steps == [0]
+    assert Model().decode_rows([(1, 2)]) == [1] and steps == [1]
+    assert Model().decode_rows([(1, 2)]) == [1] and steps == [2]
+    Model.decode_rows = original
+    assert Model().decode_rows([(1, 2)]) == [1] and steps == [2]
 
 
 def test_stream_once_times_from_the_first_text_delta_to_close():
@@ -79,8 +74,8 @@ def test_stream_once_times_from_the_first_text_delta_to_close():
     # holds one decode step for three generated tokens.
     llm = _LLM([chunk("", [10]), chunk("a", [10, 11]),
                 chunk("b", [10, 11, 12], {"execution_path": "x"}, "stop")])
-    llm.tokens[0] = 500  # a count left over from an earlier request
-    sample = bench.stream_once(llm, (1, 2, 3), None, tokens=llm.tokens)
+    llm.steps[0] = 500  # a count left over from an earlier request
+    sample = bench.stream_once(llm, (1, 2, 3), None, steps=llm.steps)
     assert llm.requests == 1
     assert sample["prompt_tokens"] == 3
     assert sample["decode_intervals"] == 1
@@ -95,10 +90,10 @@ def test_stream_once_times_from_the_first_text_delta_to_close():
 def test_stream_once_rejects_a_window_without_a_decode_step():
     first_only = _LLM([chunk("a", [10])])
     with pytest.raises(RuntimeError):
-        bench.stream_once(first_only, (1,), None, tokens=first_only.tokens)
+        bench.stream_once(first_only, (1,), None, steps=first_only.steps)
     no_text = _LLM([chunk("", [10, 11])])
     with pytest.raises(RuntimeError):
-        bench.stream_once(no_text, (1,), None, tokens=no_text.tokens)
+        bench.stream_once(no_text, (1,), None, steps=no_text.steps)
 
 
 def _sample(tok, digest, calls=None):
