@@ -1,0 +1,1618 @@
+{
+ "kind": "inkling2-mini-gguf-decode-pairs",
+ "status": "diagnostic",
+ "recorded": "2026-11-25",
+ "purpose": "Decode rate of the Inkling 2 GGUF decode arms against the first arm, in paired runs and in both orders, with output identity, HIP call counts and graph accounting.",
+ "scope": "Development lane. Not a Loom comparison; does not update a scoreboard row.",
+ "tool": "scripts/inkling2_decode_pairs.py",
+ "timing_protocol": "one greedy stream, prefix cache off, drafting off; each arm is the decode bench in a fresh process (one warmup request, then the repetitions); every arm runs once per pair and the pairs run in the listed order and again in reverse order; decode_ms_per_token is the median over a run's repetitions and the arm figure is the median over runs",
+ "protocol": {
+  "arms": [
+   "default",
+   "resident",
+   "graph"
+  ],
+  "orders": [
+   "forward",
+   "reverse"
+  ],
+  "pairs": 3,
+  "reps": 2,
+  "warmup": 1,
+  "output_tokens": 128,
+  "beat_threshold": 1.03
+ },
+ "provenance": {
+  "kind": "hipengine_artifact_provenance",
+  "schema_version": 3,
+  "collected_at": "2026-11-24T23:36:12.765181+00:00",
+  "host_name": "epyc",
+  "repo_root": "/home/lhl/hipEngine",
+  "hipengine_commit": "d79ccd5e64ccee94ba759de2908cc587d2bb88a7",
+  "git_branch": "inkling2-mini",
+  "staged_dirty": false,
+  "unstaged_dirty": false,
+  "untracked_dirty": false,
+  "untracked_count": 0,
+  "dirty": false,
+  "dirty_paths": [],
+  "dirty_path_count": 0,
+  "untracked_paths": [],
+  "execution_affecting_dirty": false,
+  "execution_affecting_paths": [],
+  "configured_backend": "hip_gfx1100",
+  "resolved_backend": "hip_gfx1100",
+  "target_arch": "gfx1100",
+  "device_name": "AMD Radeon Pro W7900",
+  "model_path": "/home/lhl/.cache/hipengine-inkling-gguf-test/Mainline_Support/Inkling-2-Mini-UD-Q4_K_M.gguf_file",
+  "model_revision": null,
+  "model_fingerprint": {
+   "algorithm": "sha256-sampled-v1",
+   "value": "1e29c800fc4499b7d63ddda2458ccae6890f325b74d8603f2ae9aa2d54b97948",
+   "size_bytes": 16610544608,
+   "sampled_bytes": 3145728,
+   "sample_offsets": [
+    0,
+    8304748016,
+    16609496032
+   ],
+   "exists": true,
+   "path_type": "file"
+  },
+  "quant": "UD-Q4_K_M",
+  "kv_dtype": "fp32",
+  "command": [
+   "scripts/inkling2_decode_pairs.py",
+   "run",
+   "/home/lhl/.cache/hipengine-inkling-gguf-test/Inkling-2-Mini-UD-Q4_K_M-mainline.gguf",
+   "--backend",
+   "hip_gfx1100",
+   "--execution-profile",
+   "fast",
+   "--quant",
+   "UD-Q4_K_M",
+   "--arms",
+   "default",
+   "resident",
+   "graph",
+   "--prompt-tokens",
+   "2057",
+   "--pairs",
+   "3",
+   "--reps",
+   "2",
+   "--output",
+   "/tmp/inkling-gate-runs3/pairs-2057.json"
+  ],
+  "environment": {
+   "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/inkling-baseline/compiler.txt"
+  },
+  "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+  "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+  "build_profile": null,
+  "timing_protocol": "one greedy stream, prefix cache off, drafting off; each arm is the decode bench in a fresh process (one warmup request, then the repetitions); every arm runs once per pair and the pairs run in the listed order and again in reverse order; decode_ms_per_token is the median over a run's repetitions and the arm figure is the median over runs",
+  "warmups": 1,
+  "repetitions": 6,
+  "profiler": null
+ },
+ "model": {
+  "path": "/home/lhl/.cache/hipengine-inkling-gguf-test/Inkling-2-Mini-UD-Q4_K_M-mainline.gguf",
+  "bytes": 16610544608
+ },
+ "backend": "hip_gfx1100",
+ "requested_profile": "fast",
+ "arms": {
+  "default": {
+   "environment": {},
+   "kernel_trace": null,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "runs": 6,
+     "decode_tok_s": {
+      "median": 17.237832972905167,
+      "min": 17.206463675201285,
+      "max": 17.30115032065849
+     },
+     "decode_ms_per_token": 58.01203162006037,
+     "first_token_s": {
+      "median": 11.924399763986003,
+      "min": 11.87790587998461,
+      "max": 11.977922631427646
+     },
+     "by_order": {
+      "forward": {
+       "decode_tok_s": {
+        "median": 17.220413910129164,
+        "min": 17.206463675201285,
+        "max": 17.274702449679175
+       },
+       "first_token_s": {
+        "median": 11.931861836928874,
+        "min": 11.917115753050894,
+        "max": 11.977922631427646
+       }
+      },
+      "reverse": {
+       "decode_tok_s": {
+        "median": 17.25525203568117,
+        "min": 17.218968951340948,
+        "max": 17.30115032065849
+       },
+       "first_token_s": {
+        "median": 11.888434535008855,
+        "min": 11.87790587998461,
+        "max": 11.931683774921112
+       }
+      }
+     },
+     "tok_s_ratio_to_reference": {
+      "forward": 1.0,
+      "reverse": 1.0
+     },
+     "identical_output": true,
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "output_identical_to_reference": true,
+     "calls_per_token": {
+      "memcpy_async:host_to_device": {
+       "calls": 241.0,
+       "seconds": 0.0014241308641798425,
+       "bytes": 10183808.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 241.0,
+       "seconds": 0.0008946238744092171,
+       "bytes": 5132264.0
+      },
+      "stream_synchronize": {
+       "calls": 241.0,
+       "seconds": 0.01830904445170335,
+       "bytes": 0.0
+      },
+      "event_query": {
+       "calls": 48.0,
+       "seconds": 0.00011721882312815254,
+       "bytes": 0.0
+      },
+      "event_record": {
+       "calls": 48.0,
+       "seconds": 0.0001446074189549786,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures_per_request": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  "resident": {
+   "environment": {
+    "HIPENGINE_INKLING2_DEVICE_ROUTES": "1",
+    "HIPENGINE_INKLING2_RESIDENT_DECODE": "1"
+   },
+   "kernel_trace": null,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "runs": 6,
+     "decode_tok_s": {
+      "median": 26.524815811214296,
+      "min": 26.471494014011398,
+      "max": 26.540143725251184
+     },
+     "decode_ms_per_token": 37.70057800478911,
+     "first_token_s": {
+      "median": 11.956090171413962,
+      "min": 11.94757827941794,
+      "max": 12.184899450978264
+     },
+     "by_order": {
+      "forward": {
+       "decode_tok_s": {
+        "median": 26.52248153444001,
+        "min": 26.471494014011398,
+        "max": 26.523655501833154
+       },
+       "first_token_s": {
+        "median": 11.953339688363485,
+        "min": 11.94757827941794,
+        "max": 11.987410148023628
+       }
+      },
+      "reverse": {
+       "decode_tok_s": {
+        "median": 26.536029674726663,
+        "min": 26.525976120595438,
+        "max": 26.540143725251184
+       },
+       "first_token_s": {
+        "median": 11.958840654464439,
+        "min": 11.94981021550484,
+        "max": 12.184899450978264
+       }
+      }
+     },
+     "tok_s_ratio_to_reference": {
+      "forward": 1.5401767735001601,
+      "reverse": 1.5378523373552755
+     },
+     "identical_output": true,
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "output_identical_to_reference": true,
+     "calls_per_token": {
+      "event_query": {
+       "calls": 546.8661417322835,
+       "seconds": 0.00039718086492719997,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 74.0,
+       "seconds": 0.0003433089900096962,
+       "bytes": 682368.0
+      },
+      "event_record": {
+       "calls": 73.0,
+       "seconds": 0.00019496168361932747,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 608.0,
+       "seconds": 0.0014787458283325606,
+       "bytes": 5603328.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.60260537267709e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.0,
+       "seconds": 0.018014843348936813,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures_per_request": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  "graph": {
+   "environment": {
+    "HIPENGINE_INKLING2_DEVICE_ROUTES": "1",
+    "HIPENGINE_INKLING2_RESIDENT_DECODE": "1",
+    "HIPENGINE_INKLING2_DECODE_GRAPH": "1"
+   },
+   "kernel_trace": null,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "runs": 6,
+     "decode_tok_s": {
+      "median": 26.66230954891833,
+      "min": 26.57005368604385,
+      "max": 26.790809467735045
+     },
+     "decode_ms_per_token": 37.506163447057666,
+     "first_token_s": {
+      "median": 11.94741799478652,
+      "min": 11.923670898540877,
+      "max": 12.128042830503546
+     },
+     "by_order": {
+      "forward": {
+       "decode_tok_s": {
+        "median": 26.60005886608021,
+        "min": 26.57005368604385,
+        "max": 26.679195085459178
+       },
+       "first_token_s": {
+        "median": 11.932341728475876,
+        "min": 11.923670898540877,
+        "max": 12.128042830503546
+       }
+      },
+      "reverse": {
+       "decode_tok_s": {
+        "median": 26.663624046694004,
+        "min": 26.660995051142653,
+        "max": 26.790809467735045
+       },
+       "first_token_s": {
+        "median": 11.962494261097163,
+        "min": 11.930125319049694,
+        "max": 12.062541488441639
+       }
+      }
+     },
+     "tok_s_ratio_to_reference": {
+      "forward": 1.5446817367400139,
+      "reverse": 1.545246861161911
+     },
+     "identical_output": true,
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "output_identical_to_reference": true,
+     "calls_per_token": {
+      "event_query": {
+       "calls": 2.168635170603675,
+       "seconds": 2.1524594123829693e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 1.7716535433070868,
+       "seconds": 1.0025625183122365e-05,
+       "bytes": 19813.795275590554
+      },
+      "event_record": {
+       "calls": 0.5748031496062992,
+       "seconds": 1.5990142502731538e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 9.574803149606298,
+       "seconds": 2.312963874888389e-05,
+       "bytes": 88241.38582677166
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.8178037547425724e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.992125984251969,
+       "seconds": 0.03581024816194354,
+       "bytes": 0.0
+      },
+      "memcpy:host_to_device": {
+       "calls": 0.015748031496062992,
+       "seconds": 4.482293914602654e-07,
+       "bytes": 1.5433070866141732
+      },
+      "graph_launch": {
+       "calls": 0.9921259842519685,
+       "seconds": 6.209159153208059e-05,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures_per_request": 1,
+      "capture_s": 0.028704011832208682,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  }
+ },
+ "decision": {
+  "default": null,
+  "resident": [
+   {
+    "prompt_tokens": 2057,
+    "tok_s_ratio_to_reference": {
+     "forward": 1.5401767735001601,
+     "reverse": 1.5378523373552755
+    },
+    "faster_in_both_orders": true,
+    "output_identical_to_reference": true,
+    "promote": true,
+    "reference_decode_tok_s": {
+     "median": 17.237832972905167,
+     "min": 17.206463675201285,
+     "max": 17.30115032065849
+    }
+   }
+  ],
+  "graph": [
+   {
+    "prompt_tokens": 2057,
+    "tok_s_ratio_to_reference": {
+     "forward": 1.5446817367400139,
+     "reverse": 1.545246861161911
+    },
+    "faster_in_both_orders": true,
+    "output_identical_to_reference": true,
+    "promote": true,
+    "reference_decode_tok_s": {
+     "median": 17.237832972905167,
+     "min": 17.206463675201285,
+     "max": 17.30115032065849
+    }
+   }
+  ]
+ },
+ "runs": [
+  {
+   "order": "forward",
+   "pair": 0,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 17.220413910129164,
+      "min": 17.20828426393507,
+      "max": 17.232543556323257
+     },
+     "decode_ms_per_token": 58.070642283318314,
+     "first_token_s": {
+      "median": 11.917115753050894,
+      "min": 11.912785131018609,
+      "max": 11.921446375083178
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "memcpy_async:host_to_device": {
+       "calls": 241.0,
+       "seconds": 0.00143577979224932,
+       "bytes": 10183808.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 241.0,
+       "seconds": 0.0009033317928840443,
+       "bytes": 5132264.0
+      },
+      "stream_synchronize": {
+       "calls": 241.0,
+       "seconds": 0.018443009656611976,
+       "bytes": 0.0
+      },
+      "event_query": {
+       "calls": 48.0,
+       "seconds": 0.00011734814863417326,
+       "bytes": 0.0
+      },
+      "event_record": {
+       "calls": 48.0,
+       "seconds": 0.00014531004469929716,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 0,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 26.52248153444001,
+      "min": 26.49511807874074,
+      "max": 26.54984499013928
+     },
+     "decode_ms_per_token": 37.703902748464714,
+     "first_token_s": {
+      "median": 11.953339688363485,
+      "min": 11.937605945859104,
+      "max": 11.969073430867866
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "event_query": {
+       "calls": 553.1692913385826,
+       "seconds": 0.0003988783087904059,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 74.0,
+       "seconds": 0.0003390201453603511,
+       "bytes": 682368.0
+      },
+      "event_record": {
+       "calls": 73.0,
+       "seconds": 0.00019279520731331327,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 608.0,
+       "seconds": 0.0014710409858256696,
+       "bytes": 5603328.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.5592988118470655e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.0,
+       "seconds": 0.01823206569662127,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 0,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 26.60005886608021,
+      "min": 26.585007342961514,
+      "max": 26.61511038919891
+     },
+     "decode_ms_per_token": 37.593913803566394,
+     "first_token_s": {
+      "median": 11.932341728475876,
+      "min": 11.922501467866823,
+      "max": 11.94218198908493
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "event_query": {
+       "calls": 1.9645669291338583,
+       "seconds": 2.040482844834722e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 1.7716535433070866,
+       "seconds": 1.0019284673035145e-05,
+       "bytes": 19813.79527559055
+      },
+      "event_record": {
+       "calls": 0.5748031496062992,
+       "seconds": 1.6100349007394371e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 9.5748031496063,
+       "seconds": 2.3114160399913318e-05,
+       "bytes": 88241.38582677166
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.789623592782208e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.9921259842519685,
+       "seconds": 0.035904575926691704,
+       "bytes": 0.0
+      },
+      "memcpy:host_to_device": {
+       "calls": 0.015748031496062992,
+       "seconds": 3.979964856439688e-07,
+       "bytes": 1.5433070866141732
+      },
+      "graph_launch": {
+       "calls": 0.9921259842519685,
+       "seconds": 5.645251660571089e-05,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.028501127031631768,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 1,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 17.206463675201285,
+      "min": 17.17468786412136,
+      "max": 17.238239486281213
+     },
+     "decode_ms_per_token": 58.11789274806025,
+     "first_token_s": {
+      "median": 11.977922631427646,
+      "min": 11.965928058838472,
+      "max": 11.98991720401682
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "memcpy_async:host_to_device": {
+       "calls": 241.0,
+       "seconds": 0.0014229743332624084,
+       "bytes": 10183808.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 241.0,
+       "seconds": 0.0008952588935595328,
+       "bytes": 5132264.0
+      },
+      "stream_synchronize": {
+       "calls": 241.0,
+       "seconds": 0.018173294158388427,
+       "bytes": 0.0
+      },
+      "event_query": {
+       "calls": 48.0,
+       "seconds": 0.0001171826775457094,
+       "bytes": 0.0
+      },
+      "event_record": {
+       "calls": 48.0,
+       "seconds": 0.00014589776974318066,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 1,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 26.471494014011398,
+      "min": 26.45284574108422,
+      "max": 26.490142286938575
+     },
+     "decode_ms_per_token": 37.77650387785361,
+     "first_token_s": {
+      "median": 11.987410148023628,
+      "min": 11.98578056297265,
+      "max": 11.989039733074605
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "event_query": {
+       "calls": 547.1141732283464,
+       "seconds": 0.0003973252669812774,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 74.0,
+       "seconds": 0.00034605100655590924,
+       "bytes": 682368.0
+      },
+      "event_record": {
+       "calls": 73.0,
+       "seconds": 0.00018929541349323013,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 608.0,
+       "seconds": 0.0014757257198738888,
+       "bytes": 5603328.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.6664435324354433e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.0,
+       "seconds": 0.01797351945286954,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 1,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 26.57005368604385,
+      "min": 26.562561848133374,
+      "max": 26.577545523954328
+     },
+     "decode_ms_per_token": 37.636359012319055,
+     "first_token_s": {
+      "median": 12.128042830503546,
+      "min": 12.06259053805843,
+      "max": 12.193495122948661
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "event_query": {
+       "calls": 2.3031496062992125,
+       "seconds": 2.1393240363461764e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 1.7716535433070866,
+       "seconds": 9.887383363436996e-06,
+       "bytes": 19813.79527559055
+      },
+      "event_record": {
+       "calls": 0.5748031496062992,
+       "seconds": 1.5283131781290836e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 9.5748031496063,
+       "seconds": 2.2716205163792833e-05,
+       "bytes": 88241.38582677166
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.8223464730980357e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.9921259842519685,
+       "seconds": 0.0359482677877096,
+       "bytes": 0.0
+      },
+      "memcpy:host_to_device": {
+       "calls": 0.015748031496062992,
+       "seconds": 6.635911674715403e-07,
+       "bytes": 1.5433070866141732
+      },
+      "graph_launch": {
+       "calls": 0.9921259842519685,
+       "seconds": 5.932100571867988e-05,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.028829486458562315,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 2,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 17.274702449679175,
+      "min": 17.259970573719734,
+      "max": 17.28943432563862
+     },
+     "decode_ms_per_token": 57.888159300127306,
+     "first_token_s": {
+      "median": 11.931861836928874,
+      "min": 11.919955791905522,
+      "max": 11.943767881952226
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "memcpy_async:host_to_device": {
+       "calls": 241.0,
+       "seconds": 0.0014185778426343766,
+       "bytes": 10183808.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 241.0,
+       "seconds": 0.000878795311331573,
+       "bytes": 5132264.0
+      },
+      "stream_synchronize": {
+       "calls": 241.0,
+       "seconds": 0.018500126394127885,
+       "bytes": 0.0
+      },
+      "event_query": {
+       "calls": 48.0,
+       "seconds": 0.00011467730432132801,
+       "bytes": 0.0
+      },
+      "event_record": {
+       "calls": 48.0,
+       "seconds": 0.00014016430597664335,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 2,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 26.523655501833154,
+      "min": 26.489416306871597,
+      "max": 26.55789469679471
+     },
+     "decode_ms_per_token": 37.702256626647525,
+     "first_token_s": {
+      "median": 11.94757827941794,
+      "min": 11.921429029898718,
+      "max": 11.973727528937161
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "event_query": {
+       "calls": 522.8110236220473,
+       "seconds": 0.000386257500087065,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 74.0,
+       "seconds": 0.0003464508986863212,
+       "bytes": 682368.0
+      },
+      "event_record": {
+       "calls": 73.0,
+       "seconds": 0.000210111230193806,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 608.0,
+       "seconds": 0.0015010447177199984,
+       "bytes": 5603328.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.6426074494585747e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.0,
+       "seconds": 0.017500887293089913,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 2,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 26.679195085459178,
+      "min": 26.665643932427788,
+      "max": 26.69274623849057
+     },
+     "decode_ms_per_token": 37.48239985461838,
+     "first_token_s": {
+      "median": 11.923670898540877,
+      "min": 11.915687523083761,
+      "max": 11.931654273997992
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "event_query": {
+       "calls": 2.1023622047244093,
+       "seconds": 2.113771331533203e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 1.7716535433070866,
+       "seconds": 9.836437451968513e-06,
+       "bytes": 19813.79527559055
+      },
+      "event_record": {
+       "calls": 0.5748031496062992,
+       "seconds": 1.5839917849250665e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 9.5748031496063,
+       "seconds": 2.2965966445195862e-05,
+       "bytes": 88241.38582677166
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.8255063699279714e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.9921259842519685,
+       "seconds": 0.035773116157492846,
+       "bytes": 0.0
+      },
+      "memcpy:host_to_device": {
+       "calls": 0.015748031496062992,
+       "seconds": 4.2520558798876333e-07,
+       "bytes": 1.5433070866141732
+      },
+      "graph_launch": {
+       "calls": 0.9921259842519685,
+       "seconds": 6.938141616662656e-05,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.028238682891242206,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 0,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 26.660995051142653,
+      "min": 26.642199550049185,
+      "max": 26.67979055223612
+     },
+     "decode_ms_per_token": 37.507996047428975,
+     "first_token_s": {
+      "median": 12.062541488441639,
+      "min": 12.03015924198553,
+      "max": 12.094923734897748
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "event_query": {
+       "calls": 2.263779527559055,
+       "seconds": 2.246273967518112e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 1.7716535433070866,
+       "seconds": 1.020385795749548e-05,
+       "bytes": 19813.79527559055
+      },
+      "event_record": {
+       "calls": 0.5748031496062992,
+       "seconds": 1.6517913350322114e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 9.5748031496063,
+       "seconds": 2.3846284442353906e-05,
+       "bytes": 88241.38582677166
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.8149963580071926e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.9921259842519685,
+       "seconds": 0.035809369453441674,
+       "bytes": 0.0
+      },
+      "memcpy:host_to_device": {
+       "calls": 0.015748031496062992,
+       "seconds": 4.041408313306298e-07,
+       "bytes": 1.5433070866141732
+      },
+      "graph_launch": {
+       "calls": 0.9921259842519685,
+       "seconds": 6.172976705912999e-05,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.029765210580080748,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 0,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 26.536029674726663,
+      "min": 26.513399321594083,
+      "max": 26.55866002785924
+     },
+     "decode_ms_per_token": 37.684640074405436,
+     "first_token_s": {
+      "median": 11.958840654464439,
+      "min": 11.9563463057857,
+      "max": 11.961335003143176
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "event_query": {
+       "calls": 556.2637795275591,
+       "seconds": 0.00040001124161933584,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 74.0,
+       "seconds": 0.00034360359349530043,
+       "bytes": 682368.0
+      },
+      "event_record": {
+       "calls": 73.0,
+       "seconds": 0.00018936090123671011,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 608.0,
+       "seconds": 0.0014653647103984877,
+       "bytes": 5603328.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.554476559220806e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.0,
+       "seconds": 0.01821947203010438,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 0,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 17.30115032065849,
+      "min": 17.292041096402453,
+      "max": 17.310259544914526
+     },
+     "decode_ms_per_token": 57.79964098794841,
+     "first_token_s": {
+      "median": 11.931683774921112,
+      "min": 11.928567431867123,
+      "max": 11.9348001179751
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "memcpy_async:host_to_device": {
+       "calls": 241.0,
+       "seconds": 0.0014138818098833477,
+       "bytes": 10183808.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 241.0,
+       "seconds": 0.0008923627617658945,
+       "bytes": 5132264.0
+      },
+      "stream_synchronize": {
+       "calls": 241.0,
+       "seconds": 0.01847436904217901,
+       "bytes": 0.0
+      },
+      "event_query": {
+       "calls": 48.0,
+       "seconds": 0.00012118835093849522,
+       "bytes": 0.0
+      },
+      "event_record": {
+       "calls": 48.0,
+       "seconds": 0.00014579879196991366,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 1,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 26.663624046694004,
+      "min": 26.632326165125345,
+      "max": 26.694921928262666
+     },
+     "decode_ms_per_token": 37.50433084668636,
+     "first_token_s": {
+      "median": 11.930125319049694,
+      "min": 11.927699160994962,
+      "max": 11.932551477104425
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "event_query": {
+       "calls": 2.2244094488188977,
+       "seconds": 2.203578877402103e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 1.7716535433070866,
+       "seconds": 1.004820975555679e-05,
+       "bytes": 19813.79527559055
+      },
+      "event_record": {
+       "calls": 0.5748031496062992,
+       "seconds": 1.6027786512309172e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 9.5748031496063,
+       "seconds": 2.294419494670207e-05,
+       "bytes": 88241.38582677166
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.8474404832098897e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.9921259842519685,
+       "seconds": 0.035788564476199214,
+       "bytes": 0.0
+      },
+      "memcpy:host_to_device": {
+       "calls": 0.015748031496062992,
+       "seconds": 3.779217175494029e-07,
+       "bytes": 1.5433070866141732
+      },
+      "graph_launch": {
+       "calls": 0.9921259842519685,
+       "seconds": 6.081591136606894e-05,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.028387197526171803,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 1,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 26.540143725251184,
+      "min": 26.528943598349176,
+      "max": 26.551343852153188
+     },
+     "decode_ms_per_token": 37.67877779571032,
+     "first_token_s": {
+      "median": 11.94981021550484,
+      "min": 11.943137283902615,
+      "max": 11.956483147107065
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "event_query": {
+       "calls": 551.9527559055118,
+       "seconds": 0.00040139232149831656,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 74.0,
+       "seconds": 0.00034331010955231865,
+       "bytes": 682368.0
+      },
+      "event_record": {
+       "calls": 73.0,
+       "seconds": 0.00019427376073293798,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 608.0,
+       "seconds": 0.001490570308721265,
+       "bytes": 5603328.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.5876472260304324e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.0,
+       "seconds": 0.018120012533902302,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 1,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 17.25525203568117,
+      "min": 17.239019815755185,
+      "max": 17.271484255607156
+     },
+     "decode_ms_per_token": 57.95342095680242,
+     "first_token_s": {
+      "median": 11.888434535008855,
+      "min": 11.866168429842219,
+      "max": 11.910700640175492
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "memcpy_async:host_to_device": {
+       "calls": 241.0,
+       "seconds": 0.001442999805426445,
+       "bytes": 10183808.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 241.0,
+       "seconds": 0.0009051253029152634,
+       "bytes": 5132264.0
+      },
+      "stream_synchronize": {
+       "calls": 241.0,
+       "seconds": 0.01811072435395015,
+       "bytes": 0.0
+      },
+      "event_query": {
+       "calls": 48.0,
+       "seconds": 0.00011603751194142685,
+       "bytes": 0.0
+      },
+      "event_record": {
+       "calls": 48.0,
+       "seconds": 0.00014535130338933993,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 2,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 26.790809467735045,
+      "min": 26.77444549572673,
+      "max": 26.807173439743362
+     },
+     "decode_ms_per_token": 37.32624705825881,
+     "first_token_s": {
+      "median": 11.962494261097163,
+      "min": 11.958516749087721,
+      "max": 11.966471773106605
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "event_query": {
+       "calls": 2.1535433070866143,
+       "seconds": 2.1713254166635e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 1.7716535433070866,
+       "seconds": 1.0158577897241266e-05,
+       "bytes": 19813.79527559055
+      },
+      "event_record": {
+       "calls": 0.5748031496062992,
+       "seconds": 1.6171756515822073e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 9.5748031496063,
+       "seconds": 2.3191021095345338e-05,
+       "bytes": 88241.38582677166
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.8069092514301378e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.9921259842519685,
+       "seconds": 0.035637595170126185,
+       "bytes": 0.0
+      },
+      "memcpy:host_to_device": {
+       "calls": 0.015748031496062992,
+       "seconds": 4.2052055877728727e-07,
+       "bytes": 1.5433070866141732
+      },
+      "graph_launch": {
+       "calls": 0.9921259842519685,
+       "seconds": 6.484893227626724e-05,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.02850236650556326,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 2,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 26.525976120595438,
+      "min": 26.517388734193524,
+      "max": 26.53456350699735
+     },
+     "decode_ms_per_token": 37.69889938293069,
+     "first_token_s": {
+      "median": 12.184899450978264,
+      "min": 12.171772951958701,
+      "max": 12.198025949997827
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "event_query": {
+       "calls": 549.8858267716536,
+       "seconds": 0.00039922055058679945,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 74.0,
+       "seconds": 0.00034141818640797626,
+       "bytes": 682368.0
+      },
+      "event_record": {
+       "calls": 73.0,
+       "seconds": 0.00019393358874596713,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 608.0,
+       "seconds": 0.0014687285274560527,
+       "bytes": 5603328.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.60515865707022e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.0,
+       "seconds": 0.01804310308703346,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 2,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 2057,
+     "reps": 2,
+     "decode_tok_s": {
+      "median": 17.218968951340948,
+      "min": 17.1899288776441,
+      "max": 17.2480090250378
+     },
+     "decode_ms_per_token": 58.075651751948506,
+     "first_token_s": {
+      "median": 11.87790587998461,
+      "min": 11.869032583897933,
+      "max": 11.886779176071286
+     },
+     "output_ids_sha256": [
+      "dc73b71ce87f02cfd777436948b535cbd9973953a96060161272c881fa1ff42a"
+     ],
+     "calls_per_token": {
+      "memcpy_async:host_to_device": {
+       "calls": 241.0,
+       "seconds": 0.001410571601623156,
+       "bytes": 10183808.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 241.0,
+       "seconds": 0.000892869183998995,
+       "bytes": 5132264.0
+      },
+      "stream_synchronize": {
+       "calls": 241.0,
+       "seconds": 0.018152743104962617,
+       "bytes": 0.0
+      },
+      "event_query": {
+       "calls": 48.0,
+       "seconds": 0.00011687894538778255,
+       "bytes": 0.0
+      },
+      "event_record": {
+       "calls": 48.0,
+       "seconds": 0.00014512229795149697,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  }
+ ]
+}

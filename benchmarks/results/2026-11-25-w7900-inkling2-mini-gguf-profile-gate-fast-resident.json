@@ -1,0 +1,1002 @@
+{
+  "candidate": {
+    "candidate_owner": {
+      "backend": "hip_gfx1100",
+      "manifest_sha256": "974bb161cacd255faeeaca601fea776eb79f2151b31326ceb5fb9c9a6335a1ca",
+      "profile": "fast",
+      "routes": {
+        "decode_graph": false,
+        "device_routes": true,
+        "resident_decode": true
+      },
+      "target_arch": "gfx1100"
+    },
+    "candidate_route_environment": {
+      "HIPENGINE_INKLING2_DECODE_GRAPH": "0",
+      "HIPENGINE_INKLING2_DEVICE_ROUTES": "1",
+      "HIPENGINE_INKLING2_RESIDENT_DECODE": "1"
+    },
+    "classification": "T2",
+    "isolation_owner": {
+      "backend": "hip_gfx1100",
+      "manifest_sha256": "974bb161cacd255faeeaca601fea776eb79f2151b31326ceb5fb9c9a6335a1ca",
+      "profile": "fast",
+      "routes": {
+        "decode_graph": false,
+        "device_routes": true,
+        "resident_decode": true
+      },
+      "target_arch": "gfx1100"
+    },
+    "mechanism": "one device-resident decode visit per token: the arena, router logits and expert chain of a step stay on the device between launches",
+    "name": "fast_resident",
+    "strict_fallback": "strict selected-expert F32 kernels and ordered mix",
+    "strict_owner": {
+      "backend": "hip_gfx1100",
+      "manifest_sha256": "615e6270e615ba223b8d19834b2e81f7fd5e293fb7e85c79fafb845e5ff621ce",
+      "profile": "strict",
+      "routes": {
+        "decode_graph": false,
+        "device_routes": false,
+        "resident_decode": false
+      },
+      "target_arch": "gfx1100"
+    },
+    "strict_route_environment": {
+      "HIPENGINE_INKLING2_DECODE_GRAPH": "0",
+      "HIPENGINE_INKLING2_DEVICE_ROUTES": "0",
+      "HIPENGINE_INKLING2_RESIDENT_DECODE": "0"
+    }
+  },
+  "complete_prompt_suite": true,
+  "control_semantics": {
+    "candidate": {
+      "actual_records": 744,
+      "actual_scenario": {
+        "compaction_count": 0,
+        "page_boundary_count": 0,
+        "ragged_step_count": 0,
+        "records": 744,
+        "request_count": 25,
+        "steps": 744,
+        "width_min_max": [
+          1,
+          64
+        ],
+        "width_transition_count": 55,
+        "work_classes": [
+          "DECODE",
+          "PREFILL"
+        ]
+      },
+      "diagnostic_fields": [
+        "route_decision_hash"
+      ],
+      "diagnostic_mismatch_count": 657,
+      "diagnostic_mismatches": [
+        {
+          "actual": "71e518866edb158791e1e472b15748aa13413953f16c642a4c70e974818959bb",
+          "expected": "1ff5c575aee92577ada9b36c2d7f79912ddf919f76a61422880b49005333173d",
+          "field": "route_decision_hash",
+          "key": [
+            "inkling2-Inkling-2-Mini-UD-Q4_K_M-mainline-fast_resident",
+            1,
+            "DECODE",
+            "task_arithmetic_product"
+          ]
+        },
+        {
+          "actual": "71e518866edb158791e1e472b15748aa13413953f16c642a4c70e974818959bb",
+          "expected": "a9fb39e7efe683f4ddf5a9fc1ade3d58d2c499ec453c18724c2ce0968a5605a9",
+          "field": "route_decision_hash",
+          "key": [
+            "inkling2-Inkling-2-Mini-UD-Q4_K_M-mainline-fast_resident",
+            2,
+            "DECODE",
+            "task_arithmetic_product"
+          ]
+        },
+        {
+          "actual": "71e518866edb158791e1e472b15748aa13413953f16c642a4c70e974818959bb",
+          "expected": "908df4373021e0856bdcd8edc372be13090a311da5070b3f61f9463bef071f88",
+          "field": "route_decision_hash",
+          "key": [
+            "inkling2-Inkling-2-Mini-UD-Q4_K_M-mainline-fast_resident",
+            3,
+            "DECODE",
+            "task_arithmetic_product"
+          ]
+        },
+        {
+          "actual": "71e518866edb158791e1e472b15748aa13413953f16c642a4c70e974818959bb",
+          "expected": "872eebbd952c36b9038c39d84a40deff2ae50e76874afdc49e9e5d0add097a39",
+          "field": "route_decision_hash",
+          "key": [
+            "inkling2-Inkling-2-Mini-UD-Q4_K_M-mainline-fast_resident",
+            4,
+            "DECODE",
+            "task_arithmetic_product"
+          ]
+        },
+        {
+          "actual": "71e518866edb158791e1e472b15748aa13413953f16c642a4c70e974818959bb",
+          "expected": "58a84a518eea3cb0286191b650b83d7e990d08cd196d3406022d2876e07d79f1",
+          "field": "route_decision_hash",
+          "key": [
+            "inkling2-Inkling-2-Mini-UD-Q4_K_M-mainline-fast_resident",
+            5,
+            "DECODE",
+            "task_arithmetic_product"
+          ]
+        }
+      ],
+      "expected_records": 744,
+      "expected_scenario": {
+        "compaction_count": 0,
+        "page_boundary_count": 0,
+        "ragged_step_count": 0,
+        "records": 744,
+        "request_count": 25,
+        "steps": 744,
+        "width_min_max": [
+          1,
+          64
+        ],
+        "width_transition_count": 55,
+        "work_classes": [
+          "DECODE",
+          "PREFILL"
+        ]
+      },
+      "mismatch_count": 0,
+      "mismatches": [],
+      "passed": true,
+      "structural_error": null
+    },
+    "strict": {
+      "actual_records": 744,
+      "actual_scenario": {
+        "compaction_count": 0,
+        "page_boundary_count": 0,
+        "ragged_step_count": 0,
+        "records": 744,
+        "request_count": 25,
+        "steps": 744,
+        "width_min_max": [
+          1,
+          64
+        ],
+        "width_transition_count": 55,
+        "work_classes": [
+          "DECODE",
+          "PREFILL"
+        ]
+      },
+      "diagnostic_fields": [],
+      "diagnostic_mismatch_count": 0,
+      "diagnostic_mismatches": [],
+      "expected_records": 744,
+      "expected_scenario": {
+        "compaction_count": 0,
+        "page_boundary_count": 0,
+        "ragged_step_count": 0,
+        "records": 744,
+        "request_count": 25,
+        "steps": 744,
+        "width_min_max": [
+          1,
+          64
+        ],
+        "width_transition_count": 55,
+        "work_classes": [
+          "DECODE",
+          "PREFILL"
+        ]
+      },
+      "mismatch_count": 0,
+      "mismatches": [],
+      "passed": true,
+      "structural_error": null
+    }
+  },
+  "created_at": "2026-11-24T22:38:10.924987+00:00",
+  "decision": {
+    "passed": true
+  },
+  "gates": {
+    "control_semantics": true,
+    "isolation": true,
+    "public_route": true,
+    "quality_section_2_11": true,
+    "repeat_determinism": true,
+    "task_quality": true
+  },
+  "isolation": {
+    "bit_identical_requests": 25,
+    "criterion": "bit-identical logits per request in a fresh process with the schedule reversed",
+    "mismatched": [],
+    "passed": true,
+    "requests": 25
+  },
+  "kind": "hipengine_execution_profile_inkling2_gguf_gate",
+  "measurement_valid": true,
+  "performance_claim": false,
+  "prompts": [
+    {
+      "category": "arithmetic",
+      "id": "task_arithmetic_product",
+      "prompt_sha256": "822499b2d8e71045fb705ebbc08260d4ad454bb54e7cb737bec39831b1fc0974",
+      "prompt_tokens": 41,
+      "rows": 24
+    },
+    {
+      "category": "arithmetic",
+      "id": "task_arithmetic_remainder",
+      "prompt_sha256": "b62c75aa573bc9861402d620157f4d60a009cda7c8bf102c461df38a816f4890",
+      "prompt_tokens": 45,
+      "rows": 24
+    },
+    {
+      "category": "arithmetic",
+      "id": "task_arithmetic_distance",
+      "prompt_sha256": "48ad2311a37357efd9125afea5af9a3b14febdecb09af0a51256d63cf466c27e",
+      "prompt_tokens": 60,
+      "rows": 24
+    },
+    {
+      "category": "extraction",
+      "id": "task_record_revision",
+      "prompt_sha256": "b6bbd3c87bea1471a03781f7617624e35660775dd2f7d91e67b268ab660a3b88",
+      "prompt_tokens": 67,
+      "rows": 24
+    },
+    {
+      "category": "extraction",
+      "id": "task_record_status",
+      "prompt_sha256": "a52ff5439c753ce2a895847bb00367b94c14e01611265b7f977bb8037980ce49",
+      "prompt_tokens": 54,
+      "rows": 24
+    },
+    {
+      "category": "extraction",
+      "id": "task_record_filter",
+      "prompt_sha256": "755734a06a33b04dbfe2db6ef1dc33e15060fcbadac1870bc55eacbc87fbe7f8",
+      "prompt_tokens": 52,
+      "rows": 24
+    },
+    {
+      "category": "code_reading",
+      "id": "task_python_slice",
+      "prompt_sha256": "ca43d58f5d9c61c4fca3436b7500c4ac7008f73846df5a74a550a39b0c3739f0",
+      "prompt_tokens": 62,
+      "rows": 24
+    },
+    {
+      "category": "code_reading",
+      "id": "task_python_dict",
+      "prompt_sha256": "6285425893dc400ebd0747c6ca0354e801ec7bab723fde3391417f273d369248",
+      "prompt_tokens": 64,
+      "rows": 24
+    },
+    {
+      "category": "code_reading",
+      "id": "task_python_range",
+      "prompt_sha256": "9f6b1dc7f23bd76a252f293f5ffb3327c33fcc9a2a7c0c4629be035f9c1c95be",
+      "prompt_tokens": 52,
+      "rows": 24
+    },
+    {
+      "category": "japanese",
+      "id": "task_japanese_days",
+      "prompt_sha256": "ffce5dec003d70f7ab008571e0716c11ae56c318c6ccdbd347a3286cdf261fa8",
+      "prompt_tokens": 47,
+      "rows": 24
+    },
+    {
+      "category": "japanese",
+      "id": "task_japanese_record",
+      "prompt_sha256": "1f486c3c3cbdb655c7fdd837b3fe945d663b110a7cd173a52fcbc4be31b4f253",
+      "prompt_tokens": 65,
+      "rows": 24
+    },
+    {
+      "category": "japanese",
+      "id": "task_japanese_addition",
+      "prompt_sha256": "174b902cd3a4f771337f203ea1734a9f9f69bd62fc634e2d3ee0b36bc52025b2",
+      "prompt_tokens": 68,
+      "rows": 24
+    },
+    {
+      "category": "general_en",
+      "id": "natural_en_photosynthesis",
+      "prompt_sha256": "7889d0cdc6658ed709fd3663290269febce6428b818b2245e66c22482532f0ab",
+      "prompt_tokens": 45,
+      "rows": 24
+    },
+    {
+      "category": "general_en",
+      "id": "natural_en_reef",
+      "prompt_sha256": "c25ee9c573557a4b5172561d31dc7aaa5df726eba3e29fe7cee2ba2e7b1d1e2a",
+      "prompt_tokens": 46,
+      "rows": 24
+    },
+    {
+      "category": "general_en",
+      "id": "natural_en_einstein",
+      "prompt_sha256": "53f960f5880679559ef0828fff9b320c7ba0e67fbe5b0b680d0e88929077fff7",
+      "prompt_tokens": 33,
+      "rows": 24
+    },
+    {
+      "category": "code",
+      "id": "natural_code_quicksort",
+      "prompt_sha256": "74389221a7ac01b6e753c427b36420cf84306cf3852096a526fc24763b181c1a",
+      "prompt_tokens": 53,
+      "rows": 24
+    },
+    {
+      "category": "code",
+      "id": "natural_code_lru",
+      "prompt_sha256": "9609f71eefdec30a64723b870727321a097a690310c368874f579fc10b437cda",
+      "prompt_tokens": 83,
+      "rows": 24
+    },
+    {
+      "category": "general_ja",
+      "id": "natural_ja_capital",
+      "prompt_sha256": "eeb13c7db92b5014b78d91cfed5177774fd259a085a47676ab370431ddf33a9d",
+      "prompt_tokens": 41,
+      "rows": 24
+    },
+    {
+      "category": "general_ja",
+      "id": "natural_ja_sakura",
+      "prompt_sha256": "42144c084cb82c077bbb5ec27ab013e677fefc3edb7cf100d7c70a4152941e67",
+      "prompt_tokens": 51,
+      "rows": 24
+    },
+    {
+      "category": "multilingual",
+      "id": "natural_es_andes",
+      "prompt_sha256": "334181394d67e00994c6e129237bb819d7527486fa24b481d5ab28390523a877",
+      "prompt_tokens": 46,
+      "rows": 24
+    },
+    {
+      "category": "multilingual",
+      "id": "natural_fr_loire",
+      "prompt_sha256": "9504dc91089e9aea575e8ab6da276c46538590b58db553fdee8797cf9088a0f0",
+      "prompt_tokens": 50,
+      "rows": 24
+    },
+    {
+      "category": "multilingual",
+      "id": "natural_de_handel",
+      "prompt_sha256": "ee7ac03cd1b014013b9e56b009f679f35f5547c3b4b074adb118d1169ba6d42b",
+      "prompt_tokens": 52,
+      "rows": 24
+    },
+    {
+      "category": "long_context",
+      "id": "long_context_en_compiler",
+      "prompt_sha256": "269085d371ad68359e374681a5e2f7cc6fcbddd929e6962f18dda98168df2303",
+      "prompt_tokens": 1162,
+      "rows": 48
+    },
+    {
+      "category": "long_context",
+      "id": "long_context_code_utils",
+      "prompt_sha256": "e454c8d4e74a63f9c071fa857d88e3c73c241b32b37183d1fa5086b12a8a1109",
+      "prompt_tokens": 2289,
+      "rows": 48
+    },
+    {
+      "category": "long_context",
+      "id": "long_context_code_partial",
+      "prompt_sha256": "a5ea7814f22c276cf2442f4d775ba41f1d5e14daacb03e9833db9ff44a2db14c",
+      "prompt_tokens": 1004,
+      "rows": 48
+    }
+  ],
+  "protocol": {
+    "candidate_repeat_runs": 3,
+    "coverage": {
+      "prompts": 25,
+      "saturated_window_prompts": 2,
+      "window_crossing_prompts": 1,
+      "window_tokens": 1024
+    },
+    "dense_envelope_thresholds": {
+      "max_kl_max": 0.05,
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02,
+      "top1_min": 0.99
+    },
+    "model": "/home/lhl/.cache/hipengine-inkling-gguf-test/Inkling-2-Mini-UD-Q4_K_M-mainline.gguf",
+    "prefill_block_width": 64,
+    "prompt_count": 25,
+    "prompt_suite": "/home/lhl/hipEngine/benchmarks/prompts/inkling2-mini-profile-gate.jsonl",
+    "route_top_k": 8,
+    "section_2_11_thresholds": {
+      "damage_line_kl": 0.05,
+      "flip_damage_rate_category": 0.08,
+      "flip_damage_rate_global": 0.03,
+      "kl_median": 0.001,
+      "kl_p90": 0.02,
+      "top1_category": 0.94,
+      "top1_global": 0.96
+    },
+    "session_calls_per_run": 744,
+    "teacher_forced_rows": 672
+  },
+  "provenance": {
+    "build_profile": "execution_profile_inkling2_gguf_gate",
+    "collected_at": "2026-11-24T22:38:10.924823+00:00",
+    "command": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "scripts/inkling2_profile_gate.py",
+      "/home/lhl/.cache/hipengine-inkling-gguf-test/Inkling-2-Mini-UD-Q4_K_M-mainline.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--candidate",
+      "fast_resident",
+      "--json",
+      "/tmp/inkling-gate-runs3/gate-fast_resident.json",
+      "--save-logits",
+      "/tmp/inkling-gate-runs3/logits-fast_resident"
+    ],
+    "configured_backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "dirty": false,
+    "dirty_path_count": 0,
+    "dirty_paths": [],
+    "environment": {
+      "HIPENGINE_HIP_ARCH": null,
+      "HIPENGINE_INKLING2_DECODE_GRAPH": null,
+      "HIPENGINE_INKLING2_DEVICE_ROUTES": null,
+      "HIPENGINE_INKLING2_RESIDENT_DECODE": null,
+      "HIP_VISIBLE_DEVICES": null,
+      "candidate_route_environment": "{'HIPENGINE_INKLING2_DEVICE_ROUTES': '1', 'HIPENGINE_INKLING2_RESIDENT_DECODE': '1', 'HIPENGINE_INKLING2_DECODE_GRAPH': '0'}",
+      "strict_route_environment": "{'HIPENGINE_INKLING2_DEVICE_ROUTES': '0', 'HIPENGINE_INKLING2_RESIDENT_DECODE': '0', 'HIPENGINE_INKLING2_DECODE_GRAPH': '0'}"
+    },
+    "execution_affecting_dirty": false,
+    "execution_affecting_paths": [],
+    "git_branch": "inkling2-mini",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "hipengine_commit": "d79ccd5e64ccee94ba759de2908cc587d2bb88a7",
+    "host_name": "epyc",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "fp32",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8304748016,
+        16609496032
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 16610544608,
+      "value": "1e29c800fc4499b7d63ddda2458ccae6890f325b74d8603f2ae9aa2d54b97948"
+    },
+    "model_path": "/home/lhl/.cache/hipengine-inkling-gguf-test/Mainline_Support/Inkling-2-Mini-UD-Q4_K_M.gguf_file",
+    "model_revision": null,
+    "profiler": {
+      "command": null,
+      "enabled": false,
+      "kind": null
+    },
+    "quant": "UD-Q4_K_M",
+    "repetitions": 3,
+    "repo_root": "/home/lhl/hipEngine",
+    "resolved_backend": "hip_gfx1100",
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "schema_version": 3,
+    "staged_dirty": false,
+    "target_arch": "gfx1100",
+    "timing_protocol": "none_full_logits_and_state_only_v1",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "untracked_paths": [],
+    "warmups": 0
+  },
+  "public_route": {
+    "by_request": {},
+    "criterion": "greedy generate_detailed output equals the captured session chain",
+    "failed": [],
+    "generated_tokens": 437,
+    "passed": true,
+    "requests": 25,
+    "requests_passed": 25
+  },
+  "quality": {
+    "binding": "docs/EXECUTION-PROFILES.md section 2.11 (router-routing-scoped)",
+    "dense_envelope": {
+      "candidate_logits_sha256": "d83e4e06fdc33a5463cf3352c0f762f34a9634b54b5ee54c2811ec002cef3f3e",
+      "quality": {
+        "eligible_for_automatic_admission": true,
+        "finite": true,
+        "hard_gates_passed": true,
+        "requires_outlier_review": false,
+        "rows_over_review_boundary": 0,
+        "scope_failures": [],
+        "scope_kl_advisories": [],
+        "summary": {
+          "candidate_teacher_nll_mean": 0.3861983422323862,
+          "diagnostics": {
+            "entropy_delta_nats": {
+              "max": 0.012112644405554887,
+              "mean": 3.142523137488756e-05,
+              "min": -0.0037611612772159297,
+              "p05": -4.372412609643381e-06,
+              "p50": 1.1887395560946043e-13,
+              "p95": 6.420623518176255e-06,
+              "p99": 0.0010484143364872004
+            },
+            "gating": false,
+            "margin_buckets": [
+              {
+                "flips": 0,
+                "lower_inclusive": 0.0,
+                "rate": 0.0,
+                "rows": 11,
+                "upper_exclusive": 0.05,
+                "wilson95_iid_rows": {
+                  "high": 0.2588329669680317,
+                  "low": 0.0
+                }
+              },
+              {
+                "flips": 0,
+                "lower_inclusive": 0.05,
+                "rate": 0.0,
+                "rows": 84,
+                "upper_exclusive": 0.5,
+                "wilson95_iid_rows": {
+                  "high": 0.04373172841465988,
+                  "low": 0.0
+                }
+              },
+              {
+                "flips": 0,
+                "lower_inclusive": 0.5,
+                "rate": 0.0,
+                "rows": 153,
+                "upper_exclusive": 2.0,
+                "wilson95_iid_rows": {
+                  "high": 0.024492623631394532,
+                  "low": 1.734723475976807e-18
+                }
+              },
+              {
+                "flips": 0,
+                "lower_inclusive": 2.0,
+                "rate": 0.0,
+                "rows": 424,
+                "upper_exclusive": null,
+                "wilson95_iid_rows": {
+                  "high": 0.008978696995103645,
+                  "low": 0.0
+                }
+              }
+            ],
+            "max_probability_delta": {
+              "max": 0.00381517215667615,
+              "mean": -9.323495585682215e-06,
+              "min": -0.003905297220196058,
+              "p05": -7.436805075661243e-06,
+              "p50": -6.661338147750939e-15,
+              "p95": 7.165716228357789e-07,
+              "p99": 0.00017369331495067854
+            },
+            "rows": 672,
+            "sequence_count": 25,
+            "top1_flips": {
+              "flips": 0,
+              "rate": 0.0,
+              "rows": 672,
+              "wilson95_iid_rows": {
+                "high": 0.005683964442485163,
+                "low": 0.0
+              }
+            },
+            "total_variation": {
+              "max": 0.00754691476026333,
+              "mean": 5.560375175182175e-05,
+              "min": 1.298631782857853e-18,
+              "p05": 5.385865143622766e-15,
+              "p50": 5.712559740715279e-08,
+              "p95": 0.00014448512369424405,
+              "p99": 0.0007417990556910142
+            },
+            "uncertainty_note": "Wilson intervals assume independent identically distributed rows; token rows can be correlated. Sequence counts are coverage, not independent sample counts. Do not pool deterministic repeats."
+          },
+          "flip_eligible_rows": 5,
+          "flip_eligible_share": 0.00744047619047619,
+          "kl_max": 0.0003021439172096092,
+          "kl_mean": 1.8182399816645523e-06,
+          "kl_p50": 1.1404596763298886e-13,
+          "kl_p95": 1.79383364675427e-07,
+          "kl_p99": 1.0630527877915843e-05,
+          "max_abs_logit_delta": 1.1373696327209473,
+          "rows": 672,
+          "strict_margin_min": 0.007928848266601562,
+          "strict_teacher_nll_mean": 0.3861877883879612,
+          "teacher_delta_p_mean": -9.323495585682215e-06,
+          "teacher_nll_delta": 1.0553844424998626e-05,
+          "top1_agreement": 1.0,
+          "top1_matches": 672,
+          "top1_mismatches_flip_eligible": 0,
+          "top1_mismatches_outside_flip_eligible": 0,
+          "topk_overlap_mean": 0.9979166666666667
+        },
+        "thresholds": {
+          "max_kl_max": 0.05,
+          "mean_kl_max": 0.001,
+          "p95_kl_max": 0.005,
+          "p99_kl_max": 0.02,
+          "per_scope_top1_min": 0.97,
+          "review_kl": 0.02,
+          "top1_min": 0.99
+        },
+        "top1_mismatch_rows": [],
+        "top_k": 5
+      },
+      "repeat_determinism": {
+        "mismatches": [],
+        "passed": true,
+        "runs": 3,
+        "trajectory_sha256_by_prompt": [
+          [
+            "282ba09d901a32974aec23b8febe9844b5d5b7cb9928e2a11349f1781dacb070",
+            "282ba09d901a32974aec23b8febe9844b5d5b7cb9928e2a11349f1781dacb070",
+            "282ba09d901a32974aec23b8febe9844b5d5b7cb9928e2a11349f1781dacb070"
+          ],
+          [
+            "705918004cdde73b28d203dfe151df1b386d118da4c3dbbb05df0546249dd451",
+            "705918004cdde73b28d203dfe151df1b386d118da4c3dbbb05df0546249dd451",
+            "705918004cdde73b28d203dfe151df1b386d118da4c3dbbb05df0546249dd451"
+          ],
+          [
+            "7c5c93a3cd5b40118185fbae25f981cfcc686e9aa2528407af10d8752699277c",
+            "7c5c93a3cd5b40118185fbae25f981cfcc686e9aa2528407af10d8752699277c",
+            "7c5c93a3cd5b40118185fbae25f981cfcc686e9aa2528407af10d8752699277c"
+          ],
+          [
+            "c486288e6bb0f314efa608ae70ea3fd07d7978623726fefb083a66caf16e4046",
+            "c486288e6bb0f314efa608ae70ea3fd07d7978623726fefb083a66caf16e4046",
+            "c486288e6bb0f314efa608ae70ea3fd07d7978623726fefb083a66caf16e4046"
+          ],
+          [
+            "65eefc865e82777ef46eff383e8613e7d824a980329b757dc67feb93c912d9b2",
+            "65eefc865e82777ef46eff383e8613e7d824a980329b757dc67feb93c912d9b2",
+            "65eefc865e82777ef46eff383e8613e7d824a980329b757dc67feb93c912d9b2"
+          ],
+          [
+            "2f14447415827eafc16afc186f4a2e5690f430f8f8ffc4455a708fb9cca9e1f2",
+            "2f14447415827eafc16afc186f4a2e5690f430f8f8ffc4455a708fb9cca9e1f2",
+            "2f14447415827eafc16afc186f4a2e5690f430f8f8ffc4455a708fb9cca9e1f2"
+          ],
+          [
+            "fea093b17b51ca4b743f747b471d94b1e15868bfc323c8fbc15513ec4670b083",
+            "fea093b17b51ca4b743f747b471d94b1e15868bfc323c8fbc15513ec4670b083",
+            "fea093b17b51ca4b743f747b471d94b1e15868bfc323c8fbc15513ec4670b083"
+          ],
+          [
+            "ace2500e1306cc6ef47cfe0b732e788b85c9a1c17b6fff6b438ad7a72551d2ba",
+            "ace2500e1306cc6ef47cfe0b732e788b85c9a1c17b6fff6b438ad7a72551d2ba",
+            "ace2500e1306cc6ef47cfe0b732e788b85c9a1c17b6fff6b438ad7a72551d2ba"
+          ],
+          [
+            "65b577f1c5f567b942a2976e428d1a5b9ee52bdc6c25b0303edacc452c943b90",
+            "65b577f1c5f567b942a2976e428d1a5b9ee52bdc6c25b0303edacc452c943b90",
+            "65b577f1c5f567b942a2976e428d1a5b9ee52bdc6c25b0303edacc452c943b90"
+          ],
+          [
+            "0bd6450031c062e50f6329b0a782d5b11b8c9c8325c9af4197bc694a2ba159ba",
+            "0bd6450031c062e50f6329b0a782d5b11b8c9c8325c9af4197bc694a2ba159ba",
+            "0bd6450031c062e50f6329b0a782d5b11b8c9c8325c9af4197bc694a2ba159ba"
+          ],
+          [
+            "6f3caecfa86d289def9a5a3aa3486ece14b30cc20553a0413dd668fb846eff2a",
+            "6f3caecfa86d289def9a5a3aa3486ece14b30cc20553a0413dd668fb846eff2a",
+            "6f3caecfa86d289def9a5a3aa3486ece14b30cc20553a0413dd668fb846eff2a"
+          ],
+          [
+            "d1361e43818e6989936e78cb100efd28ed1349b9735245286c2aab8345d1d5e3",
+            "d1361e43818e6989936e78cb100efd28ed1349b9735245286c2aab8345d1d5e3",
+            "d1361e43818e6989936e78cb100efd28ed1349b9735245286c2aab8345d1d5e3"
+          ],
+          [
+            "8ef3821f384fed1424b14a5c84a9173b00b0bd1b6437afbc90e8bbecb6ecdf44",
+            "8ef3821f384fed1424b14a5c84a9173b00b0bd1b6437afbc90e8bbecb6ecdf44",
+            "8ef3821f384fed1424b14a5c84a9173b00b0bd1b6437afbc90e8bbecb6ecdf44"
+          ],
+          [
+            "65aa45853f71498fceebd28494a8c8aef89eec9aebbb6f566b0e559975e463c7",
+            "65aa45853f71498fceebd28494a8c8aef89eec9aebbb6f566b0e559975e463c7",
+            "65aa45853f71498fceebd28494a8c8aef89eec9aebbb6f566b0e559975e463c7"
+          ],
+          [
+            "91ab0e11ac086f07d8495df29ee70e82274d52de0fae77b7fa8bc0f6c4a999c5",
+            "91ab0e11ac086f07d8495df29ee70e82274d52de0fae77b7fa8bc0f6c4a999c5",
+            "91ab0e11ac086f07d8495df29ee70e82274d52de0fae77b7fa8bc0f6c4a999c5"
+          ],
+          [
+            "0583c9aa8f0c7dee09c8aeb4eae22766b3a3ac446af47e8ef752911e0cc1f22a",
+            "0583c9aa8f0c7dee09c8aeb4eae22766b3a3ac446af47e8ef752911e0cc1f22a",
+            "0583c9aa8f0c7dee09c8aeb4eae22766b3a3ac446af47e8ef752911e0cc1f22a"
+          ],
+          [
+            "91925bf0d98da8722087e648b14a6ea6d7b3430e509b67c20c405de7d3388683",
+            "91925bf0d98da8722087e648b14a6ea6d7b3430e509b67c20c405de7d3388683",
+            "91925bf0d98da8722087e648b14a6ea6d7b3430e509b67c20c405de7d3388683"
+          ],
+          [
+            "961cd15e4a42e707cead475392ee287a54cad489e041b65d6b9e109ce24d8a06",
+            "961cd15e4a42e707cead475392ee287a54cad489e041b65d6b9e109ce24d8a06",
+            "961cd15e4a42e707cead475392ee287a54cad489e041b65d6b9e109ce24d8a06"
+          ],
+          [
+            "107e8051b165ee64f948e0793c10bde5cd96f77c16bc34214801cc9616a38308",
+            "107e8051b165ee64f948e0793c10bde5cd96f77c16bc34214801cc9616a38308",
+            "107e8051b165ee64f948e0793c10bde5cd96f77c16bc34214801cc9616a38308"
+          ],
+          [
+            "413f6bec7fa0f53ed2e131d56a285f593c2268f797b3214e31b4cf6f5190069d",
+            "413f6bec7fa0f53ed2e131d56a285f593c2268f797b3214e31b4cf6f5190069d",
+            "413f6bec7fa0f53ed2e131d56a285f593c2268f797b3214e31b4cf6f5190069d"
+          ],
+          [
+            "1371cf38345e4eb7d745a6fea8cfaf86f6b4e565e0c3584a97dc4a3659c27d0e",
+            "1371cf38345e4eb7d745a6fea8cfaf86f6b4e565e0c3584a97dc4a3659c27d0e",
+            "1371cf38345e4eb7d745a6fea8cfaf86f6b4e565e0c3584a97dc4a3659c27d0e"
+          ],
+          [
+            "848e8325715625ae5a2156085923358ce90334db7d8eb2a2e82b9870bb1b5c97",
+            "848e8325715625ae5a2156085923358ce90334db7d8eb2a2e82b9870bb1b5c97",
+            "848e8325715625ae5a2156085923358ce90334db7d8eb2a2e82b9870bb1b5c97"
+          ],
+          [
+            "66f9abfb81caecb48b9b0e34abcb2e6ac68ec194bfb4cf622cba3df0e15ce7d9",
+            "66f9abfb81caecb48b9b0e34abcb2e6ac68ec194bfb4cf622cba3df0e15ce7d9",
+            "66f9abfb81caecb48b9b0e34abcb2e6ac68ec194bfb4cf622cba3df0e15ce7d9"
+          ],
+          [
+            "7b7034753fa80d8d60a815ccdb504fb62642215a891d0db866bd778ce02f29bb",
+            "7b7034753fa80d8d60a815ccdb504fb62642215a891d0db866bd778ce02f29bb",
+            "7b7034753fa80d8d60a815ccdb504fb62642215a891d0db866bd778ce02f29bb"
+          ],
+          [
+            "54fa1e76cf76dbbab67cc693985b202b04d072e1d17cce69976df5f10b183999",
+            "54fa1e76cf76dbbab67cc693985b202b04d072e1d17cce69976df5f10b183999",
+            "54fa1e76cf76dbbab67cc693985b202b04d072e1d17cce69976df5f10b183999"
+          ]
+        ]
+      },
+      "strict_logits_sha256": "7dd9ac2b9914b462e699b65272b60eba87e8374874790ee6d5322414c0ce947d",
+      "strict_selected_token_ids_sha256": "6199a7bd7a1c812f56e52bd44125fb9d2f14257449400015da41184d53296d98"
+    },
+    "section_2_11": {
+      "by_category": {
+        "arithmetic": {
+          "damage_line_kl": 0.05,
+          "failed": [],
+          "flip_damage_rate": 0.0,
+          "kl_median": 3.7505188570155585e-14,
+          "kl_p90": 1.420800260471511e-12,
+          "passed": true,
+          "rows": 72,
+          "thresholds": {
+            "flip_damage_rate": 0.08,
+            "kl_median": 0.001,
+            "kl_p90": 0.02,
+            "top1_rate": 0.94
+          },
+          "top1_agreement": 1.0
+        },
+        "code": {
+          "damage_line_kl": 0.05,
+          "failed": [],
+          "flip_damage_rate": 0.0,
+          "kl_median": 8.994594436461167e-13,
+          "kl_p90": 4.8077656266198896e-12,
+          "passed": true,
+          "rows": 48,
+          "thresholds": {
+            "flip_damage_rate": 0.08,
+            "kl_median": 0.001,
+            "kl_p90": 0.02,
+            "top1_rate": 0.94
+          },
+          "top1_agreement": 1.0
+        },
+        "code_reading": {
+          "damage_line_kl": 0.05,
+          "failed": [],
+          "flip_damage_rate": 0.0,
+          "kl_median": 3.651721313973811e-14,
+          "kl_p90": 1.6284732675058304e-12,
+          "passed": true,
+          "rows": 72,
+          "thresholds": {
+            "flip_damage_rate": 0.08,
+            "kl_median": 0.001,
+            "kl_p90": 0.02,
+            "top1_rate": 0.94
+          },
+          "top1_agreement": 1.0
+        },
+        "extraction": {
+          "damage_line_kl": 0.05,
+          "failed": [],
+          "flip_damage_rate": 0.0,
+          "kl_median": 1.658874213128023e-16,
+          "kl_p90": 2.8753427128338717e-13,
+          "passed": true,
+          "rows": 72,
+          "thresholds": {
+            "flip_damage_rate": 0.08,
+            "kl_median": 0.001,
+            "kl_p90": 0.02,
+            "top1_rate": 0.94
+          },
+          "top1_agreement": 1.0
+        },
+        "general_en": {
+          "damage_line_kl": 0.05,
+          "failed": [],
+          "flip_damage_rate": 0.0,
+          "kl_median": 7.872356441291649e-14,
+          "kl_p90": 8.549629095007895e-13,
+          "passed": true,
+          "rows": 72,
+          "thresholds": {
+            "flip_damage_rate": 0.08,
+            "kl_median": 0.001,
+            "kl_p90": 0.02,
+            "top1_rate": 0.94
+          },
+          "top1_agreement": 1.0
+        },
+        "general_ja": {
+          "damage_line_kl": 0.05,
+          "failed": [],
+          "flip_damage_rate": 0.0,
+          "kl_median": 4.747456580773836e-14,
+          "kl_p90": 1.1328714223251114e-12,
+          "passed": true,
+          "rows": 48,
+          "thresholds": {
+            "flip_damage_rate": 0.08,
+            "kl_median": 0.001,
+            "kl_p90": 0.02,
+            "top1_rate": 0.94
+          },
+          "top1_agreement": 1.0
+        },
+        "japanese": {
+          "damage_line_kl": 0.05,
+          "failed": [],
+          "flip_damage_rate": 0.0,
+          "kl_median": 6.3241411176904465e-15,
+          "kl_p90": 8.453015222906352e-13,
+          "passed": true,
+          "rows": 72,
+          "thresholds": {
+            "flip_damage_rate": 0.08,
+            "kl_median": 0.001,
+            "kl_p90": 0.02,
+            "top1_rate": 0.94
+          },
+          "top1_agreement": 1.0
+        },
+        "long_context": {
+          "damage_line_kl": 0.05,
+          "failed": [],
+          "flip_damage_rate": 0.0,
+          "kl_median": 2.84292499425025e-12,
+          "kl_p90": 3.1307436460380615e-07,
+          "passed": true,
+          "rows": 144,
+          "thresholds": {
+            "flip_damage_rate": 0.08,
+            "kl_median": 0.001,
+            "kl_p90": 0.02,
+            "top1_rate": 0.94
+          },
+          "top1_agreement": 1.0
+        },
+        "multilingual": {
+          "damage_line_kl": 0.05,
+          "failed": [],
+          "flip_damage_rate": 0.0,
+          "kl_median": 5.3259405537719114e-15,
+          "kl_p90": 5.193221102094029e-06,
+          "passed": true,
+          "rows": 72,
+          "thresholds": {
+            "flip_damage_rate": 0.08,
+            "kl_median": 0.001,
+            "kl_p90": 0.02,
+            "top1_rate": 0.94
+          },
+          "top1_agreement": 1.0
+        }
+      },
+      "failed_categories": [],
+      "global": {
+        "damage_line_kl": 0.05,
+        "failed": [],
+        "flip_damage_rate": 0.0,
+        "kl_median": 1.1404596763298886e-13,
+        "kl_p90": 1.2724934939691252e-10,
+        "passed": true,
+        "rows": 672,
+        "thresholds": {
+          "flip_damage_rate": 0.03,
+          "kl_median": 0.001,
+          "kl_p90": 0.02,
+          "top1_rate": 0.96
+        },
+        "top1_agreement": 1.0
+      },
+      "passed": true
+    }
+  },
+  "repeat_determinism": {
+    "mismatch_count": 0,
+    "mismatches": [],
+    "nonfinite": [],
+    "passed": true,
+    "runs_per_request": {
+      "long_context_code_partial": 3,
+      "long_context_code_utils": 3,
+      "long_context_en_compiler": 3,
+      "natural_code_lru": 3,
+      "natural_code_quicksort": 3,
+      "natural_de_handel": 3,
+      "natural_en_einstein": 3,
+      "natural_en_photosynthesis": 3,
+      "natural_en_reef": 3,
+      "natural_es_andes": 3,
+      "natural_fr_loire": 3,
+      "natural_ja_capital": 3,
+      "natural_ja_sakura": 3,
+      "task_arithmetic_distance": 3,
+      "task_arithmetic_product": 3,
+      "task_arithmetic_remainder": 3,
+      "task_japanese_addition": 3,
+      "task_japanese_days": 3,
+      "task_japanese_record": 3,
+      "task_python_dict": 3,
+      "task_python_range": 3,
+      "task_python_slice": 3,
+      "task_record_filter": 3,
+      "task_record_revision": 3,
+      "task_record_status": 3
+    }
+  },
+  "routing_agreement": {
+    "calls_routed_as_strict": 87,
+    "calls_routed_on_host_in_both_arms": 96,
+    "scope": "arms that select experts on the host; device-routed calls are not observed"
+  },
+  "schema_version": 1,
+  "status": "passed",
+  "task_quality": {
+    "candidate_correct": 9,
+    "cases": 12,
+    "criterion": "no case correct under strict may be wrong under the candidate",
+    "generated_ids_identical_cases": 12,
+    "improved_cases": [],
+    "passed": true,
+    "regressed_cases": [],
+    "strict_correct": 9
+  }
+}

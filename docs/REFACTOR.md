@@ -1776,7 +1776,10 @@ per-route scales. The same gate then measures median KL 1.1e-13, p90 1.3e-10, no
 damage line and top-1 of 100%, and passes every other gate. The chain costs 3.5 ms per decode
 step (30.2 against 26.7 ms after 47 prompt tokens). The W7900 row passes; the gfx1151 row has not
 been run. Gate command: `PYTHONPATH=. .venv/bin/python scripts/inkling2_profile_gate.py <model>
---backend hip_gfx1100 --candidate fast_resident --json <out>.json`.
+--backend hip_gfx1100 --candidate fast_resident --json <out>.json`. Rows on the W7900 at
+`d79ccd5e6`: [resident decode passed](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-fast-resident.json), [decode graph passed](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-fast-graph.json), [`fast` itself
+failed the code category](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-fast.json), and the [Q8-dot chain's row that was
+rejected](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-fast-resident-q8-dot-rejected.json).
 
 ### R0527 — HIPENGINE_INKLING2_RESIDENT_DECODE opt-in
 
@@ -1805,9 +1808,21 @@ with the default path's IDs, and teacher-forced KL against strict is 1.39e-3 mea
 1.98e-3 for the default `fast` path over 640 rows. The step is now 27.6 ms of kernels in about
 2,460 launches at 1,717 keys, 33.7 ms of wall under the graph.
 
+Paired rows later on 2026-11-25 with the selected F32 experts, 128 outputs, five pairs in each
+order after 47 prompt tokens and three after the longer prompts
+([47](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-decode-pairs-f32-experts-47.json), [575](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-decode-pairs-f32-experts-575.json), [2,057](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-decode-pairs-f32-experts-2057.json) tokens): 32.38 against 17.83 tok/s after 47 prompt
+tokens (1.818 and 1.814 in the two orders), 29.22 against 17.68 after 575 (1.650 and 1.657) and
+26.52 against 17.24 after 2,057 (1.540 and 1.538), with the default path's 128 output IDs at every
+depth. The [gate row](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-fast-resident.json) passes at `d79ccd5e6`: median KL 1.1e-13 against strict, p90
+1.3e-10, no row over the damage line, 744 calls matching their controls, three bit-stable repeats,
+25 of 25 requests bit-identical in a reversed-order replay.
+
 Done when: the step is faster than the default path in paired runs at each of the campaign's 47,
 575 and 2,057 prompt-token cells, with the production numerical gate passed; then the default
-becomes `1` and the flag is the rollback lever. If the step cannot beat the default at depth, remove the path, R0528 with it, and close
+becomes `1` and the flag is the rollback lever. Both conditions hold on the W7900. The default does
+not change yet: the same gate has no gfx1151 row, and a `production` plan has to say what
+two-to-four-row decode runs, where the `fast` generator still selects the Q8-dot chain that failed
+the envelope. If the step cannot beat the default at depth, remove the path, R0528 with it, and close
 this entry. Validation: `tests/test_unit_inkling2_resident_decode.py` and the known-answer check
 below; its twelve sequential requests are the regression guard for request-order state.
 
@@ -1843,11 +1858,18 @@ and the same IDs. Recording starts at the first decode step.
 Decision from [paired runs](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-decode-pairs.json)
 at 47 prompt tokens and 128 outputs, five pairs in each order, taken before the decode attention
 kernel: the graph decoded at 33.21 tok/s against 17.80 for the default path (1.868 and 1.867),
-one capture of 27.6 ms per request and 126 replays in 127 steps. It stays at `0`: its 128 output
-IDs are not the default's, and the numerical gate has not admitted the path. A `HIP graph` node
+one capture of 27.6 ms per request and 126 replays in 127 steps. A `HIP graph` node
 costs 3.2 µs here, so fewer nodes are worth as much as the replay itself. `HIPENGINE_SUBMISSION_TRANSPORT=aql` and `pm4`
 refuse the graph today: it holds about 321 memcpy nodes per step and the in-tree inspector takes
 kernel nodes only; the step then runs resident eager with the same output.
+
+Paired rows later on 2026-11-25 with the selected F32 experts (the three files named in R0527):
+32.78 against 32.38 tok/s for resident eager after 47 prompt tokens (1.839 and 1.837 against the
+default path), 29.36 against 29.22 after 575 (1.659 and 1.665) and 26.66 against 26.52 after 2,057
+(1.545 and 1.545). One capture of 29 to 30 ms per request, 0.992 replays per token and 22 HIP calls
+per token against 1,152 to 1,308 for resident eager. The [gate row](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-fast-graph.json) passes and its 672
+candidate rows equal the resident row's bit for bit across two processes. It stays at `0` for the
+reason `HIPENGINE_INKLING2_RESIDENT_DECODE` does.
 
 Done when: R0527 is done, the Inkling adapter of the production numerical gate admits the path,
 and the step wins at every campaign depth. Then recording becomes unconditional for resident
