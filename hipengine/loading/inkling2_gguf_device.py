@@ -35,6 +35,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         super().__init__(weights, runtime=runtime, blas=blas)
         load_backend_kernel_package(backend)
         self._tensors = {t.name: t for t in weights.reader.info.tensors}
+        self._backend = str(backend)
         self._target_arch = hip_target_arch_for_backend(backend)
         self._launches = {q: resolve(backend=backend, layer="linear", quant=f"gguf_{q.name.lower()}",
                                     variant="gemv_f32_f32_out") for q in (Q.NVFP4, Q.Q8_0, Q.Q5_K)}
@@ -130,6 +131,14 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             self._residual = {variant: partial(resolve(backend=key.backend, layer=key.layer, quant=key.quant,
                                                        variant=variant), target_arch=self._target_arch)
                               for variant, key in keys.items()}
+
+    @property
+    def backend(self):
+        return self._backend
+
+    @property
+    def target_arch(self):
+        return self._target_arch
 
     @property
     def supports_device_mix(self):

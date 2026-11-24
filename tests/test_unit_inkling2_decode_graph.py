@@ -18,6 +18,9 @@ def _session(position, geometry=UNSATURATED):
 def _model():
     model = Inkling2GGUFText.__new__(Inkling2GGUFText)
     model.config = {"log_scaling_n_floor": 8192}
+    model._graph_replays = 0
+    model._graph_captures = 0
+    model._graph_capture_seconds = 0.0
     return model
 
 
@@ -122,3 +125,57 @@ def test_captured_attention_reads_its_header_from_the_device_slot():
     assert pointers[0] == (0x200008, 0x20000C)
     # Eager: the pair is uploaded into the shared block header for every visit.
     assert pointers[1][1] - pointers[1][0] == 4 and pointers[1][0] != 0x200008
+
+
+def _replay_state(submission):
+    import numpy as np
+
+    pin = np.zeros(4, np.float32)
+    return {"runtime": Mock(), "stream": 7, "pin_ptr": pin.ctypes.data, "base": 0x1000,
+            "offsets": {"h": 0, "stack": 256}, "count": 1, "submission": submission}
+
+
+def test_replay_launches_through_the_submission_transport_and_counts_itself():
+    import numpy as np
+
+    model = _model()
+    model.projection = Mock()
+    submission = Mock()
+    state = _replay_state(submission)
+    session = _session(3)
+    session.attention.positions = {0: 3, 1: 3}
+    result, blocks = model._replay_graph(session, np.ones((1, 4), np.float32), state)
+    submission.launch.assert_called_once_with(7)
+    state["runtime"].graph_launch.assert_not_called()
+    state["runtime"].stream_synchronize.assert_called_once_with(7)
+    assert session.attention.positions == {0: 4, 1: 4}
+    assert model._graph_replays == 1 and model._graph_captures == 0 and model._graph_capture_seconds == 0.0
+    assert model.projection.download.call_count == 2
+    assert result.shape == (1, 4) and len(blocks) == 1
+
+
+def test_recorded_graph_goes_to_the_submission_transport_with_the_capture_stream(monkeypatch):
+    import hipengine.runtime.inkling2_gguf as runtime_module
+
+    created = []
+    submission = Mock()
+    monkeypatch.setattr(runtime_module, "create_graph_submission",
+                        lambda **kwargs: created.append(kwargs) or submission)
+    model = _model()
+    model.projection = SimpleNamespace(backend="hip_gfx1100", target_arch="gfx1100")
+    state = {"runtime": Mock(), "stream": 9}
+    assert model._graph_submission(state, 0x1234) is submission
+    assert created == [{"backend": "hip_gfx1100", "gfx_arch": "gfx1100", "runtime": state["runtime"],
+                        "graph": 0x1234, "stream": 9}]
+    assert state["submission"] is submission and state["graph_object"] == 0x1234
+    state["runtime"].graph_instantiate.assert_not_called()
+
+
+def test_discarding_a_capture_closes_the_submission_and_the_graph():
+    model = _model()
+    submission, rt = Mock(), Mock()
+    model._discard_capture({"runtime": rt, "submission": submission, "graph_object": 0x1234, "pin": None},
+                           _session(3))
+    submission.close.assert_called_once()
+    rt.graph_destroy.assert_called_once_with(0x1234)
+    rt.graph_exec_destroy.assert_not_called()

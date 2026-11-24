@@ -1,5 +1,6 @@
 """Bind GGUF tensor layouts to the shared Inkling text traversal."""
 
+import time
 from contextlib import ExitStack, closing
 from functools import partial
 from types import SimpleNamespace
@@ -8,6 +9,7 @@ import numpy as np
 
 from hipengine.core.hip import HipMemcpyKind, set_capture_stream
 from hipengine.core.memory import free, malloc
+from hipengine.core.pm4.transport import create_graph_submission
 from hipengine.kernels.cpu_reference.inkling2_mini import select_expert_routes, split_expert_activation
 from hipengine.kernels.hip_gfx1100.norm.inkling2_residual import launch_resident_tick
 from hipengine.runtime.inkling2_mini_reference import Inkling2TextReference, _rms
@@ -120,6 +122,9 @@ class Inkling2GGUFText(Inkling2TextReference):
             self.resident_block = self._resident_block if projection.supports_resident_block else None
         self._graph_state = None
         self._graph_disabled = False
+        self._graph_replays = 0
+        self._graph_captures = 0
+        self._graph_capture_seconds = 0.0
         self._query_bank_ptr = None
         self._query_rows = None
         self.decode_graph = False
@@ -324,7 +329,10 @@ class Inkling2GGUFText(Inkling2TextReference):
         eager = self._resident_body(session, h, limit=None, recording=None)
         state = None
         try:
+            started = time.perf_counter()
             state = self._record_graph(session, h)
+            self._graph_capture_seconds += time.perf_counter() - started
+            self._graph_captures += 1
         except Exception as exc:
             print(f"inkling2: decode graph capture failed ({exc!r}); continuing eager", flush=True)
             import traceback
@@ -342,6 +350,18 @@ class Inkling2GGUFText(Inkling2TextReference):
         if not state:
             return
         rt = state.get("runtime")
+        submission = state.pop("submission", None)
+        if submission is not None:
+            try:
+                submission.close()
+            except Exception:
+                pass
+        graph = state.pop("graph_object", None)
+        if graph and rt is not None:
+            try:
+                rt.graph_destroy(graph)
+            except Exception:
+                pass
         for key in ("stream", "counter", "headers", "caps"):
             resource = state.pop(key, None)
             if resource is None or rt is None:
@@ -420,17 +440,29 @@ class Inkling2GGUFText(Inkling2TextReference):
             attention.capture_headers = None
             self._discard_capture(state, session)
             raise RuntimeError("decode graph capture returned no graph")
-        state["graph"] = rt.graph_instantiate(graph)
-        rt.graph_destroy(graph)
+        self._graph_submission(state, graph)
         return state
+
+    def _graph_submission(self, state, graph):
+        """Instantiate the recorded graph through the selected submission transport.
+
+        `HIPENGINE_SUBMISSION_TRANSPORT` selects it: the HIP graph by default, or the in-tree
+        `aql` and `pm4` transports on gfx1100.
+        """
+        state["submission"] = create_graph_submission(
+            backend=self.projection.backend, gfx_arch=self.projection.target_arch,
+            runtime=state["runtime"], graph=graph, stream=state["stream"])
+        state["graph_object"] = graph
+        return state["submission"]
 
     def _replay_graph(self, session, h, state):
         import ctypes as _ctypes
 
         rt = state["runtime"]
         _ctypes.memmove(state["pin_ptr"], h.ctypes.data, h.nbytes)
-        rt.graph_launch(state["graph"], state["stream"])
+        state["submission"].launch(state["stream"])
         rt.stream_synchronize(state["stream"])
+        self._graph_replays += 1
         attention = session.attention
         for visit in list(attention.positions):
             attention.positions[visit] = session.position + 1
