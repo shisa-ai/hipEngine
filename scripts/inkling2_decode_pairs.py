@@ -51,6 +51,9 @@ ARMS = {
 ORDERS = ("forward", "reverse")
 # A win must exceed this ratio in both orders.
 BEAT = 1.03
+# What each run keeps per depth in the artifact.
+RUN_DEPTH_KEYS = ("prompt_tokens", "reps", "decode_tok_s", "decode_ms_per_token", "first_token_s",
+                  "output_ids_sha256", "graph")
 
 
 def variables(item):
@@ -228,9 +231,10 @@ def run(model, args):
         for order, pair, arm in schedule(list(arms), args.pairs):
             label = f"{order}-{pair}-{arm}"
             result = run_bench(model, args, arms[arm], label, Path(scratch) / f"{label}.json")
+            # Per-run figures only; call counts and diagnostics are averaged into the arm summary.
             runs.append({"order": order, "pair": pair, "arm": arm, "resolved_profile": result["resolved_profile"],
                          "fell_back_to_strict": result["fell_back_to_strict"],
-                         "depths": result["depths"]})
+                         "depths": [{key: depth[key] for key in RUN_DEPTH_KEYS} for depth in result["depths"]]})
             print(f"{label}: " + "  ".join(f"{depth['prompt_tokens']} tokens {depth['decode_tok_s']['median']:.2f} tok/s"
                                            for depth in result["depths"]), file=sys.stderr, flush=True)
     reference = [run for run in runs if run["arm"] == args.arms[0]]

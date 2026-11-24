@@ -1,0 +1,2149 @@
+{
+ "kind": "inkling2-mini-gguf-decode-pairs",
+ "status": "diagnostic",
+ "recorded": "2026-11-25",
+ "purpose": "Decode rate of the Inkling 2 GGUF decode arms against the first arm, in paired runs and in both orders, with output identity, HIP call counts and graph accounting.",
+ "scope": "Development lane. Not a Loom comparison; does not update a scoreboard row.",
+ "tool": "scripts/inkling2_decode_pairs.py",
+ "timing_protocol": "one greedy stream, prefix cache off, drafting off; each arm is the decode bench in a fresh process (one warmup request, then the repetitions); every arm runs once per pair and the pairs run in the listed order and again in reverse order; decode_ms_per_token is the median over a run's repetitions and the arm figure is the median over runs",
+ "protocol": {
+  "arms": [
+   "default",
+   "routes",
+   "resident",
+   "graph"
+  ],
+  "orders": [
+   "forward",
+   "reverse"
+  ],
+  "pairs": 5,
+  "reps": 3,
+  "warmup": 1,
+  "output_tokens": 128,
+  "beat_threshold": 1.03
+ },
+ "provenance": {
+  "kind": "hipengine_artifact_provenance",
+  "schema_version": 3,
+  "collected_at": "2026-11-24T20:06:53.083292+00:00",
+  "host_name": "epyc",
+  "repo_root": "/home/lhl/hipEngine",
+  "hipengine_commit": "7f18ae19f5db605f37721c787e9e91ae2fe05d4a",
+  "git_branch": "inkling2-mini",
+  "staged_dirty": false,
+  "unstaged_dirty": false,
+  "untracked_dirty": false,
+  "untracked_count": 0,
+  "dirty": false,
+  "dirty_paths": [],
+  "dirty_path_count": 0,
+  "untracked_paths": [],
+  "execution_affecting_dirty": false,
+  "execution_affecting_paths": [],
+  "configured_backend": "hip_gfx1100",
+  "resolved_backend": "hip_gfx1100",
+  "target_arch": "gfx1100",
+  "device_name": "AMD Radeon Pro W7900",
+  "model_path": "/home/lhl/.cache/hipengine-inkling-gguf-test/Mainline_Support/Inkling-2-Mini-UD-Q4_K_M.gguf_file",
+  "model_revision": null,
+  "model_fingerprint": {
+   "algorithm": "sha256-sampled-v1",
+   "value": "1e29c800fc4499b7d63ddda2458ccae6890f325b74d8603f2ae9aa2d54b97948",
+   "size_bytes": 16610544608,
+   "sampled_bytes": 3145728,
+   "sample_offsets": [
+    0,
+    8304748016,
+    16609496032
+   ],
+   "exists": true,
+   "path_type": "file"
+  },
+  "quant": "UD-Q4_K_M",
+  "kv_dtype": "fp32",
+  "command": [
+   "scripts/inkling2_decode_pairs.py",
+   "run",
+   "/home/lhl/.cache/hipengine-inkling-gguf-test/Inkling-2-Mini-UD-Q4_K_M-mainline.gguf",
+   "--backend",
+   "hip_gfx1100",
+   "--execution-profile",
+   "fast",
+   "--quant",
+   "UD-Q4_K_M",
+   "--arms",
+   "default",
+   "routes",
+   "resident",
+   "graph",
+   "--pairs",
+   "5",
+   "--reps",
+   "3",
+   "--kernel-trace",
+   "default=/tmp/inkling-pairs/kernel-default-p47.json",
+   "--kernel-trace",
+   "resident=/tmp/inkling-pairs/kernel-resident-p47.json",
+   "--kernel-trace",
+   "graph=/tmp/inkling-pairs/kernel-graph-p47.json",
+   "--output",
+   "/tmp/inkling-pairs/pairs.json"
+  ],
+  "environment": {
+   "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/inkling-baseline/compiler.txt",
+   "HIPENGINE_EXECUTION_PROFILE": "fast"
+  },
+  "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+  "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+  "build_profile": null,
+  "timing_protocol": "one greedy stream, prefix cache off, drafting off; each arm is the decode bench in a fresh process (one warmup request, then the repetitions); every arm runs once per pair and the pairs run in the listed order and again in reverse order; decode_ms_per_token is the median over a run's repetitions and the arm figure is the median over runs",
+  "warmups": 1,
+  "repetitions": 15,
+  "profiler": null
+ },
+ "model": {
+  "path": "/home/lhl/.cache/hipengine-inkling-gguf-test/Inkling-2-Mini-UD-Q4_K_M-mainline.gguf",
+  "bytes": 16610544608
+ },
+ "backend": "hip_gfx1100",
+ "requested_profile": "fast",
+ "arms": {
+  "default": {
+   "environment": {},
+   "kernel_trace": {
+    "label": "inkling_ordinary_decode_p47",
+    "steps": 31,
+    "wall_ms_per_step": 66.91582490322581,
+    "kernel_ms_per_step": 17.245140548387095,
+    "launches_per_step": 1568.0,
+    "families": [
+     {
+      "family": "rocblas_gemvt_warp_reduce_kernel",
+      "launches_per_step": 412.9032258064516,
+      "ms_per_step": 5.046070129032258
+     },
+     {
+      "family": "gguf_k_pack8_prefill_out_kernel",
+      "launches_per_step": 248.7741935483871,
+      "ms_per_step": 3.9373208387096774
+     },
+     {
+      "family": "nvfp4_q8_selected",
+      "launches_per_step": 90.83870967741936,
+      "ms_per_step": 3.3200789032258067
+     },
+     {
+      "family": "gguf_k_prefill_out_kernel",
+      "launches_per_step": 58.83870967741935,
+      "ms_per_step": 1.7454074838709677
+     },
+     {
+      "family": "split_values",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 1.194515
+     },
+     {
+      "family": "__amd_rocclr_copyBuffer",
+      "launches_per_step": 265.2903225806452,
+      "ms_per_step": 0.7389566129032258
+     },
+     {
+      "family": "inkling2_short_conv",
+      "launches_per_step": 181.67741935483872,
+      "ms_per_step": 0.5514705161290322
+     },
+     {
+      "family": "pack_q8",
+      "launches_per_step": 90.83870967741936,
+      "ms_per_step": 0.1945194516129032
+     },
+     {
+      "family": "split_scores",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.1938004516129032
+     },
+     {
+      "family": "inkling2_target_cache_write",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.13274403225806453
+     },
+     {
+      "family": "inkling2_expert_mix",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.1240096129032258
+     },
+     {
+      "family": "inkling2_short_conv_dynamic",
+      "launches_per_step": 16.516129032258064,
+      "ms_per_step": 0.057377774193548385
+     },
+     {
+      "family": "inkling2_split_activation",
+      "launches_per_step": 4.129032258064516,
+      "ms_per_step": 0.008869741935483871
+     }
+    ]
+   },
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "runs": 10,
+     "decode_tok_s": {
+      "median": 17.798703548905763,
+      "min": 17.629062813871816,
+      "max": 17.83520155919214
+     },
+     "decode_ms_per_token": 56.18386793382994,
+     "first_token_s": {
+      "median": 0.25662033597473055,
+      "min": 0.2552711709868163,
+      "max": 0.2636576739605516
+     },
+     "by_order": {
+      "forward": {
+       "decode_tok_s": {
+        "median": 17.761694718416173,
+        "min": 17.629062813871816,
+        "max": 17.83520155919214
+       },
+       "first_token_s": {
+        "median": 0.25653140898793936,
+        "min": 0.2552711709868163,
+        "max": 0.2636576739605516
+       }
+      },
+      "reverse": {
+       "decode_tok_s": {
+        "median": 17.80044610574932,
+        "min": 17.739853074922635,
+        "max": 17.810577215909237
+       },
+       "first_token_s": {
+        "median": 0.25713743013329804,
+        "min": 0.25588841107673943,
+        "max": 0.2583625568076968
+       }
+      }
+     },
+     "tok_s_ratio_to_reference": {
+      "forward": 1.0,
+      "reverse": 1.0
+     },
+     "identical_output": true,
+     "output_ids_sha256": [
+      "f0aa9dfea4122ea2d60a33f6de8be130124b88483711445457b07f5c82c6b7e5"
+     ],
+     "output_identical_to_reference": true,
+     "calls_per_token": {
+      "memcpy_async:host_to_device": {
+       "calls": 241.0,
+       "seconds": 0.0014241733436113385,
+       "bytes": 5976704.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 241.0,
+       "seconds": 0.0009079425715477135,
+       "bytes": 5132264.0
+      },
+      "stream_synchronize": {
+       "calls": 241.0,
+       "seconds": 0.01678424678722108,
+       "bytes": 0.0
+      },
+      "event_query": {
+       "calls": 48.0,
+       "seconds": 0.0001197212093981506,
+       "bytes": 0.0
+      },
+      "event_record": {
+       "calls": 48.0,
+       "seconds": 0.00014657355182537727,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures_per_request": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  "routes": {
+   "environment": {
+    "HIPENGINE_INKLING2_DEVICE_ROUTES": "1"
+   },
+   "kernel_trace": null,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "runs": 10,
+     "decode_tok_s": {
+      "median": 19.5002041673414,
+      "min": 19.396141769809763,
+      "max": 19.5737225399995
+     },
+     "decode_ms_per_token": 51.281515531806555,
+     "first_token_s": {
+      "median": 0.2571541341021657,
+      "min": 0.2551233291160315,
+      "max": 0.2611163870897144
+     },
+     "by_order": {
+      "forward": {
+       "decode_tok_s": {
+        "median": 19.497254480799473,
+        "min": 19.396141769809763,
+        "max": 19.50885460957844
+       },
+       "first_token_s": {
+        "median": 0.25820249295793474,
+        "min": 0.256560408975929,
+        "max": 0.2611163870897144
+       }
+      },
+      "reverse": {
+       "decode_tok_s": {
+        "median": 19.503153853883333,
+        "min": 19.456297692125982,
+        "max": 19.5737225399995
+       },
+       "first_token_s": {
+        "median": 0.25585442408919334,
+        "min": 0.2551233291160315,
+        "max": 0.2576192270498723
+       }
+      }
+     },
+     "tok_s_ratio_to_reference": {
+      "forward": 1.0977136354327601,
+      "reverse": 1.0956553413334995
+     },
+     "identical_output": true,
+     "output_ids_sha256": [
+      "57719e5e47b5d6d29d4cef3e1ddeca2132e230d6ea54bb48687b79cc349812fd"
+     ],
+     "output_identical_to_reference": false,
+     "calls_per_token": {
+      "memcpy_async:host_to_device": {
+       "calls": 193.0,
+       "seconds": 0.001133562000089489,
+       "bytes": 5268864.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 193.0,
+       "seconds": 0.0007772465559759046,
+       "bytes": 5107688.0
+      },
+      "stream_synchronize": {
+       "calls": 193.0,
+       "seconds": 0.015872841033463675,
+       "bytes": 0.0
+      },
+      "event_query": {
+       "calls": 48.0,
+       "seconds": 0.00010394187762678217,
+       "bytes": 0.0
+      },
+      "event_record": {
+       "calls": 48.0,
+       "seconds": 0.00013349295491132683,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 32.0,
+       "seconds": 7.856065521060716e-05,
+       "bytes": 294912.0
+      }
+     },
+     "graph": {
+      "captures_per_request": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  "resident": {
+   "environment": {
+    "HIPENGINE_INKLING2_DEVICE_ROUTES": "1",
+    "HIPENGINE_INKLING2_RESIDENT_DECODE": "1"
+   },
+   "kernel_trace": {
+    "label": "inkling_ordinary_decode_p47",
+    "steps": 31,
+    "wall_ms_per_step": 37.28910364516129,
+    "kernel_ms_per_step": 22.330252741935485,
+    "launches_per_step": 2415.2258064516127,
+    "families": [
+     {
+      "family": "rocblas_gemvt_warp_reduce_kernel",
+      "launches_per_step": 412.9032258064516,
+      "ms_per_step": 4.752288096774193
+     },
+     {
+      "family": "gguf_k_pack8_prefill_out_kernel",
+      "launches_per_step": 248.7741935483871,
+      "ms_per_step": 3.8514423225806453
+     },
+     {
+      "family": "nvfp4_q8_selected",
+      "launches_per_step": 90.83870967741936,
+      "ms_per_step": 3.38608564516129
+     },
+     {
+      "family": "inkling2_target_attention_tiled",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 2.7169040967741935
+     },
+     {
+      "family": "gguf_k_prefill_out_kernel",
+      "launches_per_step": 58.83870967741935,
+      "ms_per_step": 1.7000265161290322
+     },
+     {
+      "family": "inkling2_residual_read",
+      "launches_per_step": 122.83870967741936,
+      "ms_per_step": 1.2508437741935483
+     },
+     {
+      "family": "inkling2_prepare_clip",
+      "launches_per_step": 148.6451612903226,
+      "ms_per_step": 0.8865135483870967
+     },
+     {
+      "family": "__amd_rocclr_copyBuffer",
+      "launches_per_step": 320.7741935483871,
+      "ms_per_step": 0.5533401935483871
+     },
+     {
+      "family": "inkling2_short_conv",
+      "launches_per_step": 181.67741935483872,
+      "ms_per_step": 0.5302572903225806
+     },
+     {
+      "family": "inkling2_row_rms",
+      "launches_per_step": 123.87096774193549,
+      "ms_per_step": 0.43305548387096776
+     },
+     {
+      "family": "laguna_sigmoid_correction_topk_kernel",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.3355633870967742
+     },
+     {
+      "family": "inkling2_controller_blend_norm",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.31746067741935485
+     },
+     {
+      "family": "inkling2_row_norm_mul",
+      "launches_per_step": 57.806451612903224,
+      "ms_per_step": 0.30813312903225804
+     },
+     {
+      "family": "inkling2_row_add",
+      "launches_per_step": 90.83870967741936,
+      "ms_per_step": 0.28450435483870967
+     },
+     {
+      "family": "inkling2_controller_input",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.2563121935483871
+     },
+     {
+      "family": "inkling2_route_ids_i32_kernel",
+      "launches_per_step": 99.09677419354838,
+      "ms_per_step": 0.18684325806451613
+     },
+     {
+      "family": "pack_q8",
+      "launches_per_step": 90.83870967741936,
+      "ms_per_step": 0.16779129032258064
+     },
+     {
+      "family": "inkling2_prepare_rms",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.14206796774193547
+     },
+     {
+      "family": "inkling2_expert_mix",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.1202287741935484
+     },
+     {
+      "family": "inkling2_target_cache_commit_block",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.09139103225806451
+     },
+     {
+      "family": "inkling2_short_conv_dynamic",
+      "launches_per_step": 16.516129032258064,
+      "ms_per_step": 0.049732451612903225
+     },
+     {
+      "family": "inkling2_split_activation",
+      "launches_per_step": 4.129032258064516,
+      "ms_per_step": 0.00946725806451613
+     }
+    ]
+   },
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "runs": 10,
+     "decode_tok_s": {
+      "median": 32.7474851419203,
+      "min": 32.61587693152692,
+      "max": 32.814721271277804
+     },
+     "decode_ms_per_token": 30.53670600753307,
+     "first_token_s": {
+      "median": 0.2592029750812799,
+      "min": 0.2583448369987309,
+      "max": 0.26609051297418773
+     },
+     "by_order": {
+      "forward": {
+       "decode_tok_s": {
+        "median": 32.76619037159665,
+        "min": 32.64852400317121,
+        "max": 32.790148420993816
+       },
+       "first_token_s": {
+        "median": 0.2585894810035825,
+        "min": 0.25837547495029867,
+        "max": 0.2617749578785151
+       }
+      },
+      "reverse": {
+       "decode_tok_s": {
+        "median": 32.72877991224395,
+        "min": 32.61587693152692,
+        "max": 32.814721271277804
+       },
+       "first_token_s": {
+        "median": 0.25981646915897727,
+        "min": 0.2583448369987309,
+        "max": 0.26609051297418773
+       }
+      }
+     },
+     "tok_s_ratio_to_reference": {
+      "forward": 1.8447671177245886,
+      "reverse": 1.8386494202340786
+     },
+     "identical_output": true,
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "output_identical_to_reference": false,
+     "calls_per_token": {
+      "event_query": {
+       "calls": 446.35931758530177,
+       "seconds": 0.0003431055460765645,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 74.0,
+       "seconds": 0.00035219308602430535,
+       "bytes": 682368.0
+      },
+      "event_record": {
+       "calls": 73.0,
+       "seconds": 0.0001956140905437781,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 256.0,
+       "seconds": 0.0006705586610269045,
+       "bytes": 2359296.0
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.598616549867423e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.0,
+       "seconds": 0.012718519714008286,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures_per_request": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  "graph": {
+   "environment": {
+    "HIPENGINE_INKLING2_DEVICE_ROUTES": "1",
+    "HIPENGINE_INKLING2_RESIDENT_DECODE": "1",
+    "HIPENGINE_INKLING2_DECODE_GRAPH": "1"
+   },
+   "kernel_trace": {
+    "label": "inkling_ordinary_decode_p47",
+    "steps": 31,
+    "wall_ms_per_step": 37.27673512903226,
+    "kernel_ms_per_step": 22.47991929032258,
+    "launches_per_step": 2392.2903225806454,
+    "families": [
+     {
+      "family": "rocblas_gemvt_warp_reduce_kernel",
+      "launches_per_step": 412.9032258064516,
+      "ms_per_step": 4.777483645161291
+     },
+     {
+      "family": "gguf_k_pack8_prefill_out_kernel",
+      "launches_per_step": 248.7741935483871,
+      "ms_per_step": 3.898368709677419
+     },
+     {
+      "family": "nvfp4_q8_selected",
+      "launches_per_step": 90.83870967741936,
+      "ms_per_step": 3.392240935483871
+     },
+     {
+      "family": "inkling2_target_attention_tiled",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 2.713620419354839
+     },
+     {
+      "family": "gguf_k_prefill_out_kernel",
+      "launches_per_step": 58.83870967741935,
+      "ms_per_step": 1.701556806451613
+     },
+     {
+      "family": "inkling2_residual_read",
+      "launches_per_step": 122.83870967741936,
+      "ms_per_step": 1.2700051935483871
+     },
+     {
+      "family": "inkling2_prepare_clip",
+      "launches_per_step": 148.6451612903226,
+      "ms_per_step": 0.8939135161290322
+     },
+     {
+      "family": "__amd_rocclr_copyBuffer",
+      "launches_per_step": 296.83870967741933,
+      "ms_per_step": 0.5654600967741936
+     },
+     {
+      "family": "inkling2_short_conv",
+      "launches_per_step": 181.67741935483872,
+      "ms_per_step": 0.5343481612903226
+     },
+     {
+      "family": "inkling2_row_rms",
+      "launches_per_step": 123.87096774193549,
+      "ms_per_step": 0.4509267741935484
+     },
+     {
+      "family": "laguna_sigmoid_correction_topk_kernel",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.3406885483870968
+     },
+     {
+      "family": "inkling2_controller_blend_norm",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.33288803225806457
+     },
+     {
+      "family": "inkling2_row_norm_mul",
+      "launches_per_step": 57.806451612903224,
+      "ms_per_step": 0.31299758064516126
+     },
+     {
+      "family": "inkling2_row_add",
+      "launches_per_step": 90.83870967741936,
+      "ms_per_step": 0.2862412580645161
+     },
+     {
+      "family": "inkling2_controller_input",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.2317948064516129
+     },
+     {
+      "family": "inkling2_route_ids_i32_kernel",
+      "launches_per_step": 99.09677419354838,
+      "ms_per_step": 0.17948303225806453
+     },
+     {
+      "family": "pack_q8",
+      "launches_per_step": 90.83870967741936,
+      "ms_per_step": 0.1727690322580645
+     },
+     {
+      "family": "inkling2_prepare_rms",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.15611729032258065
+     },
+     {
+      "family": "inkling2_expert_mix",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.12113851612903226
+     },
+     {
+      "family": "inkling2_target_cache_commit_block",
+      "launches_per_step": 49.54838709677419,
+      "ms_per_step": 0.08740383870967743
+     },
+     {
+      "family": "inkling2_short_conv_dynamic",
+      "launches_per_step": 16.516129032258064,
+      "ms_per_step": 0.048356774193548384
+     },
+     {
+      "family": "inkling2_split_activation",
+      "launches_per_step": 4.129032258064516,
+      "ms_per_step": 0.010028483870967742
+     },
+     {
+      "family": "inkling2_resident_tick",
+      "launches_per_step": 1.0,
+      "ms_per_step": 0.0020878387096774195
+     }
+    ]
+   },
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "runs": 10,
+     "decode_tok_s": {
+      "median": 33.20886015277074,
+      "min": 33.13690784985243,
+      "max": 33.258330454963726
+     },
+     "decode_ms_per_token": 30.112451480474235,
+     "first_token_s": {
+      "median": 0.2603879871312529,
+      "min": 0.25754298409447074,
+      "max": 0.26456452906131744
+     },
+     "by_order": {
+      "forward": {
+       "decode_tok_s": {
+        "median": 33.171690912587586,
+        "min": 33.13690784985243,
+        "max": 33.25395760169589
+       },
+       "first_token_s": {
+        "median": 0.25864511099644005,
+        "min": 0.25754298409447074,
+        "max": 0.26456452906131744
+       }
+      },
+      "reverse": {
+       "decode_tok_s": {
+        "median": 33.22462408196731,
+        "min": 33.16624409421174,
+        "max": 33.258330454963726
+       },
+       "first_token_s": {
+        "median": 0.26278120395727456,
+        "min": 0.25915814004838467,
+        "max": 0.2642362150363624
+       }
+      }
+     },
+     "tok_s_ratio_to_reference": {
+      "forward": 1.867597176872632,
+      "reverse": 1.8665051361401654
+     },
+     "identical_output": true,
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "output_identical_to_reference": false,
+     "calls_per_token": {
+      "event_query": {
+       "calls": 1.7711286089238847,
+       "seconds": 1.880439032563387e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:host_to_device": {
+       "calls": 1.7716535433070866,
+       "seconds": 1.013306130867774e-05,
+       "bytes": 19813.795275590554
+      },
+      "event_record": {
+       "calls": 0.5748031496062992,
+       "seconds": 1.5553701766754387e-06,
+       "bytes": 0.0
+      },
+      "memcpy_async:device_to_device": {
+       "calls": 4.031496062992126,
+       "seconds": 1.0390444768695381e-05,
+       "bytes": 37154.26771653543
+      },
+      "memcpy_async:device_to_host": {
+       "calls": 3.0,
+       "seconds": 1.844337932384155e-05,
+       "bytes": 846312.0
+      },
+      "stream_synchronize": {
+       "calls": 3.9921259842519694,
+       "seconds": 0.028548340914646298,
+       "bytes": 0.0
+      },
+      "memcpy:host_to_device": {
+       "calls": 0.015748031496062992,
+       "seconds": 4.024106124293773e-07,
+       "bytes": 1.5433070866141734
+      },
+      "graph_launch": {
+       "calls": 0.9921259842519685,
+       "seconds": 5.550474317113714e-05,
+       "bytes": 0.0
+      }
+     },
+     "graph": {
+      "captures_per_request": 1,
+      "capture_s": 0.027563886848899224,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  }
+ },
+ "decision": {
+  "default": null,
+  "routes": [
+   {
+    "prompt_tokens": 47,
+    "tok_s_ratio_to_reference": {
+     "forward": 1.0977136354327601,
+     "reverse": 1.0956553413334995
+    },
+    "faster_in_both_orders": true,
+    "output_identical_to_reference": false,
+    "promote": false,
+    "reference_decode_tok_s": {
+     "median": 17.798703548905763,
+     "min": 17.629062813871816,
+     "max": 17.83520155919214
+    }
+   }
+  ],
+  "resident": [
+   {
+    "prompt_tokens": 47,
+    "tok_s_ratio_to_reference": {
+     "forward": 1.8447671177245886,
+     "reverse": 1.8386494202340786
+    },
+    "faster_in_both_orders": true,
+    "output_identical_to_reference": false,
+    "promote": false,
+    "reference_decode_tok_s": {
+     "median": 17.798703548905763,
+     "min": 17.629062813871816,
+     "max": 17.83520155919214
+    }
+   }
+  ],
+  "graph": [
+   {
+    "prompt_tokens": 47,
+    "tok_s_ratio_to_reference": {
+     "forward": 1.867597176872632,
+     "reverse": 1.8665051361401654
+    },
+    "faster_in_both_orders": true,
+    "output_identical_to_reference": false,
+    "promote": false,
+    "reference_decode_tok_s": {
+     "median": 17.798703548905763,
+     "min": 17.629062813871816,
+     "max": 17.83520155919214
+    }
+   }
+  ]
+ },
+ "runs": [
+  {
+   "order": "forward",
+   "pair": 0,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 17.745267169021048,
+      "min": 17.69643061035863,
+      "max": 17.771570732679532
+     },
+     "decode_ms_per_token": 56.35305405521076,
+     "first_token_s": {
+      "median": 0.2563122450374067,
+      "min": 0.2558245570398867,
+      "max": 0.25789936794899404
+     },
+     "output_ids_sha256": [
+      "f0aa9dfea4122ea2d60a33f6de8be130124b88483711445457b07f5c82c6b7e5"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 0,
+   "arm": "routes",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 19.50885460957844,
+      "min": 19.468180000427537,
+      "max": 19.52874727555602
+     },
+     "decode_ms_per_token": 51.25877556691724,
+     "first_token_s": {
+      "median": 0.25820249295793474,
+      "min": 0.25756510300561786,
+      "max": 0.2596278649289161
+     },
+     "output_ids_sha256": [
+      "57719e5e47b5d6d29d4cef3e1ddeca2132e230d6ea54bb48687b79cc349812fd"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 0,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 32.64852400317121,
+      "min": 32.600122448884484,
+      "max": 32.66230581437086
+     },
+     "decode_ms_per_token": 30.62925600872089,
+     "first_token_s": {
+      "median": 0.25837547495029867,
+      "min": 0.2568472339771688,
+      "max": 0.27644876507110894
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 0,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 33.168982800411136,
+      "min": 33.08912625407277,
+      "max": 33.187878761238814
+     },
+     "decode_ms_per_token": 30.14864839290775,
+     "first_token_s": {
+      "median": 0.26144039211794734,
+      "min": 0.259543752996251,
+      "max": 0.27502914401702583
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.027823511355866987,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 1,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 17.629062813871816,
+      "min": 17.624517590401666,
+      "max": 17.63404169972914
+     },
+     "decode_ms_per_token": 56.72451284325381,
+     "first_token_s": {
+      "median": 0.2636576739605516,
+      "min": 0.25482163298875093,
+      "max": 0.2771931460592896
+     },
+     "output_ids_sha256": [
+      "f0aa9dfea4122ea2d60a33f6de8be130124b88483711445457b07f5c82c6b7e5"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 1,
+   "arm": "routes",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 19.396141769809763,
+      "min": 19.382487104382577,
+      "max": 19.39662466708621
+     },
+     "decode_ms_per_token": 51.55664522706817,
+     "first_token_s": {
+      "median": 0.2611163870897144,
+      "min": 0.25960042513906956,
+      "max": 0.26135334093123674
+     },
+     "output_ids_sha256": [
+      "57719e5e47b5d6d29d4cef3e1ddeca2132e230d6ea54bb48687b79cc349812fd"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 1,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 32.76619037159665,
+      "min": 32.72109062193741,
+      "max": 32.77716282917797
+     },
+     "decode_ms_per_token": 30.51926356586298,
+     "first_token_s": {
+      "median": 0.2607340409886092,
+      "min": 0.2595557540189475,
+      "max": 0.2689773039892316
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 1,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 33.13690784985243,
+      "min": 33.11714450061254,
+      "max": 33.169201831328984
+     },
+     "decode_ms_per_token": 30.177830850456175,
+     "first_token_s": {
+      "median": 0.25754298409447074,
+      "min": 0.2570468168705702,
+      "max": 0.25950673315674067
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.028287704723576706,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 2,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 17.761694718416173,
+      "min": 17.756888907985697,
+      "max": 17.768693580992323
+     },
+     "decode_ms_per_token": 56.3009338834741,
+     "first_token_s": {
+      "median": 0.25653140898793936,
+      "min": 0.25613961298950016,
+      "max": 0.25831268494948745
+     },
+     "output_ids_sha256": [
+      "f0aa9dfea4122ea2d60a33f6de8be130124b88483711445457b07f5c82c6b7e5"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 2,
+   "arm": "routes",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 19.497254480799473,
+      "min": 19.48364684901569,
+      "max": 19.532706256466327
+     },
+     "decode_ms_per_token": 51.28927259911292,
+     "first_token_s": {
+      "median": 0.256560408975929,
+      "min": 0.2549778160173446,
+      "max": 0.257757498184219
+     },
+     "output_ids_sha256": [
+      "57719e5e47b5d6d29d4cef3e1ddeca2132e230d6ea54bb48687b79cc349812fd"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 2,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 32.71831663408184,
+      "min": 32.71297568462211,
+      "max": 32.753126728396936
+     },
+     "decode_ms_per_token": 30.563919628992323,
+     "first_token_s": {
+      "median": 0.25856313994154334,
+      "min": 0.25730460113845766,
+      "max": 0.2598497588187456
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 2,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 33.22333830660342,
+      "min": 33.177665685569266,
+      "max": 33.25254269335878
+     },
+     "decode_ms_per_token": 30.099323276049038,
+     "first_token_s": {
+      "median": 0.25864511099644005,
+      "min": 0.2574280418921262,
+      "max": 0.2645097579807043
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.026914824343596894,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 3,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 17.83520155919214,
+      "min": 17.833627809633786,
+      "max": 17.870881917102427
+     },
+     "decode_ms_per_token": 56.06889255953527,
+     "first_token_s": {
+      "median": 0.2552711709868163,
+      "min": 0.25460082083009183,
+      "max": 0.2602781360037625
+     },
+     "output_ids_sha256": [
+      "f0aa9dfea4122ea2d60a33f6de8be130124b88483711445457b07f5c82c6b7e5"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 3,
+   "arm": "routes",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 19.507572776695657,
+      "min": 19.43792302039717,
+      "max": 19.51711896540402
+     },
+     "decode_ms_per_token": 51.26214375550764,
+     "first_token_s": {
+      "median": 0.2605726099573076,
+      "min": 0.25564482691697776,
+      "max": 0.26551444409415126
+     },
+     "output_ids_sha256": [
+      "57719e5e47b5d6d29d4cef3e1ddeca2132e230d6ea54bb48687b79cc349812fd"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 3,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 32.790148420993816,
+      "min": 32.767901850687686,
+      "max": 32.79469557327889
+     },
+     "decode_ms_per_token": 30.49696473346099,
+     "first_token_s": {
+      "median": 0.2617749578785151,
+      "min": 0.25827922602184117,
+      "max": 0.26346402312628925
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 3,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 33.171690912587586,
+      "min": 33.128640818757674,
+      "max": 33.183668291907026
+     },
+     "decode_ms_per_token": 30.14618707967438,
+     "first_token_s": {
+      "median": 0.2585455598309636,
+      "min": 0.25776428799144924,
+      "max": 0.2604329180903733
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.027523756648103397,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 4,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 17.802028557613824,
+      "min": 17.73420074273401,
+      "max": 17.814171481077892
+     },
+     "decode_ms_per_token": 56.17337354356203,
+     "first_token_s": {
+      "median": 0.25670926296152174,
+      "min": 0.25544272386468947,
+      "max": 0.25677512399852276
+     },
+     "output_ids_sha256": [
+      "f0aa9dfea4122ea2d60a33f6de8be130124b88483711445457b07f5c82c6b7e5"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 4,
+   "arm": "routes",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 19.479631869615705,
+      "min": 19.467406269911983,
+      "max": 19.50181734150849
+     },
+     "decode_ms_per_token": 51.3356723932652,
+     "first_token_s": {
+      "median": 0.2574557231273502,
+      "min": 0.2558068891521543,
+      "max": 0.2646935721859336
+     },
+     "output_ids_sha256": [
+      "57719e5e47b5d6d29d4cef3e1ddeca2132e230d6ea54bb48687b79cc349812fd"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 4,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 32.777855896617304,
+      "min": 32.754287994226715,
+      "max": 32.78701288169123
+     },
+     "decode_ms_per_token": 30.508401866004927,
+     "first_token_s": {
+      "median": 0.2585894810035825,
+      "min": 0.2585781409870833,
+      "max": 0.26207744306884706
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "forward",
+   "pair": 4,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 33.25395760169589,
+      "min": 33.24792375550609,
+      "max": 33.26772912640596
+     },
+     "decode_ms_per_token": 30.07160867821044,
+     "first_token_s": {
+      "median": 0.26456452906131744,
+      "min": 0.2594826149288565,
+      "max": 0.2794242410454899
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.027340730264162023,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 0,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 33.22462408196731,
+      "min": 33.191241107427025,
+      "max": 33.27720941478382
+     },
+     "decode_ms_per_token": 30.098158448171898,
+     "first_token_s": {
+      "median": 0.25933558214455843,
+      "min": 0.25877751293592155,
+      "max": 0.2635192039888352
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.02819665304074685,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 0,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 32.777816195628404,
+      "min": 32.745250659142066,
+      "max": 32.78506502625511
+     },
+     "decode_ms_per_token": 30.50843881824472,
+     "first_token_s": {
+      "median": 0.25981646915897727,
+      "min": 0.2591491099447012,
+      "max": 0.2616728669963777
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 0,
+   "arm": "routes",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 19.456297692125982,
+      "min": 19.455635068795253,
+      "max": 19.468517486998763
+     },
+     "decode_ms_per_token": 51.39723989753214,
+     "first_token_s": {
+      "median": 0.2551233291160315,
+      "min": 0.2537083581555635,
+      "max": 0.25600872305221856
+     },
+     "output_ids_sha256": [
+      "57719e5e47b5d6d29d4cef3e1ddeca2132e230d6ea54bb48687b79cc349812fd"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 0,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 17.80044610574932,
+      "min": 17.740782635432325,
+      "max": 17.807915596304802
+     },
+     "decode_ms_per_token": 56.17836733187336,
+     "first_token_s": {
+      "median": 0.25588841107673943,
+      "min": 0.2557006480637938,
+      "max": 0.25749548501335084
+     },
+     "output_ids_sha256": [
+      "f0aa9dfea4122ea2d60a33f6de8be130124b88483711445457b07f5c82c6b7e5"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 1,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 33.16624409421174,
+      "min": 33.12194566036347,
+      "max": 33.23110047767422
+     },
+     "decode_ms_per_token": 30.151137920815174,
+     "first_token_s": {
+      "median": 0.2635891460813582,
+      "min": 0.25878542312420905,
+      "max": 0.2663477270398289
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.0271477277080218,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 1,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 32.61587693152692,
+      "min": 32.525328361713804,
+      "max": 32.630783469386806
+     },
+     "decode_ms_per_token": 30.65991455938403,
+     "first_token_s": {
+      "median": 0.26609051297418773,
+      "min": 0.26381677901372313,
+      "max": 0.2674631141126156
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 1,
+   "arm": "routes",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 19.519449453423526,
+      "min": 19.491493435160816,
+      "max": 19.530912750148033
+     },
+     "decode_ms_per_token": 51.230953126324444,
+     "first_token_s": {
+      "median": 0.2568525450769812,
+      "min": 0.2549393270164728,
+      "max": 0.2576504268217832
+     },
+     "output_ids_sha256": [
+      "57719e5e47b5d6d29d4cef3e1ddeca2132e230d6ea54bb48687b79cc349812fd"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 1,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 17.739853074922635,
+      "min": 17.69894224765575,
+      "max": 17.75157502895289
+     },
+     "decode_ms_per_token": 56.37025266086433,
+     "first_token_s": {
+      "median": 0.2583625568076968,
+      "min": 0.2561052739620209,
+      "max": 0.2596751779783517
+     },
+     "output_ids_sha256": [
+      "f0aa9dfea4122ea2d60a33f6de8be130124b88483711445457b07f5c82c6b7e5"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 2,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 33.19438199893807,
+      "min": 33.186233967824975,
+      "max": 33.23974388735061
+     },
+     "decode_ms_per_token": 30.12557968489943,
+     "first_token_s": {
+      "median": 0.2642362150363624,
+      "min": 0.26308178808540106,
+      "max": 0.2699086000211537
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.026751178316771984,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 2,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 32.71119725368057,
+      "min": 32.689723639426894,
+      "max": 32.718749418930585
+     },
+     "decode_ms_per_token": 30.570571668314066,
+     "first_token_s": {
+      "median": 0.25847887014970183,
+      "min": 0.2558731408789754,
+      "max": 0.26051199017092586
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 2,
+   "arm": "routes",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 19.478860684351048,
+      "min": 19.474911809399583,
+      "max": 19.482746449879944
+     },
+     "decode_ms_per_token": 51.33770481778646,
+     "first_token_s": {
+      "median": 0.2576192270498723,
+      "min": 0.25441886903718114,
+      "max": 0.2634376441128552
+     },
+     "output_ids_sha256": [
+      "57719e5e47b5d6d29d4cef3e1ddeca2132e230d6ea54bb48687b79cc349812fd"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 2,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 17.810577215909237,
+      "min": 17.808125156657578,
+      "max": 17.84676073522644
+     },
+     "decode_ms_per_token": 56.14641164502818,
+     "first_token_s": {
+      "median": 0.25713743013329804,
+      "min": 0.2556529080029577,
+      "max": 0.258877235930413
+     },
+     "output_ids_sha256": [
+      "f0aa9dfea4122ea2d60a33f6de8be130124b88483711445457b07f5c82c6b7e5"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 3,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 33.258330454963726,
+      "min": 33.224776041900064,
+      "max": 33.263041856188785
+     },
+     "decode_ms_per_token": 30.06765481971908,
+     "first_token_s": {
+      "median": 0.25915814004838467,
+      "min": 0.25779082998633385,
+      "max": 0.2593513228930533
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.026672660450761516,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 3,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 32.72877991224395,
+      "min": 32.71348735377354,
+      "max": 32.7427928467597
+     },
+     "decode_ms_per_token": 30.55414844920316,
+     "first_token_s": {
+      "median": 0.2623013569973409,
+      "min": 0.2589549161493778,
+      "max": 0.2624046579003334
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 3,
+   "arm": "routes",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 19.503153853883333,
+      "min": 19.47864828258097,
+      "max": 19.504672103342553
+     },
+     "decode_ms_per_token": 51.27375846450019,
+     "first_token_s": {
+      "median": 0.25547467498108745,
+      "min": 0.2544597499072552,
+      "max": 0.2587396730668843
+     },
+     "output_ids_sha256": [
+      "57719e5e47b5d6d29d4cef3e1ddeca2132e230d6ea54bb48687b79cc349812fd"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 3,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 17.80192761076742,
+      "min": 17.79233400306623,
+      "max": 17.821487860896
+     },
+     "decode_ms_per_token": 56.17369207788229,
+     "first_token_s": {
+      "median": 0.2576123559847474,
+      "min": 0.25484955590218306,
+      "max": 0.260298757115379
+     },
+     "output_ids_sha256": [
+      "f0aa9dfea4122ea2d60a33f6de8be130124b88483711445457b07f5c82c6b7e5"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 4,
+   "arm": "graph",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 33.237025519454306,
+      "min": 33.21035603075386,
+      "max": 33.28912431004279
+     },
+     "decode_ms_per_token": 30.086928188404816,
+     "first_token_s": {
+      "median": 0.26278120395727456,
+      "min": 0.2591845199931413,
+      "max": 0.2660189620219171
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 1,
+      "capture_s": 0.028980121637384098,
+      "replays_per_token": 0.9921259842519685
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 4,
+   "arm": "resident",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 32.814721271277804,
+      "min": 32.79818562960324,
+      "max": 32.85411022733362
+     },
+     "decode_ms_per_token": 30.47412750311196,
+     "first_token_s": {
+      "median": 0.2583448369987309,
+      "min": 0.2568678450770676,
+      "max": 0.2592282509431243
+     },
+     "output_ids_sha256": [
+      "b51454f7012075c68d21f0d838297838c50d6a7a7440efcc6681e1a950b3ec8c"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 4,
+   "arm": "routes",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 19.5737225399995,
+      "min": 19.530687198191483,
+      "max": 19.583166319011326
+     },
+     "decode_ms_per_token": 51.088902376973486,
+     "first_token_s": {
+      "median": 0.25585442408919334,
+      "min": 0.2542906808666885,
+      "max": 0.25769764091819525
+     },
+     "output_ids_sha256": [
+      "57719e5e47b5d6d29d4cef3e1ddeca2132e230d6ea54bb48687b79cc349812fd"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  },
+  {
+   "order": "reverse",
+   "pair": 4,
+   "arm": "default",
+   "resolved_profile": "fast",
+   "fell_back_to_strict": false,
+   "depths": [
+    {
+     "prompt_tokens": 47,
+     "reps": 3,
+     "decode_tok_s": {
+      "median": 17.796960992062203,
+      "min": 17.757894176553993,
+      "max": 17.81354708607406
+     },
+     "decode_ms_per_token": 56.189368535786514,
+     "first_token_s": {
+      "median": 0.25618856004439294,
+      "min": 0.25588387507013977,
+      "max": 0.2565301738213748
+     },
+     "output_ids_sha256": [
+      "f0aa9dfea4122ea2d60a33f6de8be130124b88483711445457b07f5c82c6b7e5"
+     ],
+     "graph": {
+      "captures": 0,
+      "capture_s": 0.0,
+      "replays_per_token": 0.0
+     }
+    }
+   ]
+  }
+ ]
+}
