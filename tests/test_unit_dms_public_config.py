@@ -62,8 +62,19 @@ def test_public_dms_preserves_requested_codec_and_layer_outer_route(monkeypatch,
     assert kwargs['dms_backend_factory'].__name__ == ('create_dms_int8_backend' if storage == 'int8_per_token_head' else 'create_dms_bf16_backend')
     captured = []
     from hipengine.generation import qwen35_gguf
-    monkeypatch.setattr(qwen35_gguf, 'Qwen35GGUFResidentSession',
-                        lambda *args, **kw: captured.append(kw) or SimpleNamespace(max_sequence_length=kw.get('max_sequence_length')))
+
+    def make_session(*args, **kw):
+        captured.append(kw)
+        return SimpleNamespace(
+            max_sequence_length=kw.get('max_sequence_length'),
+            _dms_source=SimpleNamespace(config=SimpleNamespace(
+                decision_source='external_sidecar', window_size=8192,
+                target_compression_ratio=2.0, prefill_selection_mode='windowed',
+            )),
+            dms_decision_mode=kw['dms_decision_mode'],
+            dms_prefill_mode=kw['dms_prefill_mode'],
+        )
+    monkeypatch.setattr(qwen35_gguf, 'Qwen35GGUFResidentSession', make_session)
     monkeypatch.setattr(generator, '_configure_session', lambda session: None, raising=False)
     runner = object.__new__(qwen35_gguf_dms.Qwen35GGUFDMSModelRunner)
     runner.generator = generator
@@ -76,6 +87,9 @@ def test_public_dms_preserves_requested_codec_and_layer_outer_route(monkeypatch,
     assert captured[0]['dms_prefill_mode'] == 'layer_outer'
     assert captured[0]['dms_backend_factory'] is kwargs['dms_backend_factory']
     assert captured[0]['max_sequence_length'] == 262144
+    assert generator._dms_serving_policy['storage'] == storage
+    assert generator._dms_serving_policy['window_size'] == 8192
+    assert generator._dms_serving_policy['scale_dtype'] == ('fp32' if storage == 'int8_per_token_head' else None)
     monkeypatch.setattr(qwen35_gguf_dms.Qwen35GGUFResidentModelRunner,
                         '_execution_metadata', lambda self, row: {})
     retention = runner._execution_metadata(SimpleNamespace())['retention']

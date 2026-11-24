@@ -7116,6 +7116,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     _nested_mapping(live_snapshot, "runner"), "model_runner"
                 ).get("dms")
             ),
+            dms_retention=deepcopy(dict(
+                _nested_mapping(_nested_mapping(live_snapshot, "runner"), "retention")
+            )),
             scheduler_fairness=deepcopy(
                 _scheduler_fairness_capability(
                     continuous_decode=_engine_supports_controlled_streaming(engine)

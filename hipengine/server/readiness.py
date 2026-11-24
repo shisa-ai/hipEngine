@@ -80,6 +80,7 @@ class ReadinessSnapshot:
     kv_capacity_estimate: Mapping[str, Any] | None
     selected_device: Mapping[str, Any]
     dms_policy: Any
+    dms_retention: Mapping[str, Any]
     scheduler_fairness: Mapping[str, Any]
     queue: ReadinessQueue
     sessions: Mapping[str, Any]
@@ -169,8 +170,10 @@ def build_readiness_payload(snapshot: ReadinessSnapshot) -> dict[str, Any]:
                 else int(snapshot.effective_max_context_tokens)
             ),
             "chat_default_max_tokens": snapshot.config.chat_default_max_tokens,
+            "capacity_verified_by_readiness": False,
         },
         "kv_capacity": {
+            "configuration_source": "server_request",
             "storage": snapshot.config.kv_storage,
             "scale_dtype": snapshot.config.kv_scale_dtype,
             "scale_granularity": snapshot.config.kv_scale_granularity,
@@ -182,10 +185,7 @@ def build_readiness_payload(snapshot: ReadinessSnapshot) -> dict[str, Any]:
             "pool": dict(snapshot.pool),
         },
         "prefix_cache": dict(snapshot.prefix_cache),
-        "dms": {
-            "requested_metadata_path": snapshot.config.dms_requested_metadata_path,
-            "policy": snapshot.dms_policy,
-        },
+        "dms": _dms_readiness(snapshot),
         "graph_cache": {
             "entries": snapshot.graph["entries"],
             "hits": snapshot.graph["hits"],
@@ -231,3 +231,21 @@ def readiness_http_status(payload: Mapping[str, Any]) -> int:
     """Return the public ``/ready`` status for an already-built payload."""
 
     return 200 if payload["ready"] else 503
+
+
+def _dms_readiness(snapshot: ReadinessSnapshot) -> dict[str, Any]:
+    """Separate requested settings, prepared route, and observed compact stores."""
+
+    retention = snapshot.dms_retention
+    policy = snapshot.dms_policy
+    if not isinstance(policy, Mapping):
+        policy = retention.get("configuration")
+    requested = snapshot.config.dms_requested_metadata_path
+    prepared = isinstance(policy, Mapping)
+    return {
+        "requested_metadata_path": requested,
+        "status": "prepared" if prepared else "requested" if requested else "disabled",
+        "policy": dict(policy) if prepared else None,
+        "active_stores": list(retention.get("active_stores") or []),
+        "last_observed_store": retention.get("last_observed_store"),
+    }

@@ -1634,6 +1634,8 @@ class Qwen35GGUFBringupGenerator:
             payload = resolution.as_dict()
             payload["max_packed_rows"] = self._effective_packed_decode_rows()
             return payload
+        dms = getattr(self, "dms_metadata_path", None) is not None
+        signature = getattr(self, "_prepared_kv_signature", None)
         return {
             "schema_version": 1,
             "status": "not_applicable",
@@ -1641,7 +1643,8 @@ class Qwen35GGUFBringupGenerator:
             "promotion_eligible": False,
             "diagnostic_override": False,
             "requested": None,
-            "effective_kv_storage": "bf16",
+            "effective_kv_storage": (None if signature is None else signature[0]) if dms else "bf16",
+            **({"scope": "compact_dms_configuration"} if dms else {}),
             "max_packed_rows": self._effective_packed_decode_rows(),
             "artifact": {
                 "path": str(getattr(self.weight_index, "path", self.model_path)),
@@ -1651,7 +1654,11 @@ class Qwen35GGUFBringupGenerator:
                 "error": None,
             },
             "evidence": None,
-            "reason": "BF16/default KV does not require approximate-KV capability evidence",
+            "reason": (
+                "Dense approximate-KV capability evidence does not describe compact DMS; "
+                "this is prepared configuration, not live storage or demonstrated capacity"
+                if dms else "BF16/default KV does not require approximate-KV capability evidence"
+            ),
         }
 
     def _effective_packed_decode_rows(self) -> int | None:
@@ -3418,21 +3425,7 @@ class Qwen35GGUFBringupGenerator:
                 )
                 context = next_context
             else:
-                dms_source = getattr(session, "_dms_source", None)
-                if dms_source is not None:
-                    config = dms_source.config
-                    self._dms_serving_policy = {
-                        "metadata_path": self.dms_metadata_path,
-                        "decision_source": config.decision_source,
-                        "decision_mode": session.dms_decision_mode,
-                        "window_size": config.window_size,
-                        "target_compression_ratio": config.target_compression_ratio,
-                        "prefill_selection_mode": config.prefill_selection_mode,
-                        "storage": self._prepared_kv_signature[0],
-                        "prefill_mode": session.dms_prefill_mode,
-                        "max_active_requests": 1,
-                        "prefix_cache": "off",
-                    }
+                self._record_dms_serving_policy(session)
                 self._attach_capacity_estimate(
                     session,
                     shared_runner,
@@ -3443,6 +3436,31 @@ class Qwen35GGUFBringupGenerator:
         raise MemoryError(
             "GGUF resident context sizing exhausted its attempts"
         )  # pragma: no cover - the loop always returns or raises
+
+    def _record_dms_serving_policy(self, session) -> None:
+        """Publish prepared session configuration, not an observed KV allocation."""
+        source = getattr(session, "_dms_source", None)
+        if source is None:
+            return
+        config = source.config
+        signature = self._prepared_kv_signature
+        storage = None if signature is None else signature[0]
+        self._dms_serving_policy = {
+            "route": "compact_dms",
+            "source": "prepared_session_configuration",
+            "metadata_path": self.dms_metadata_path,
+            "decision_source": config.decision_source,
+            "decision_mode": session.dms_decision_mode,
+            "window_size": config.window_size,
+            "target_compression_ratio": config.target_compression_ratio,
+            "prefill_selection_mode": config.prefill_selection_mode,
+            "storage": storage,
+            "scale_dtype": "fp32" if storage == "int8_per_token_head" else None,
+            "scale_granularity": "per_token_head" if storage == "int8_per_token_head" else None,
+            "prefill_mode": session.dms_prefill_mode,
+            "max_active_requests": 1,
+            "prefix_cache": "off",
+        }
 
     def _attach_capacity_estimate(
         self,
@@ -7391,6 +7409,45 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             self._graph_buckets[label]["invalidations"] += 1
             remaining -= 1
 
+    @staticmethod
+    def _dms_store_snapshot(session) -> dict[str, Any] | None:
+        backend = getattr(session, "_dms_backend", None)
+        if backend is None:
+            return None
+        storage = backend.codec
+        return {
+            "source": "observed_backend",
+            "topology": "dms_compact",
+            "storage": storage,
+            "scale_dtype": "fp32" if storage == "int8_per_token_head" else None,
+            "scale_granularity": "per_token_head" if storage == "int8_per_token_head" else None,
+            "device_payloads": bool(backend.device_payloads_enabled),
+            "no_dense_shadow": True,
+        }
+
+    def _remember_dms_store(self, session) -> None:
+        snapshot = self._dms_store_snapshot(session)
+        if snapshot is not None:
+            self._last_dms_store = snapshot
+
+    def _dms_retention_snapshot(self, sessions) -> dict[str, Any] | None:
+        policy = getattr(self.generator, "_dms_serving_policy", None)
+        if policy is None:
+            return None
+        return {
+            "policy": "dms",
+            "storage": policy.get("storage"),
+            "prefill_mode": policy.get("prefill_mode"),
+            "compact": next((session._dms_backend.observability_snapshot()
+                             for session in sessions
+                             if getattr(session, "_dms_backend", None) is not None
+                             and callable(getattr(session._dms_backend, "observability_snapshot", None))), None),
+            "configuration": copy.deepcopy(policy),
+            "active_stores": [snapshot for session in sessions
+                              if (snapshot := self._dms_store_snapshot(session)) is not None],
+            "last_observed_store": copy.deepcopy(getattr(self, "_last_dms_store", None)),
+        }
+
     def observability_snapshot(self) -> dict[str, Any]:
         """Return real GGUF resource, graph, and route/fallback evidence."""
 
@@ -7496,6 +7553,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                     for audit in kv_layout_audits
                 ),
             },
+            "retention": self._dms_retention_snapshot(sessions),
             "kv_pool": pool_stats,
             "prefix_cache": prefix_observability,
             "graph_buckets": {
@@ -10581,6 +10639,7 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                 raise RuntimeError("GGUF row retained KV without a session lease")
             return
         session = lease.session
+        self._remember_dms_store(session)
         self._close_c1_decode_graph(row)
         self._retire_request_session(row)
 

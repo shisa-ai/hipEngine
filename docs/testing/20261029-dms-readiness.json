@@ -1,0 +1,81 @@
+{
+  "schema": "hipengine.dms_readiness_check.v1",
+  "baseline_commit": "8e059d1a0e306fe79841f55077cd1ed4cb562675",
+  "server": "bg-61",
+  "context_configured": 204800,
+  "full_depth_capacity_measured": false,
+  "public_route": "POST /v1/completions with stream=true",
+  "during_active_store_count": 1,
+  "after_active_store_count": 0,
+  "last_observed_store": {
+    "source": "observed_backend",
+    "topology": "dms_compact",
+    "storage": "int8_per_token_head",
+    "scale_dtype": "fp32",
+    "scale_granularity": "per_token_head",
+    "device_payloads": true,
+    "no_dense_shadow": true
+  },
+  "dms_policy": {
+    "route": "compact_dms",
+    "source": "prepared_session_configuration",
+    "metadata_path": "/mnt/nvme1/models/qwen38-27b-dms/dms_metadata.json",
+    "decision_source": "external_linear_sidecar_v1",
+    "decision_mode": "sidecar",
+    "window_size": 8192,
+    "target_compression_ratio": 2,
+    "prefill_selection_mode": "exact_budget",
+    "storage": "int8_per_token_head",
+    "scale_dtype": "fp32",
+    "scale_granularity": "per_token_head",
+    "prefill_mode": "layer_outer",
+    "max_active_requests": 1,
+    "prefix_cache": "off"
+  },
+  "provenance": {
+    "schema_version": 1,
+    "status": "not_applicable",
+    "runtime_action": "not_applicable",
+    "promotion_eligible": false,
+    "diagnostic_override": false,
+    "requested": null,
+    "effective_kv_storage": "int8_per_token_head",
+    "scope": "compact_dms_configuration",
+    "max_packed_rows": null,
+    "artifact": {
+      "path": "/mnt/nvme1/models/qwen38-27b/Qwen3.8-27B-Q4_K_M.gguf",
+      "size_bytes": null,
+      "sha256": null,
+      "content_verified": false,
+      "error": null
+    },
+    "evidence": null,
+    "reason": "Dense approximate-KV capability evidence does not describe compact DMS; this is prepared configuration, not live storage or demonstrated capacity"
+  },
+  "request_sha256": "29ae926ca1c41290d6431ef6170491a854f7b78f147467eaa20cabb7ae1ce8a2",
+  "response_sha256": "16ac9a34fcdca0c45f43b37ccfcf676809f31b99df4140ca10a380d08525e488",
+  "production_source_sha256": {
+    "hipengine/generation/qwen35_gguf.py": "69036455fe05682080100637f795fe200b35985667dcb71e5fad8a3c65fa0303",
+    "hipengine/generation/qwen35_gguf_dms.py": "ecd798815bf72cb2e0ca1dde58ac550e8958f8910111de8d3c616c7a91f231c7",
+    "hipengine/server/api.py": "c975541019288de1ed0b6769cbd73f03a4adcc7f889dc35c2e99f0219e23cf5c"
+  },
+  "evaluation_retried": false,
+  "validation": {
+    "affected_bundle_passed": 871,
+    "final_constructor_and_readiness_unit_cases_passed": 19,
+    "default_unit_suite_exit_code": 0,
+    "deterministic_gates": [
+      "compileall",
+      "check_fixtures",
+      "registry smoke",
+      "cpu-fixtures smoke",
+      "smoke-add-plan",
+      "test tiers",
+      "git diff --check"
+    ],
+    "documentation_gates": "all 4 passed; 46 existing front-matter warnings",
+    "independent_read_only_review_execution": "57b8cf51-fc06-4d5c-8e44-3915d942f2c1",
+    "review_blockers_found": 0,
+    "source_hashes_match_disk_and_startup": true
+  }
+}

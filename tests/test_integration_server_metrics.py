@@ -107,6 +107,69 @@ from tests.support.server_api_support import (
 )
 
 
+@pytest.mark.parametrize('selection', ['compact', 'sidecar'])
+def test_ready_separates_dms_requested_prepared_and_observed_storage(selection):
+    from hipengine.kvcache.dms_config import DMSConfig
+
+    policy = {'route': 'compact_dms', 'source': 'prepared_session_configuration',
+              'metadata_path': 'sidecar.json', 'storage': 'int8_per_token_head',
+              'scale_dtype': 'fp32', 'scale_granularity': 'per_token_head',
+              'prefill_mode': 'layer_outer', 'decision_mode': 'sidecar',
+              'window_size': 8192, 'target_compression_ratio': 2.0}
+    observed = {'source': 'observed_backend', 'storage': 'int8_per_token_head',
+                'scale_dtype': 'fp32', 'scale_granularity': 'per_token_head',
+                'device_payloads': True, 'no_dense_shadow': True}
+    fake = FakeLLM()
+    snapshot = {'runner': {'model_runner': {'dms': policy}, 'retention': {
+        'policy': 'dms', 'configuration': policy,
+        'active_stores': [], 'last_observed_store': observed,
+    }}}
+    fake.live_loop_snapshot = lambda: snapshot
+    options = {'dms': DMSConfig('sidecar.json', prefill_mode='layer_outer')} if selection == 'compact' else {'dms_metadata_path': 'sidecar.json'}
+    client = TestClient(create_app(ServerConfig(
+        model='fake-path', served_model_name='fake-model', eager_load=False,
+        kv_storage='int8_per_token_head', kv_scale_dtype='fp16',
+        max_context_tokens=204800, prefix_cache='off', speculative_mtp_serving='off', **options,
+    ), llm=fake))
+    ready = client.get('/ready').json()
+    assert ready['dms']['requested_metadata_path'] == 'sidecar.json'
+    assert ready['dms']['status'] == 'prepared'
+    assert ready['dms']['policy'] == policy
+    assert ready['dms']['active_stores'] == []
+    assert ready['dms']['last_observed_store'] == observed
+    # Request defaults and resolved compact-store scales are deliberately different.
+    assert ready['kv_capacity']['scale_dtype'] == 'fp16'
+    assert ready['kv_capacity']['configuration_source'] == 'server_request'
+    assert ready['dms']['policy']['scale_dtype'] == 'fp32'
+    assert ready['context']['capacity_verified_by_readiness'] is False
+    snapshot['runner']['retention']['active_stores'] = [observed]
+    assert client.get('/ready').json()['dms']['active_stores'] == [observed]
+
+
+def test_ready_dms_selection_without_loaded_runtime_is_requested_not_prepared():
+    from hipengine.kvcache.dms_config import DMSConfig
+
+    client = TestClient(create_app(ServerConfig(
+        model='fake-path', eager_load=False, dms=DMSConfig('sidecar.json'),
+        prefix_cache='off', speculative_mtp_serving='off',
+    )))
+    dms = client.get('/ready').json()['dms']
+    assert dms['requested_metadata_path'] == 'sidecar.json'
+    assert dms['status'] == 'requested'
+    assert dms['policy'] is None
+    assert dms['active_stores'] == []
+    assert dms['last_observed_store'] is None
+
+
+def test_ready_without_dms_does_not_claim_compact_storage():
+    client = TestClient(create_app(ServerConfig(model='fake-path', eager_load=False), llm=FakeLLM()))
+    dms = client.get('/ready').json()['dms']
+    assert dms['status'] == 'disabled'
+    assert dms['policy'] is None
+    assert dms['active_stores'] == []
+    assert dms['last_observed_store'] is None
+
+
 def test_ready_reports_bounded_prefix_cache_ownership() -> None:
     fake = FakeLLM()
     prefix = {

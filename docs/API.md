@@ -302,10 +302,26 @@ prefill tokens, `cache_host_bytes`, and `cache_provider_device_bytes`.
 MTP timing fields `specdec2_mtp2_prompt_prime_rows` and
 `specdec2_mtp2_prompt_reused_rows` distinguish draft work from restored state.
 
-After a session has been prepared, `/ready.dms.policy` reports the loaded
-window, target compression, prefill selection mode, decision source and compact
-storage. Non-streaming choice telemetry exposes `hipengine.diagnostics.dms`,
-including actual compression, live rows, device bytes and eviction counters.
+After a session has been prepared, `GET /ready` reports `dms.status: "prepared"`
+and `dms.policy` describes the selected compact route, loaded sidecar path,
+window, target compression, prefill/decision modes, storage and resolved scales.
+`"requested"` means DMS was selected but no prepared policy is available;
+`"disabled"` means it was not selected and no prepared policy is available.
+For compact INT8, the resolved scales are FP32 per token/head even if the server
+request used the default FP16 scale setting.
+
+`dms.active_stores` reports formats read from currently owned backend stores;
+it is empty when none exist. `dms.last_observed_store` preserves format metadata
+from the most recently released store, or is null before one has been observed.
+It is not a live allocation or a capacity measurement. Each observed format
+includes `device_payloads` to distinguish device-backed storage from a host-only
+backend. `kv_capacity` retains the server's requested storage/scale settings and
+labels them with `configuration_source: "server_request"`.
+`model.kv_capability` is capability provenance, not a live storage inventory;
+compact DMS uses `scope: "compact_dms_configuration"`, separate from dense
+approximate-KV evidence. Non-streaming choice telemetry exposes
+`hipengine.diagnostics.dms`, including actual compression, live rows, device
+bytes and eviction counters.
 Target compression is a policy setting, not a promise of achieved compression:
 the protected recent window and generated tokens affect the retained size.
 A local W256/2× sidecar is a different policy from a published W8192 sidecar;
@@ -2084,6 +2100,11 @@ message counts, configured chat-session cap, pending session creations, and
 continuation-handle counts. It intentionally omits prompts, generated text,
 tool results, and raw
 request/response payloads.
+
+Readiness does not run a full-context capacity test:
+`context.capacity_verified_by_readiness` is false. Configured/effective context,
+a startup scratch probe, and a successful short request do not establish that a
+full-depth prompt plus its output allowance fits.
 
 If eager startup fails, the server does not stay up unready. The failed stage,
 exception type, generic message, and operator guidance are recorded in

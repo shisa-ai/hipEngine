@@ -94,6 +94,7 @@ def _snapshot(**overrides: Any) -> ReadinessSnapshot:
         "kv_capacity_estimate": {"tokens": 512},
         "selected_device": {"device": "gfx1151"},
         "dms_policy": None,
+        "dms_retention": {},
         "scheduler_fairness": {"policy": "fifo"},
         "queue": _queue(),
         "sessions": {"active": 0, "continuations": {"active": 0}},
@@ -162,8 +163,10 @@ def test_healthy_payload_shape_and_values() -> None:
             "configured_max_context_tokens": 512,
             "effective_max_context_tokens": 512,
             "chat_default_max_tokens": 4096,
+            "capacity_verified_by_readiness": False,
         },
         "kv_capacity": {
+            "configuration_source": "server_request",
             "storage": "bf16",
             "scale_dtype": "none",
             "scale_granularity": "none",
@@ -171,7 +174,13 @@ def test_healthy_payload_shape_and_values() -> None:
             "pool": {"current_bytes": 10},
         },
         "prefix_cache": {"mode": "off"},
-        "dms": {"requested_metadata_path": None, "policy": None},
+        "dms": {
+            "requested_metadata_path": None,
+            "status": "disabled",
+            "policy": None,
+            "active_stores": [],
+            "last_observed_store": None,
+        },
         "graph_cache": {
             "entries": 1,
             "hits": 2,
