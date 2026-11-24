@@ -586,8 +586,10 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
 
     def device_routes_enabled(self):
         if self._device_routes is None:
-            self._device_routes = (self._device_routes_requested and self._mix is not None
-                                   and (self._shared_q8_dot is not None or bool(self._selected_launches)))
+            # Device routes run the fast expert chain. The split activation exists only with it, so
+            # without that chain (the strict profile) the request is inert.
+            self._device_routes = (self._device_routes_requested and self._activation is not None
+                                   and self._mix is not None)
         return self._device_routes
 
     def device_routes_supported(self, visit):
