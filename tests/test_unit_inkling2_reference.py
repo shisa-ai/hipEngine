@@ -287,6 +287,47 @@ def test_capture_preserves_the_ordinary_prefill_logit_shape_and_values():
     assert ordinary.position == captured.position == 3
 
 
+def test_capture_points_are_not_visit_exit_states():
+    """`capture(k, h)` observes entry to visit ``k``, and for a restart visit
+    that is the restored prelude state, not the prior visit's exit. Comparing
+    a captured entry against a truncated run's raw exit misreads the restart
+    as a divergence. Guard the three points that must not be conflated."""
+    from contextlib import closing
+    from dataclasses import replace
+
+    cfg, ids = _config(), [0, 1]
+    reference = Inkling2TextReference(cfg, TinyWeights())
+    h0 = _rms(reference.weights.dense('embed.weight', ids), reference.config['rms_norm_eps']) * reference.weights.dense('embed_norm.weight')
+
+    def exit_at(n):
+        plan = replace(reference.plan, visits=reference.plan.visits[:n])
+        with closing(Inkling2TextReference(cfg, TinyWeights(), plan=plan).session(4)) as session:
+            try:
+                next(session._traverse(h0.copy(), None))
+            except StopIteration as done:
+                raw, blocks, _ = done.value
+            else:
+                raise AssertionError('unexpected staged traversal')
+            return raw, session._output_hidden(raw, blocks)
+
+    with closing(reference.session(4)) as session:
+        seen = {}
+        session.prefill_block(ids, capture=lambda i, h: seen.setdefault(i, h.copy()))
+
+    visits = reference.plan.visits
+    entry = next(i for i, visit in enumerate(visits) if visit.weight_layer == reference.config['loop_config']['core_start'])
+    restart = next(i for i, visit in enumerate(visits) if visit.restart_from_prelude)
+    # Restart re-enters with the same prelude state captured at the core entry.
+    np.testing.assert_array_equal(seen[restart], seen[entry])
+    # Truncating before the restart keeps the first pass's exit, which is not the restored entry.
+    raw_before_restart, _ = exit_at(restart)
+    assert not np.allclose(seen[restart], raw_before_restart)
+    # The final capture observes the depth-mixed output, not the raw final residual.
+    raw_final, final_hidden = exit_at(len(visits))
+    np.testing.assert_array_equal(seen[len(visits)], final_hidden)
+    assert not np.allclose(seen[len(visits)], raw_final)
+
+
 @pytest.mark.parametrize("keep", [0, 1, 3])
 def test_provisional_block_rolls_back_rejected_suffix_across_multiple_wraps(keep):
     model = Inkling2TextReference(_config(), TinyWeights())
