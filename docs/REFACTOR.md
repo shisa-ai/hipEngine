@@ -1743,7 +1743,11 @@ Owner: `hipengine/loading/inkling2_gguf_device.py`.
 Scope: device-side Inkling 2 GGUF route selection (`laguna_sigmoid_correction_topk_f32` plus the
 `inkling2_route_ids_i32` gather in `hipengine/kernels/hip_gfx1100/moe/inkling2_route_tiles.hip`)
 and the `HIPENGINE_INKLING2_DEVICE_ROUTES` environment opt-in. The host top-k path stays the
-default; per-layer NVFP4 capability gate falls back to it automatically.
+default because the device selection changes decode arithmetic: over 240 consecutive expert calls
+on 2026-11-24 the selected experts matched and the mix weights differed by up to 3.8e-06, and a
+128-token greedy chain matched the host-route chain for 67 tokens before diverging. Scalar decode
+speed is unchanged (18.08 vs 18.05 tok/s, W7900, UD-Q4_K_M artifact). Per-layer NVFP4 capability
+gate falls back to the host path automatically.
 
 Done when: the flag shows a measured decode win on the W7900 (or is wired into the block-resident
 traversal where the logits download is the binding constraint) and is either promoted to default
@@ -1752,12 +1756,20 @@ with an evidence row, or removed and this entry closed. Validation: fast-profile
 2026-11-24 (0 selection mismatches, mix delta <= 4e-06 over 240 calls). Do not remove the flag
 while any caller still selects it explicitly.
 
+Clearing command: `HIPENGINE_INKLING2_DEVICE_ROUTES=1 .venv/bin/python
+scripts/inkling2_gguf_task_check.py <model> --backend hip_gfx1100 --reverse` on the W7900 (the 12
+known-answer cases through `LLM.generate_detailed`, `fast` against `strict`), then the
+[Execution Profiles §6](EXECUTION-PROFILES.md#6-production-numerical-gate) gate against the strict
+teacher. A pass promotes the default to `1` and the flag becomes the rollback lever. No in-tree
+command runs that gate for Inkling yet, so adding one is part of clearing this.
+
 ### R0527 — HIPENGINE_INKLING2_RESIDENT_DECODE opt-in
 
-Owner: `hipengine/runtime/inkling2_mini_reference.py` (`Inkling2TextSession._forward`) and
-`hipengine/runtime/inkling2_gguf.py` (`_resident_block`, previously uncalled).
+Owner: `hipengine/runtime/inkling2_gguf.py`.
 
-Scope: routes single-token greedy decode through the whole-token device-resident traversal
+Scope: `_resident_block` in that file (previously uncalled) and the `width == 1` branch that
+`Inkling2TextSession._forward` in `hipengine/runtime/inkling2_mini_reference.py` uses to reach it.
+The branch routes single-token greedy decode through the whole-token device-resident traversal
 (attention controllers, projections, expert FFN, residual updates inside one arena; the host sees
 only the final hidden row and the residual-stack blocks). Opt-in via
 `HIPENGINE_INKLING2_RESIDENT_DECODE=1`; default off. Falls back to the eager path whenever capture,
@@ -1775,3 +1787,9 @@ count drops enough) that shows a measured win on the W7900 fast profile, or the 
 along with this entry if graph capture is rejected. Validation: 48-token greedy token-identity
 check plus `tests/test_unit_inkling2_gguf_runtime.py`; expand the device-route coverage before any
 default flip.
+
+Clearing command: `HIPENGINE_INKLING2_RESIDENT_DECODE=1 .venv/bin/python
+scripts/inkling2_gguf_task_check.py <model> --backend hip_gfx1100 --reverse` on the W7900 (the 12
+known-answer cases through `LLM.generate_detailed`), with the captured graph timed against the
+eager path by the 48-token greedy A/B recorded above. A measured win promotes the default to `1`
+and the flag becomes the rollback lever; no win removes the path and closes this entry.
