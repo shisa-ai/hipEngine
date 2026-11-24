@@ -72,12 +72,12 @@ __global__ void inkling2_target_attention(const float* q, const float* k, const 
     }
 }
 
-template <bool Block, bool ApplySigmoid = false>
+template <bool Block, bool ApplySigmoid = false, bool TableBias = false>
 __global__ void inkling2_target_attention_tiled(
     const float* q, const float* k, const float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
     const int32_t* row, const float* gain, int nq, int nk, int dim, int extent,
-    const float* block_k, const float* block_v, int capacity) {
+    const float* block_k, const float* block_v, int capacity, const float* table, int rel_width) {
     constexpr int tile = 16;
     const int tid = threadIdx.x;
     const int lane = tid % 32;
@@ -89,12 +89,18 @@ __global__ void inkling2_target_attention_tiled(
     if constexpr (Block) {
         q += size_t(blockIdx.y) * nq * dim;
         if (gain) gain += size_t(blockIdx.y) * nq * dim;
-        bias += size_t(blockIdx.y) * nq * extent;
+        bias += size_t(blockIdx.y) * nq * (TableBias ? rel_width : extent);
         sink += size_t(blockIdx.y) * nq;
         out += size_t(blockIdx.y) * nq * dim;
     }
     q += head * dim;
-    bias += head * extent;
+    if constexpr (TableBias) {
+        // Each head carries one row of `rel_width` scores; the lag table is stored lag by lag.
+        bias += head * rel_width;
+    } else {
+        bias += head * extent;
+    }
+    const float rel = TableBias && lane < rel_width ? bias[lane] : 0.0f;
     __shared__ float score[tile], previous[tile], current[tile];
     __shared__ int physical[tile];
     __shared__ float final_denom;
@@ -125,7 +131,19 @@ __global__ void inkling2_target_attention_tiled(
             float sum = (part[0] + part[2]) + (part[1] + part[3]);
             #pragma unroll
             for (int offset = 16; offset > 0; offset /= 2) sum += __shfl_down(sum, offset, 32);
-            if (lane == 0) score[j] = sum * rsqrtf(float(dim)) + (lag < extent ? bias[lag] : 0.0f);
+            // The table dot is a wave reduction too, so every lane must reach it.
+            float shift = 0.0f;
+            if (lag < extent) {
+                if constexpr (TableBias) {
+                    float part = lane < rel_width ? __fmul_rn(rel, table[lag * rel_width + lane]) : 0.0f;
+                    #pragma unroll
+                    for (int offset = 16; offset > 0; offset /= 2) part += __shfl_down(part, offset, 32);
+                    shift = part;
+                } else {
+                    shift = bias[lag];
+                }
+            }
+            if (lane == 0) score[j] = sum * rsqrtf(float(dim)) + shift;
         }
         __syncthreads();
         if (tid == 0) {
@@ -173,7 +191,7 @@ extern "C" int hipengine_inkling2_target_attention_tiled(
     if (nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 || extent <= 0) return hipErrorInvalidValue;
     hipLaunchKernelGGL(inkling2_target_attention_tiled<false>, dim3(nq), dim3(128), 0, 0,
                        q, k, v, bias, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim, extent,
-                       nullptr, nullptr, 0);
+                       nullptr, nullptr, 0, nullptr, 0);
     return hipGetLastError();
 }
 
@@ -195,17 +213,20 @@ __global__ void inkling2_target_cache_commit_block(
     if (ch == 0) positions[slot] = position;
 }
 
-template <bool ApplySigmoid>
+template <bool ApplySigmoid, bool TableBias>
 static int launch_attention_block(
     const float* q, float* k, float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
     const int32_t* row, const float* block_k, const float* block_v, const float* gain,
-    int nq, int nk, int dim, int extent, int rows, int capacity) {
+    int nq, int nk, int dim, int extent, int rows, int capacity, const float* table, int rel_width) {
     if (nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 || extent <= 0 ||
         rows <= 0 || rows > 65535 || capacity <= 0) return hipErrorInvalidValue;
-    hipLaunchKernelGGL((inkling2_target_attention_tiled<true, ApplySigmoid>), dim3(nq, rows), dim3(128), 0, 0,
-                       q, k, v, bias, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim, extent,
-                       block_k, block_v, capacity);
+    if constexpr (TableBias) {
+        if (!table || rel_width <= 0 || rel_width > 32) return hipErrorInvalidValue;
+    }
+    hipLaunchKernelGGL((inkling2_target_attention_tiled<true, ApplySigmoid, TableBias>), dim3(nq, rows), dim3(128),
+                       0, 0, q, k, v, bias, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim,
+                       extent, block_k, block_v, capacity, table, rel_width);
     const hipError_t status = hipGetLastError();
     if (status != hipSuccess) return status;
     const int width = nk * dim;
@@ -221,8 +242,9 @@ extern "C" int hipengine_inkling2_target_attention_block(
     const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
     const int32_t* row, const float* block_k, const float* block_v, const float* gain,
     int nq, int nk, int dim, int extent, int rows, int capacity) {
-    return launch_attention_block<false>(q, k, v, bias, sink, out, offsets, count, positions, evicted,
-                                         row, block_k, block_v, gain, nq, nk, dim, extent, rows, capacity);
+    return launch_attention_block<false, false>(q, k, v, bias, sink, out, offsets, count, positions, evicted,
+                                               row, block_k, block_v, gain, nq, nk, dim, extent, rows, capacity,
+                                               nullptr, 0);
 }
 
 extern "C" int hipengine_inkling2_target_attention_block_sigmoid(
@@ -230,8 +252,21 @@ extern "C" int hipengine_inkling2_target_attention_block_sigmoid(
     const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
     const int32_t* row, const float* block_k, const float* block_v, const float* gate,
     int nq, int nk, int dim, int extent, int rows, int capacity) {
-    return launch_attention_block<true>(q, k, v, bias, sink, out, offsets, count, positions, evicted,
-                                        row, block_k, block_v, gate, nq, nk, dim, extent, rows, capacity);
+    return launch_attention_block<true, false>(q, k, v, bias, sink, out, offsets, count, positions, evicted,
+                                            row, block_k, block_v, gate, nq, nk, dim, extent, rows, capacity,
+                                            nullptr, 0);
+}
+
+// Relative bias comes from one score row per (query, head) and a lag table instead of a dense
+// query-by-history tensor: bias[row, head, lag] = sum_j rel[row, head, j] * table[lag, j].
+extern "C" int hipengine_inkling2_target_attention_block_table_sigmoid(
+    const float* q, float* k, float* v, const float* rel, const float* sink, float* out,
+    const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
+    const int32_t* row, const float* block_k, const float* block_v, const float* gate, const float* table,
+    int nq, int nk, int dim, int extent, int rows, int capacity, int rel_width) {
+    return launch_attention_block<true, true>(q, k, v, rel, sink, out, offsets, count, positions, evicted,
+                                              row, block_k, block_v, gate, nq, nk, dim, extent, rows, capacity,
+                                              table, rel_width);
 }
 
 extern "C" int hipengine_inkling2_target_attention(const float* q, const float* k, const float* v,

@@ -23,10 +23,11 @@ _VALUE_CHUNK = 64
 
 class Inkling2DeviceAttention:
     def __init__(self, *, runtime, launch, write, geometry, split=None, split_chunked=None, block=None,
-                 block_sigmoid=None, device=None):
+                 block_sigmoid=None, device=None, block_table=None):
         self.rt, self.launch, self.write = runtime, launch, write
         self.split, self.split_chunked, self.block = split, split_chunked, block
         self.block_sigmoid = block_sigmoid
+        self.block_table = block_table
         self._block_scratch = None
         self.scores = self.value_partials = 0
         self.device = Device("hip") if device is None else device
@@ -46,6 +47,8 @@ class Inkling2DeviceAttention:
             self.staging = np.empty(scratch_values, dtype=np.float32)
             self.scratch = self._allocate(self.staging.nbytes)
             self.out = self._allocate(4 * max(nq * d for _, nq, _, d, _ in self.geometry))
+            # Live count and first row of one resident block launch.
+            self._block_header = self._allocate(8)
             self.owner = owner.pop_all()
 
     def _allocate(self, size):
@@ -253,6 +256,33 @@ class Inkling2DeviceAttention:
                 consume(out)
         self.positions[visit] = position + rows
         return result
+
+    def step_block_resident(self, visit, position, query, key, value, rel, sink, gate, out, table, rel_width, rows):
+        """Block attention over device-resident inputs, with the relative bias read from a lag table.
+
+        The caller owns the stream: nothing here fences, so later launches on stream zero
+        may consume `out` before the host reads anything.
+        """
+        if self.closed or self._borrowed_output:
+            raise RuntimeError("Inkling 2 attention state is closed or still has a borrowed output")
+        if self.block_table is None:
+            raise RuntimeError("Inkling 2 resident block attention requires the lag-table kernel")
+        if position != self.positions.get(visit, 0):
+            raise ValueError("Inkling 2 attention position must advance in order")
+        cap, nq, nk, d, extent = self.geometry[visit]
+        if not 0 < rows <= 65535:
+            raise ValueError("invalid Inkling 2 attention block row count")
+        if visit not in self.banks:
+            self.banks[visit] = self._make_bank(cap, nk, d)
+        keys, values, spans = self.banks[visit]
+        live = min(position + rows, cap)
+        self.staging[:2].view(np.int32)[:] = (live, position)
+        self.transfer.enqueue_upload(self._block_header, self.staging[:2])
+        spans = replace(spans, live_counts=Tensor(self._block_header, (1,), DType.INT32, self.device),
+                        row_positions=Tensor(self._block_header + 4, (1,), DType.INT32, self.device))
+        self.block_table(query, keys, values, rel, sink, out, spans, nq, nk, d, min(extent, live), key, value, rows,
+                         gain=gate, table=table, rel_width=rel_width)
+        self.positions[visit] = position + rows
 
     def _close_block_scratch(self):
         if self._block_scratch is not None:

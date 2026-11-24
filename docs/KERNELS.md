@@ -176,6 +176,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `convert/gather.hip` | Gather rows by integer index. |
 | `norm/rmsnorm.hip` | Root-mean-square normalization and residual/head variants. |
 | `norm/inkling2_controller.hip` | Inkling loop-controller input (`input`: RMS and concatenate) and gated blend with RMS normalization (`blend_norm`). GGUF `fast` uses both for multi-row controller merges; `host_blend_norm` is the host expression that `strict` and unnamed profiles keep. |
+| `norm/inkling2_attention_prepare.hip` | Inkling attention input preparation: per-head L2 clip with an optional scale and log position factor (`clip`) and per-head RMS normalization (`rms`). GGUF `fast` uses both for resident block attention; `host_clip` is the host expression that `strict` and unnamed profiles keep. |
 | `rotary/paro_rotate.hip` | PARO rotations and fused normalization/rotation. |
 | `rotary/qwen35_rotary.hip` | Qwen partial rotary embeddings and query/gate splitting. |
 | `fused/gguf_ops.hip` | GGUF normalization, head rotary, and attention-gate composites. |
@@ -204,7 +205,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | --- | --- |
 | `attention/paged_kv_write.hip` | Write and copy paged key/value caches. |
 | `attention/paged_attn_decode.hip` | Dense/paged attention for decode and prefill, including quantized caches. |
-| `attention/inkling2_target_attention.hip` | Inkling FP32 attention and ring commits over explicit live spans. GGUF `fast` uses `block_sigmoid` to evaluate the raw gate in committed projected prefill; `block` takes a host-computed gain. |
+| `attention/inkling2_target_attention.hip` | Inkling FP32 attention and ring commits over explicit live spans. GGUF `fast` uses `block_sigmoid` to evaluate the raw gate in committed projected prefill and `block_table_sigmoid` to also read the relative bias from device-resident score rows and a lag table; `block` takes a host-computed gain. |
 | `attention/inkling2_split_attention.hip` | Inkling FP32 decode attention over explicit live spans. The `split` variant accumulates values in slot order; GGUF `fast` uses `split_chunked` for at least 513 live slots, with the same score kernel and a parallel value pass. |
 | `attention/aotriton.py`, `attention/aotriton_wrap.py` | Adapt the optional AOTriton attention library. |
 | `attention/dms_compact.hip` | Select, pack, append, and attend over compact key/value caches. BF16 split attention uses the generic grouped producer on gfx1151 and the wave-group6 producer on gfx1100 at supported geometry. |
@@ -474,6 +475,7 @@ hipengine/kernels/hip_gfx1100/
 │   ├── maple_moe.hip
 │   └── router.hip
 ├── norm/
+│   ├── inkling2_attention_prepare.hip
 │   ├── inkling2_controller.hip
 │   ├── moonshine_layernorm.hip
 │   └── rmsnorm.hip

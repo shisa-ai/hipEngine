@@ -16,7 +16,7 @@ from hipengine.generation.inkling2_mini import Inkling2ReferenceGenerator
 from hipengine.generation.registry import DecodeState, GenerationStreamChunk, GenerationTelemetry, register_text_generator
 from hipengine.kernels.backends import hip_target_arch_for_backend
 from hipengine.kernels.hip_gfx1100.attention import inkling2_target_attention  # noqa: F401
-from hipengine.kernels.hip_gfx1100.norm import inkling2_controller  # noqa: F401
+from hipengine.kernels.hip_gfx1100.norm import inkling2_attention_prepare, inkling2_controller  # noqa: F401
 from hipengine.kernels.hip_gfx1100.quant import inkling2_short_conv  # noqa: F401
 from hipengine.kernels.registry import resolve
 from hipengine.loading.gguf import GGUFReader
@@ -64,6 +64,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
         split_chunked = primitive("inkling2_target_attention", "split_chunked") if fast else None
         block = primitive("inkling2_target_attention", "block")
         block_sigmoid = primitive("inkling2_target_attention", "block_sigmoid") if fast else None
+        block_table = primitive("inkling2_target_attention", "block_table_sigmoid") if fast else None
         write = primitive("inkling2_target_kv_write", "default")
         conv = primitive("inkling2_short_conv", "default")
         conv_block = primitive("inkling2_short_conv", "block")
@@ -78,7 +79,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
             model = self.model = Inkling2GGUFText(weights, projection=projection)
             model.attention_factory = lambda cap: Inkling2DeviceAttention(
                 runtime=runtime, launch=attn, split=split, split_chunked=split_chunked, block=block,
-                block_sigmoid=block_sigmoid, write=write, geometry=[
+                block_sigmoid=block_sigmoid, block_table=block_table, write=write, geometry=[
                     (min(cap, m.sliding_window) if v.is_local else cap, *model.head_shape(v),
                      m.sliding_window if v.is_local else m.relative_extent) for v in visits
                 ])
@@ -183,6 +184,7 @@ def register_inkling2_gguf_profiles():
     chunked_evidence = "worklog/entries/20261122T161527.676605Z-lhl-inkling2-mini-854a03.md"
     gate_evidence = "worklog/entries/20261123T032340.215296Z-lhl-inkling2-mini-9e502e.md"
     controller_evidence = "worklog/entries/20261124T000430.839711Z-lhl-inkling2-mini-d2aa61.md"
+    resident_evidence = "worklog/entries/20261124T093241.447865Z-lhl-inkling2-mini-4b3cf8.md"
     registered = registered_runtime_profile_keys()
     for backend in ("hip_gfx1100", "hip_gfx1151"):
         for profile, variant in (("strict", strict), ("fast", "selected_q8_dot_f32_f32_out")):
@@ -220,6 +222,13 @@ def register_inkling2_gguf_profiles():
                         VariantSelection("inkling2_controller", "committed_block_controllers",
                                          "blend_norm" if fast else "host_blend_norm", "host_blend_norm" if fast else None,
                                          controller_evidence if fast else None, registry_quant="inkling2_mixed"),
+                        VariantSelection("inkling2_target_attention", "resident_block_relative_bias",
+                                         "block_table_sigmoid" if fast else "block_sigmoid",
+                                         "block_sigmoid" if fast else None, resident_evidence if fast else None,
+                                         registry_quant="inkling2_mixed"),
+                        VariantSelection("inkling2_attention_prepare", "resident_block_inputs",
+                                         "clip" if fast else "host_clip", "host_clip" if fast else None,
+                                         resident_evidence if fast else None, registry_quant="inkling2_mixed"),
                     ),
                     kv_policy="fp32", graph_policy="eager",
                     factory=partial(Inkling2GGUFGenerator, backend=backend, fast=fast),

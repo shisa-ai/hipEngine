@@ -2,11 +2,12 @@
 
 from contextlib import ExitStack, closing
 from functools import partial
+from types import SimpleNamespace
 
 import numpy as np
 
 from hipengine.kernels.cpu_reference.inkling2_mini import select_expert_routes, split_expert_activation
-from hipengine.runtime.inkling2_mini_reference import Inkling2TextReference
+from hipengine.runtime.inkling2_mini_reference import Inkling2TextReference, _rms
 
 
 _PROJECTED = {
@@ -112,6 +113,94 @@ class Inkling2GGUFText(Inkling2TextReference):
             self.project_groups_transformed = self._project_groups_transformed
             self.resident_controllers = (self._resident_controllers if projection.supports_resident_controllers
                                          else None)
+            self.resident_attention = self._resident_attention if projection.supports_resident_attention else None
+
+    def _resident_attention(self, session, visit, inputs, messages, norm_names):
+        """Attention half of one block visit on the device; only the branch output reaches the host.
+
+        `inputs` holds the query, key and value controller inputs, one row matrix each.
+        """
+        c, w, tensors = self.config, self.weights, self.weights.names
+        layer = f"layers.{visit.weight_layer}"
+        attn, prefix = layer + ".attn.", layer + ".controllers."
+        projection = self.projection
+        nh, nkv, dim = self.head_shape(visit)
+        conv, slot, pos = session.convolution, visit.state_slot, session.position
+        dynamic, rows, ksize = not visit.is_local, len(inputs[0]), c["sconv_kernel_size"]
+        rel_width = tensors[attn + "wr_du.weight"].shape[0] // nh
+
+        def coefficient(name, host, layout=""):
+            return projection.resident_vector(tensors[attn + name].name + layout, host)
+
+        def kv_taps(name):
+            return w.dense(attn + f"{name}_sconv.weight")[:, 0, ::-1]
+
+        def static_taps(name):
+            return w.dense(attn + f"{name}_sconv.static_w").T.reshape(nkv * dim, ksize)
+
+        def names(*suffixes):
+            return tuple(tensors[attn + suffix].name for suffix in suffixes)
+
+        query = names("wq_du.weight", "wr_du.weight", "attn_sink_proj.weight", "gate_attn.weight")
+        query_none = (None,) * len(query)
+        # Controllers always yield three distinct rows; without them the inputs may be shared.
+        group = (0, 1, 2) if messages is not None or any(x is not inputs[0] for x in inputs) else (0, 0, 0)
+        convolve = None
+        if dynamic:
+            key, value = names("wk_dv.weight", "k_sconv.weight_proj"), names("wv_dv.weight", "v_sconv.weight_proj")
+            groups = ((group[0], query, query_none), (group[1], key, (None, None)), (group[2], value, (None, None)))
+
+            def convolve(projected):
+                conv.apply_dynamic(slot, "k", static_taps("k"), nkv, (projected[4], (rows, nkv * dim)),
+                                   (projected[5], (rows, nkv * ksize)))
+                conv.apply_dynamic(slot, "v", static_taps("v"), nkv, (projected[6], (rows, nkv * dim)),
+                                   (projected[7], (rows, nkv * ksize)))
+
+            value_index = 6
+        elif messages is None:
+            # Without loop controllers one normalized input feeds every attention projection.
+            groups = ((0, query + names("wk_dv.weight", "wv_dv.weight"), query_none + (
+                partial(conv.apply_static, slot, "k", kv_taps("k"), position=pos),
+                partial(conv.apply_static, slot, "v", kv_taps("v"), position=pos))),)
+            value_index = 5
+        else:
+            groups = ((group[0], query, query_none), (group[1], names("wk_dv.weight"),
+                                                       (partial(conv.apply_static, slot, "k", kv_taps("k"), position=pos),)),
+                      (group[2], names("wv_dv.weight"),
+                       (partial(conv.apply_static, slot, "v", kv_taps("v"), position=pos),)))
+            value_index = 5
+        if messages is None:
+            # Without loop controllers each input is normalized on the host before its projection group.
+            shared = all(x is inputs[0] for x in inputs)
+            sources = tuple(_rms(x, c["rms_norm_eps"]) * w.dense(layer + "." + name + ".weight")
+                            for x, name in zip(inputs[:1] if shared else inputs, norm_names))
+            controllers, norm_weights = None, ()
+        else:
+            sources = inputs
+            controllers = tuple(((tensors[prefix + name + ".down_weight"].name,
+                                  tensors[prefix + name + ".forget_weight"].name,
+                                  tensors[prefix + name + ".gain_weight"].name), x, messages[:, i])
+                                for i, (name, x) in enumerate(zip(("attn", "k", "v"), inputs, strict=True)))
+            norm_weights = tuple(w.dense(layer + "." + name + ".weight") for name in norm_names)
+        table = coefficient("rel_logits_proj.proj", w.dense(attn + "rel_logits_proj.proj").T, ":lag")
+
+        def attend(q, k, v, rel, sink, gate, out):
+            session.attention.step_block_resident(slot, pos, q, k, v, rel, sink, gate, out, table, rel_width, rows)
+
+        return projection.project_attention_resident(SimpleNamespace(
+            rows=rows, hidden=inputs[0].shape[1], position=pos, eps=c["rms_norm_eps"], sources=sources,
+            controllers=controllers, norm_weights=norm_weights, groups=groups, convolve=convolve, attend=attend,
+            prepare=SimpleNamespace(
+                nh=nh, nkv=nkv, dim=dim, rel_width=rel_width, eps=c["rms_norm_eps"],
+                clip=coefficient("q_l2_clip.scale", w.dense(attn + "q_l2_clip.scale")),
+                threshold=c["qk_l2_clip_threshold"],
+                rel_scale=coefficient("rel_l2_clip.scale", w.dense(attn + "rel_l2_clip.scale")),
+                rel_threshold=c["rel_l2_clip_threshold"],
+                logscale=None if visit.is_local else (c["log_scaling_alpha"], c["log_scaling_n_floor"]),
+                query=0, relative=1, sink=2, gate=3, key=4, value=value_index),
+            output=(*names("wo_ud.weight"),
+                    partial(conv.apply_static, slot, "attn_sconv", w.dense(layer + ".attn_sconv.weight")[:, 0, ::-1],
+                            position=pos))))
 
     def _resident_controllers(self, controllers, *, norm_weights, eps):
         # Blend and normalize loop controllers on the device; strict and unnamed profiles keep the host expression.

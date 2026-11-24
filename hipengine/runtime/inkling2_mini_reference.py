@@ -112,6 +112,7 @@ class Inkling2TextReference:
         self.project_many_transformed = None
         self.project_groups_transformed = None
         self.resident_controllers = None
+        self.resident_attention = None
 
     def project(self, name, hidden, *, limit=None):
         weight = self.weights.dense(name) if limit is None else self.weights.dense(name, slice(limit))
@@ -393,44 +394,51 @@ class Inkling2TextSession:
         a = read_blocks(w.dense(f"attn_res.attn_queries.{layer - 1}"), blocks, h) if layer else h
         inputs = (a, a, a) if a.ndim == h.ndim else np.moveaxis(a, -2, 0)
         norm_names = ("attn_norm",) * 3 if visit.is_local else ("q_input_norm", "k_input_norm", "v_input_norm")
-        if messages is None:
-            if visit.is_local:
-                q = k = v = norm(a, "attn_norm")
-            else:
-                q, k, v = (norm(x, name) for x, name in zip(inputs, norm_names, strict=True))
+        resident = getattr(self.model, "resident_attention", None)
+        if (resident is not None and inputs[0].ndim == 2 and not stage_controllers and self._undo is None
+                and self.attention is not None and getattr(self.attention, "block_table", None) is not None
+                and self.convolution is not None):
+            # Controllers through the output projection stay on the device; the host sees the branch rows.
+            a = resident(self, visit, inputs, messages, norm_names)
         else:
-            q, k, v = yield from merge_controllers(
-                inputs, ("attn", "k", "v"), tuple(messages[..., i, :] for i in range(3)), norm_names)
-
-        attention_project = attention_output = None
-        if self.attention is not None and self.convolution is not None:
-            if stage_controllers and q.ndim == 1 and self.model.project_device is not None:
-                attention_output = prefix + "attn.wo_ud.weight", device_conv("attn_sconv")
-            elif q.ndim == 1 and self.model.project_device is not None:
-                def attention_project(pos, q, k, v, bias, sink, gate):
-                    gain = _sigmoid(gate)
-                    with self.model.project_device(prefix + "attn.wo_ud.weight", gate.size,
-                                                   transform_output=device_conv("attn_sconv")) as projection:
-                        return self.attention.step(visit.state_slot, pos, q, k, v, bias, sink,
-                                                   undo=self._undo, gain=gain, projection=projection)
-            elif (q.ndim == 2 and self.model.project_block_device is not None
-                  and self.attention.block is not None and self._undo is None):
-                def attention_project(pos, q, k, v, bias, sink, gate):
-                    gate_kwargs = ({"gate_logits": gate} if self.attention.block_sigmoid is not None
-                                   else {"gain": _sigmoid(gate)})
-                    with self.model.project_block_device(prefix + "attn.wo_ud.weight", gate.shape[-1], rows=len(q),
-                                                         transform_output=device_conv("attn_sconv")) as projection:
-                        return self.attention.step_block(visit.state_slot, pos, q, k, v, bias, sink,
-                                                         projection=projection, **gate_kwargs)
-
-        a = yield from self._attention(visit, self.states[visit.state_slot], get, q, k, v,
-                                       attention_project=attention_project, attention_output=attention_output,
-                                       stage_projections=stage_controllers)
-        if attention_project is None and attention_output is None:
-            if self.convolution is None:
-                a = static_conv("attn_sconv", project("attn.wo_ud.weight", a))
+            if messages is None:
+                if visit.is_local:
+                    q = k = v = norm(a, "attn_norm")
+                else:
+                    q, k, v = (norm(x, name) for x, name in zip(inputs, norm_names, strict=True))
             else:
-                a = self.model.project(prefix + "attn.wo_ud.weight", a, transform_output=device_conv("attn_sconv"))
+                q, k, v = yield from merge_controllers(
+                    inputs, ("attn", "k", "v"), tuple(messages[..., i, :] for i in range(3)), norm_names)
+
+            attention_project = attention_output = None
+            if self.attention is not None and self.convolution is not None:
+                if stage_controllers and q.ndim == 1 and self.model.project_device is not None:
+                    attention_output = prefix + "attn.wo_ud.weight", device_conv("attn_sconv")
+                elif q.ndim == 1 and self.model.project_device is not None:
+                    def attention_project(pos, q, k, v, bias, sink, gate):
+                        gain = _sigmoid(gate)
+                        with self.model.project_device(prefix + "attn.wo_ud.weight", gate.size,
+                                                       transform_output=device_conv("attn_sconv")) as projection:
+                            return self.attention.step(visit.state_slot, pos, q, k, v, bias, sink,
+                                                       undo=self._undo, gain=gain, projection=projection)
+                elif (q.ndim == 2 and self.model.project_block_device is not None
+                      and self.attention.block is not None and self._undo is None):
+                    def attention_project(pos, q, k, v, bias, sink, gate):
+                        gate_kwargs = ({"gate_logits": gate} if self.attention.block_sigmoid is not None
+                                       else {"gain": _sigmoid(gate)})
+                        with self.model.project_block_device(prefix + "attn.wo_ud.weight", gate.shape[-1], rows=len(q),
+                                                             transform_output=device_conv("attn_sconv")) as projection:
+                            return self.attention.step_block(visit.state_slot, pos, q, k, v, bias, sink,
+                                                           projection=projection, **gate_kwargs)
+
+            a = yield from self._attention(visit, self.states[visit.state_slot], get, q, k, v,
+                                           attention_project=attention_project, attention_output=attention_output,
+                                           stage_projections=stage_controllers)
+            if attention_project is None and attention_output is None:
+                if self.convolution is None:
+                    a = static_conv("attn_sconv", project("attn.wo_ud.weight", a))
+                else:
+                    a = self.model.project(prefix + "attn.wo_ud.weight", a, transform_output=device_conv("attn_sconv"))
         if layer % c["n_layers_per_attn_res_block"] == 0:
             blocks.append(_rms(np.ascontiguousarray(h)))
         else:

@@ -109,19 +109,22 @@ def launch_cache_write(key, value, keys, values, spans: KVLiveSpans, width, *, t
         raise HipError(f"Inkling 2 target KV write failed with HIP status {status}")
 
 
-@lru_cache(maxsize=4)
-def _build_block(target_arch, *, sigmoid=False):
+@lru_cache(maxsize=8)
+def _build_block(target_arch, *, sigmoid=False, table=False):
     lib = _library(target_arch)
-    fn = (lib.hipengine_inkling2_target_attention_block_sigmoid if sigmoid
-          else lib.hipengine_inkling2_target_attention_block)
-    fn.argtypes = [ctypes.c_void_p] * 14 + [ctypes.c_int] * 6
+    fn = (lib.hipengine_inkling2_target_attention_block_table_sigmoid if table else
+          lib.hipengine_inkling2_target_attention_block_sigmoid if sigmoid else
+          lib.hipengine_inkling2_target_attention_block)
+    fn.argtypes = [ctypes.c_void_p] * (15 if table else 14) + [ctypes.c_int] * (7 if table else 6)
     fn.restype = ctypes.c_int
     return fn
 
 
-def _launch_attention_block(fn, q, k, v, bias, sink, out, spans, nq, nk, dim, extent, block_k, block_v, rows, gain):
-    status = fn(q, k, v, bias, sink, out, *_span_pointers(spans), block_k, block_v, gain,
-                nq, nk, dim, extent, rows, spans.max_live_count)
+def _launch_attention_block(fn, q, k, v, bias, sink, out, spans, nq, nk, dim, extent, block_k, block_v, rows, gain,
+                            table=None, rel_width=0):
+    pointers = (q, k, v, bias, sink, out, *_span_pointers(spans), block_k, block_v, gain)
+    shape = (nq, nk, dim, extent, rows, spans.max_live_count)
+    status = fn(*pointers, table, *shape, rel_width) if table is not None else fn(*pointers, *shape)
     if status != HIP_SUCCESS:
         raise HipError(status, "Inkling 2 block attention launch failed")
 
@@ -134,10 +137,19 @@ def launch_attention_block_sigmoid(*args, gain=0, target_arch=None):
     _launch_attention_block(_build_block(target_arch, sigmoid=True), *args, gain)
 
 
+def launch_attention_block_table_sigmoid(q, k, v, rel, sink, out, spans, nq, nk, dim, extent, block_k, block_v, rows,
+                                         *, gain, table, rel_width, target_arch=None):
+    """Block attention whose relative bias is evaluated from score rows and a lag table."""
+    _launch_attention_block(_build_block(target_arch, table=True), q, k, v, rel, sink, out, spans, nq, nk, dim,
+                            extent, block_k, block_v, rows, gain, table, rel_width)
+
+
 for _backend in ("hip_gfx1100", "hip_gfx1151"):
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "block"), launch_attention_block)
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "block_sigmoid"),
              launch_attention_block_sigmoid)
+    register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "block_table_sigmoid"),
+             launch_attention_block_table_sigmoid)
     register(KernelKey(_backend, "inkling2_target_kv_write", "inkling2_mixed", "default"), launch_cache_write)
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "default"), launch_target_attention)
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "tiled"), launch_tiled_attention)

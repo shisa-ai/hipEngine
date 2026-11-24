@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from functools import partial
 
 import numpy as np
@@ -97,6 +98,15 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 setattr(self, name, partial(resolve(backend=backend, layer="inkling2_controller",
                                                     quant="inkling2_mixed", variant=variant),
                                             target_arch=self._target_arch))
+        self._prepare_clip = self._prepare_rms = None
+        if fast_controllers:
+            for variant, name in (("clip", "_prepare_clip"), ("rms", "_prepare_rms")):
+                key = KernelKey(backend, "inkling2_attention_prepare", "inkling2_mixed", variant)
+                if is_registered(key):
+                    setattr(self, name, partial(resolve(backend=backend, layer=key.layer, quant=key.quant,
+                                                        variant=variant), target_arch=self._target_arch))
+        self._vectors = {}
+        self._resident = None
         self._bank_scales = {}
         self._upload_staging = None
 
@@ -112,53 +122,168 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     def supports_resident_controllers(self):
         return self._controller_input is not None
 
+    @property
+    def supports_resident_attention(self):
+        return self._prepare_clip is not None and self._prepare_rms is not None
+
     def project_controllers_normed(self, controllers, *, norm_weights, eps):
         """Exchange raw controller inputs once: RMS and concatenate, project, then blend and normalize on the device."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling GGUF dense residency is closed")
+            plans, norm_weights = self._controller_plans(controllers, norm_weights)
+            staging = self._controller_staging(plans, norm_weights)
+            rows, hidden_size = plans[0][0].shape
+            output = np.empty((len(plans), rows, hidden_size), dtype=np.float32)
+            inp = self._scratch("_input", self._controller_extent(plans, norm_weights)[0])
+            out = self._scratch("_output", self._controller_extent(plans, norm_weights)[1])
+            with self._transfer.exchange(inp.ptr, out.ptr, staging, output, pinned=True):
+                self._controller_kernels(inp.ptr, out.ptr, plans, norm_weights, eps)
+            return output
+
+    def _controller_plans(self, controllers, norm_weights):
+        """Validate controller geometry and bind the down, forget and gain matrices."""
         controllers = tuple(controllers)
         norm_weights = tuple(np.ascontiguousarray(w, dtype=np.float32) for w in norm_weights)
         if not controllers or len(controllers) != len(norm_weights):
             raise ValueError("Inkling GGUF resident controllers need one norm weight per controller")
+        plans = []
+        for (down, forget, gain), hidden, message in controllers:
+            hidden = np.ascontiguousarray(hidden, dtype=np.float32)
+            message = np.ascontiguousarray(message, dtype=np.float32)
+            first = self._matrix(down, None)
+            tails = (self._matrix(forget, None), self._matrix(gain, None))
+            width, inputs = first[1]
+            if (hidden.ndim != 2 or not all(hidden.shape) or hidden.shape != message.shape
+                    or inputs != 2 * hidden.shape[1] or any(m != (hidden.shape[1], width) for _, m, _ in tails)
+                    or norm_weights[len(plans)].shape != (hidden.shape[1],)):
+                raise ValueError("Inkling GGUF resident controller geometry differs from its matrices")
+            plans.append((hidden, message, first, tails))
+        rows, hidden_size = plans[0][0].shape
+        if any(plan[0].shape != (rows, hidden_size) for plan in plans):
+            raise ValueError("Inkling GGUF resident controllers need one row count")
+        return plans, norm_weights
+
+    @staticmethod
+    def _controller_staging(plans, norm_weights):
+        return np.concatenate([plan[0].ravel() for plan in plans] + [plan[1].ravel() for plan in plans]
+                              + [w.ravel() for w in norm_weights])
+
+    @staticmethod
+    def _controller_extent(plans, norm_weights):
+        """Input and output bytes of one controller launch."""
+        rows, hidden_size = plans[0][0].shape
+        count = len(plans)
+        item = np.dtype(np.float32).itemsize
+        gate = count * rows * hidden_size * item
+        staging = sum(plan[0].nbytes + plan[1].nbytes for plan in plans) + sum(w.nbytes for w in norm_weights)
+        return (staging + 4 * gate, gate + count * rows * plans[0][2][1][0] * item)
+
+    def _controller_kernels(self, inp, out, plans, norm_weights, eps):
+        """Form controller inputs, project, then blend and normalize, all on the device."""
+        rows, hidden_size = plans[0][0].shape
+        count = len(plans)
+        item = np.dtype(np.float32).itemsize
+        gate = count * rows * hidden_size * item
+        down_bytes = 2 * gate
+        staging_bytes = self._controller_extent(plans, norm_weights)[0] - down_bytes - 2 * gate
+        raw, down_inputs = inp, inp + staging_bytes
+        forgets, gains = down_inputs + down_bytes, down_inputs + down_bytes + gate
+        intermediate = out + count * rows * hidden_size * item
+        self._controller_input(raw, raw + gate, down_inputs, rows, hidden_size, count, eps)
+        for i, (_, _, first, tails) in enumerate(plans):
+            width = first[1][0]
+            mid = intermediate + i * rows * width * item
+            self._launch_projection(down_inputs + i * down_bytes // count, mid, rows, 2, first, None)
+            self._launch_projection(mid, forgets + i * rows * hidden_size * item, rows, 2, tails[0], None)
+            self._launch_projection(mid, gains + i * rows * hidden_size * item, rows, 2, tails[1], None)
+        self._controller_blend_norm(raw, raw + gate, forgets, gains, raw + 2 * gate, out, rows, hidden_size, count, eps)
+
+    @contextmanager
+    def resident(self, nbytes):
+        """Hold the projection lock over a device arena of at least `nbytes`."""
         with self._lock:
             if self._closed:
-                raise RuntimeError("Inkling GGUF dense residency is closed")
-            plans = []
-            for (down, forget, gain), hidden, message in controllers:
-                hidden = np.ascontiguousarray(hidden, dtype=np.float32)
-                message = np.ascontiguousarray(message, dtype=np.float32)
-                first = self._matrix(down, None)
-                tails = (self._matrix(forget, None), self._matrix(gain, None))
-                width, inputs = first[1]
-                if (hidden.ndim != 2 or not all(hidden.shape) or hidden.shape != message.shape
-                        or inputs != 2 * hidden.shape[1] or any(m != (hidden.shape[1], width) for _, m, _ in tails)
-                        or norm_weights[len(plans)].shape != (hidden.shape[1],)):
-                    raise ValueError("Inkling GGUF resident controller geometry differs from its matrices")
-                plans.append((hidden, message, first, tails))
-            rows, hidden_size = plans[0][0].shape
-            if any(plan[0].shape != (rows, hidden_size) for plan in plans):
-                raise ValueError("Inkling GGUF resident controllers need one row count")
-            count = len(plans)
-            item = np.dtype(np.float32).itemsize
-            staging = np.concatenate([plan[0].ravel() for plan in plans] + [plan[1].ravel() for plan in plans]
-                                     + [w.ravel() for w in norm_weights])
-            output = np.empty((count, rows, hidden_size), dtype=np.float32)
-            gate = count * rows * hidden_size * item
-            down_bytes = 2 * gate
-            inp = self._scratch("_input", staging.nbytes + down_bytes + 2 * gate)
-            out = self._scratch("_output", output.nbytes + count * rows * plans[0][2][1][0] * item)
-            raw, down_inputs = inp.ptr, inp.ptr + staging.nbytes
-            forgets, gains = down_inputs + down_bytes, down_inputs + down_bytes + gate
-            intermediate = out.ptr + output.nbytes
-            with self._transfer.exchange(inp.ptr, out.ptr, staging, output, pinned=True):
-                self._controller_input(raw, raw + gate, down_inputs, rows, hidden_size, count, eps)
-                for i, (_, _, first, tails) in enumerate(plans):
-                    width = first[1][0]
-                    mid = intermediate + i * rows * width * item
-                    self._launch_projection(down_inputs + i * down_bytes // count, mid, rows, 2, first, None)
-                    self._launch_projection(mid, forgets + i * rows * hidden_size * item, rows, 2, tails[0], None)
-                    self._launch_projection(mid, gains + i * rows * hidden_size * item, rows, 2, tails[1], None)
-                self._controller_blend_norm(raw, raw + gate, forgets, gains, raw + 2 * gate, out.ptr,
-                                            rows, hidden_size, count, eps)
-            return output
+                raise RuntimeError("Inkling GGUF projection residency is closed")
+            yield self._scratch("_resident", nbytes).ptr
+
+    def resident_vector(self, name, host):
+        """Upload an immutable coefficient row once and return its device pointer."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling GGUF projection residency is closed")
+            if name not in self._vectors:
+                self._vectors[name] = self._upload(np.ascontiguousarray(host, dtype=np.float32))
+            return self._vectors[name].ptr
+
+    def project_attention_resident(self, plan):
+        """Run one block's attention half on the device and download only its branch output.
+
+        Controllers, attention-input projections, convolution, attention and the output projection
+        read and write one device arena; nothing is staged through the host in between.
+        """
+        rows, item = plan.rows, np.dtype(np.float32).itemsize
+        inp_bytes = out_bytes = 0
+        plans = norm_weights = staging = None
+        if plan.controllers:
+            plans, norm_weights = self._controller_plans(plan.controllers, plan.norm_weights)
+            staging = self._controller_staging(plans, norm_weights)
+            inp_bytes, out_bytes = self._controller_extent(plans, norm_weights)
+        else:
+            inp_bytes = rows * plan.hidden * item * len(plan.sources)
+        matrices = [[self._matrix(name, None) for name in names] for _, names, _ in plan.groups]
+        prep = plan.prepare
+        query_bytes = rows * prep.nh * prep.dim * item
+        kv_bytes = rows * prep.nkv * prep.dim * item
+        output = self._matrix(plan.output[0], None)
+        out_bytes_total = rows * output[1][0] * item
+        total = (inp_bytes + out_bytes
+                 + sum(rows * matrix[1][0] * item for group in matrices for matrix in group)
+                 + query_bytes + 2 * kv_bytes + rows * prep.nh * prep.rel_width * item
+                 + query_bytes + out_bytes_total)
+        alpha, floor = prep.logscale or (0.0, 1)
+        with self.resident(total) as base:
+            if plans is not None:
+                self._transfer.enqueue_upload(base, staging)
+                self._controller_kernels(base, base + inp_bytes, plans, norm_weights, plan.eps)
+                sources = [base + inp_bytes + i * rows * plan.hidden * item for i in range(len(plans))]
+            else:
+                self._transfer.enqueue_upload(base, np.concatenate([np.asarray(s, dtype=np.float32).ravel()
+                                                                    for s in plan.sources]))
+                sources = [base + i * rows * plan.hidden * item for i in range(len(plan.sources))]
+            cursor = base + inp_bytes + out_bytes
+            projected = []
+            for (index, _, consumers), group in zip(plan.groups, matrices, strict=True):
+                src = sources[0 if index is None else index]
+                for matrix, consume in zip(group, consumers, strict=True):
+                    self._launch_projection(src, cursor, rows, 2, matrix, None)
+                    if consume is not None:
+                        consume(cursor, (rows, matrix[1][0]))
+                    projected.append(cursor)
+                    cursor += rows * matrix[1][0] * item
+            if plan.convolve is not None:
+                plan.convolve(projected)
+            query = cursor
+            key, value = query + query_bytes, query + query_bytes + kv_bytes
+            rel = value + kv_bytes
+            scaled = dict(first=plan.position + 1, target_arch=self._target_arch)
+            self._prepare_clip(projected[prep.query], query, prep.clip, rows, prep.dim, prep.nh, prep.threshold,
+                               alpha=alpha, floor=floor, logscale=prep.logscale is not None, **scaled)
+            self._prepare_clip(projected[prep.key], key, 0, rows, prep.dim, prep.nkv, prep.threshold,
+                               logscale=False, **scaled)
+            self._prepare_rms(projected[prep.value], value, rows, prep.dim, prep.nkv, prep.eps, target_arch=self._target_arch)
+            self._prepare_clip(projected[prep.relative], rel, prep.rel_scale, rows, prep.rel_width, prep.nh,
+                               prep.rel_threshold, alpha=alpha, floor=floor, logscale=prep.logscale is not None,
+                               **scaled)
+            attended = rel + rows * prep.nh * prep.rel_width * item
+            plan.attend(query, key, value, rel, projected[prep.sink], projected[prep.gate], attended)
+            result_ptr = attended + query_bytes
+            self._launch_projection(attended, result_ptr, rows, 2, output, None)
+            if plan.output[1] is not None:
+                plan.output[1](result_ptr, (rows, output[1][0]))
+            result = np.empty((rows, output[1][0]), dtype=np.float32)
+            self._transfer.download(result_ptr, result)
+            return result
 
     def _bind_packed(self, quant, launch):
         if quant == Q.NVFP4:
@@ -342,9 +467,14 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         finally:
             self._upload_staging = None
             with self._lock:
-                if self._q8_dot_scratch is not None:
-                    free(self._q8_dot_scratch, runtime=self._runtime)
-                    self._q8_dot_scratch = None
+                for name in ("_q8_dot_scratch", "_resident"):
+                    buffer = getattr(self, name)
+                    if buffer is not None:
+                        free(buffer, runtime=self._runtime)
+                        setattr(self, name, None)
+                for buffer in self._vectors.values():
+                    free(buffer, runtime=self._runtime)
+                self._vectors.clear()
 
     @property
     def packed_bank_bytes(self):
