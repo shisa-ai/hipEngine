@@ -235,3 +235,57 @@ def test_call_counter_counts_copies_by_direction_and_restores_the_class():
     assert _Runtime.memcpy_async is original_async
     runtime.stream_synchronize(0)
     assert tally["stream_synchronize"]["calls"] == 2
+
+
+def test_install_step_timer_records_graph_replays_and_capture_cost_per_step():
+    class Model:
+        _graph_replays = 0
+        _graph_captures = 0
+        _graph_capture_seconds = 0.0
+
+        def decode_rows(self, rows):
+            if not rows:
+                return []
+            if self._graph_captures == 0:
+                self._graph_captures += 1
+                self._graph_capture_seconds += 0.25
+            else:
+                self._graph_replays += 1
+            return [len(rows)]
+
+    steps = bench.DecodeSteps()
+    model = Model()
+    bench.install_step_timer(Model, steps)
+    model.decode_rows([])
+    model.decode_rows([(1, 2)])
+    model.decode_rows([(1, 2)])
+    assert steps.graph == [(0, 1, pytest.approx(0.25)), (1, 0, pytest.approx(0.0))]
+
+
+def test_stream_once_reports_graph_replays_and_capture_cost_of_the_request():
+    llm = _LLM([chunk("", [10]), chunk("a", [10, 11]), chunk("b", [10, 11, 12]), chunk("c", [10, 11, 12, 13], None, "stop")])
+
+    class _GraphStream(_Stream):
+        def __iter__(self):
+            for index, piece in enumerate(self._chunks):
+                self._steps.started.append(float(index))
+                self._steps.finished.append(index + 1.0)
+                # Three steps ran: the first recorded the graph, the other two replayed it.
+                self._steps.graph.append((0, 1, 0.25) if index == 0 else (1, 0, 0.0))
+                yield piece
+
+    llm.stream_detailed = lambda ids, sampling: _GraphStream(llm._chunks, llm.steps, False)
+    sample = bench.stream_once(llm, (1, 2, 3), None, steps=llm.steps, detokenize=detokenize)
+    assert sample["decode_intervals"] == 2
+    # The capture step lies before the window opens; the two replays lie inside it.
+    assert sample["graph"] == {"captures": 0, "capture_s": pytest.approx(0.0), "replays": 2}
+
+
+def test_summarize_averages_graph_counts_over_the_repetitions():
+    def sample(tok, graph):
+        return {**_sample(tok, "a"), "graph": graph}
+
+    summary = bench.summarize([sample(10, {"captures": 1, "capture_s": 0.4, "replays": 8}),
+                               sample(10, {"captures": 1, "capture_s": 0.2, "replays": 10})])
+    assert summary["graph"] == {"captures": 1, "capture_s": pytest.approx(0.3), "replays_per_token": pytest.approx(0.9)}
+    assert bench.summarize([_sample(10, "a")])["graph"] is None

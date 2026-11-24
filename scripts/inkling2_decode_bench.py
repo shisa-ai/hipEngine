@@ -54,6 +54,8 @@ _SEED = ("Explain why the day gets longer in spring, using plain language and a 
 COUNTED = ("stream_synchronize", "event_synchronize", "device_synchronize", "stream_wait_event",
            "event_record", "event_query", "graph_launch")
 COPIED = ("memcpy", "memcpy_async")
+# Model counters read before and after each decode step.
+GRAPH_COUNTERS = ("_graph_replays", "_graph_captures", "_graph_capture_seconds")
 PROTOCOL = ("one greedy stream, prefix cache off, drafting off; first_token_s is request start to the first "
             "non-empty text delta; the decode window is that delta to stream close over the decode steps "
             "it contains, which is the output tokens minus the leading tokens that decode to no text")
@@ -145,6 +147,8 @@ class DecodeSteps:
         self.started = []
         self.finished = []
         self.calls = []
+        # (graph replays, graph captures, seconds spent capturing) of each step.
+        self.graph = []
         self.count_calls = False
 
 
@@ -159,12 +163,14 @@ def install_step_timer(model_class, steps):
         counter = CallCounter(HipRuntime) if steps.count_calls else None
         if counter is not None:
             counter.start()
+        before = [getattr(self, name, 0) for name in GRAPH_COUNTERS]
         started = time.perf_counter()
         try:
             return original(self, rows)
         finally:
             steps.finished.append(time.perf_counter())
             steps.started.append(started)
+            steps.graph.append(tuple(getattr(self, name, 0) - old for name, old in zip(GRAPH_COUNTERS, before)))
             if counter is not None:
                 steps.calls.append(counter.stop())
 
@@ -232,7 +238,17 @@ def stream_once(llm, ids, sampling, *, steps, detokenize, counts=False):
         "finish": finish,
         "diagnostics": diagnostics,
         "calls": merge_tallies(steps.calls[leading:len(output_ids) - 1]) if counts else None,
+        # The capture happens in a request's first decode step; the window may open after it.
+        "graph": graph_accounting(steps.graph, leading, len(output_ids) - 1),
     }
+
+
+def graph_accounting(graph, first, last):
+    """Graph replays and capture cost of the steps in ``graph[first:last]``."""
+    window = graph[first:last]
+    return {"replays": sum(replays for replays, _, _ in window),
+            "captures": sum(captures for _, captures, _ in window),
+            "capture_s": sum(seconds for _, _, seconds in window)}
 
 
 def summarize(samples):
@@ -263,6 +279,10 @@ def summarize(samples):
         "diagnostics": samples[-1]["diagnostics"],
         "calls_per_request": calls,
         "calls_per_token": per_token,
+        "graph": None if not any(sample.get("graph") for sample in samples) else {
+            "captures": statistics.mean(sample["graph"]["captures"] for sample in samples),
+            "capture_s": statistics.mean(sample["graph"]["capture_s"] for sample in samples),
+            "replays_per_token": statistics.mean(sample["graph"]["replays"] / intervals for sample in samples)},
     }
 
 
