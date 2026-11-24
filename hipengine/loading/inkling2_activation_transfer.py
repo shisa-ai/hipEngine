@@ -1,8 +1,10 @@
-"""Reusable page-locked staging for synchronous Inkling activation exchanges."""
+"""Reusable page-locked staging for Inkling activation exchanges."""
 
 import ctypes
 import mmap
 from contextlib import contextmanager
+
+import numpy as np
 
 from hipengine.core.hip import HipError, HipMemcpyKind
 
@@ -26,13 +28,43 @@ class _PinnedScratch:
         self.mapping.close()
 
 
+class _UploadSlot:
+    """Pinned staging buffer whose last async copy is tracked by an event."""
+
+    def __init__(self, runtime, nbytes):
+        self.scratch = _PinnedScratch(runtime, nbytes)
+        self.event = runtime.event_create()
+        self.inflight = False
+
+    @property
+    def nbytes(self):
+        return self.scratch.nbytes
+
+    @property
+    def ptr(self):
+        return self.scratch.ptr
+
+    def close(self, runtime):
+        runtime.event_destroy(self.event)
+        self.scratch.close(runtime)
+
+
 class Inkling2ActivationTransfer:
-    """Order copies and kernels on stream zero; wait before exposing results."""
+    """Order copies and kernels on stream zero; wait before exposing results.
+
+    ``enqueue_upload`` overlaps the host copy with device work, so an upload
+    returns before the GPU has staged its bytes. Each upload therefore gets a
+    pinned buffer of its own from a small pool, and a buffer is handed out
+    again only once the event recorded after its copy reports completion.
+    Reusing one shared buffer let a later payload overwrite bytes the GPU had
+    not read yet.
+    """
 
     def __init__(self, runtime):
         self.runtime = runtime
         self.host_input = self.host_output = None
         self.pin_unavailable = False
+        self.upload_slots = []
 
     def _scratch(self, name, nbytes):
         old = getattr(self, name)
@@ -58,15 +90,47 @@ class Inkling2ActivationTransfer:
         self.pin_unavailable = True
         return None
 
+    def _checkout_upload(self, nbytes):
+        if self.pin_unavailable:
+            return None
+        for slot in self.upload_slots:
+            if slot.nbytes < nbytes:
+                continue
+            if slot.inflight and not self.runtime.event_query(slot.event):
+                continue
+            slot.inflight = False
+            return slot
+        try:
+            slot = _UploadSlot(self.runtime, nbytes)
+        except HipError as exc:
+            if exc.code not in _HOST_REGISTRATION_UNAVAILABLE:
+                raise
+            self.pin_unavailable = True
+            return None
+        except OSError:
+            self.pin_unavailable = True
+            return None
+        self.upload_slots.append(slot)
+        return slot
+
+    def _pending_uploads(self):
+        """Release pool buffers whose copies finished; handy for tests and teardown."""
+        for slot in self.upload_slots:
+            if slot.inflight and self.runtime.event_query(slot.event):
+                slot.inflight = False
+
     def enqueue_upload(self, inp, x):
-        """Submit a copy on stream zero. The caller fences before reusing scratch."""
-        pinned = self._try_pin("host_input", x.nbytes)
+        """Submit a copy on stream zero; the source stays valid until its event completes."""
+        host = np.ascontiguousarray(x)
         kind = HipMemcpyKind.HOST_TO_DEVICE
-        if pinned is None:
-            self.runtime.memcpy(inp, x.ctypes.data, x.nbytes, kind)
-        else:
-            ctypes.memmove(pinned.ptr, x.ctypes.data, x.nbytes)
-            self.runtime.memcpy_async(inp, pinned.ptr, x.nbytes, kind, 0)
+        slot = self._checkout_upload(host.nbytes)
+        if slot is None:
+            self.runtime.memcpy(inp, host.ctypes.data, host.nbytes, kind)
+            return
+        ctypes.memmove(slot.ptr, host.ctypes.data, host.nbytes)
+        self.runtime.memcpy_async(inp, slot.ptr, host.nbytes, kind, 0)
+        self.runtime.event_record(slot.event, 0)
+        slot.inflight = True
 
     def download(self, out, y):
         """Read grouped results and fence any preceding launches on stream zero."""
@@ -102,6 +166,9 @@ class Inkling2ActivationTransfer:
         runtime.memcpy(y.ctypes.data, out, y.nbytes, down)
 
     def close(self):
+        for slot in self.upload_slots:
+            slot.close(self.runtime)
+        self.upload_slots = []
         for name in ("host_output", "host_input"):
             buf = getattr(self, name)
             if buf is not None:
