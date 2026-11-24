@@ -1749,6 +1749,12 @@ on 2026-11-24 the selected experts matched and the mix weights differed by up to
 speed is unchanged (18.08 vs 18.05 tok/s, W7900, UD-Q4_K_M artifact). Per-layer NVFP4 capability
 gate falls back to the host path automatically.
 
+Measured 2026-11-25 in [paired runs](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-decode-pairs.json)
+(W7900, fast, UD-Q4_K_M, 47 prompt tokens, 128 outputs, five pairs in each order): 19.50 against
+17.80 tok/s for the default path, 1.098 and 1.096 in the two orders, with 48 fewer
+synchronizations per token. The 128 output IDs differ from the default's on that prompt. The
+known-answer check gives the default's IDs on all 12 cases.
+
 Done when: the flag shows a measured decode win on the W7900 (or is wired into the block-resident
 traversal where the logits download is the binding constraint) and is either promoted to default
 with an evidence row, or removed and this entry closed. Validation: fast-profile greedy A/B
@@ -1822,17 +1828,27 @@ inside capture aborts capture and the step runs eager. Decode only, one session 
 Status 2026-11-25 (W7900, UD-Q4_K_M artifact, fast profile, device routes on): replay matches
 resident eager bit for bit. Five fresh 48-token greedy runs each after a different-length warm
 request, at 67 and at 1,717 prompt tokens, gave zero logit difference at every one of 47 steps
-and the same IDs. A kernel trace shows the graph is bound by its kernels: 92 ms of them in a 97 ms
-step before the GEMV fix. The earlier sample, one of three runs matching, predates two fixes:
-replay shared the resident path's overwritten residual queries (R0527), and recording waited for
-every KV window to fill, so the graph never ran on ordinary prompts. Replay adds about 1% over
-resident eager (33.3 against 32.9 tok/s after 47 prompt tokens), so the flag's value depends on
-R0527, not on this entry. Stays default-off.
+and the same IDs. Recording starts at the first decode step.
 
-Done when: R0527 is done. Then recording becomes unconditional for resident decode, the flag is
-removed, and this entry closes. If R0527's path is removed, remove this with it.
+Decision from [paired runs](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-decode-pairs.json)
+at 47 prompt tokens and 128 outputs, five pairs in each order: the graph decodes at 33.21 tok/s
+against 17.80 for the default path (1.868 and 1.867), one capture of 27.6 ms per request and 126
+replays in 127 steps. It stays at `0`: its 128 output IDs are not the default's, and the resident
+step it replays is slower at depth (14.2 against 17.5 tok/s after 1,717 prompt tokens, R0527). A
+`HIP graph` node costs 3.2 µs here (30.1 ms of wall over 22.5 ms of kernels in 2,392 nodes), so
+fewer nodes are worth as much as the replay itself. `HIPENGINE_SUBMISSION_TRANSPORT=aql` and `pm4`
+refuse the graph today: it holds about 321 memcpy nodes per step and the in-tree inspector takes
+kernel nodes only; the step then runs resident eager with the same output.
 
-Clearing command: `HIPENGINE_INKLING2_DEVICE_ROUTES=1 HIPENGINE_INKLING2_RESIDENT_DECODE=1
+Done when: R0527 is done, the Inkling adapter of the production numerical gate admits the path,
+and the step wins at every campaign depth. Then recording becomes unconditional for resident
+decode, the flag is removed, and this entry closes. If R0527's path is removed, remove this with
+it.
+
+Clearing command: `PYTHONPATH=. .venv/bin/python scripts/inkling2_decode_pairs.py run <model>
+--backend hip_gfx1100 --execution-profile fast --quant UD-Q4_K_M --arms default resident graph
+--pairs 5 --reps 3`, plus
+`HIPENGINE_INKLING2_DEVICE_ROUTES=1 HIPENGINE_INKLING2_RESIDENT_DECODE=1
 HIPENGINE_INKLING2_DECODE_GRAPH=1 .venv/bin/python scripts/inkling2_gguf_task_check.py <model>
 --backend hip_gfx1100 --reverse` on the W7900 (the 12 known-answer cases through
-`LLM.generate_detailed`), plus the decode-rate command in R0527 with this variable set to `1`.
+`LLM.generate_detailed`).
