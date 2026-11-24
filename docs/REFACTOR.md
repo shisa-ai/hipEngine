@@ -1766,8 +1766,17 @@ Clearing command: `HIPENGINE_INKLING2_DEVICE_ROUTES=1 .venv/bin/python
 scripts/inkling2_gguf_task_check.py <model> --backend hip_gfx1100 --reverse` on the W7900 (the 12
 known-answer cases through `LLM.generate_detailed`, `fast` against `strict`), then the
 [Execution Profiles §6](EXECUTION-PROFILES.md#6-production-numerical-gate) gate against the strict
-teacher. A pass promotes the default to `1` and the flag becomes the rollback lever. No in-tree
-command runs that gate for Inkling yet, so adding one is part of clearing this.
+teacher. A pass on both architectures promotes the default to `1` and the flag becomes the
+rollback lever.
+
+Gate 2026-11-25 (W7900, 672 teacher-forced rows): with the Q8-dot expert chain the device-route
+path failed section 2.11 on the code category (median KL 1.36e-3, p90 4.19e-2).
+`project_experts_device_routes` now runs the selected F32 kernels for gate/up and down with the
+per-route scales. The same gate then measures median KL 1.1e-13, p90 1.3e-10, no row over the
+damage line and top-1 of 100%, and passes every other gate. The chain costs 3.5 ms per decode
+step (30.2 against 26.7 ms after 47 prompt tokens). The W7900 row passes; the gfx1151 row has not
+been run. Gate command: `PYTHONPATH=. .venv/bin/python scripts/inkling2_profile_gate.py <model>
+--backend hip_gfx1100 --candidate fast_resident --json <out>.json`.
 
 ### R0527 — HIPENGINE_INKLING2_RESIDENT_DECODE opt-in
 
@@ -1807,7 +1816,9 @@ Clearing command: `HIPENGINE_INKLING2_DEVICE_ROUTES=1 HIPENGINE_INKLING2_RESIDEN
 fast --prompt-tokens 47 575 2057 --output-tokens 128` against the same command with the variable
 unset, plus `HIPENGINE_INKLING2_DEVICE_ROUTES=1 HIPENGINE_INKLING2_RESIDENT_DECODE=1
 .venv/bin/python scripts/inkling2_gguf_task_check.py <model> --backend hip_gfx1100 --reverse`
-(the 12 known-answer cases through `LLM.generate_detailed`) and the production numerical gate.
+(the 12 known-answer cases through `LLM.generate_detailed`) and the production numerical gate,
+`PYTHONPATH=. .venv/bin/python scripts/inkling2_profile_gate.py <model> --backend hip_gfx1100
+--candidate fast_resident --json <out>.json`.
 ### R0528 — HIPENGINE_INKLING2_DECODE_GRAPH opt-in
 
 Owner: `hipengine/runtime/inkling2_gguf.py`.
@@ -1843,9 +1854,14 @@ and the step wins at every campaign depth. Then recording becomes unconditional 
 decode, the flag is removed, and this entry closes. If R0527's path is removed, remove this with
 it.
 
+Gate 2026-11-25 (W7900): with the selected F32 experts on the device-route path the graph passes
+every gate and is the resident path bit for bit over 672 rows run in separate processes. The
+gfx1151 row has not been run.
+
 Clearing command: `PYTHONPATH=. .venv/bin/python scripts/inkling2_decode_pairs.py run <model>
 --backend hip_gfx1100 --execution-profile fast --quant UD-Q4_K_M --arms default resident graph
---pairs 5 --reps 3`, plus
+--pairs 5 --reps 3`, `PYTHONPATH=. .venv/bin/python scripts/inkling2_profile_gate.py <model>
+--backend hip_gfx1100 --candidate fast_graph --json <out>.json`, plus
 `HIPENGINE_INKLING2_DEVICE_ROUTES=1 HIPENGINE_INKLING2_RESIDENT_DECODE=1
 HIPENGINE_INKLING2_DECODE_GRAPH=1 .venv/bin/python scripts/inkling2_gguf_task_check.py <model>
 --backend hip_gfx1100 --reverse` on the W7900 (the 12 known-answer cases through
