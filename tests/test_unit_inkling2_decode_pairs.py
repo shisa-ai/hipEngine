@@ -97,3 +97,13 @@ def test_trace_range_sums_kernels_inside_the_marker_range_per_step(tmp_path):
     with pytest.raises(ValueError, match="not found"):
         pairs.trace_range(kernel, marker, "missing", 10)
     assert json.loads(json.dumps(trace))["label"] == "inkling_ordinary_decode_p47"
+
+
+def test_kept_depth_keys_cover_everything_the_summary_reads():
+    """A run keeps only RUN_DEPTH_KEYS; the summary must not read anything else (2026-11-25)."""
+    full = {**_run("forward", 47, "d")["depths"][0], "calls_per_token": {}, "discarded_diagnostic": 1}
+    kept = [{key: depth[key] for key in pairs.RUN_DEPTH_KEYS} for depth in [full]]
+    runs = [{**_run(order, 47, "d"), "depths": kept} for order in ("forward", "reverse")]
+    (depth,) = pairs.summarize_arm(runs, runs)
+    assert depth["calls_per_token"] == {} and depth["graph"] is None
+    assert json.dumps({"arms": {"x": depth, "y": None}, "runs": runs}, allow_nan=False)

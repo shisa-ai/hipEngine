@@ -937,6 +937,8 @@ artifacts or explicitly opt into GPU-gated suites. They are not product knobs.
 | `HIPENGINE_TEST_EAGLE4_DRAFTER` / `HIPENGINE_TEST_DSPINE_DRAFTER` | unset | Local drafter snapshot directories for the public EAGLE-4/DSpine session-reuse tests. |
 | `HIPENGINE_TEST_DENSE_GGUF_MODEL` | `/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf` | Compatible dense Qwen GGUF fixture for `tests/test_live_qwen35_gguf_mtp_e2e.py`. Overrides only the live-test model path, not runtime admission or dispatch. |
 | `HIPENGINE_TEST_PARO_MODEL` | unset | PARO model directory override for the live PARO tokenizer/EOS tests; falls back to the standard `/models/hipengine/...` candidates. |
+| `HIPENGINE_INKLING2_MINI_GGUF` | unset | Inkling 2 Mini GGUF file for the end-to-end smoke test of `scripts/inkling2_profile_gate.py` (`tests/test_gpu_inkling2_profile_gate.py`); unset skips the test. |
+| `HIPENGINE_INKLING2_TEST_BACKEND` | `auto` | Backend that smoke test passes to the gate (`hip_gfx1100` on the W7900). |
 | `HIPENGINE_TEST_PARO_MTP_MODEL` | `/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16` | Packed PARO model directory with BF16 MTP weights for `tests/test_live_paro_mtp_prompt_priming.py`. The test skips when the model or HIP runtime is unavailable. |
 | `HIPENGINE_TEST_QWEN4EXP_GGUF` | `/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL` | Model fixture for the live constrained-chunk admission test; skips when the model or HIP runtime is unavailable. |
 | `HIPENGINE_TEST_REQUIRE_CACHED_BUILD` | unset | When truthy, GPU kernel tests require cached JIT builds (the test-side analogue of `HIPENGINE_REQUIRE_CACHED_BUILD`). |

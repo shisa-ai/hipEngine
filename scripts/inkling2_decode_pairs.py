@@ -53,7 +53,7 @@ ORDERS = ("forward", "reverse")
 BEAT = 1.03
 # What each run keeps per depth in the artifact.
 RUN_DEPTH_KEYS = ("prompt_tokens", "reps", "decode_tok_s", "decode_ms_per_token", "first_token_s",
-                  "output_ids_sha256", "graph")
+                  "output_ids_sha256", "calls_per_token", "graph")
 
 
 def variables(item):
