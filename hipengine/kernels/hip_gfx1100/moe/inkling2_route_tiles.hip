@@ -123,3 +123,43 @@ extern "C" int hipengine_inkling2_route_tiles_from_ids(
   }
   return hipGetLastError() == hipSuccess ? 0 : 2;
 }
+
+__global__ void inkling2_route_ids_i32_kernel(
+    const long long* __restrict__ ids,
+    int routes,
+    const float* __restrict__ scale_table,  // nullable
+    float* __restrict__ gathered,            // nullable
+    int* __restrict__ ids_out) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= routes) {
+    return;
+  }
+  const long long e = ids[i];
+  ids_out[i] = static_cast<int>(e);
+  if (gathered != nullptr) {
+    gathered[i] = scale_table[e];
+  }
+}
+
+extern "C" int hipengine_inkling2_route_ids_i32(
+    const void* ids,
+    int routes,
+    const void* scale_table,
+    void* gathered,
+    void* ids_out,
+    hipStream_t stream) {
+  if (routes < 0 || ids == nullptr || ids_out == nullptr ||
+      (scale_table == nullptr) != (gathered == nullptr)) {
+    return 1;
+  }
+  if (routes > 0) {
+    int threads = 64;
+    int blocks = (routes + threads - 1) / threads;
+    inkling2_route_ids_i32_kernel<<<blocks, threads, 0, stream>>>(
+        reinterpret_cast<const long long*>(ids), routes,
+        reinterpret_cast<const float*>(scale_table),
+        reinterpret_cast<float*>(gathered),
+        reinterpret_cast<int*>(ids_out));
+  }
+  return hipGetLastError() == hipSuccess ? 0 : 2;
+}

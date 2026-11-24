@@ -1,5 +1,6 @@
 """Public packed HIP text execution for Inkling GGUF checkpoints."""
 
+import os
 from contextlib import ExitStack
 from dataclasses import replace
 from functools import partial
@@ -31,6 +32,10 @@ from hipengine.runtime.inkling2_device_attention import Inkling2DeviceAttention
 from hipengine.runtime.inkling2_device_convolution import Inkling2DeviceConvolution, Inkling2DeviceConvolutionTaps
 from hipengine.runtime.inkling2_gguf import Inkling2GGUFText
 from hipengine.tokenization.inkling2_gguf import inkling2_gguf_tokenizer
+
+
+def _device_routes_requested() -> bool:
+    return os.environ.get("HIPENGINE_INKLING2_DEVICE_ROUTES", "0") == "1"
 
 
 class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
@@ -79,7 +84,8 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
             blas = Rocblas.load()
             owned.callback(blas.close)
             projection = owned.enter_context(Inkling2GGUFDeviceProjections(
-                weights, runtime=runtime, blas=blas, backend=backend, fast_experts=fast, fast_controllers=fast))
+                weights, runtime=runtime, blas=blas, backend=backend, fast_experts=fast, fast_controllers=fast,
+                device_routes=_device_routes_requested()))
             model = self.model = Inkling2GGUFText(weights, projection=projection)
             model.attention_factory = lambda cap: Inkling2DeviceAttention(
                 runtime=runtime, launch=attn, split=split, split_chunked=split_chunked, block=block,

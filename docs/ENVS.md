@@ -481,6 +481,12 @@ not by backend-branched runtime code.
 | --- | --- | --- |
 | `HIPENGINE_GEMMA4_MOE_PREFILL` | `auto` | Pins the prefill owner for the Gemma 4 MoE expert projections. `auto` pins nothing and resolves the default-on fused T16 WMMA gate/up + down owners. `mmq` pins the grouped int8 family. `grouped` and `selected` pin the exact arms, both measured bit-identical to the strict teacher-forced reference. The compensated WMMA candidate (`wmma` / `wmma_plain`) was retired: on the T16-converted layout its pin disabled the faster fused default and fell back to `selected_gemv`, a ~4x prefill regression on both gfx1151 and gfx1100 while the compensated owner never engaged. Those values are no longer modes. Unrecognised values, including the retired `wmma`/`wmma_plain`, fall back to `auto`. |
 
+## Inkling 2 GGUF variables
+
+| Variable | Default | Classification | Values / notes |
+| --- | --- | --- | --- |
+| `HIPENGINE_INKLING2_DEVICE_ROUTES` | `0` | Experimental opt-in | Selects the Inkling 2 GGUF MoE routes on the GPU (sigmoid top-k + per-route id/scale gather) instead of downloading router logits to the host for top-k. Applies per layer only where both expert banks are NVFP4 with the q8_dot decode kernels; other layers fall back to the host route path. Requires the `fast` execution profile (NVFP4 q8_dot kernels); inert otherwise. Default `0` because the A/B at scalar decode rates is within noise (~18.05 vs 18.08 tok/s, W7900, UD-Q4_K_M artifact); the point is removing the per-layer logits download on the road to a fully device-resident decode block. Verified: identical selected experts on every call across a 128-token greedy run; greedy chains match for the first 67 tokens, then diverge from ulp-level mix differences (expected for f32 vs host f64-ish sigmoid). |
+
 ## Shared paged-attention decode variables
 
 These affect both PARO and GGUF decode paths where applicable.

@@ -1736,4 +1736,18 @@ scripts/server_f1_concurrency_bench.py --engine hipengine --model
 strict --hipengine-route-expectation native --hipengine-kv-storage bf16
 --concurrencies 1,4 --live-concurrency 4 --measured-runs 20 --json <out>`.
 
+### R0526 — HIPENGINE_INKLING2_DEVICE_ROUTES opt-in
 
+Owner: `hipengine/loading/inkling2_gguf_device.py`.
+
+Scope: device-side Inkling 2 GGUF route selection (`laguna_sigmoid_correction_topk_f32` plus the
+`inkling2_route_ids_i32` gather in `hipengine/kernels/hip_gfx1100/moe/inkling2_route_tiles.hip`)
+and the `HIPENGINE_INKLING2_DEVICE_ROUTES` environment opt-in. The host top-k path stays the
+default; per-layer NVFP4 capability gate falls back to it automatically.
+
+Done when: the flag shows a measured decode win on the W7900 (or is wired into the block-resident
+traversal where the logits download is the binding constraint) and is either promoted to default
+with an evidence row, or removed and this entry closed. Validation: fast-profile greedy A/B
+(`LLM(..., execution_profile="fast")`) plus the per-layer device-vs-host route comparison used on
+2026-11-24 (0 selection mismatches, mix delta <= 4e-06 over 240 calls). Do not remove the flag
+while any caller still selects it explicitly.

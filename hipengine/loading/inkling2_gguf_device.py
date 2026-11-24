@@ -10,6 +10,8 @@ import numpy as np
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import free, malloc
 from hipengine.kernels.backends import hip_target_arch_for_backend, load_backend_kernel_package
+from hipengine.kernels.hip_gfx1100.moe.inkling2_route_tiles import launch_route_ids_i32
+from hipengine.kernels.hip_gfx1100.moe.laguna_router import laguna_sigmoid_correction_topk_f32
 from hipengine.kernels.hip_gfx1100.quant import gguf_nvfp4_gemv, gguf_nvfp4_q8_dot, inkling2_experts  # noqa: F401
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
@@ -28,7 +30,8 @@ _Q8_DECODE_MIN_OUTPUTS = 1024
 class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     """Share dense transfer scratch; upload physical expert banks only once."""
 
-    def __init__(self, weights, *, runtime, blas, backend, fast_experts=False, fast_controllers=False):
+    def __init__(self, weights, *, runtime, blas, backend, fast_experts=False, fast_controllers=False,
+                 device_routes=False):
         super().__init__(weights, runtime=runtime, blas=blas)
         load_backend_kernel_package(backend)
         self._tensors = {t.name: t for t in weights.reader.info.tensors}
@@ -53,6 +56,16 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                                       variant="selected_split_activation_q8_dot_f32_f32_out") if fast_experts else None)
         self._q8_dot_scratch = None
         self._k_library = None
+        self._device_routes_requested = bool(device_routes)
+        self._device_routes = None
+        self._device_route_hidden = None
+        self._router_logits = None
+        self._device_route_interim = None
+        self._device_route_out = None
+        self._router_bias_cache: dict[int, int] = {}
+        self._route_scale_cache: dict[str, int] = {}
+        self._route_buffer_handles = []
+        self._route_state = None
         prefill = KernelKey(backend, "linear", "gguf_q8_0", "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out")
         self._q8_prefill = (self._bind_packed(Q.Q8_0, resolve(backend=prefill.backend, layer=prefill.layer,
                                                            quant=prefill.quant, variant=prefill.variant))
@@ -567,17 +580,207 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             self._bank_scales[key] = scales
         return self._matrices[key][0], self._bank_scales[key]
 
+
+    # ----- Device-side route selection + expert projection ------------------
+
+    def device_routes_enabled(self):
+        if self._device_routes is None:
+            self._device_routes = (self._device_routes_requested and self._shared_q8_dot is not None
+                                   and self._split_q8_dot is not None and self._mix is not None)
+        return self._device_routes
+
+    def device_routes_supported(self, visit):
+        """True when this visit's expert banks fit the device-route projection."""
+        if not self.device_routes_enabled():
+            return False
+        cached = self._device_route_support.get(visit.weight_layer) if hasattr(self, "_device_route_support") else None
+        if cached is not None:
+            return cached
+        try:
+            layer = self._weights.mapping.layers[visit.weight_layer]
+            ok = (Q(layer.gate_up.weight.ggml_type) == Q.NVFP4
+                  and Q(layer.down.weight.ggml_type) == Q.NVFP4
+                  and layer.gate_up.weight.shape[1] == 2 * layer.down.weight.shape[2]
+                  and layer.down.weight.shape[2] == 1152 and layer.down.weight.shape[1] == 2304
+                  and layer.gate_up.weight.shape[1] == 2304 and layer.gate_up.weight.shape[2] == 2304)
+        except (AttributeError, IndexError, ValueError):
+            ok = False
+        if not hasattr(self, "_device_route_support"):
+            self._device_route_support = {}
+        self._device_route_support[visit.weight_layer] = ok
+        return ok
+
+    def upload_scratch(self, name, host):
+        """Stage a host array into a cached device scratch buffer."""
+        array = np.ascontiguousarray(host, dtype=np.float32)
+        buf = self._scratch(name, array.nbytes)
+        self._transfer.enqueue_upload(buf.ptr, array)
+        return buf.ptr
+
+    def project_router_logits_ptr(self, name, rows, source):
+        """Project router logits and keep them on the device."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling GGUF device projection residency is closed")
+            matrix = self._matrix(name, None)
+            outputs = matrix[1][0]
+            out = self._scratch("_router_logits", rows * outputs * 4).ptr
+            self._launch_projection(source, out, rows, 2, matrix, None)
+            return int(out), outputs
+
+    def _bank_scale_device(self, bank):
+        key = bank.weight.name
+        if key in self._route_scale_cache:
+            return self._route_scale_cache[key]
+        _, scales = self._bank(bank)
+        if scales is None:
+            self._route_scale_cache[key] = 0
+            return 0
+        scales = np.ascontiguousarray(np.asarray(scales, dtype=np.float32).ravel())
+        buf = self._upload(scales)
+        self._route_buffer_handles.append(buf)
+        self._route_scale_cache[key] = buf.ptr
+        return buf.ptr
+
+    def _router_bias_ptr(self, layer_index, layer, experts):
+        ptr = self._router_bias_cache.get(layer_index)
+        if ptr is not None:
+            return ptr
+        bias = layer.tensors.get("exp_probs_b.bias")
+        if bias is None:
+            data = np.zeros(experts, dtype=np.float32)
+        else:
+            data = np.ascontiguousarray(self._weights.decode(bias), dtype=np.float32).ravel()
+            if data.size != experts:
+                raise ValueError(f"router bias size {data.size} != {experts} at layer {layer_index}")
+        buf = self._upload(data)
+        self._route_buffer_handles.append(buf)
+        ptr = buf.ptr
+        self._router_bias_cache[layer_index] = ptr
+        return ptr
+
+    def _route_buffers(self, rows, top_k, experts):
+        state = self._route_state
+        need = rows * top_k
+        if state is not None and state["routes"] >= need and state["experts"] == experts:
+            return state
+        if state is not None:
+            for buf in state["buffers"]:
+                free(buf, runtime=self._runtime)
+        capacity = max(need, 8)
+        sizes = {
+            "routing": rows * experts * 4,
+            "selection": rows * experts * 4,
+            "ids64": capacity * 8,
+            "ids32": capacity * 4,
+            "norm": capacity * 4,
+            "scaled": capacity * 4,
+            "gate_scales": capacity * 4,
+            "down_scales": capacity * 4,
+        }
+        buffers = {}
+        state = {"routes": capacity, "experts": experts, "buffers": []}
+        for name, nbytes in sizes.items():
+            buf = malloc(nbytes, runtime=self._runtime)
+            buffers[name] = buf
+            state["buffers"].append(buf)
+        state.update({name: buf.ptr for name, buf in buffers.items()})
+        self._route_state = state
+        return state
+
+    def device_routes(self, visit, logits_ptr, rows=1):
+        """Select routes on the device; returns pointers + route metadata."""
+        layer = self._weights.mapping.layers[visit.weight_layer]
+        experts = int(layer.gate_up.weight.shape[0])
+        top_k = int(layer.top_k)
+        routes = rows * top_k
+        if routes > _MAX_SELECTED_ROUTES:
+            raise ValueError(f"device routes exceed {_MAX_SELECTED_ROUTES} selected routes")
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling GGUF device projection residency is closed")
+            state = self._route_buffers(rows, top_k, experts)
+            bias_ptr = self._router_bias_ptr(visit.weight_layer, layer, experts)
+            laguna_sigmoid_correction_topk_f32(
+                int(logits_ptr), int(bias_ptr), state["routing"], state["selection"],
+                state["ids64"], state["norm"], state["scaled"],
+                int(rows), experts, top_k, float(self._weights.mapping.route_scale), stream=0)
+            gate_table = self._bank_scale_device(layer.gate_up)
+            down_table = self._bank_scale_device(layer.down)
+            launch_route_ids_i32(state["ids64"], routes, gate_table or None,
+                                 state["gate_scales"] if gate_table else None,
+                                 state["ids32"], stream=0)
+            launch_route_ids_i32(state["ids64"], routes, down_table or None,
+                                 state["down_scales"] if down_table else None,
+                                 state["ids32"], stream=0)
+            return {"ids": state["ids32"], "mix": state["scaled"],
+                    "gate_scales": state["gate_scales"] if gate_table else 0,
+                    "down_scales": state["down_scales"] if down_table else 0,
+                    "top_k": top_k, "experts": experts, "routes": routes}
+
+    def project_experts_device_routes(self, visit, *, hidden_ptr, route, out_ptr=None,
+                                      transform_output=None):
+        """Run the selected-expert chain from device-resident route pointers."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling GGUF device projection residency is closed")
+            layer = self._weights.mapping.layers[visit.weight_layer]
+            mapping = self._weights.mapping
+            gate, down = layer.gate_up, layer.down
+            if Q(gate.weight.ggml_type) != Q.NVFP4 or Q(down.weight.ggml_type) != Q.NVFP4:
+                raise ValueError("device route projection requires NVFP4 gate/up and down banks")
+            gate_weight, _ = self._bank(gate)
+            down_weight, _ = self._bank(down)
+            experts, gm, gn = gate.weight.shape
+            de, dm, dn = down.weight.shape
+            if not (gm == 2 * dn and dm == gm and de == experts):
+                raise ValueError("device route projection bank geometry mismatch: "
+                                 f"gate {gate.weight.shape} down {down.weight.shape}")
+            ids_ptr, mix_ptr = int(route["ids"]), int(route["mix"])
+            routes, k = int(route["routes"]), int(route["top_k"])
+            if out_ptr is None:
+                out_ptr = self._scratch("_device_route_out", routes // k * dm * 4).ptr
+            out_ptr = int(out_ptr)
+            interim = self._scratch("_device_route_interim", routes * gm * 4 + routes * dn * 4).ptr
+            self._shared_q8_dot(int(hidden_ptr), gate_weight.ptr, interim, ids_ptr,
+                                route["gate_scales"] or 0, routes, experts, gn, gm,
+                                scratch=self._q8_scratch_ptr(gn))
+            if self._split_q8_dot is not None:
+                self._split_q8_dot(interim, down_weight.ptr, interim, ids_ptr, route["down_scales"] or 0,
+                                   routes, de, dn, dm, mapping.gate_cap, mapping.up_cap,
+                                   scratch=self._q8_scratch_ptr(routes * dn))
+            else:
+                active = interim + routes * gm * 4
+                if self._activation is None:
+                    raise RuntimeError("device route projection requires split or plain activation")
+                self._activation(interim, active, routes, dn, mapping.gate_cap, mapping.up_cap)
+                self._q8_dot(active, down_weight.ptr, interim, ids_ptr, route["down_scales"] or 0,
+                             routes, de, dn, dm, scratch=self._q8_scratch_ptr(routes * dn))
+            self._mix(interim, mix_ptr, out_ptr, k, dm, tokens=routes // k)
+            if transform_output is not None:
+                rows = routes // k
+                transform_output(int(out_ptr), (dm,) if rows == 1 else (rows, dm))
+            return int(out_ptr)
+
     def close(self):
         try:
             super().close()
         finally:
             self._upload_staging = None
             with self._lock:
-                for name in ("_q8_dot_scratch", "_resident"):
+                for name in ("_q8_dot_scratch", "_resident", "_device_route_hidden", "_router_logits",
+                         "_device_route_interim", "_device_route_out"):
                     buffer = getattr(self, name)
                     if buffer is not None:
                         free(buffer, runtime=self._runtime)
                         setattr(self, name, None)
+                if getattr(self, "_route_state", None) is not None:
+                    for buffer in self._route_state["buffers"]:
+                        free(buffer, runtime=self._runtime)
+                    self._route_state = None
+                for buffer in getattr(self, "_route_buffer_handles", ()):
+                    free(buffer, runtime=self._runtime)
+                self._route_buffer_handles = []
                 for buffer in self._vectors.values():
                     free(buffer, runtime=self._runtime)
                 self._vectors.clear()

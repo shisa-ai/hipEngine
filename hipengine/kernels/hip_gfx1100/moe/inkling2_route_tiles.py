@@ -21,6 +21,15 @@ from hipengine.core.memory import copy_host_to_device, free, host_array_ptr, mal
 _SOURCE = Path(__file__).with_name("inkling2_route_tiles.hip")
 _OUTPUT_NAME = "inkling2_route_tiles.so"
 _SYMBOL = "hipengine_inkling2_route_tiles_from_ids"
+_IDS_SYMBOL = "hipengine_inkling2_route_ids_i32"
+_IDS_ARGTYPES = (
+    ctypes.c_void_p,  # ids (i64, [routes])
+    ctypes.c_int,     # routes
+    ctypes.c_void_p,  # scale table (f32, [experts]) or NULL
+    ctypes.c_void_p,  # gathered scales (f32, [routes]) or NULL
+    ctypes.c_void_p,  # ids out (i32, [routes])
+    ctypes.c_void_p,  # stream
+)
 _ARGTYPES = (
     ctypes.c_void_p,  # ids (i64, [routes])
     ctypes.c_int,     # routes
@@ -70,6 +79,17 @@ def launch_route_tiles(ids_ptr, routes, num_experts, width, scale_table_ptr, gat
     err = fn(ids_ptr, int(routes), int(num_experts), int(width),
              scale_table_ptr, gathered_ptr, records_ptr, count_ptr,
              int(record_capacity), stream)
+    if err != HIP_SUCCESS:
+        runtime.check(err)
+
+
+def launch_route_ids_i32(ids_ptr, routes, scale_table_ptr, gathered_ptr, ids_out_ptr, *,
+                         stream: int = 0, library=None, runtime: HipRuntime | None = None):
+    """Convert device i64 route ids to i32 and gather per-route scales."""
+    library = library or build_inkling2_route_tiles(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, _IDS_SYMBOL, _IDS_ARGTYPES, ctypes.c_int)
+    err = fn(ids_ptr, int(routes), scale_table_ptr, gathered_ptr, ids_out_ptr, stream)
     if err != HIP_SUCCESS:
         runtime.check(err)
 

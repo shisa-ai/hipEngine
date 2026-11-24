@@ -360,15 +360,23 @@ class Inkling2GGUFText(Inkling2TextReference):
                         at("attention"), (chain,), ((tensors[f"layers.{layer}.mlp_norm.weight"].name,
                                                      w.dense(f"layers.{layer}.mlp_norm.weight")),), eps,
                         [at("read")], [at("messages") + 3 * row], rows=rows, width=hidden)
-                logits = projection.project_from_device(tensors[f"layers.{layer}.mlp.gate.weight"].name, rows,
-                                                        normalized)
-                ids, mix = self._select_routes(visit, logits)
-                projection.project_experts_mixed_rows(
-                    visit, ((ids, mix, blank,
-                             partial(session.convolution.apply_static, visit.state_slot, "mlp_sconv",
-                                     w.dense(f"layers.{layer}.mlp_sconv.weight")[:, 0, ::-1],
-                                     position=session.position)),),
-                    device=(normalized, at("m")))
+                transform = partial(session.convolution.apply_static, visit.state_slot, "mlp_sconv",
+                                    w.dense(f"layers.{layer}.mlp_sconv.weight")[:, 0, ::-1],
+                                    position=session.position)
+                if (rows == 1 and getattr(projection, "device_routes_supported", lambda v: False)(visit)):
+                    logits_ptr, _ = projection.project_router_logits_ptr(
+                        tensors[f"layers.{layer}.mlp.gate.weight"].name, rows, normalized)
+                    route = projection.device_routes(visit, logits_ptr, rows)
+                    projection.project_experts_device_routes(
+                        visit, hidden_ptr=normalized, out_ptr=at("m"), route=route,
+                        transform_output=transform)
+                else:
+                    logits = projection.project_from_device(tensors[f"layers.{layer}.mlp.gate.weight"].name, rows,
+                                                            normalized)
+                    ids, mix = self._select_routes(visit, logits)
+                    projection.project_experts_mixed_rows(
+                        visit, ((ids, mix, blank, transform),),
+                        device=(normalized, at("m")))
                 row_add(a, at("m"), at("h"), rows, hidden)
             result = np.empty((rows, hidden), np.float32)
             projection.download(at("h"), result)
@@ -497,8 +505,25 @@ class Inkling2GGUFText(Inkling2TextReference):
         return self.projection is not None and self.projection.supports_device_mix
 
     def feed_forward(self, visit, normalized, *, transform_output=None):
+        projection = self.projection
+        if (projection is not None and normalized.ndim == 1
+                and getattr(projection, "device_routes_supported", lambda v: False)(visit)):
+            return self._feed_forward_device_routes(visit, normalized, transform_output=transform_output)
         ids, mix = self.route(visit, normalized)
         return self._feed_forward_routes(visit, normalized, ids, mix, transform_output=transform_output)
+
+    def _feed_forward_device_routes(self, visit, normalized, *, transform_output=None):
+        projection = self.projection
+        hidden = np.ascontiguousarray(normalized, dtype=np.float32)
+        name = self.weights.names[f"layers.{visit.weight_layer}.mlp.gate.weight"].name
+        inp = projection.upload_scratch("_device_route_hidden", hidden)
+        logits_ptr, _ = projection.project_router_logits_ptr(name, 1, inp)
+        route = projection.device_routes(visit, logits_ptr, 1)
+        out_ptr = projection.project_experts_device_routes(
+            visit, hidden_ptr=inp, route=route, transform_output=transform_output)
+        result = np.empty(normalized.shape, dtype=np.float32)
+        projection.download(out_ptr, result)
+        return result
 
     def _feed_forward_routes(self, visit, normalized, ids, mix, *, transform_output):
         if self.projection is not None and self.projection.supports_device_activation:
