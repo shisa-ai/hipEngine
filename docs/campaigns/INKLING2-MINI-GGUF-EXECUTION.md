@@ -26,6 +26,7 @@ All rows here use one stream and no drafter. The linked runs record the commands
 | Engine, physical host and weights | Prompt processing | Decode |
 | --- | --- | --- |
 | hipEngine `fast`, `epyc` W7900, **mainline `UD-Q4_K_M`** | [575 tokens through first sampled token in 2.974 s](../../worklog/entries/20261124T093241.447865Z-lhl-inkling2-mini-4b3cf8.md): ~193 input tok/s including request overhead; four interleaved pairs, same generated IDs as control. | [~18.0 tok/s after 575](../../worklog/entries/20261123T094058.230583Z-lhl-inkling2-mini-5cb5ed.md), from 16 intervals over 0.888–0.889 s. Separate Nov 23 run, not the Nov 24 prefill run. |
+| hipEngine `fast`, `epyc` W7900, **mainline `UD-Q4_K_M`**, [campaign control][control] | 0.258 s at 47, 2.978 s at 575 and 11.968 s at 2,057 tokens to first text: five repetitions after one warmup at `7dceaa6b8`. | 18.17, 18.01 and 17.61 tok/s after 47, 575 and 2,057 tokens, over 127 decode steps per request, with identical output across repetitions. |
 | hipEngine `fast`, `strixhalo` Radeon 8060S, **root `UD-Q4_K_XL`** | [Nov 22 paired run][pairs]: 0.952–0.971 s to first streamed text at 47 input; 10.145–10.595 s at 575. | 13.9–14.1 tok/s after 47; 10.7–10.8 after 575. |
 | Loom 0.2.0, **same local host and file** | [Same run][pairs]: 0.215–0.230 s to first streamed text at 47 input; 0.529–0.540 s at 575. | 41.2–43.4 tok/s after 47; 39.1–41.0 after 575. |
 
@@ -287,6 +288,7 @@ curl -fsS http://127.0.0.1:8000/v1/completions -H 'Content-Type: application/jso
 [trace]: ../../scripts/inkling2_gguf_decode_trace.py
 [tasks]: ../../scripts/inkling2_gguf_task_check.py
 [decode-bench]: ../../scripts/inkling2_decode_bench.py
+[control]: ../../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-baseline.json
 [matched]: ../../worklog/entries/20261124T143027.342689Z-lhl-inkling2-mini-5d86dc.md
 [four-row]: ../../worklog/entries/20261123T054727.109209Z-lhl-inkling2-mini-399b3e.md
 [rdna3-roofs]: ../RDNA3-TUNING-GUIDE.md
