@@ -158,66 +158,70 @@ __global__ __launch_bounds__(128) void nvfp4_q8_counted_selected(
 template<bool SPLIT_ACTIVATION>
 static int project_counted_q8(const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
                               const int32_t* records, const float* outer, int tiles, int rows, int n, int m, int experts,
-                              float gate_cap = 0.0f, float up_cap = 0.0f) {
+                              float gate_cap = 0.0f, float up_cap = 0.0f, hipStream_t stream = nullptr) {
     if (!x || !codes || !scales || !weights || !out || !records || rows < 2 || rows > 4 ||
         tiles < rows * 2 || tiles > rows * 8 || m != 2304 || (n != 1152 && n != 2304) || experts <= 0)
         return hipErrorInvalidValue;
     const int groups = rows * (SPLIT_ACTIVATION ? 8 : 1) * n / 32;
-    hipLaunchKernelGGL((pack_q8<SPLIT_ACTIVATION>), dim3((groups + 3) / 4), dim3(128), 0, 0, x, codes, scales,
+    hipLaunchKernelGGL((pack_q8<SPLIT_ACTIVATION>), dim3((groups + 3) / 4), dim3(128), 0, stream, x, codes, scales,
                        groups, n, gate_cap, up_cap);
     if (const int status = hipGetLastError()) return status;
-    hipLaunchKernelGGL((nvfp4_q8_counted_selected<!SPLIT_ACTIVATION>), dim3((m + 3) / 4, tiles), dim3(128), 0, 0,
+    hipLaunchKernelGGL((nvfp4_q8_counted_selected<!SPLIT_ACTIVATION>), dim3((m + 3) / 4, tiles), dim3(128), 0, stream,
                        codes, scales, weights, out, records, outer, n, m, rows * 8, experts);
     return hipGetLastError();
 }
 
 extern "C" int hipengine_gguf_nvfp4_selected_counted_shared_input_q8_dot(
         const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
-        const int32_t* records, const float* outer, int tiles, int rows, int n, int m, int experts) {
-    return project_counted_q8<false>(x, codes, scales, weights, out, records, outer, tiles, rows, n, m, experts);
+        const int32_t* records, const float* outer, int tiles, int rows, int n, int m, int experts,
+        hipStream_t stream) {
+    return project_counted_q8<false>(x, codes, scales, weights, out, records, outer, tiles, rows, n, m, experts,
+                                     0.0f, 0.0f, stream);
 }
 
 extern "C" int hipengine_gguf_nvfp4_selected_counted_split_activation_q8_dot(
         const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
         const int32_t* records, const float* outer, int tiles, int rows, int n, int m, int experts,
-        float gate_cap, float up_cap) {
+        float gate_cap, float up_cap, hipStream_t stream) {
     if (n != 1152 || !(gate_cap > 0.0f) || !(up_cap > 0.0f)) return hipErrorInvalidValue;
     return project_counted_q8<true>(x, codes, scales, weights, out, records, outer, tiles, rows, n, m, experts,
-                                    gate_cap, up_cap);
+                                    gate_cap, up_cap, stream);
 }
 
 template <bool SPLIT_ACTIVATION, bool SHARED_INPUT = false>
 static int project_q8(const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
                       const int32_t* ids, const float* outer, int routes, int n, int m, int experts,
-                      float gate_cap = 0.0f, float up_cap = 0.0f) {
+                      float gate_cap = 0.0f, float up_cap = 0.0f, hipStream_t stream = nullptr) {
     if (!x || !codes || !scales || !weights || !out || !ids || routes != 8 || m != 2304 ||
         (n != 1152 && n != 2304) || experts <= 0) return hipErrorInvalidValue;
     const int groups = (SHARED_INPUT ? 1 : routes) * (n / 32);
-    hipLaunchKernelGGL((pack_q8<SPLIT_ACTIVATION>), dim3((groups + 3) / 4), dim3(128), 0, 0,
+    hipLaunchKernelGGL((pack_q8<SPLIT_ACTIVATION>), dim3((groups + 3) / 4), dim3(128), 0, stream,
                        x, codes, scales, groups, n, gate_cap, up_cap);
     if (const int status = hipGetLastError()) return status;
     const size_t total = size_t(routes) * m;
-    hipLaunchKernelGGL((nvfp4_q8_selected<SHARED_INPUT>), dim3((total + 3) / 4), dim3(128), 0, 0,
+    hipLaunchKernelGGL((nvfp4_q8_selected<SHARED_INPUT>), dim3((total + 3) / 4), dim3(128), 0, stream,
                        codes, scales, weights, out, ids, outer, n, m, experts, total);
     return hipGetLastError();
 }
 
 extern "C" int hipengine_gguf_nvfp4_selected_q8_dot(
         const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
-        const int32_t* ids, const float* outer, int routes, int n, int m, int experts) {
-    return project_q8<false>(x, codes, scales, weights, out, ids, outer, routes, n, m, experts);
+        const int32_t* ids, const float* outer, int routes, int n, int m, int experts, hipStream_t stream) {
+    return project_q8<false>(x, codes, scales, weights, out, ids, outer, routes, n, m, experts, 0.0f, 0.0f, stream);
 }
 
 extern "C" int hipengine_gguf_nvfp4_selected_shared_input_q8_dot(
         const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
-        const int32_t* ids, const float* outer, int routes, int n, int m, int experts) {
-    return project_q8<false, true>(x, codes, scales, weights, out, ids, outer, routes, n, m, experts);
+        const int32_t* ids, const float* outer, int routes, int n, int m, int experts, hipStream_t stream) {
+    return project_q8<false, true>(x, codes, scales, weights, out, ids, outer, routes, n, m, experts,
+                                   0.0f, 0.0f, stream);
 }
 
 extern "C" int hipengine_gguf_nvfp4_selected_split_activation_q8_dot(
         const float* x, int8_t* codes, float* scales, const uint8_t* weights, float* out,
         const int32_t* ids, const float* outer, int routes, int n, int m, int experts,
-        float gate_cap, float up_cap) {
+        float gate_cap, float up_cap, hipStream_t stream) {
     if (n != 1152 || !(gate_cap > 0.0f) || !(up_cap > 0.0f)) return hipErrorInvalidValue;
-    return project_q8<true>(x, codes, scales, weights, out, ids, outer, routes, n, m, experts, gate_cap, up_cap);
+    return project_q8<true>(x, codes, scales, weights, out, ids, outer, routes, n, m, experts, gate_cap, up_cap,
+                            stream);
 }

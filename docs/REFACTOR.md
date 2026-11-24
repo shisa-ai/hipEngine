@@ -1793,3 +1793,37 @@ scripts/inkling2_gguf_task_check.py <model> --backend hip_gfx1100 --reverse` on 
 known-answer cases through `LLM.generate_detailed`), with the captured graph timed against the
 eager path by the 48-token greedy A/B recorded above. A measured win promotes the default to `1`
 and the flag becomes the rollback lever; no win removes the path and closes this entry.
+### R0528 — HIPENGINE_INKLING2_DECODE_GRAPH opt-in
+
+Owner: `hipengine/runtime/inkling2_gguf.py`.
+
+Scope: opt-in whole-token HIP graph capture of the resident decode traversal. `_graph_step`,
+`_capture_graph`, `_record_graph` and `_replay_graph` in `hipengine/runtime/inkling2_gguf.py`,
+the capture-header mode of `step_block_resident` in `hipengine/runtime/inkling2_device_attention.py`,
+and the capture-time upload pinning in `hipengine/loading/inkling2_activation_transfer.py`. The
+first decode
+step in a session runs eager and then records the graph; later steps replay it. A device-side
+tick kernel bumps a counter and rewrites every visit's (live, position) header inside the graph,
+so no per-step host upload remains. Baked position-dependent constants are made safe by the
+capture gate (every visit's window saturated; the graph is retired at the log-scaling floor) and
+capture-time uploads are baked in from dedicated pinned buffers; a host download inside capture
+aborts capture and the step runs eager. Decode only, one session at a time, single batch.
+
+Status 2026-11-25 (W7900, UD-Q4_K_M artifact, fast profile, device routes on): graph captures and
+replays; eager fallback intact; no decode speedup measured yet (the 48-token wall is prefill-dominated;
+the expected win is removing ~190 launch dispatches per token). Output equivalence with the eager
+path is NOT established: one of three 48-token greedy runs matched eager exactly; two followed a
+different greedy branch from token 5; three eager runs were mutually identical. Whether the flip is
+run-to-run kernel nondeterminism or a capture defect is unresolved. Stays default-off.
+
+Done when: a determinism investigation (isolated per-position logit comparison between replay and
+eager, and an eager-vs-eager run distribution on this model) shows the flips are ordinary run-to-run
+noise — or the defect is fixed — and a captured 48-token chain at least matches the eager chain often
+enough that greedy output is reproducible; then the task-check A/B shows a measured decode win and the
+flag flips to default with this entry closed. Until then the flag stays opt-in and the graph path is
+not used by any default configuration.
+
+Clearing command: `HIPENGINE_INKLING2_RESIDENT_DECODE=1 HIPENGINE_INKLING2_DECODE_GRAPH=1
+.venv/bin/python scripts/inkling2_gguf_task_check.py <model> --backend hip_gfx1100 --reverse` on the
+W7900 (the 12 known-answer cases through `LLM.generate_detailed`), plus the 48-token greedy A/B against
+`HIPENGINE_INKLING2_DECODE_GRAPH=0` and repeated fresh-process runs to establish the flip rate.

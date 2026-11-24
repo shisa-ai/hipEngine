@@ -108,31 +108,53 @@ __global__ void inkling2_residual_read(const float* query, const float* values, 
     }
 }
 
-extern "C" int hipengine_inkling2_row_rms(const float* x, float* out, int rows, int width, float eps) {
+extern "C" int hipengine_inkling2_row_rms(const float* x, float* out, int rows, int width, float eps, hipStream_t stream) {
     if (!x || !out || rows <= 0 || rows > 65535 || width <= 0 || width > 8192) return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_row_rms, dim3(rows), dim3(kThreads), 0, 0, x, out, rows, width, eps);
+    hipLaunchKernelGGL(inkling2_row_rms, dim3(rows), dim3(kThreads), 0, stream, x, out, rows, width, eps);
     return hipGetLastError();
 }
 
 extern "C" int hipengine_inkling2_row_norm_mul(const float* x, const float* weight, float* out, int rows, int width,
-                                               float eps) {
+                                               float eps, hipStream_t stream) {
     if (!x || !weight || !out || rows <= 0 || rows > 65535 || width <= 0 || width > 8192) return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_row_norm_mul, dim3(rows), dim3(kThreads), 0, 0, x, weight, out, rows, width, eps);
+    hipLaunchKernelGGL(inkling2_row_norm_mul, dim3(rows), dim3(kThreads), 0, stream, x, weight, out, rows, width, eps);
     return hipGetLastError();
 }
 
-extern "C" int hipengine_inkling2_row_add(const float* a, const float* b, float* out, int rows, int width) {
+extern "C" int hipengine_inkling2_row_add(const float* a, const float* b, float* out, int rows, int width,
+                                            hipStream_t stream) {
     if (!a || !b || !out || rows <= 0 || rows > 65535 || width <= 0 || width > 8192) return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_row_add, dim3(rows), dim3(kThreads), 0, 0, a, b, out, rows, width);
+    hipLaunchKernelGGL(inkling2_row_add, dim3(rows), dim3(kThreads), 0, stream, a, b, out, rows, width);
     return hipGetLastError();
 }
 
 extern "C" int hipengine_inkling2_residual_read(const float* query, const float* values, float* out, int rows,
-                                                int blocks, int queries, int width) {
+                                                int blocks, int queries, int width, hipStream_t stream) {
     if (!query || !values || !out || rows <= 0 || blocks <= 0 || blocks > 64 || queries <= 0 || queries > 8 ||
         width <= 0 || width > 8192 || size_t(rows) * size_t(queries) > 65535) return hipErrorInvalidValue;
     const size_t shared = size_t(2 * blocks + kThreads / 32) * sizeof(float);
-    hipLaunchKernelGGL(inkling2_residual_read, dim3(rows * queries), dim3(kThreads), shared, 0, query, values, out,
+    hipLaunchKernelGGL(inkling2_residual_read, dim3(rows * queries), dim3(kThreads), shared, stream, query, values, out,
                        rows, blocks, queries, width, 1.0f / sqrtf(float(width)));
+    return hipGetLastError();
+}
+
+// Graph-replay tick: fill every per-visit KV header from one device counter.
+// headers holds nvisits (live, position) int32 pairs; caps[i] is visit i's KV capacity.
+// Reads the counter once, publishes (min(c + 1, cap_i), c) per visit, then advances it.
+__global__ void inkling2_resident_tick(int* headers, const int* caps, int* counter, int nvisits) {
+    const int c = *counter;
+    __syncthreads();
+    if (threadIdx.x == 0) *counter = c + 1;
+    for (int i = threadIdx.x; i < nvisits; i += blockDim.x) {
+        headers[2 * i] = min(c + 1, caps[i]);
+        headers[2 * i + 1] = c;
+    }
+}
+
+extern "C" int hipengine_inkling2_resident_tick(int* headers, const int* caps, int* counter, int nvisits,
+                                                hipStream_t stream) {
+    if (!headers || !caps || !counter || nvisits <= 0 || nvisits > 1024) return hipErrorInvalidValue;
+    const int threads = nvisits < 32 ? 32 : (nvisits + 31) / 32 * 32;
+    hipLaunchKernelGGL(inkling2_resident_tick, dim3(1), dim3(threads), 0, stream, headers, caps, counter, nvisits);
     return hipGetLastError();
 }

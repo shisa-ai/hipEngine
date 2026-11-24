@@ -7,7 +7,7 @@ from functools import partial
 
 import numpy as np
 
-from hipengine.core.hip import HipMemcpyKind
+from hipengine.core.hip import HipMemcpyKind, capture_stream
 from hipengine.core.memory import free, malloc
 from hipengine.kernels.backends import hip_target_arch_for_backend, load_backend_kernel_package
 from hipengine.kernels.hip_gfx1100.moe.inkling2_route_tiles import launch_route_ids_i32
@@ -290,7 +290,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     def copy_device(self, dst, src, nbytes):
         """Copy inside device memory on stream zero, after any launch already queued."""
         if nbytes > 0:
-            self._runtime.memcpy_async(dst, src, nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
+            self._runtime.memcpy_async(dst, src, nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, capture_stream())
 
     def project_from_device(self, name, rows, source):
         """Project rows that are already resident and return the result on the host."""
@@ -540,7 +540,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 row_bytes = n * y.itemsize
                 inp = self._scratch("_input", len(inputs) * row_bytes).ptr
                 for i, (ptr, _) in enumerate(inputs):
-                    self._runtime.memcpy_async(inp + i * row_bytes, ptr, row_bytes, HipMemcpyKind.DEVICE_TO_DEVICE, 0)
+                    self._runtime.memcpy_async(inp + i * row_bytes, ptr, row_bytes, HipMemcpyKind.DEVICE_TO_DEVICE, capture_stream())
                 self._launch_projection(inp, out, len(inputs), 2, matrix, None)
             else:
                 for i, (ptr, _) in enumerate(inputs):
@@ -709,15 +709,15 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             laguna_sigmoid_correction_topk_f32(
                 int(logits_ptr), int(bias_ptr), state["routing"], state["selection"],
                 state["ids64"], state["norm"], state["scaled"],
-                int(rows), experts, top_k, float(self._weights.mapping.route_scale), stream=0)
+                int(rows), experts, top_k, float(self._weights.mapping.route_scale), stream=capture_stream())
             gate_table = self._bank_scale_device(layer.gate_up)
             down_table = self._bank_scale_device(layer.down)
             launch_route_ids_i32(state["ids64"], routes, gate_table or None,
                                  state["gate_scales"] if gate_table else None,
-                                 state["ids32"], stream=0)
+                                 state["ids32"], stream=capture_stream())
             launch_route_ids_i32(state["ids64"], routes, down_table or None,
                                  state["down_scales"] if down_table else None,
-                                 state["ids32"], stream=0)
+                                 state["ids32"], stream=capture_stream())
             return {"ids": state["ids32"], "mix": state["scaled"],
                     "gate_scales": state["gate_scales"] if gate_table else 0,
                     "down_scales": state["down_scales"] if down_table else 0,

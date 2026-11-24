@@ -266,11 +266,11 @@ __global__ void inkling2_split_activation(const float* paired, float* activated,
 }
 
 extern "C" int hipengine_inkling2_split_activation(const float* paired, float* activated, int routes, int width,
-                                                   float gate_cap, float up_cap) {
+                                                   float gate_cap, float up_cap, hipStream_t stream) {
     if (!paired || !activated || routes <= 0 || routes > 65535 || width <= 0 ||
         !(gate_cap > 0.0f) || !(up_cap > 0.0f)) return hipErrorInvalidValue;
     const size_t size = size_t(routes) * width;
-    hipLaunchKernelGGL(inkling2_split_activation, dim3(1 + (size - 1) / 256), dim3(256), 0, 0,
+    hipLaunchKernelGGL(inkling2_split_activation, dim3(1 + (size - 1) / 256), dim3(256), 0, stream,
                        paired, activated, size, width, gate_cap, up_cap);
     return hipGetLastError();
 }
@@ -297,12 +297,12 @@ __global__ void inkling2_expert_mix(const float* down, const float* mix, float* 
 }
 
 extern "C" int hipengine_inkling2_expert_mix_exact(const float* down, const float* mix, float* out,
-                                                    int count, int width, int tokens) {
+                                                    int count, int width, int tokens, hipStream_t stream) {
     if (!down || !mix || !out || count <= 0 || width <= 0 || tokens <= 0 || tokens > 65535) {
         return hipErrorInvalidValue;
     }
     hipLaunchKernelGGL((inkling2_expert_mix<true, true>), dim3(1 + (width - 1) / 256, tokens),
-                       dim3(256), 0, 0, down, mix, out, count, width);
+                       dim3(256), 0, stream, down, mix, out, count, width);
     return hipGetLastError();
 }
 

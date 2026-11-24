@@ -54,30 +54,31 @@ __global__ void inkling2_short_conv_dynamic(float* history, float* input, const 
 
 extern "C" int hipengine_inkling2_short_conv_dynamic(float* history, float* input, const float* fixed,
                                                      const float* dynamic, int heads, int dim, int width,
-                                                     int rows, float scale) {
+                                                     int rows, float scale, hipStream_t stream) {
     if (!history || !input || !fixed || !dynamic || heads <= 0 || dim <= 0 || width <= 0 || rows <= 0)
         return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_short_conv_dynamic, dim3((heads * dim - 1) / 128 + 1), dim3(128), 0, 0,
+    hipLaunchKernelGGL(inkling2_short_conv_dynamic, dim3((heads * dim - 1) / 128 + 1), dim3(128), 0, stream,
                        history, input, fixed, dynamic, heads, dim, width, rows, scale);
     return hipGetLastError();
 }
 
 extern "C" int hipengine_inkling2_short_conv_block(float* history, const float* input, const float* taps,
                                                   float* output, int channels, int width, float scale, int rows,
-                                                  int dynamic_taps) {
+                                                  int dynamic_taps, hipStream_t stream) {
     if (!history || !input || !taps || !output || channels <= 0 || width <= 0 || rows <= 0) {
         return hipErrorInvalidValue;
     }
-    hipLaunchKernelGGL(inkling2_short_conv_block, dim3((channels - 1) / 128 + 1), dim3(128), 0, 0,
+    hipLaunchKernelGGL(inkling2_short_conv_block, dim3((channels - 1) / 128 + 1), dim3(128), 0, stream,
                        history, input, taps, output, channels, width, scale, rows,
                        dynamic_taps ? size_t(channels) * width : 0);
     return hipGetLastError();
 }
 
 extern "C" int hipengine_inkling2_short_conv(float* history, const float* input, const float* taps,
-                                            float* output, int channels, int width, float scale) {
+                                            float* output, int channels, int width, float scale,
+                                            hipStream_t stream) {
     if (!history || !input || !taps || !output || channels <= 0 || width <= 0) return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_short_conv, dim3((channels - 1) / 128 + 1), dim3(128), 0, 0,
+    hipLaunchKernelGGL(inkling2_short_conv, dim3((channels - 1) / 128 + 1), dim3(128), 0, stream,
                        history, input, taps, output, channels, width, scale);
     return hipGetLastError();
 }

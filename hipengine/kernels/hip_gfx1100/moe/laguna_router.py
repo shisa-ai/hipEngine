@@ -8,7 +8,7 @@ from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.ctypes_cache import signed_kernel_fn
-from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.core.hip import capture_stream, HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("laguna_router.hip")
@@ -150,7 +150,7 @@ def laguna_sigmoid_correction_topk_f32(
         top_k,
         float(routed_scaling_factor),
         threads,
-        stream,
+        capture_stream() if not stream else stream,
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))

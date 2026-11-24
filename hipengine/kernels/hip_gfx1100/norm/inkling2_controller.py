@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from hipengine.core.build import build_hip
-from hipengine.core.hip import HIP_SUCCESS, HipError
+from hipengine.core.hip import HIP_SUCCESS, HipError, capture_stream
 from hipengine.kernels.registry import KernelKey, register
 
 
@@ -21,22 +21,24 @@ def _symbol(blend, target_arch):
     launch = (lib.hipengine_inkling2_controller_blend_norm if blend
               else lib.hipengine_inkling2_controller_input)
     pointers = 6 if blend else 3
-    launch.argtypes = [ctypes.c_void_p] * pointers + [ctypes.c_int] * 3 + [ctypes.c_float]
+    launch.argtypes = [ctypes.c_void_p] * pointers + [ctypes.c_int] * 3 + [ctypes.c_float, ctypes.c_void_p]
     launch.restype = ctypes.c_int
     return launch
 
 
-def launch_controller_input(x, message, out, rows, width, count, eps, *, target_arch=None):
-    status = _symbol(False, target_arch)(x, message, out, rows, width, count, eps)
+def launch_controller_input(x, message, out, rows, width, count, eps, *, stream=None, target_arch=None):
+    status = _symbol(False, target_arch)(x, message, out, rows, width, count, eps,
+                                         capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
-        raise HipError(f"Inkling 2 controller input failed with HIP status {status}")
+        raise HipError(status, "Inkling 2 controller input failed")
 
 
 def launch_controller_blend_norm(x, message, forget, gain, weight, out, rows, width, count, eps, *,
-                                 target_arch=None):
-    status = _symbol(True, target_arch)(x, message, forget, gain, weight, out, rows, width, count, eps)
+                                 stream=None, target_arch=None):
+    status = _symbol(True, target_arch)(x, message, forget, gain, weight, out, rows, width, count, eps,
+                                        capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
-        raise HipError(f"Inkling 2 controller blend failed with HIP status {status}")
+        raise HipError(status, "Inkling 2 controller blend failed")
 
 
 def blend_controller_norm(x, message, forget, gain, weight, *, eps=1e-6):

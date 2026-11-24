@@ -7,6 +7,8 @@ time. Callers opt in to these helpers for diagnostic/prototype bulk GEMM paths.
 from __future__ import annotations
 
 import ctypes
+
+from hipengine.core.hip import capture_stream as _capture_stream
 from dataclasses import dataclass
 
 ROCBLAS_SUCCESS = 0
@@ -108,7 +110,7 @@ class Rocblas:
         """
 
         _check_shape(rows=rows, in_features=in_features, out_features=out_features)
-        self.set_stream(stream)
+        self.set_stream(_capture_stream() if not stream else stream)
         alpha = ctypes.c_uint16(0x3C00)  # IEEE FP16 1.0
         beta = ctypes.c_uint16(0x0000)  # IEEE FP16 0.0
         _check(
@@ -147,7 +149,7 @@ class Rocblas:
         _check_shape(
             rows=rows, in_features=in_features, out_features=out_features
         )
-        self.set_stream(stream)
+        self.set_stream(_capture_stream() if not stream else stream)
         alpha = ctypes.c_float(1.0)
         beta = ctypes.c_float(0.0)
         _check(
@@ -193,7 +195,7 @@ class Rocblas:
 
         if in_features <= 0 or out_features <= 0:
             _check_shape(rows=1, in_features=in_features, out_features=out_features)
-        self.set_stream(stream)
+        self.set_stream(_capture_stream() if not stream else stream)
         alpha = ctypes.c_float(1.0)
         beta = ctypes.c_float(0.0)
         _check(
@@ -242,7 +244,7 @@ class Rocblas:
 
         if m <= 0 or n <= 0 or k <= 0 or batch <= 0:
             raise ValueError("sgemm_strided_batched dimensions must be positive")
-        self.set_stream(stream)
+        self.set_stream(_capture_stream() if not stream else stream)
         alpha = ctypes.c_float(1.0)
         beta = ctypes.c_float(0.0)
         _check(
@@ -298,7 +300,7 @@ class Rocblas:
             raise ValueError("sgemm_batched needs a positive batch count")
         if m <= 0 or n <= 0 or k <= 0:
             raise ValueError("sgemm_batched dimensions must be positive")
-        self.set_stream(stream)
+        self.set_stream(_capture_stream() if not stream else stream)
         alpha = ctypes.c_float(1.0)
         beta = ctypes.c_float(0.0)
         _check(
@@ -483,7 +485,7 @@ class Rocblas:
 
         if m <= 0 or n <= 0 or k <= 0 or batch <= 0:
             raise ValueError("gemm_strided_batched_ex dimensions must be positive")
-        self.set_stream(stream)
+        self.set_stream(_capture_stream() if not stream else stream)
         alpha = ctypes.c_float(1.0)
         beta = ctypes.c_float(0.0)
         _check(
@@ -564,7 +566,7 @@ class Rocblas:
             raise ValueError("rocBLAS FP16 GEMM output must be FP16 or FP32")
         if compute_datatype not in {ROCBLAS_DATATYPE_F16_R, ROCBLAS_DATATYPE_F32_R}:
             raise ValueError("rocBLAS FP16 GEMM compute must be FP16 or FP32")
-        self.set_stream(stream)
+        self.set_stream(_capture_stream() if not stream else stream)
         if solution_index is not None and not -(1 << 31) <= int(solution_index) < (1 << 31):
             raise ValueError("rocBLAS solution_index must fit int32")
         algorithm = (

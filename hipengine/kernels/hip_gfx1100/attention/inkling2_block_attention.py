@@ -22,7 +22,7 @@ def _build():
 def launch_block_attention(q, k, v, out, queries, keys, nq, nk, dim):
     status = _build()(q, k, v, out, queries, keys, nq, nk, dim)
     if status != HIP_SUCCESS:
-        raise HipError(f"Inkling 2 noncausal block attention failed with HIP status {status}")
+        raise HipError(status, "Inkling 2 noncausal block attention failed")
 
 
 register(KernelKey("hip_gfx1100", "inkling2_block_attention", "inkling2_mixed", "default"), launch_block_attention)

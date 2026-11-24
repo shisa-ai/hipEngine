@@ -66,16 +66,16 @@ __global__ void inkling2_prepare_rms(const float* x, float* out, int dim, int he
 
 extern "C" int hipengine_inkling2_attention_prepare_clip(
     const float* x, float* out, const float* scale, int rows, int dim, int heads, float threshold, float alpha,
-    double floor, int first, int logscale) {
+    double floor, int first, int logscale, hipStream_t stream) {
     if (!x || !out || rows <= 0 || dim <= 0 || dim > 128 || heads <= 0) return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_prepare_clip, dim3(rows), dim3(128), 0, 0,
+    hipLaunchKernelGGL(inkling2_prepare_clip, dim3(rows), dim3(128), 0, stream,
                        x, out, scale, dim, heads, threshold, alpha, floor, first, logscale ? 1 : 0);
     return hipGetLastError();
 }
 
 extern "C" int hipengine_inkling2_attention_prepare_rms(const float* x, float* out, int rows, int dim, int heads,
-                                                        float eps) {
+                                                        float eps, hipStream_t stream) {
     if (!x || !out || rows <= 0 || dim <= 0 || dim > 128 || heads <= 0) return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_prepare_rms, dim3(rows), dim3(128), 0, 0, x, out, dim, heads, eps);
+    hipLaunchKernelGGL(inkling2_prepare_rms, dim3(rows), dim3(128), 0, stream, x, out, dim, heads, eps);
     return hipGetLastError();
 }

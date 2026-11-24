@@ -100,9 +100,9 @@ __global__ void inkling2_controller_blend_norm(const float* x, const float* mess
 }  // namespace
 
 extern "C" int hipengine_inkling2_controller_input(const float* x, const float* message, float* out,
-                                                   int rows, int width, int count, float eps) {
+                                                   int rows, int width, int count, float eps, hipStream_t stream) {
     if (!x || !message || !out || rows <= 0 || width <= 0 || count <= 0) return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_controller_input, dim3(rows * count), dim3(kThreads), 0, 0,
+    hipLaunchKernelGGL(inkling2_controller_input, dim3(rows * count), dim3(kThreads), 0, stream,
                        x, message, out, rows, width, count, eps);
     return hipGetLastError();
 }
@@ -110,10 +110,10 @@ extern "C" int hipengine_inkling2_controller_input(const float* x, const float* 
 extern "C" int hipengine_inkling2_controller_blend_norm(const float* x, const float* message,
                                                         const float* forget, const float* gain,
                                                         const float* weight, float* out,
-                                                        int rows, int width, int count, float eps) {
+                                                        int rows, int width, int count, float eps, hipStream_t stream) {
     if (!x || !message || !forget || !gain || !weight || !out || rows <= 0 || width <= 0 || count <= 0)
         return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_controller_blend_norm, dim3(rows * count), dim3(kThreads), 0, 0,
+    hipLaunchKernelGGL(inkling2_controller_blend_norm, dim3(rows * count), dim3(kThreads), 0, stream,
                        x, message, forget, gain, weight, out, rows, width, count, eps);
     return hipGetLastError();
 }

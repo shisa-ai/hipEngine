@@ -6,7 +6,10 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from hipengine.core.hip import HipMemcpyKind, set_capture_stream
+from hipengine.core.memory import free, malloc
 from hipengine.kernels.cpu_reference.inkling2_mini import select_expert_routes, split_expert_activation
+from hipengine.kernels.hip_gfx1100.norm.inkling2_residual import launch_resident_tick
 from hipengine.runtime.inkling2_mini_reference import Inkling2TextReference, _rms
 
 
@@ -115,6 +118,10 @@ class Inkling2GGUFText(Inkling2TextReference):
                                          else None)
             self.resident_attention = self._resident_attention if projection.supports_resident_attention else None
             self.resident_block = self._resident_block if projection.supports_resident_block else None
+        self._graph_state = None
+        self._graph_disabled = False
+        self._queries_staged = False
+        self.decode_graph = False
 
     def _resident_attention(self, session, visit, inputs, messages, norm_names):
         """Attention half of one block visit on the device; only the branch output reaches the host.
@@ -235,6 +242,245 @@ class Inkling2GGUFText(Inkling2TextReference):
         Every read, normalization, residual add, the attention half and the expert chain run inside
         one arena. Only the router logits per visit and the final rows cross the host.
         """
+        if limit is None and h.shape[0] == 1 and getattr(self, "decode_graph", False):
+            handled = self._graph_step(session, h)
+            if handled is not None:
+                return handled
+        return self._resident_body(session, h, limit=limit, recording=None)
+
+    # ---- whole-token graph capture (opt-in; see HIPENGINE_INKLING2_DECODE_GRAPH) ----
+
+    def _graph_floor(self):
+        return int(self.config.get("log_scaling_n_floor", 8192))
+
+    def _graph_min_position(self, session):
+        attention = getattr(session, "attention", None)
+        geometry = getattr(attention, "geometry", None)
+        if not geometry:
+            return None
+        # The captured graph bakes min(extent, live) per visit; it stays valid while every
+        # visit's window is saturated, i.e. once the position passes every visit's window.
+        return max(min(g[4], g[0]) for g in geometry)
+
+    def _drop_graph_state(self):
+        state = getattr(self, "_graph_state", None)
+        self._graph_state = None
+        if state:
+            session = state.get("session")
+            attention = getattr(session, "attention", None) if session is not None else None
+            if attention is not None and getattr(attention, "capture_headers", None) is not None:
+                attention.capture_headers = None
+        else:
+            return
+        rt = state.get("runtime")
+        if rt is not None:
+            if state.get("graph"):
+                try:
+                    rt.graph_exec_destroy(state["graph"])
+                except Exception:
+                    pass
+            stream = state.get("stream")
+            if stream:
+                try:
+                    rt.stream_destroy(stream)
+                except Exception:
+                    pass
+            for key in ("counter", "headers", "caps"):
+                buf = state.get(key)
+                if buf is not None:
+                    try:
+                        free(buf, runtime=rt)
+                    except Exception:
+                        pass
+            pin = state.get("pin")
+            if pin is not None:
+                try:
+                    rt.host_unregister(state["pin_ptr"])
+                except Exception:
+                    pass
+                pin.close()
+
+    def _graph_step(self, session, h):
+        state = getattr(self, "_graph_state", None)
+        if state is not None and state.get("session") is not session:
+            # Decode sessions own their KV banks; a graph baked for another session is unusable.
+            self._drop_graph_state()
+            state = None
+        if state is not None:
+            if session.position + 1 <= self._graph_floor():
+                return self._replay_graph(session, h, state)
+            # Past the log-scale floor the clip factors differ; retire the graph.
+            self._drop_graph_state()
+            self._graph_disabled = True
+            return None
+        if getattr(self, "_graph_disabled", False):
+            return None
+        floor = self._graph_floor()
+        minimum = self._graph_min_position(session)
+        if minimum is None or session.position + 1 < minimum or session.position + 1 > floor:
+            return None
+        return self._capture_graph(session, h)
+
+    def _capture_graph(self, session, h):
+        """Record the whole decode step; the current step itself runs eagerly.
+
+        The recording pass executes nothing, so every lazily uploaded weight must
+        already be resident. The eager pass below does that (and produces this
+        step's result); the recorded graph serves subsequent steps.
+        """
+        eager = self._resident_body(session, h, limit=None, recording=None)
+        state = None
+        try:
+            state = self._record_graph(session, h)
+        except Exception as exc:
+            print(f"inkling2: decode graph capture failed ({exc!r}); continuing eager", flush=True)
+            import traceback
+            traceback.print_exc()
+            self._graph_disabled = True
+            self._discard_capture(state, session)
+            return eager
+        self._graph_state = state
+        return eager
+
+    def _discard_capture(self, state, session):
+        attention = getattr(session, "attention", None)
+        if attention is not None:
+            attention.capture_headers = None
+        if not state:
+            return
+        rt = state.get("runtime")
+        for key in ("stream", "counter", "headers", "caps"):
+            resource = state.pop(key, None)
+            if resource is None or rt is None:
+                continue
+            try:
+                if key == "stream":
+                    rt.stream_destroy(resource)
+                else:
+                    free(resource, runtime=rt)
+            except Exception:
+                pass
+        pin = state.pop("pin", None)
+        pin_ptr = state.pop("pin_ptr", None)
+        if pin is not None:
+            if pin_ptr is not None and rt is not None:
+                try:
+                    rt.host_unregister(pin_ptr)
+                except Exception:
+                    pass
+            try:
+                pin.close()
+            except Exception:
+                pass
+
+    def _record_graph(self, session, h):
+        import ctypes as _ctypes
+        import mmap
+
+        rt = self.projection._runtime
+        attention = getattr(session, "attention", None)
+        if attention is None:
+            raise RuntimeError("decode graph requires session attention state")
+        state = {"session": session, "runtime": rt}
+        visits = self.plan.visits
+        slots = 1 + max(v.state_slot for v in visits)
+        geometry = attention.geometry
+        counter = malloc(4, runtime=rt)
+        headers = malloc(2 * 4 * slots, runtime=rt)
+        caps = malloc(4 * slots, runtime=rt)
+        state.update(counter=counter, headers=headers, caps=caps)
+        caps_host = np.zeros(slots, np.int32)
+        for slot in range(slots):
+            caps_host[slot] = geometry[slot][0]
+        rt.memcpy(caps.ptr, caps_host.ctypes.data, caps_host.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+        # This step already ran eagerly; the first replay serves the next position.
+        start = np.array([session.position + 1], dtype=np.int32)
+        rt.memcpy(counter.ptr, start.ctypes.data, start.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+        page = mmap.PAGESIZE
+        pin_nbytes = (h.nbytes + page - 1) // page * page
+        pin = mmap.mmap(-1, pin_nbytes)
+        pin_ptr = _ctypes.addressof(_ctypes.c_char.from_buffer(pin))
+        _ctypes.memmove(pin_ptr, h.ctypes.data, h.nbytes)
+        try:
+            rt.host_register(pin_ptr, pin_nbytes)
+        except BaseException:
+            pin.close()
+            raise
+        state["pin"] = pin
+        state["pin_ptr"] = pin_ptr
+        state["stream"] = rt.stream_create(nonblocking=True)
+        attention.capture_headers = [headers.ptr + slot * 8 for slot in range(slots)]
+        try:
+            self._resident_body(session, h, limit=None, recording=state)
+        except BaseException:
+            set_capture_stream(None)
+            try:
+                rt.stream_end_capture(state["stream"])
+            except Exception:
+                pass
+            attention.capture_headers = None
+            self._discard_capture(state, session)
+            raise
+        set_capture_stream(None)
+        graph = rt.stream_end_capture(state["stream"])
+        if not graph:
+            attention.capture_headers = None
+            self._discard_capture(state, session)
+            raise RuntimeError("decode graph capture returned no graph")
+        state["graph"] = rt.graph_instantiate(graph)
+        rt.graph_destroy(graph)
+        return state
+
+    def _replay_graph(self, session, h, state):
+        import ctypes as _ctypes
+
+        rt = state["runtime"]
+        _ctypes.memmove(state["pin_ptr"], h.ctypes.data, h.nbytes)
+        rt.graph_launch(state["graph"], state["stream"])
+        rt.stream_synchronize(state["stream"])
+        attention = session.attention
+        for visit in list(attention.positions):
+            attention.positions[visit] = session.position + 1
+        at = lambda name: state["base"] + state["offsets"][name]
+        hidden = h.shape[1]
+        result = np.empty((1, hidden), np.float32)
+        self.projection.download(at("h"), result)
+        count = state["count"]
+        blocks = np.empty((count, 1, hidden), np.float32)
+        self.projection.download(at("stack"), blocks)
+        return result, [np.ascontiguousarray(block) for block in blocks]
+
+    def _stage_query_uploads(self, session, base, offsets, hidden):
+        """Upload the per-visit residual-read queries once per arena; both decode paths read the slots."""
+        if self._queries_staged:
+            return
+        item = np.dtype(np.float32).itemsize
+        span = 16 * hidden * item  # rows 0-3 attention read queries, 4-7 loop-message queries, row 8 mlp read query
+
+        def query(layer, stem):
+            return np.ascontiguousarray(self.weights.dense(f"attn_res.{stem}.{layer}"), dtype=np.float32)
+
+        rows_by_slot = {}
+
+        def put(slot, part, row, array):
+            array = np.ascontiguousarray(array, dtype=np.float32).reshape(-1, hidden)
+            if array.shape[0] > 4:
+                raise RuntimeError(f"residual-read query block of {array.shape[0]} rows exceeds its slot")
+            self.projection.upload(base + offsets["queries"] + slot * span + row * hidden * item, array)
+            rows_by_slot[(slot, part)] = array.shape[0]
+
+        for visit in self.plan.visits:
+            slot = visit.state_slot
+            layer = visit.weight_layer
+            if layer:
+                put(slot, "attn", 0, query(layer - 1, "attn_queries"))
+            if visit.message_pass is not None:
+                put(slot, "msg", 4, self.loop_queries(visit))
+            put(slot, "mlp", 8, query(layer, "mlp_queries"))
+        self._query_rows = rows_by_slot
+        self._queries_staged = True
+
+    def _resident_body(self, session, h, *, limit, recording):
         c, w, tensors = self.config, self.weights, self.weights.names
         projection, eps = self.projection, c["rms_norm_eps"]
         rows, hidden = h.shape
@@ -258,9 +504,6 @@ class Inkling2GGUFText(Inkling2TextReference):
             return projection.resident_vector(tensors[f"layers.{layer}.{name}.weight"].name,
                                               w.dense(f"layers.{layer}.{name}.weight"))
 
-        def query(layer, stem):
-            return np.ascontiguousarray(w.dense(f"attn_res.{stem}.{layer}"), dtype=np.float32)
-
         # One probe per distinct visit shape sizes the arena the attention half needs.
         attention_bytes, seen = 0, set()
         for visit in visits:
@@ -276,8 +519,11 @@ class Inkling2GGUFText(Inkling2TextReference):
                 probe = self._attention_plan(session, visit, (blank,) * (1 if visit.is_local else 3), None, names,
                                              sources=(0,) * (1 if visit.is_local else 3))
             attention_bytes = max(attention_bytes, sum(projection.attention_resident_extent(probe)))
+        query_slots = 1 + max(v.state_slot for v in self.plan.visits)
+        query_stride = 16 * hidden * item
         regions = (("h", row), ("branch", row), ("m", row), ("normalized", 3 * row),
-                   ("read", 4 * row), ("messages", 4 * row), ("query", 4 * hidden * item),
+                   ("read", 4 * row), ("messages", 4 * row),
+                   ("queries", query_slots * query_stride),
                    ("stack", capacity * row), ("previous", capacity * row), ("snapshot", capacity * row),
                    ("saved_h", row), ("previous_h", row), ("attention", attention_bytes))
         offsets, extent = {}, 0
@@ -289,7 +535,22 @@ class Inkling2GGUFText(Inkling2TextReference):
             def at(name):
                 return base + offsets[name]
 
-            projection.upload(at("h"), h)
+            def qslot(visit, row):
+                return at("queries") + visit.state_slot * query_stride + row * hidden * item
+
+            if recording is not None:
+                rt = recording["runtime"]
+                stream = recording["stream"]
+                self._stage_query_uploads(session, base, offsets, hidden)
+                rt.stream_synchronize(0)  # staged slots must be visible before capture begins
+                rt.stream_begin_capture(stream, 2)  # relaxed capture
+                set_capture_stream(stream)
+                rt.memcpy_async(at("h"), recording["pin_ptr"], h.nbytes, HipMemcpyKind.HOST_TO_DEVICE, stream)
+                launch_resident_tick(recording["headers"].ptr, recording["caps"].ptr, recording["counter"].ptr,
+                                     1 + max(v.state_slot for v in visits), stream=stream)
+            else:
+                self._stage_query_uploads(session, base, offsets, hidden)
+                projection.upload(at("h"), h)
             count, working, saved, previous = 0, "stack", None, None
             for visit in visits:
                 layer = visit.weight_layer
@@ -308,20 +569,18 @@ class Inkling2GGUFText(Inkling2TextReference):
                         count = saved
                 stack, names = at(working), norm_names(visit)
                 if layer:
-                    queries = query(layer - 1, "attn_queries").reshape(-1, hidden)
-                    projection.upload(at("query"), queries)
+                    qrows = self._query_rows[(visit.state_slot, "attn")]
                     row_rms(at("h"), stack + count * row, rows, hidden, eps)
-                    residual_read(at("query"), stack, at("read"), rows, count + 1, queries.shape[0], hidden)
-                    inputs = [at("read") + i * row for i in range(queries.shape[0])]
+                    residual_read(qslot(visit, 0), stack, at("read"), rows, count + 1, qrows, hidden)
+                    inputs = [at("read") + i * row for i in range(qrows)]
                 else:
                     inputs = [at("h")]
                 if visit.message_pass is not None:
                     region, start, blocks = previous
-                    queries = np.ascontiguousarray(self.loop_queries(visit), dtype=np.float32)
-                    projection.upload(at("query"), queries)
+                    qrows = self._query_rows[(visit.state_slot, "msg")]
                     row_rms(at("previous_h"), at(region) + (start + blocks) * row, rows, hidden, eps)
-                    residual_read(at("query"), at(region) + start * row, at("messages"), rows, blocks + 1,
-                                  queries.shape[0], hidden)
+                    residual_read(qslot(visit, 4), at(region) + start * row, at("messages"), rows, blocks + 1,
+                                  qrows, hidden)
                     cursor = at("attention")
                     for i in range(3):
                         projection.copy_device(cursor + i * row, inputs[0] if len(inputs) == 1 else inputs[i], row)
@@ -347,9 +606,8 @@ class Inkling2GGUFText(Inkling2TextReference):
                 else:
                     row_add(at("h"), at("branch"), at("h"), rows, hidden)
                     a = at("h")
-                projection.upload(at("query"), query(layer, "mlp_queries").reshape(1, hidden))
                 row_rms(a, stack + count * row, rows, hidden, eps)
-                residual_read(at("query"), stack, at("read"), rows, count + 1, 1, hidden)
+                residual_read(qslot(visit, 8), stack, at("read"), rows, count + 1, 1, hidden)
                 if visit.message_pass is None:
                     row_norm_mul(at("read"), weight(layer, "mlp_norm"), at("normalized"), rows, hidden, eps)
                     normalized = at("normalized")
@@ -379,6 +637,11 @@ class Inkling2GGUFText(Inkling2TextReference):
                                                transform_output=transform)
                     projection.upload(at("m"), np.ascontiguousarray(routed, dtype=np.float32))
                 row_add(a, at("m"), at("h"), rows, hidden)
+            if recording is not None:
+                recording["count"] = count
+                recording["base"] = base
+                recording["offsets"] = dict(offsets)
+                return None
             result = np.empty((rows, hidden), np.float32)
             projection.download(at("h"), result)
             blocks = np.empty((count, rows, hidden), np.float32)

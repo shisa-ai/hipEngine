@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from hipengine.core.build import build_hip
-from hipengine.core.hip import HIP_SUCCESS, HipError
+from hipengine.core.hip import HIP_SUCCESS, HipError, capture_stream
 from hipengine.kernels.registry import KernelKey, register
 
 
@@ -20,25 +20,28 @@ def _build(clip, target_arch):
     lib = _library(target_arch)
     launch = lib.hipengine_inkling2_attention_prepare_clip if clip else lib.hipengine_inkling2_attention_prepare_rms
     launch.argtypes = ([ctypes.c_void_p] * 3 + [ctypes.c_int] * 3 + [ctypes.c_float] * 2 + [ctypes.c_double]
-                       + [ctypes.c_int] * 2) if clip else [ctypes.c_void_p] * 2 + [ctypes.c_int] * 3 + [ctypes.c_float]
+                       + [ctypes.c_int] * 2 + [ctypes.c_void_p]) if clip else (
+                           [ctypes.c_void_p] * 2 + [ctypes.c_int] * 3 + [ctypes.c_float, ctypes.c_void_p])
     launch.restype = ctypes.c_int
     return launch
 
 
 def launch_prepare_clip(x, out, scale, rows, dim, heads, threshold, *, alpha=0.0, floor=1, first=0, logscale=False,
-                        target_arch=None):
+                        stream=None, target_arch=None):
     """out = clip(x * scale, threshold), times 1 + alpha * log(max(1, position / floor)) per row."""
     status = _build(True, target_arch)(x, out, scale, rows, dim, heads, threshold, alpha, floor, first,
-                                       1 if logscale else 0)
+                                       1 if logscale else 0,
+                                       capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
-        raise HipError(f"Inkling 2 attention clip failed with HIP status {status}")
+        raise HipError(status, "Inkling 2 attention clip failed")
 
 
-def launch_prepare_rms(x, out, rows, dim, heads, eps, *, target_arch=None):
+def launch_prepare_rms(x, out, rows, dim, heads, eps, *, stream=None, target_arch=None):
     """out = x / sqrt(mean(x * x) + eps), per head."""
-    status = _build(False, target_arch)(x, out, rows, dim, heads, eps)
+    status = _build(False, target_arch)(x, out, rows, dim, heads, eps,
+                                        capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
-        raise HipError(f"Inkling 2 attention normalization failed with HIP status {status}")
+        raise HipError(status, "Inkling 2 attention normalization failed")
 
 
 def clip_rows(x, scale, threshold):

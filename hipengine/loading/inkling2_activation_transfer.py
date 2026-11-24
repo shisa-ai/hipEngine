@@ -6,7 +6,7 @@ from contextlib import contextmanager
 
 import numpy as np
 
-from hipengine.core.hip import HipError, HipMemcpyKind
+from hipengine.core.hip import HipError, HipMemcpyKind, capture_stream
 
 # HIP can reject registration when page locking is unavailable or exhausted.
 _HOST_REGISTRATION_UNAVAILABLE = frozenset((2, 304, 801))
@@ -48,6 +48,34 @@ class _UploadSlot:
         runtime.event_destroy(self.event)
         self.scratch.close(runtime)
 
+
+
+# Pinned buffers backing upload nodes baked into a CUDA/HIP graph. Each captured
+# upload gets its own pin because the graph may replay long after the call; the
+# pool is intentionally never released (a graph may be replayed for its whole
+# lifetime) and is capped so a runaway capture fails loudly instead of leaking.
+_CAPTURE_PINS = []
+_CAPTURE_PIN_BUDGET = 256 * 1024 * 1024
+_capture_pin_bytes = 0
+
+
+def _captured_upload(runtime, dst, host):
+    global _capture_pin_bytes
+    raw = np.ascontiguousarray(host)
+    size = max(mmap.PAGESIZE, (raw.nbytes + mmap.PAGESIZE - 1) // mmap.PAGESIZE * mmap.PAGESIZE)
+    if _capture_pin_bytes + size > _CAPTURE_PIN_BUDGET:
+        raise RuntimeError("HIP graph capture pin budget exceeded; refusing to bake more uploads")
+    pinned = mmap.mmap(-1, size)
+    try:
+        ptr = ctypes.addressof(ctypes.c_char.from_buffer(pinned))
+        runtime.host_register(ptr, size)
+    except BaseException:
+        pinned.close()
+        raise
+    ctypes.memmove(ptr, raw.ctypes.data, raw.nbytes)
+    _CAPTURE_PINS.append((pinned, ptr, size))
+    _capture_pin_bytes += size
+    runtime.memcpy_async(dst, ptr, raw.nbytes, HipMemcpyKind.HOST_TO_DEVICE, capture_stream())
 
 class Inkling2ActivationTransfer:
     """Order copies and kernels on stream zero; wait before exposing results.
@@ -120,8 +148,16 @@ class Inkling2ActivationTransfer:
                 slot.inflight = False
 
     def enqueue_upload(self, inp, x):
-        """Submit a copy on stream zero; the source stays valid until its event completes."""
+        """Submit a copy on stream zero; the source stays valid until its event completes.
+
+        Inside a graph capture the copy is baked into the graph from a dedicated
+        pinned buffer instead, because stream-zero copies are not captured and
+        would silently replay stale data.
+        """
         host = np.ascontiguousarray(x)
+        if capture_stream():
+            _captured_upload(self.runtime, inp, host)
+            return
         kind = HipMemcpyKind.HOST_TO_DEVICE
         slot = self._checkout_upload(host.nbytes)
         if slot is None:
@@ -134,6 +170,8 @@ class Inkling2ActivationTransfer:
 
     def download(self, out, y):
         """Read grouped results and fence any preceding launches on stream zero."""
+        if capture_stream():
+            raise RuntimeError("download inside a HIP graph capture would read stale data; downloads must happen after replay")
         pinned = self._try_pin("host_output", y.nbytes)
         kind = HipMemcpyKind.DEVICE_TO_HOST
         if pinned is None:

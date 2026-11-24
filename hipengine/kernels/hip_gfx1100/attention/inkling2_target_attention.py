@@ -6,7 +6,7 @@ from pathlib import Path
 
 from hipengine.core.build import build_hip
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HIP_SUCCESS, HipError
+from hipengine.core.hip import HIP_SUCCESS, HipError, capture_stream
 from hipengine.kernels.registry import KernelKey, register
 from hipengine.kvcache.spans import KVLiveSpans
 
@@ -20,7 +20,7 @@ def _library(target_arch):
 @lru_cache(maxsize=4)
 def _build(symbol, target_arch):
     fn = getattr(_library(target_arch), symbol)
-    fn.argtypes = [ctypes.c_void_p] * 12 + [ctypes.c_int] * 4
+    fn.argtypes = [ctypes.c_void_p] * 12 + [ctypes.c_int] * 4 + [ctypes.c_void_p]
     fn.restype = ctypes.c_int
     return fn
 
@@ -28,7 +28,7 @@ def _build(symbol, target_arch):
 @lru_cache(maxsize=2)
 def _build_cache_write(target_arch):
     fn = _library(target_arch).hipengine_inkling2_target_cache_write
-    fn.argtypes = [ctypes.c_void_p] * 9 + [ctypes.c_int] * 2
+    fn.argtypes = [ctypes.c_void_p] * 9 + [ctypes.c_int] * 2 + [ctypes.c_void_p]
     fn.restype = ctypes.c_int
     return fn
 
@@ -46,18 +46,21 @@ def _span_pointers(spans: KVLiveSpans):
 
 
 def _launch_attention(symbol, q, keys, values, bias, sink, out, spans: KVLiveSpans, nq, nk, dim, extent,
-                      *, gain=0, target_arch=None):
-    status = _build(symbol, target_arch)(q, keys, values, bias, sink, out, *_span_pointers(spans), gain, nq, nk, dim, extent)
+                      *, gain=0, stream=None, target_arch=None):
+    status = _build(symbol, target_arch)(q, keys, values, bias, sink, out, *_span_pointers(spans), gain, nq, nk,
+                                         dim, extent,
+                                         capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
-        raise HipError(f"Inkling 2 target attention failed with HIP status {status}")
+        raise HipError(status, "Inkling 2 target attention failed")
 
 
-def launch_target_attention(*args, gain=0, target_arch=None):
-    _launch_attention("hipengine_inkling2_target_attention", *args, gain=gain, target_arch=target_arch)
+def launch_target_attention(*args, gain=0, stream=None, target_arch=None):
+    _launch_attention("hipengine_inkling2_target_attention", *args, gain=gain, stream=stream, target_arch=target_arch)
 
 
-def launch_tiled_attention(*args, gain=0, target_arch=None):
-    _launch_attention("hipengine_inkling2_target_attention_tiled", *args, gain=gain, target_arch=target_arch)
+def launch_tiled_attention(*args, gain=0, stream=None, target_arch=None):
+    _launch_attention("hipengine_inkling2_target_attention_tiled", *args, gain=gain, stream=stream,
+                      target_arch=target_arch)
 
 
 @lru_cache(maxsize=2)
@@ -103,10 +106,11 @@ def _build_split_chunked(target_arch):
     return fn
 
 
-def launch_cache_write(key, value, keys, values, spans: KVLiveSpans, width, *, target_arch=None):
-    status = _build_cache_write(target_arch)(key, value, keys, values, *_span_pointers(spans), spans.max_live_count, width)
+def launch_cache_write(key, value, keys, values, spans: KVLiveSpans, width, *, stream=None, target_arch=None):
+    status = _build_cache_write(target_arch)(key, value, keys, values, *_span_pointers(spans), spans.max_live_count,
+                                             width, capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
-        raise HipError(f"Inkling 2 target KV write failed with HIP status {status}")
+        raise HipError(status, "Inkling 2 target KV write failed")
 
 
 @lru_cache(maxsize=8)
@@ -115,33 +119,36 @@ def _build_block(target_arch, *, sigmoid=False, table=False):
     fn = (lib.hipengine_inkling2_target_attention_block_table_sigmoid if table else
           lib.hipengine_inkling2_target_attention_block_sigmoid if sigmoid else
           lib.hipengine_inkling2_target_attention_block)
-    fn.argtypes = [ctypes.c_void_p] * (15 if table else 14) + [ctypes.c_int] * (7 if table else 6)
+    fn.argtypes = ([ctypes.c_void_p] * (15 if table else 14) + [ctypes.c_int] * (7 if table else 6)
+                   + [ctypes.c_void_p])
     fn.restype = ctypes.c_int
     return fn
 
 
 def _launch_attention_block(fn, q, k, v, bias, sink, out, spans, nq, nk, dim, extent, block_k, block_v, rows, gain,
-                            table=None, rel_width=0):
+                            table=None, rel_width=0, stream=None):
     pointers = (q, k, v, bias, sink, out, *_span_pointers(spans), block_k, block_v, gain)
     shape = (nq, nk, dim, extent, rows, spans.max_live_count)
-    status = fn(*pointers, table, *shape, rel_width) if table is not None else fn(*pointers, *shape)
+    resolved = capture_stream() if stream is None else stream
+    status = (fn(*pointers, table, *shape, rel_width, resolved) if table is not None
+              else fn(*pointers, *shape, resolved))
     if status != HIP_SUCCESS:
         raise HipError(status, "Inkling 2 block attention launch failed")
 
 
-def launch_attention_block(*args, gain=0, target_arch=None):
-    _launch_attention_block(_build_block(target_arch), *args, gain)
+def launch_attention_block(*args, gain=0, stream=None, target_arch=None):
+    _launch_attention_block(_build_block(target_arch), *args, gain, stream=stream)
 
 
-def launch_attention_block_sigmoid(*args, gain=0, target_arch=None):
-    _launch_attention_block(_build_block(target_arch, sigmoid=True), *args, gain)
+def launch_attention_block_sigmoid(*args, gain=0, stream=None, target_arch=None):
+    _launch_attention_block(_build_block(target_arch, sigmoid=True), *args, gain, stream=stream)
 
 
 def launch_attention_block_table_sigmoid(q, k, v, rel, sink, out, spans, nq, nk, dim, extent, block_k, block_v, rows,
-                                         *, gain, table, rel_width, target_arch=None):
+                                         *, gain, table, rel_width, stream=None, target_arch=None):
     """Block attention whose relative bias is evaluated from score rows and a lag table."""
     _launch_attention_block(_build_block(target_arch, table=True), q, k, v, rel, sink, out, spans, nq, nk, dim,
-                            extent, block_k, block_v, rows, gain, table, rel_width)
+                            extent, block_k, block_v, rows, gain, table, rel_width, stream=stream)
 
 
 for _backend in ("hip_gfx1100", "hip_gfx1151"):

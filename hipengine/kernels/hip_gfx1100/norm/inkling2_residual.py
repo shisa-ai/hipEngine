@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 from hipengine.core.build import build_hip
-from hipengine.core.hip import HIP_SUCCESS, HipError
+from hipengine.core.hip import HIP_SUCCESS, HipError, capture_stream
 from hipengine.kernels.registry import KernelKey, register
 
 
@@ -19,40 +19,48 @@ def _library(target_arch):
 
 
 @lru_cache(maxsize=8)
-def _build(name, target_arch, pointers, ints, floats=0):
+def _build(name, target_arch, pointers, ints, floats=0, streams=1):
     fn = getattr(_library(target_arch), "hipengine_inkling2_" + name)
-    fn.argtypes = [ctypes.c_void_p] * pointers + [ctypes.c_int] * ints + [ctypes.c_float] * floats
+    fn.argtypes = ([ctypes.c_void_p] * pointers + [ctypes.c_int] * ints + [ctypes.c_float] * floats
+                   + [ctypes.c_void_p] * streams)
     fn.restype = ctypes.c_int
     return fn
 
 
 def _check(status, what):
     if status != HIP_SUCCESS:
-        raise HipError(f"Inkling 2 {what} failed with HIP status {status}")
+        raise HipError(status, f"Inkling 2 {what} failed")
 
 
-def launch_row_rms(x, out, rows, width, eps, *, target_arch=None):
+def launch_row_rms(x, out, rows, width, eps, *, stream=None, target_arch=None):
     """out = x / sqrt(mean(x * x) + eps) per row; `out` may alias `x`."""
-    _check(_build("row_rms", target_arch, 2, 2, 1)(x, out, rows, width, eps), "row normalization")
+    _check(_build("row_rms", target_arch, 2, 2, 1)(x, out, rows, width, eps,
+                                                   capture_stream() if stream is None else stream),
+           "row normalization")
 
 
-def launch_row_norm_mul(x, weight, out, rows, width, eps, *, target_arch=None):
+def launch_row_norm_mul(x, weight, out, rows, width, eps, *, stream=None, target_arch=None):
     """out = x / sqrt(mean(x * x) + eps) * weight per row."""
-    _check(_build("row_norm_mul", target_arch, 3, 2, 1)(x, weight, out, rows, width, eps), "normalized row")
+    _check(_build("row_norm_mul", target_arch, 3, 2, 1)(x, weight, out, rows, width, eps,
+                                                        capture_stream() if stream is None else stream),
+           "normalized row")
 
 
-def launch_row_add(a, b, out, rows, width, *, target_arch=None):
+def launch_row_add(a, b, out, rows, width, *, stream=None, target_arch=None):
     """out = a + b per row."""
-    _check(_build("row_add", target_arch, 3, 2)(a, b, out, rows, width), "residual add")
+    _check(_build("row_add", target_arch, 3, 2)(a, b, out, rows, width,
+                                                capture_stream() if stream is None else stream),
+           "residual add")
 
 
-def launch_residual_read(query, values, out, rows, blocks, queries, width, *, target_arch=None):
+def launch_residual_read(query, values, out, rows, blocks, queries, width, *, stream=None, target_arch=None):
     """out[i][r] = softmax((query[i] . values[b][r]) / sqrt(width)) . values[b][r].
 
     `values` is block-major, so block `b` holds the `rows` normalized rows every block row
     reads, and the result is query-major so one query's rows stay contiguous.
     """
-    _check(_build("residual_read", target_arch, 3, 4)(query, values, out, rows, blocks, queries, width),
+    _check(_build("residual_read", target_arch, 3, 4)(query, values, out, rows, blocks, queries, width,
+                                                      capture_stream() if stream is None else stream),
            "residual read")
 
 
@@ -87,3 +95,20 @@ for _backend in ("hip_gfx1100", "hip_gfx1151"):
     for _variant, _launch in (("host_row_rms", host_row_rms), ("host_row_norm_mul", host_row_norm_mul),
                               ("host_row_add", host_row_add), ("host_residual_read", host_residual_read)):
         register(KernelKey(_backend, "inkling2_residual", "inkling2_mixed", _variant), _launch)
+
+
+
+@lru_cache(maxsize=2)
+def _tick_symbol(target_arch):
+    fn = _library(target_arch).hipengine_inkling2_resident_tick
+    fn.argtypes = [ctypes.c_void_p] * 3 + [ctypes.c_int, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def launch_resident_tick(headers, caps, counter, nvisits, *, stream=None, target_arch=None):
+    """Fill per-visit (live, position) header pairs from one device counter; advance the counter."""
+    status = _tick_symbol(target_arch)(headers, caps, counter, nvisits,
+                                       capture_stream() if stream is None else stream)
+    if status != HIP_SUCCESS:
+        raise HipError(status, "Inkling 2 resident tick failed")

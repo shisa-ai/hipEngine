@@ -15,7 +15,7 @@ import numpy as np
 
 from hipengine.core.build import build_hip, plan_hip_build
 from hipengine.core.ctypes_cache import signed_kernel_fn
-from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.core.hip import capture_stream, HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.core.memory import copy_host_to_device, free, host_array_ptr, malloc
 
 _SOURCE = Path(__file__).with_name("inkling2_route_tiles.hip")
@@ -70,7 +70,7 @@ def build_inkling2_route_tiles(*, cache_root=None, compiler_version=None, profil
 
 
 def launch_route_tiles(ids_ptr, routes, num_experts, width, scale_table_ptr, gathered_ptr,
-                       records_ptr, count_ptr, record_capacity, *, stream: int = 0,
+                       records_ptr, count_ptr, record_capacity, *, stream: int | None = None,
                        library=None, runtime: HipRuntime | None = None):
     """Launch the device tile builder. Pointers are raw device addresses."""
     library = library or build_inkling2_route_tiles(load=True)
@@ -78,18 +78,19 @@ def launch_route_tiles(ids_ptr, routes, num_experts, width, scale_table_ptr, gat
     fn = signed_kernel_fn(library, _SYMBOL, _ARGTYPES, ctypes.c_int)
     err = fn(ids_ptr, int(routes), int(num_experts), int(width),
              scale_table_ptr, gathered_ptr, records_ptr, count_ptr,
-             int(record_capacity), stream)
+             int(record_capacity), capture_stream() if stream is None else stream)
     if err != HIP_SUCCESS:
         runtime.check(err)
 
 
 def launch_route_ids_i32(ids_ptr, routes, scale_table_ptr, gathered_ptr, ids_out_ptr, *,
-                         stream: int = 0, library=None, runtime: HipRuntime | None = None):
+                         stream: int | None = None, library=None, runtime: HipRuntime | None = None):
     """Convert device i64 route ids to i32 and gather per-route scales."""
     library = library or build_inkling2_route_tiles(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _IDS_SYMBOL, _IDS_ARGTYPES, ctypes.c_int)
-    err = fn(ids_ptr, int(routes), scale_table_ptr, gathered_ptr, ids_out_ptr, stream)
+    err = fn(ids_ptr, int(routes), scale_table_ptr, gathered_ptr, ids_out_ptr,
+             capture_stream() if stream is None else stream)
     if err != HIP_SUCCESS:
         runtime.check(err)
 

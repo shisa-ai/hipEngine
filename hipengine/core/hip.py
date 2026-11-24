@@ -693,3 +693,24 @@ def is_default_runtime_loaded() -> bool:
 def reset_default_runtime_for_tests() -> None:
     global _DEFAULT_RUNTIME
     _DEFAULT_RUNTIME = None
+
+
+_capture_stream: int | None = None
+
+
+def capture_stream() -> int:
+    """Stream every wrapped launch should join, or 0 (the legacy default) outside capture.
+
+    Kernel wrappers resolve their stream argument through this helper when the caller
+    passes a falsy stream (``None`` or ``0``, the legacy default), so a single
+    session-wide flag reroutes every wrapped launch onto a capturing stream without
+    touching call sites. While a capture is active there is no way to opt back out
+    to stream 0; outside a capture this returns 0, the legacy behavior.
+    """
+
+    return _capture_stream if _capture_stream else 0
+
+
+def set_capture_stream(stream: int | None) -> None:
+    global _capture_stream
+    _capture_stream = stream

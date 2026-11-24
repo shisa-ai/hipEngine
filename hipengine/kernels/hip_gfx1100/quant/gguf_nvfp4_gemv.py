@@ -7,9 +7,14 @@ from functools import lru_cache, partial
 from pathlib import Path
 
 from hipengine.core.build import build_hip
-from hipengine.core.hip import HIP_SUCCESS, HipError
+from hipengine.core.hip import HIP_SUCCESS, HipError, capture_stream
 from hipengine.kernels.backends import hip_target_arch_for_backend
 from hipengine.kernels.registry import KernelKey, register
+
+
+def _ambient(stream):
+    return capture_stream() if not stream else stream
+
 
 
 @lru_cache(maxsize=None)
@@ -27,9 +32,9 @@ def _projection(target_arch):
 
 
 def _launch(x, weight, output, rows, in_features, out_features, *, target_arch, outer_scale=1.0, stream=0):
-    status = _projection(target_arch)(x, weight, output, rows, in_features, out_features, outer_scale, stream)
+    status = _projection(target_arch)(x, weight, output, rows, in_features, out_features, outer_scale, _ambient(stream))
     if status != HIP_SUCCESS:
-        raise HipError(f"GGUF NVFP4 projection failed with HIP status {status}")
+        raise HipError(status, "GGUF NVFP4 projection failed")
 
 
 @lru_cache(maxsize=None)
@@ -44,9 +49,9 @@ def _selected(target_arch, register_fp4):
 def _launch_selected(x, weight, output, ids, scales, rows, experts, in_features, out_features, *, target_arch,
                      stream=0, register_fp4=False):
     status = _selected(target_arch, register_fp4)(x, weight, output, ids, scales, rows, experts, in_features,
-                                                  out_features, stream)
+                                                  out_features, _ambient(stream))
     if status != HIP_SUCCESS:
-        raise HipError(f"GGUF NVFP4 selected projection failed with HIP status {status}")
+        raise HipError(status, "GGUF NVFP4 selected projection failed")
 
 
 @lru_cache(maxsize=None)
@@ -59,17 +64,17 @@ def _tiled(target_arch, shared):
 
 
 def _launch_tiled(x, weight, output, records, scales, tiles, rows, experts, n, m, *, target_arch, stream=0):
-    status = _tiled(target_arch, False)(x, weight, output, records, scales, tiles, rows, experts, n, m, stream)
+    status = _tiled(target_arch, False)(x, weight, output, records, scales, tiles, rows, experts, n, m, _ambient(stream))
     if status != HIP_SUCCESS:
-        raise HipError(f"GGUF NVFP4 tiled projection failed with HIP status {status}")
+        raise HipError(status, "GGUF NVFP4 tiled projection failed")
 
 
 def _launch_shared_tiled(x, weight, output, records, scales, tiles, rows, experts, n, m, *, target_arch,
                          routes_per_input, stream=0):
     status = _tiled(target_arch, True)(x, weight, output, records, scales, tiles, rows, experts, n, m,
-                                      routes_per_input, stream)
+                                      routes_per_input, _ambient(stream))
     if status != HIP_SUCCESS:
-        raise HipError(f"GGUF NVFP4 shared-input tiled projection failed with HIP status {status}")
+        raise HipError(status, "GGUF NVFP4 shared-input tiled projection failed")
 
 
 for _backend in ("hip_gfx1100", "hip_gfx1151"):

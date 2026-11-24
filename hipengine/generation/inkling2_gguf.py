@@ -42,6 +42,10 @@ def _resident_decode_requested() -> bool:
     return os.environ.get("HIPENGINE_INKLING2_RESIDENT_DECODE", "0") == "1"
 
 
+def _decode_graph_requested() -> bool:
+    return os.environ.get("HIPENGINE_INKLING2_DECODE_GRAPH", "0") == "1"
+
+
 class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
     supports_vision = False
     # Packed target verification changed ordinary fast output on the GGUF prompt suite.
@@ -92,6 +96,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
                 device_routes=_device_routes_requested()))
             model = self.model = Inkling2GGUFText(weights, projection=projection)
             model.resident_decode = _resident_decode_requested()
+            model.decode_graph = _decode_graph_requested()
             model.attention_factory = lambda cap: Inkling2DeviceAttention(
                 runtime=runtime, launch=attn, split=split, split_chunked=split_chunked, block=block,
                 block_sigmoid=block_sigmoid, block_table=block_table, write=write, geometry=[

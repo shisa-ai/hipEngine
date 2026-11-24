@@ -6,8 +6,14 @@ import ctypes
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
-from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime, capture_stream
 from hipengine.kernels import launch_census
+
+
+def _ambient(stream):
+    """Resolve a launch stream: 0/None means the ambient (capture) stream, else the caller's."""
+    return capture_stream() if not stream else stream
+
 from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gguf_k_gemv.hip")
@@ -114,7 +120,7 @@ def _make_selected_raw_f32(quant):
         fn = _cached_fn(library, symbol, [_VOID] * 5 + [_I64, ctypes.c_int, _I64, _I64, _I64, _VOID])
         launch_census.record_launch(quant, symbol, rows, in_features, out_features)
         _check_launch(runtime, fn(x, weight, output, ids, scales, rows, experts,
-                                  in_features, out_features, threads, stream))
+                                  in_features, out_features, threads, _ambient(stream)))
     return launch
 
 
@@ -135,7 +141,7 @@ def _make_selected_tile4_raw_f32(quant, *, shared_input=False):
         extra = (routes_per_input,) if shared_input else ()
         launch_census.record_launch(quant, symbol, rows, in_features, out_features)
         _check_launch(runtime, fn(x, weight, output, records, scales, tiles, rows, experts,
-                                  in_features, out_features, *extra, stream))
+                                  in_features, out_features, *extra, _ambient(stream)))
     return launch
 
 
@@ -439,7 +445,7 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
         branches,
         hidden,
         threads,
-        stream,
+        _ambient(stream),
     )
     _check_launch(runtime, err)
 
@@ -637,7 +643,7 @@ def _launch_selected_grouped(
         ctypes.c_int64(in_features),
         ctypes.c_int64(out_features),
         ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
+        ctypes.c_void_p(capture_stream() if not stream else stream),
     )
     _check_launch(runtime, err)
 
@@ -1325,7 +1331,8 @@ def _launch(
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = _cached_fn(library, symbol, [_VOID, _VOID, _VOID, _I64, _I64, _I64, _I64, _VOID])
-    err = fn(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
+    err = fn(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features, threads,
+              capture_stream() if not stream else stream)
     _check_launch(runtime, err)
 
 
@@ -1361,7 +1368,7 @@ def _launch_dual(
         in_features,
         out_features,
         threads,
-        stream,
+        _ambient(stream),
     )
     _check_launch(runtime, err)
 
@@ -1419,7 +1426,7 @@ def _launch_unequal_dual(
         out_features,
         out_features_b,
         threads,
-        stream,
+        _ambient(stream),
     )
     _check_launch(runtime, err)
 
@@ -1445,7 +1452,8 @@ def _launch_wave32x2(
     library = library or build_gguf_k_gemv(load=True)
     runtime = runtime or get_hip_runtime()
     fn = _cached_fn(library, symbol, [_VOID, _VOID, _VOID, _I64, _I64, _I64, _I64, _VOID])
-    err = fn(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
+    err = fn(x_ptr, qweight_ptr, out_ptr, rows, in_features, out_features, threads,
+              capture_stream() if not stream else stream)
     _check_launch(runtime, err)
 
 
@@ -1491,7 +1499,7 @@ def _launch_unequal_wave32x2(
         out_features,
         out_features_b,
         threads,
-        stream,
+        _ambient(stream),
     )
     _check_launch(runtime, err)
 
@@ -1562,7 +1570,7 @@ def _launch_mixed_attention(
         rows,
         in_features,
         *(features[index] for index in (*primary_roles, *secondary_roles)),
-        stream,
+        _ambient(stream),
     )
     _check_launch(runtime, err)
 
@@ -1624,7 +1632,7 @@ def _launch_selected(
         ctypes.c_int64(in_features),
         ctypes.c_int64(out_features),
         ctypes.c_int64(threads),
-        ctypes.c_void_p(stream),
+        ctypes.c_void_p(capture_stream() if not stream else stream),
     )
     _check_launch(runtime, err)
 
@@ -1677,7 +1685,7 @@ def _launch_selected_silu(
         in_features,
         out_features,
         threads,
-        stream,
+        _ambient(stream),
     )
     _check_launch(runtime, err)
 
@@ -1769,7 +1777,7 @@ def qwen4_exp_gr_down_pack8_decode(
     )
     _check_launch(runtime, fn(
         normalized_ptr, down_q8_ptr, inject_weight_ptr or None, low_rank_ptr,
-        inject_ptr, rows, width, low_rank, float(silu_scale), stream,
+        inject_ptr, rows, width, low_rank, float(silu_scale), _ambient(stream),
     ))
 
 
@@ -1806,7 +1814,7 @@ def qwen4_exp_gr_up_mean_pack8_decode(
     )
     _check_launch(runtime, fn(
         low_rank_ptr, up_q8_ptr, normalized_ptr, mixed_ptr, rows, branches,
-        hidden, low_rank, stream,
+        hidden, low_rank, _ambient(stream),
     ))
 
 
@@ -2269,7 +2277,7 @@ def gguf_q8_0_iu8_wmma_prefill_f32_f32(
     err = fn(
         x_ptr, qweight_ptr, out_ptr,
         rows, in_features, out_features,
-        stream,
+        _ambient(stream),
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))

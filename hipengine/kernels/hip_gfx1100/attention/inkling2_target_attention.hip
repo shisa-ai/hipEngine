@@ -19,9 +19,9 @@ __global__ void inkling2_target_cache_write(
 extern "C" int hipengine_inkling2_target_cache_write(
     const float* key, const float* value, float* keys, float* values,
     const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
-    const int32_t* row, int capacity, int width) {
+    const int32_t* row, int capacity, int width, hipStream_t stream) {
     if (capacity <= 0 || width <= 0) return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_target_cache_write, dim3(1 + (width - 1) / 256), dim3(256), 0, 0,
+    hipLaunchKernelGGL(inkling2_target_cache_write, dim3(1 + (width - 1) / 256), dim3(256), 0, stream,
                        key, value, keys, values, offsets, count, positions, evicted, row, capacity, width);
     return hipGetLastError();
 }
@@ -187,9 +187,9 @@ __global__ void inkling2_target_attention_tiled(
 extern "C" int hipengine_inkling2_target_attention_tiled(
     const float* q, const float* k, const float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
-    const int32_t* row, const float* gain, int nq, int nk, int dim, int extent) {
+    const int32_t* row, const float* gain, int nq, int nk, int dim, int extent, hipStream_t stream) {
     if (nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 || extent <= 0) return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_target_attention_tiled<false>, dim3(nq), dim3(128), 0, 0,
+    hipLaunchKernelGGL(inkling2_target_attention_tiled<false>, dim3(nq), dim3(128), 0, stream,
                        q, k, v, bias, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim, extent,
                        nullptr, nullptr, 0, nullptr, 0);
     return hipGetLastError();
@@ -218,20 +218,21 @@ static int launch_attention_block(
     const float* q, float* k, float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
     const int32_t* row, const float* block_k, const float* block_v, const float* gain,
-    int nq, int nk, int dim, int extent, int rows, int capacity, const float* table, int rel_width) {
+    int nq, int nk, int dim, int extent, int rows, int capacity, const float* table, int rel_width,
+    hipStream_t stream) {
     if (nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 || extent <= 0 ||
         rows <= 0 || rows > 65535 || capacity <= 0) return hipErrorInvalidValue;
     if constexpr (TableBias) {
         if (!table || rel_width <= 0 || rel_width > 32) return hipErrorInvalidValue;
     }
     hipLaunchKernelGGL((inkling2_target_attention_tiled<true, ApplySigmoid, TableBias>), dim3(nq, rows), dim3(128),
-                       0, 0, q, k, v, bias, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim,
+                       0, stream, q, k, v, bias, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim,
                        extent, block_k, block_v, capacity, table, rel_width);
     const hipError_t status = hipGetLastError();
     if (status != hipSuccess) return status;
     const int width = nk * dim;
     const int committed = rows < capacity ? rows : capacity;
-    hipLaunchKernelGGL(inkling2_target_cache_commit_block, dim3(1 + (width - 1) / 256, committed), dim3(256), 0, 0,
+    hipLaunchKernelGGL(inkling2_target_cache_commit_block, dim3(1 + (width - 1) / 256, committed), dim3(256), 0, stream,
                        block_k, block_v, k, v, offsets, count, positions, evicted, row, capacity, width,
                        rows - committed);
     return hipGetLastError();
@@ -241,20 +242,20 @@ extern "C" int hipengine_inkling2_target_attention_block(
     const float* q, float* k, float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
     const int32_t* row, const float* block_k, const float* block_v, const float* gain,
-    int nq, int nk, int dim, int extent, int rows, int capacity) {
+    int nq, int nk, int dim, int extent, int rows, int capacity, hipStream_t stream) {
     return launch_attention_block<false, false>(q, k, v, bias, sink, out, offsets, count, positions, evicted,
                                                row, block_k, block_v, gain, nq, nk, dim, extent, rows, capacity,
-                                               nullptr, 0);
+                                               nullptr, 0, stream);
 }
 
 extern "C" int hipengine_inkling2_target_attention_block_sigmoid(
     const float* q, float* k, float* v, const float* bias, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
     const int32_t* row, const float* block_k, const float* block_v, const float* gate,
-    int nq, int nk, int dim, int extent, int rows, int capacity) {
+    int nq, int nk, int dim, int extent, int rows, int capacity, hipStream_t stream) {
     return launch_attention_block<true, false>(q, k, v, bias, sink, out, offsets, count, positions, evicted,
                                             row, block_k, block_v, gate, nq, nk, dim, extent, rows, capacity,
-                                            nullptr, 0);
+                                            nullptr, 0, stream);
 }
 
 // Relative bias comes from one score row per (query, head) and a lag table instead of a dense
@@ -263,19 +264,20 @@ extern "C" int hipengine_inkling2_target_attention_block_table_sigmoid(
     const float* q, float* k, float* v, const float* rel, const float* sink, float* out,
     const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
     const int32_t* row, const float* block_k, const float* block_v, const float* gate, const float* table,
-    int nq, int nk, int dim, int extent, int rows, int capacity, int rel_width) {
+    int nq, int nk, int dim, int extent, int rows, int capacity, int rel_width, hipStream_t stream) {
     return launch_attention_block<true, true>(q, k, v, rel, sink, out, offsets, count, positions, evicted,
                                               row, block_k, block_v, gate, nq, nk, dim, extent, rows, capacity,
-                                              table, rel_width);
+                                              table, rel_width, stream);
 }
 
 extern "C" int hipengine_inkling2_target_attention(const float* q, const float* k, const float* v,
                                                    const float* bias, const float* sink, float* out,
                                                    const int32_t* offsets, const int32_t* count,
                                                    const int32_t* positions, const uint8_t* evicted,
-                                                   const int32_t* row, const float* gain, int nq, int nk, int dim, int extent) {
+                                                   const int32_t* row, const float* gain, int nq, int nk, int dim, int extent,
+                                                   hipStream_t stream) {
     if (nq <= 0 || nk <= 0 || nq % nk || dim <= 0 || dim > 128 || extent <= 0) return hipErrorInvalidValue;
-    hipLaunchKernelGGL(inkling2_target_attention, dim3(nq), dim3(128), 0, 0,
+    hipLaunchKernelGGL(inkling2_target_attention, dim3(nq), dim3(128), 0, stream,
                        q, k, v, bias, sink, out, offsets, count, positions, evicted, row, gain, nq, nk, dim, extent);
     return hipGetLastError();
 }
