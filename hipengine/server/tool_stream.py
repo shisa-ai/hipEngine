@@ -32,7 +32,11 @@ class XMLToolStream:
         while self.pending:
             if self.state == 'text':
                 markers = ('<tool_call>', '<|im_end|>', '<|endoftext|>')
-                positions = [(self.pending.find(m), m) for m in markers if m in self.pending]
+                # Fallback final parsing treats the outer tool tags as
+                # case-insensitive, but template terminal markers stay exact.
+                sources = [(m, self.pending.lower() if m == '<tool_call>' else self.pending)
+                           for m in markers]
+                positions = [(source.find(m), m) for m, source in sources if m in source]
                 if positions:
                     pos, marker = min(positions)
                     if pos:
@@ -42,8 +46,8 @@ class XMLToolStream:
                     if marker == '<tool_call>':
                         self.state = 'function'
                     continue
-                hold = max((n for m in markers for n in range(1, min(len(m), len(self.pending)) + 1)
-                            if m.startswith(self.pending[-n:])), default=0)
+                hold = max((n for m, source in sources for n in range(1, min(len(m), len(source)) + 1)
+                            if m.startswith(source[-n:])), default=0)
                 emit = len(self.pending) - hold
                 if emit:
                     self.content += self.pending[:emit]
@@ -57,10 +61,10 @@ class XMLToolStream:
                     # buffered compatibility path, without fabricated deltas.
                     self.buffered = True
                     return
-                match = re.match(r'<function=([^<>\s]+)>', self.pending)
+                match = re.match(r'<function=([^<>\n]+)>', self.pending)
                 if match is None:
                     return
-                self.name = match[1]
+                self.name = match[1].strip()
                 if self.name not in self.names:
                     raise ValueError('unknown streamed tool name')
                 self.index += 1
@@ -76,10 +80,12 @@ class XMLToolStream:
                     self.state = 'end'
                     yield 'tool', self.index, '', '}'
                     continue
-                match = re.match(r'<parameter=([^<>\s]+)>', self.pending)
+                match = re.match(r'<parameter=([^<>\n]+)>', self.pending)
                 if match is None:
                     return
-                self.key = match[1]
+                self.key = match[1].strip()
+                if not self.key:
+                    raise ValueError('empty streamed tool parameter')
                 if self.key in self.keys:
                     raise ValueError('duplicate streamed tool parameter')
                 prefix = ',' if self.keys else ''
@@ -124,7 +130,7 @@ class XMLToolStream:
                 return
             if self.state == 'end':
                 self.pending = self.pending.lstrip()
-                if not self.pending.startswith('</tool_call>'):
+                if not self.pending.lower().startswith('</tool_call>'):
                     return
                 self.pending = self.pending[len('</tool_call>'):]
                 self.state = 'text'

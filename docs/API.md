@@ -2222,11 +2222,18 @@ explicit unavailable reasons otherwise, and a compact capability snapshot
 including sampler/MTP compatibility, tokenizer-dependent tool/reasoning
 controls, and cache/session support. Normal result-validation artifacts record
 affected choice indexes and finish metadata, not generated assistant text.
+Chat streams rejected by final tool validation or the streaming/final-parser
+consistency check also include `result.generated_text_chunks`: the model text
+chunks received before reasoning splitting and XML-to-JSON translation. This
+preserves source boundaries for parser debugging; it does not execute tools or
+retry the request. Errors raised earlier during generation do not include these
+chunks.
 
 The default `--replay-redaction hash` replaces every string value in the request
-JSON and compact sampler/agentic-control payload with SHA-256 and length
-metadata. `--replay-redaction none` stores raw strings and should only be used
-in local, non-sensitive debugging sessions.
+JSON, compact sampler/agentic-control payload, and generated text chunks with
+SHA-256 and length metadata. `--replay-redaction none` stores raw strings and
+should only be used in local, non-sensitive debugging sessions. Exact parser
+replay requires `none`; hashes alone cannot recover the model's XML.
 
 ## Metrics and live-loop observability
 

@@ -4425,3 +4425,163 @@ def test_render_chat_prompt_accepts_plain_message_mappings() -> None:
     assert render_chat_prompt([{"role": "user", "content": "hello"}]) == (
         "<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n"
     )
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('width', [1, 7, 10000])
+@pytest.mark.parametrize('variant', ['padded_parameter', 'padded_function', 'compact', 'outer_tag_case', 'duplicate', 'truncated'])
+def test_xml_tool_parser_parity_through_chat_endpoint(streaming, width, variant):
+    text = '<tool_call>\n<function=bash>\n<parameter=command>\necho live\n</parameter>\n</function>\n</tool_call>'
+    if variant == 'padded_parameter':
+        text = text.replace('parameter=command>', 'parameter= command \t>')
+    elif variant == 'padded_function':
+        text = text.replace('function=bash>', 'function= bash \t>')
+    elif variant == 'compact':
+        text = text.replace('>\n', '>').replace('\n<', '<')
+    elif variant == 'outer_tag_case':
+        text = text.replace('<tool_call>', '<ToOl_CaLl>').replace('</tool_call>', '</TOOL_CALL>')
+    elif variant == 'duplicate':
+        text = text.replace('</function>', '<parameter= command >\noverwritten\n</parameter>\n</function>')
+    else:
+        text = text.split('echo live')[0] + 'unfinished'
+    fake = FakeLLM(outputs=[text], stream_chunks=[text[i:i + width] for i in range(0, len(text), width)])
+    client = TestClient(create_app(ServerConfig(model='fake-path', served_model_name='fake-model'), llm=fake))
+    response = client.post('/v1/chat/completions', json={
+        'model': 'fake-model', 'messages': [{'role': 'user', 'content': 'run command'}],
+        'stream': streaming, 'chat_template_kwargs': {'enable_thinking': False},
+        'tools': [{'type': 'function', 'function': {'name': 'bash', 'strict': True, 'parameters': {
+            'type': 'object', 'properties': {'command': {'type': 'string'}}, 'required': ['command'],
+        }}}],
+    })
+    rejected = variant in {'duplicate', 'truncated'}
+    if streaming:
+        payloads = _sse_payloads(response.text)
+        if rejected:
+            assert any(payload.get('error') for payload in payloads)
+            assert not any(choice.get('finish_reason') in {'stop', 'tool_calls'}
+                           for payload in payloads for choice in payload.get('choices', []))
+        else:
+            assert not any(payload.get('error') for payload in payloads)
+            calls = [call for payload in payloads for choice in payload.get('choices', [])
+                     for call in choice.get('delta', {}).get('tool_calls', [])]
+            assert json.loads(''.join(call['function']['arguments'] for call in calls)) == {'command': 'echo live'}
+            assert payloads[-1]['choices'][0]['finish_reason'] == 'tool_calls'
+    else:
+        choice = response.json()['choices'][0]
+        if rejected:
+            assert choice['finish_details']['reason'] == 'invalid_tool_call'
+            assert not choice['message'].get('tool_calls')
+        else:
+            assert choice['finish_reason'] == 'tool_calls'
+            assert json.loads(choice['message']['tool_calls'][0]['function']['arguments']) == {'command': 'echo live'}
+
+
+@pytest.mark.parametrize('redaction', ['hash', 'none'])
+def test_xml_tool_stream_failure_replay_captures_generated_chunks_with_redaction(tmp_path, redaction):
+    chunks = ['<tool_call>\n<function=bash>\n<parameter=command>\n', 'sensitive-generated-command']
+    fake = FakeLLM(outputs=['unused'], stream_chunks=chunks)
+    client = TestClient(create_app(ServerConfig(
+        model='fake-path', served_model_name='fake-model',
+        replay_dir=str(tmp_path), replay_redaction=redaction,
+    ), llm=fake))
+    response = client.post('/v1/chat/completions', json={
+        'model': 'fake-model', 'messages': [{'role': 'user', 'content': 'run command'}],
+        'stream': True, 'chat_template_kwargs': {'enable_thinking': False},
+        'tools': [{'type': 'function', 'function': {'name': 'bash', 'parameters': {
+            'type': 'object', 'properties': {'command': {'type': 'string'}}, 'required': ['command'],
+        }}}],
+    })
+    assert any(payload.get('error', {}).get('code') == 'invalid_tool_call' for payload in _sse_payloads(response.text))
+    paths = list(tmp_path.glob('*.json'))
+    assert len(paths) == 1
+    artifact = json.loads(paths[0].read_text())
+    saved = artifact['result']['generated_text_chunks']
+    if redaction == 'none':
+        assert saved == chunks
+    else:
+        import hashlib
+        assert saved == [{'redacted': 'sha256', 'sha256': hashlib.sha256(chunk.encode()).hexdigest(), 'length': len(chunk)} for chunk in chunks]
+        assert 'sensitive-generated-command' not in paths[0].read_text()
+
+
+def test_xml_stream_mismatched_final_arguments_still_fail_closed(tmp_path, caplog):
+    from types import SimpleNamespace
+
+    text = '<tool_call>\n<function=bash>\n<parameter=command>\npwd\n</parameter>\n</function>\n</tool_call>'
+    fake = FakeLLM(outputs=['unused'], stream_chunks=[text])
+    fake.chat_tool_parser = SimpleNamespace(
+        name='test_disagreeing_parser',
+        parse=lambda text, **kwargs: SimpleNamespace(
+            content='', tool_calls=[SimpleNamespace(name='bash', arguments='{"command":"different"}')],
+            invalid_blocks=(),
+        ),
+    )
+    client = TestClient(create_app(ServerConfig(
+        model='fake-path', served_model_name='fake-model',
+        replay_dir=str(tmp_path), replay_redaction='none',
+    ), llm=fake))
+    response = client.post('/v1/chat/completions', json={
+        'model': 'fake-model', 'messages': [{'role': 'user', 'content': 'run command'}],
+        'stream': True, 'chat_template_kwargs': {'enable_thinking': False},
+        'tools': [{'type': 'function', 'function': {'name': 'bash', 'parameters': {
+            'type': 'object', 'properties': {'command': {'type': 'string'}}, 'required': ['command'],
+        }}}],
+    })
+    payloads = _sse_payloads(response.text)
+    assert any(payload.get('error', {}).get('code') == 'invalid_tool_call' for payload in payloads)
+    assert not any(choice.get('finish_reason') in {'stop', 'tool_calls'}
+                   for payload in payloads for choice in payload.get('choices', []))
+    assert 'parser_failed=False stream_state=text streamed_calls=1 parsed_calls=1' in caplog.text
+    assert json.loads(next(tmp_path.glob('*.json')).read_text())['result']['generated_text_chunks'] == [text]
+
+
+@pytest.mark.parametrize('prefix_count', [1, 3])
+@pytest.mark.parametrize('width', [1, 7, 10000])
+@pytest.mark.parametrize('tail', ['valid', 'malformed', 'unknown', 'mismatched_prefix'])
+def test_xml_then_json_tool_stream_reconciles_emitted_prefix_and_preserves_indexes(tmp_path, prefix_count, width, tail):
+    from types import SimpleNamespace
+
+    xml = '<tool_call>\n<function=bash>\n<parameter=command>\npwd\n</parameter>\n</function>\n</tool_call>'
+    legacy = '<tool_call>{"name":"bash","arguments":{"command":"echo buffered"}}</tool_call>'
+    if tail == 'malformed':
+        legacy = '<tool_call>{"name":"bash","arguments":'
+    elif tail == 'unknown':
+        legacy = legacy.replace('"bash"', '"unknown"')
+    text = '\n'.join([xml] * prefix_count + [legacy])
+    fake = FakeLLM(outputs=['unused'], stream_chunks=[text[i:i + width] for i in range(0, len(text), width)])
+    if tail == 'mismatched_prefix':
+        fake.chat_tool_parser = SimpleNamespace(
+            name='test_disagreeing_parser',
+            parse=lambda text, **kwargs: SimpleNamespace(content='', invalid_blocks=(), tool_calls=[
+                SimpleNamespace(name='bash', arguments='{"command":"changed-prefix"}'),
+                SimpleNamespace(name='bash', arguments='{"command":"echo buffered"}'),
+            ]),
+        )
+    client = TestClient(create_app(ServerConfig(
+        model='fake-path', served_model_name='fake-model',
+        replay_dir=str(tmp_path), replay_redaction='none',
+    ), llm=fake))
+    response = client.post('/v1/chat/completions', json={
+        'model': 'fake-model', 'messages': [{'role': 'user', 'content': 'run commands'}],
+        'stream': True, 'chat_template_kwargs': {'enable_thinking': False},
+        'tools': [{'type': 'function', 'function': {'name': 'bash', 'parameters': {
+            'type': 'object', 'properties': {'command': {'type': 'string'}}, 'required': ['command'],
+        }}}],
+    })
+    payloads = _sse_payloads(response.text)
+    if tail != 'valid':
+        assert any(payload.get('error', {}).get('code') == 'invalid_tool_call' for payload in payloads)
+        assert not any(choice.get('finish_reason') in {'stop', 'tool_calls'}
+                       for payload in payloads for choice in payload.get('choices', []))
+        assert json.loads(next(tmp_path.glob('*.json')).read_text())['result']['generated_text_chunks'] == fake.stream_chunks
+    else:
+        assert not any(payload.get('error') for payload in payloads)
+        calls = [call for payload in payloads for choice in payload.get('choices', [])
+                 for call in choice.get('delta', {}).get('tool_calls', [])]
+        assert {call['index'] for call in calls} == set(range(prefix_count + 1))
+        for index, command in enumerate(['pwd'] * prefix_count + ['echo buffered']):
+            fragments = [call for call in calls if call['index'] == index]
+            assert len({call['id'] for call in fragments}) == 1
+            assert sum('name' in call['function'] for call in fragments) == 1
+            assert json.loads(''.join(call['function']['arguments'] for call in fragments)) == {'command': command}
+        assert payloads[-1]['choices'][0]['finish_reason'] == 'tool_calls'

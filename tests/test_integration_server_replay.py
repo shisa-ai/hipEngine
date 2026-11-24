@@ -843,6 +843,13 @@ def test_replay_artifact_captures_streaming_agentic_result_validation_failure(tm
     assert artifact["request"]["path"] == "/v1/chat/completions"
     assert artifact["finish_details"] == _stateless_finish_details("tool_required_not_satisfied")
     assert artifact["error"]["code"] == "tool_required_not_satisfied"
-    assert "result" not in artifact
+    assert artifact["result"] == {
+        "type": "stream_error_output",
+        "generated_text_chunks": [{
+            "redacted": "sha256",
+            "sha256": hashlib.sha256(b"ordinary stream answer").hexdigest(),
+            "length": len("ordinary stream answer"),
+        }],
+    }
     assert "secret streaming tool task" not in serialized
     assert "ordinary stream answer" not in serialized

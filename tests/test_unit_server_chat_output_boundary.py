@@ -125,7 +125,9 @@ API_APPLICATION_NAMES = (
 RESULT_POLICY_NAMES = ("_find_marker", "_valid_tool_call_blocks")
 
 # sha256(ast.dump(node, include_attributes=False))[:16] captured from
-# ``hipengine/server/api.py`` before the move.
+# ``hipengine/server/api.py`` before the move. The two XML envelope entries
+# were re-pinned after the move by the streaming/final XML parity fix, which
+# accepts compact envelopes and rejects duplicate parameters.
 AST_HASHES = {
     "_CHAT_TEMPLATE_RESIDUE_MARKERS": "cdb982e8bdfac41b",
     "_CHAT_TEMPLATE_RESIDUE_ROLES": "c95b7d583eed8a80",
@@ -140,7 +142,7 @@ AST_HASHES = {
     "_TOOL_CALL_END_MARKER": "07e6d0f329e35148",
     "_TOOL_CALL_START_MARKER": "11794d34ec537426",
     "_ToolCallBlock": "d3ed65b566004f7a",
-    "_XML_FUNCTION_ENVELOPE_RE": "c6149bb4e255d887",
+    "_XML_FUNCTION_ENVELOPE_RE": "47d01cb0246c516f",
     "_XML_PARAMETER_RE": "36740f1c76dce624",
     "_classify_chat_length_phase": "d4e13ecead37c5b8",
     "_find_marker": "b24d9ef0237aa5c9",
@@ -152,7 +154,7 @@ AST_HASHES = {
     "_looks_like_partial_json": "db29cbfd7f4b898b",
     "_parse_chat_tool_calls": "4499bf74b1707bd3",
     "_parsed_tool_call_from_block_body": "cb2955b4f42969a5",
-    "_parsed_tool_call_from_function_xml": "2f4a6244f11ab789",
+    "_parsed_tool_call_from_function_xml": "217503da9a0deaec",
     "_parsed_tool_call_from_json": "7decb5f64b554148",
     "_parsed_tool_call_from_mapping": "fc670b2c2811fbda",
     "_split_reasoning": "89ffe8c56075c1d4",

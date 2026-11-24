@@ -389,7 +389,7 @@ def _parsed_tool_call_from_block_body(
 
 
 _XML_FUNCTION_ENVELOPE_RE = re.compile(
-    r"<function=(?P<name>[^<>\n]+?)>\s*\n(?P<body>.*?)</function>\s*\Z",
+    r"<function=(?P<name>[^<>\n]+?)>(?P<body>.*?)</function>\s*\Z",
     re.DOTALL,
 )
 _XML_PARAMETER_RE = re.compile(
@@ -427,7 +427,7 @@ def _parsed_tool_call_from_function_xml(
         if body[cursor : parameter.start()].strip():
             return None
         key = parameter.group("key").strip()
-        if not key:
+        if not key or key in arguments:
             return None
         raw_value = parameter.group("value")
         arguments[key] = _xml_parameter_value(

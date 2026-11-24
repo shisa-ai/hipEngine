@@ -1,0 +1,91 @@
+{
+  "schema": "hipengine.xml_tool_parser_replay.v1",
+  "baseline_commit": "428e920eb860aa33cd857d202df8861a936a1047",
+  "source_trial": "~/glm53f-vs-ds41f-vs-qw38fn/runs/local-gfx1100-int8-200k-20261028-v2/glm-ocr-milestone/qwen38-int8-200k-middle/solver/wire",
+  "source_sha256": {
+    "0011.request.json": "1a6ec304e0f8c77ef471466eef72d602e191ea2f098c60f31ceb5f778b964c52",
+    "0011.response.txt": "75d8b05bfd97cdd4a29bbd16dca86dd0fda69dff20c325efec480d09694af942"
+  },
+  "wire": {
+    "translated_call_count": 14,
+    "complete_json_arguments": 13,
+    "incomplete": [
+      {
+        "index": 13,
+        "name": "bash",
+        "arguments": "{"
+      }
+    ],
+    "finish_reasons": [
+      "error"
+    ],
+    "errors": [
+      "invalid_tool_call"
+    ]
+  },
+  "retention_limit": "The retained HTTP stream contains translated deltas, not original model XML or its source chunk boundaries. Original bytes cannot be replayed or uniquely attributed to malformed generation versus grammar disagreement.",
+  "reconstructed_completed_calls": {
+    "count": 13,
+    "input_kind": "Canonical XML reconstructed from retained JSON arguments; not original generation.",
+    "stream_and_final_equal_retained_arguments": true,
+    "chunk_widths": [
+      1,
+      2,
+      7,
+      3831
+    ]
+  },
+  "synthetic_baseline_reproduction": {
+    "input_kind": "13 canonical pwd calls plus a 14th with parameter=command followed by one space before the closing angle bracket. This is a counterexample, not recovered model output.",
+    "stream_state": "parameter",
+    "streamed_calls": 14,
+    "parsed_calls": 14,
+    "last_streamed_arguments": "{",
+    "matches_observed_signature": true
+  },
+  "conclusion": "The counters and wire ending do not prove incomplete model generation. A confirmed lexical disagreement reproduces them exactly. The original triggering bytes remain unknown. Regression tests repair padded-name and compact-envelope disagreements and reject duplicate normalized keys without bypassing final validation.",
+  "evaluation_retried": false,
+  "public_serving_check": {
+    "server": "bg-59",
+    "configured_context": 204800,
+    "kv_storage": "int8_per_token_head",
+    "http_status": 200,
+    "finish_reason": "tool_calls",
+    "tool": "report",
+    "arguments": {
+      "message": "parser-ok"
+    },
+    "tool_executed": false,
+    "evaluation_retried": false,
+    "request_sha256": "c677d4e5854d4e16e782516584231a77de7d268e531a9e264426085ef0d54a77",
+    "response_sha256": "0f2cab79e892660802d85ab5b458207ae2272f6d480856e99fa61b6dc04d8078",
+    "production_source_sha256": {
+      "hipengine/server/api.py": "0f143c0aad673eb0c92d3a3daf34baed6f11f0bc5b7507bbbca3a454fb5b0065",
+      "hipengine/server/tool_stream.py": "283f52918257177f2e73c531798e9fde534d4f2d8605021561742ff7d035f75c"
+    },
+    "limit": "Natural valid tool generation on the actual public GPU route. Padded names, mixed envelopes and failures are tested deterministically through the HTTP application, not induced by model sampling."
+  },
+  "validation": {
+    "affected_bundle_passed": 789,
+    "final_mixed_envelope_matrix_passed": 24,
+    "xml_unit_bundle_passed": 44,
+    "default_unit_suite_exit_code": 0,
+    "cpu_deterministic_gates": [
+      "compileall",
+      "check_fixtures",
+      "registry smoke",
+      "cpu-fixtures smoke",
+      "smoke-add-plan",
+      "test tiers",
+      "git diff --check"
+    ],
+    "documentation_gates": "all 4 passed; 46 existing front-matter warnings",
+    "independent_review": {
+      "evidence_audit_execution": "13ce2abf-96f9-4b71-b8dd-88ddbbd75bd5",
+      "candidate_review_execution": "2d04a09a-cdfa-42be-a460-c66ebeab1606",
+      "mixed_envelope_repair_review_execution": "633c31ee-b053-401e-a6bb-c89cbce2758e",
+      "remaining_blockers_in_reviewed_scope": 0
+    },
+    "final_normal_server_source_hashes_match_disk_and_launch": true
+  }
+}

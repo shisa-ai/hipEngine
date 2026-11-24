@@ -1006,9 +1006,19 @@ async def _maybe_write_stream_error_replay_artifact(
     finish_details: Mapping[str, Any] | None = None,
     extra: Mapping[str, Any] | None = None,
     engine: Any | None = None,
+    generated_text_chunks: Sequence[str] | None = None,
 ) -> None:
     if not config.replay_dir:
         return
+    result_payload = None
+    if generated_text_chunks is not None:
+        result_payload = {
+            "type": "stream_error_output",
+            "generated_text_chunks": _redact_replay_value(
+                list(generated_text_chunks),
+                redaction=_replay_redaction_mode(config.replay_redaction),
+            ),
+        }
     await _maybe_write_replay_artifact(
         config,
         request,
@@ -1022,6 +1032,7 @@ async def _maybe_write_stream_error_replay_artifact(
             extra=extra,
         ),
         engine=engine,
+        result_payload=result_payload,
     )
 
 
@@ -9923,16 +9934,17 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 finish_details=finish_details,
             )
             live_tool_mismatch = False
-            if live_tool_stream is not None and not live_tool_stream.buffered:
+            if live_tool_stream is not None and (not live_tool_stream.buffered or live_tool_calls):
                 try:
+                    final_calls = parsed.tool_calls[:len(live_tool_calls)] if live_tool_stream.buffered else parsed.tool_calls
                     live_tool_mismatch = (
-                        live_tool_stream.state != "text"
+                        (not live_tool_stream.buffered and live_tool_stream.state != "text")
                         or [(call.name, json.loads(call.arguments)) for call in live_tool_calls.values()]
-                        != [(call.name, json.loads(call.arguments)) for call in parsed.tool_calls]
+                        != [(call.name, json.loads(call.arguments)) for call in final_calls]
                     )
                 except ValueError:
                     live_tool_mismatch = True
-            if live_tool_stream is not None and not live_tool_stream.buffered and (tool_validation.failed or live_tool_mismatch):
+            if live_tool_stream is not None and (not live_tool_stream.buffered or live_tool_calls) and (tool_validation.failed or live_tool_mismatch):
                 # A partially streamed call must never end as a successful empty
                 # response. Clients may execute it only after tool_calls finish.
                 _LOGGER.warning("Tool stream validation failed: parser_failed=%s stream_state=%s streamed_calls=%d parsed_calls=%d",
@@ -9952,14 +9964,18 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     param=hard_error.param,
                     message=hard_error.message,
                 )
-                await write_error_artifact(
-                    hard_error.message,
+                await _maybe_write_stream_error_replay_artifact(
+                    config,
+                    raw_request,
+                    message=hard_error.message,
                     status_code=hard_error.status_code,
                     code=hard_error.code,
                     param=hard_error.param,
                     error_type=hard_error.error_type,
                     finish_details=hard_error.finish_details,
                     extra=hard_error.extra,
+                    engine=engine,
+                    generated_text_chunks=full_text,
                 )
                 yield _chat_stream_error(
                     response_id,
@@ -9992,13 +10008,19 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 },
                 engine=engine,
             )
+            tool_index_offset = 0
             if live_tool_stream is not None:
                 if live_tool_stream.buffered:
+                    tool_index_offset = len(live_tool_calls)
                     split = _split_reasoning(parsed.text, initially_open=parsed.reasoning_initially_open)
                     remainder = split.content.removeprefix(live_tool_stream.content)
                     if split.content.strip() == live_tool_stream.content.strip():
                         remainder = ""
-                    parsed = replace(parsed, text=remainder, reasoning_initially_open=False)
+                    parsed = replace(
+                        parsed, text=remainder,
+                        tool_calls=parsed.tool_calls[tool_index_offset:],
+                        reasoning_initially_open=False,
+                    )
                 else:
                     for event in live_tool_deltas(live_tool_stream.finish(), last_stream_chunk):
                         yield event
@@ -10010,6 +10032,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 config.model_id,
                 parsed,
                 stream_finish_reason,
+                tool_index_offset=tool_index_offset,
                 finish_details=finish_details,
                 done_tokens=final_tokens,
                 token_accounting=token_accounting,
@@ -17884,6 +17907,7 @@ def _chat_stream_parsed(
     finish_reason: str,
     *,
     index: int = 0,
+    tool_index_offset: int = 0,
     logprobs: Mapping[str, Any] | None = None,
     finish_details: Mapping[str, Any] | None = None,
     done_tokens: Mapping[str, int] | None = None,
@@ -17953,7 +17977,7 @@ def _chat_stream_parsed(
             routing=routing,
             phase=content_phase,
         )
-    for tool_index, call in enumerate(parsed.tool_calls):
+    for tool_index, call in enumerate(parsed.tool_calls, start=tool_index_offset):
         for chunk_index, argument_chunk in enumerate(tool_call_argument_chunks(call.arguments)):
             token_payload = (
                 token_accounting.observe("tool_call", argument_chunk)
