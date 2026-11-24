@@ -188,7 +188,9 @@ class Inkling2DeviceDense:
         weight, (m, n), bf16 = matrix
         if bf16:
             native_bf16(src, weight.ptr, dst, rows, n, m, runtime=self._runtime)
-        elif ndim == 1:
+        elif ndim == 1 or rows == 1:
+            # A one-row block is a matrix-vector product. The GEMM entry answers it with a
+            # 64x64-tile Tensile kernel: 143 us against 12 us for GEMV on gfx1100.
             self._blas.sgemv_rowmajor_nt(src, weight.ptr, dst, in_features=n, out_features=m)
         else:
             self._blas.sgemm_rowmajor_nt(src, weight.ptr, dst, rows=rows, in_features=n, out_features=m)
