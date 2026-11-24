@@ -102,7 +102,7 @@ Priorities are hypotheses tied to measured work, not promised speedups. **Start 
 
 ### 0. Make the baseline and comparison reproducible
 
-- **Deliverable:** check in a small ordinary-pairs driver and CPU tests for its timing/aggregation. The [paired HTTP worklog][pairs] describes an off-tree driver; a fresh checkout must not depend on it or its logs. Reuse [the decode marker script][trace] for attribution and [the known-answer check][tasks] for output sanity. Record the effective profile/manifest, actual variants and call counts, not just requested settings. The packed public route reports `execution_path=inkling2_gguf_packed_hip`; that distinguishes packed execution but does **not** identify a full resident block.
+- **Deliverable:** check in a small ordinary-pairs driver and CPU tests for its timing/aggregation. The [paired HTTP worklog][pairs] describes an off-tree driver; a fresh checkout must not depend on it or its logs. Reuse [the decode marker script][trace] for attribution, [the decode bench][decode-bench] for the decode-rate control and [the known-answer check][tasks] for output sanity. Record the effective profile/manifest, actual variants and call counts, not just requested settings. The packed public route reports `execution_path=inkling2_gguf_packed_hip`; that distinguishes packed execution but does **not** identify a full resident block.
 - For each request record input-token digest, generated IDs **when exposed**, first selected ID/time if available, first/last nonempty text (including reasoning), stream close, actual output count, finish reason, prefix-cache hits, draft state and request ID. A first text delta may represent more than one token. Report prompt-only throughput when a real prompt timer exists; otherwise label `input tokens / first-text latency` a proxy. Keep unprofiled wall measurements separate from marked kernel, copy and host timings.
 - Freeze matched inputs, engine versions, quant, tokenizer, capacity, KV types, clock/power and sampling. Run one engine at a time. Check host memory, swap/I/O pressure **and** GPU ownership; no other GPU process is not sufficient. Preserve timeouts and missing reverse runs as inconclusive. If the host is occupied, finish fixtures and schema tests off GPU. Do not silence a timeout, change the output cap, or switch hosts to complete a pair.
 - **Measure the dispatch and bandwidth ceilings** on each assigned GPU before choosing between fusion and replay; no model is needed. Time a chain of N dependent minimal kernels (N = 48, 1,300 and 2,000) launched from Python, from a captured HIP graph, and through the `aql` and `pm4` [submission transports](../../hipengine/core/pm4/transport.py). Record `HIP_FORCE_DEV_KERNARG` and try both values. Time one event record plus synchronize under default scheduling and under `hipDeviceScheduleSpin`. Then time each weight-streaming decode kernel alone at real shapes (Q8_0 at 2,304 and 3,072 wide, eight-route NVFP4 gate/up and down, the Q8_0 head) and report GB/s against the ~221 and 750–820 GB/s references. These numbers convert dispatch counts and bytes into the [decode budget](#decode-budget-what-looms-rate-requires); they are not model timings.
@@ -232,6 +232,9 @@ python3 scripts/check_lineage.py --kind kernel --diff stat
 .venv/bin/python scripts/inkling2_gguf_task_check.py "$MODEL" --backend "$BACKEND"
 .venv/bin/python scripts/inkling2_gguf_task_check.py "$MODEL" --backend "$BACKEND" --reverse
 
+# Decode-rate control: 128 outputs after 47, 575 and 2,057 prompt tokens. Compare output IDs before timings.
+.venv/bin/python scripts/inkling2_decode_bench.py "$MODEL" --backend "$BACKEND" --execution-profile fast --counts --output "$OUT/decode.json"
+
 # Profile decode only. Warm outside the profiler, including both shapes; never time JIT compilation.
 hipcc --version > "$OUT/compiler.txt"
 export HIPENGINE_COMPILER_VERSION_FILE="$OUT/compiler.txt" HIPENGINE_EXECUTION_PROFILE=fast
@@ -283,6 +286,7 @@ curl -fsS http://127.0.0.1:8000/v1/completions -H 'Content-Type: application/jso
 [verify-fail]: ../../worklog/entries/20261123T075641.882243Z-lhl-inkling2-mini-39db2a.md
 [trace]: ../../scripts/inkling2_gguf_decode_trace.py
 [tasks]: ../../scripts/inkling2_gguf_task_check.py
+[decode-bench]: ../../scripts/inkling2_decode_bench.py
 [matched]: ../../worklog/entries/20261124T143027.342689Z-lhl-inkling2-mini-5d86dc.md
 [four-row]: ../../worklog/entries/20261123T054727.109209Z-lhl-inkling2-mini-399b3e.md
 [rdna3-roofs]: ../RDNA3-TUNING-GUIDE.md
