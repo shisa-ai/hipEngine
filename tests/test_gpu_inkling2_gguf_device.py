@@ -143,7 +143,8 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
             with Inkling2GGUFDeviceProjections(weights, runtime=get_hip_runtime(), blas=blas, backend=backend,
                                                fast_experts=True) as fast:
                 assert fast.supports_device_activation
-                exchange = fast._transfer.exchange = Mock(wraps=fast._transfer.exchange)
+                uploads = fast._transfer.enqueue_upload = Mock(wraps=fast._transfer.enqueue_upload)
+                downloads = fast._transfer.download = Mock(wraps=fast._transfer.download)
                 for visit in (mapping.plan.visits[2], mapping.plan.visits[6]):
                     for shape in ((2,), (9, 2)):
                         ids = rng.integers(0, 2, shape, dtype=np.int32)
@@ -159,7 +160,8 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
                         activated = (a * np.tanh(gate / a) * _sigmoid(gate)) * (b * np.tanh(up / b))
                         want = owner.project_down_mixed(visit, ids, mix, activated)
                         consumer = Mock()
-                        exchange.reset_mock()
+                        uploads.reset_mock()
+                        downloads.reset_mock()
                         actual = fast.project_experts_mixed(visit, ids, mix, inp, transform_output=consumer)
                         # The activation is approximate; bound error through the
                         # down projection even when terms cancel in one output.
@@ -171,7 +173,8 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
 
                         ref_log, got_log = (log_probs(row) for row in (want, actual))
                         assert np.max(np.sum(np.exp(ref_log) * (ref_log - got_log), axis=-1)) <= 0.05
-                        exchange.assert_called_once()
+                        uploads.assert_called_once()
+                        downloads.assert_called_once()
                         consumer.assert_called_once()
                         assert consumer.call_args.args[1] == want.shape
                     requests = []
@@ -181,9 +184,11 @@ def test_inkling2_gguf_packed_projections_preserve_scale_and_route_order(legacy,
                         mix = rng.uniform(0, 1, ids.shape).astype(np.float32)
                         controls.append(fast.project_experts_mixed(visit, ids, mix, row))
                         requests.append((ids, mix, row, Mock()))
-                    exchange.reset_mock()
+                    uploads.reset_mock()
+                    downloads.reset_mock()
                     grouped = fast.project_experts_mixed_rows(visit, requests)
-                    exchange.assert_called_once()
+                    uploads.assert_called_once()
+                    downloads.assert_called_once()
                     ptrs = []
                     for output, control, (_, _, _, consumer) in zip(grouped, controls, requests, strict=True):
                         np.testing.assert_array_equal(output.view(np.uint32), control.view(np.uint32))
