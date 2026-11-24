@@ -371,12 +371,13 @@ class Inkling2GGUFText(Inkling2TextReference):
                         visit, hidden_ptr=normalized, out_ptr=at("m"), route=route,
                         transform_output=transform)
                 else:
-                    logits = projection.project_from_device(tensors[f"layers.{layer}.mlp.gate.weight"].name, rows,
-                                                            normalized)
-                    ids, mix = self._select_routes(visit, logits)
-                    projection.project_experts_mixed_rows(
-                        visit, ((ids, mix, blank, transform),),
-                        device=(normalized, at("m")))
+                    # No device-route kernel for this bank: stage the normalized rows on the host,
+                    # take the ordinary routed path, and upload the branch output back into the arena.
+                    normed = np.empty((rows, hidden), np.float32)
+                    projection.download(normalized, normed)
+                    routed = self.feed_forward(visit, normed[0] if rows == 1 else normed,
+                                               transform_output=transform)
+                    projection.upload(at("m"), np.ascontiguousarray(routed, dtype=np.float32))
                 row_add(a, at("m"), at("h"), rows, hidden)
             result = np.empty((rows, hidden), np.float32)
             projection.download(at("h"), result)

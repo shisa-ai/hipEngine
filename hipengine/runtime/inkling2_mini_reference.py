@@ -318,6 +318,22 @@ class Inkling2TextSession:
         return _rms(read_blocks(w.dense("attn_res.output_query"), blocks, h), c["rms_norm_eps"]) * w.dense("norm.weight")
 
     def _forward(self, h, width, *, logits, capture, last_only=False):
+        resident_decode = (
+            width == 1 and capture is None and self._undo is None
+            and getattr(self.model, "resident_decode", False)
+            and getattr(self.model, "resident_block", None) is not None
+        )
+        if resident_decode:
+            rows = h[None, :] if h.ndim == 1 else h
+            h_rows, block_rows = self.model.resident_block(
+                self, np.ascontiguousarray(rows, dtype=np.float32))
+            h = h_rows[0]
+            blocks = [block[0] for block in block_rows]
+            self.position += width
+            if not logits:
+                return None
+            hidden = self._output_hidden(h, blocks)
+            return self.model.cap_logits(self.model.project_logits(hidden))
         try:
             next(self._traverse(h, capture))
         except StopIteration as done:

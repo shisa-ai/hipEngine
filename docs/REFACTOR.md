@@ -1751,3 +1751,27 @@ with an evidence row, or removed and this entry closed. Validation: fast-profile
 (`LLM(..., execution_profile="fast")`) plus the per-layer device-vs-host route comparison used on
 2026-11-24 (0 selection mismatches, mix delta <= 4e-06 over 240 calls). Do not remove the flag
 while any caller still selects it explicitly.
+
+### R0527 — HIPENGINE_INKLING2_RESIDENT_DECODE opt-in
+
+Owner: `hipengine/runtime/inkling2_mini_reference.py` (`Inkling2TextSession._forward`) and
+`hipengine/runtime/inkling2_gguf.py` (`_resident_block`, previously uncalled).
+
+Scope: routes single-token greedy decode through the whole-token device-resident traversal
+(attention controllers, projections, expert FFN, residual updates inside one arena; the host sees
+only the final hidden row and the residual-stack blocks). Opt-in via
+`HIPENGINE_INKLING2_RESIDENT_DECODE=1`; default off. Falls back to the eager path whenever capture,
+undo/staging state, multi-row steps, or a missing device-route/resident capability are in play.
+Non-NVFP4 expert banks (Q4_K/Q8_0/Q5_K) bounce their normalized rows through the host and reuse the
+ordinary routed path; the device-route fast path covers NVFP4 banks.
+
+Measured 2026-11-24 (W7900, UD-Q4_K_M artifact, fast profile, device routes on): the 48-token
+greedy chain is token-identical to the eager path, but wall time is ~4% slower
+(2.76 s vs 2.66 s per 48 tokens) — the chain is launch-bound at rows=1. Kept because it is the
+correct substrate for graph capture; do not promote to default on throughput grounds.
+
+Done when: the resident traversal is wrapped in a captured HIP graph (or the per-visit launch
+count drops enough) that shows a measured win on the W7900 fast profile, or the path is removed
+along with this entry if graph capture is rejected. Validation: 48-token greedy token-identity
+check plus `tests/test_unit_inkling2_gguf_runtime.py`; expand the device-route coverage before any
+default flip.
