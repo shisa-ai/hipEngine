@@ -71,32 +71,33 @@ def test_row_kernels_match_the_host_normalization(rows, width):
             free(buffer, runtime=runtime)
 
 
-@pytest.mark.parametrize("rows,blocks,width", [(1, 18, 2304), (3, 18, 2304), (3, 2, 2304), (2, 9, 384)])
-def test_residual_read_matches_the_host_mix(rows, blocks, width):
+@pytest.mark.parametrize("rows,blocks,queries,width", [(1, 18, 1, 2304), (64, 18, 3, 2304), (64, 18, 4, 2304),
+                                                        (3, 2, 3, 2304), (2, 9, 1, 384)])
+def test_residual_read_matches_the_host_mix(rows, blocks, queries, width):
     runtime, arch = _device()
     from hipengine.core.hip import HipMemcpyKind
     from hipengine.core.memory import free, malloc
     from hipengine.kernels.hip_gfx1100.norm import inkling2_residual as res
 
     rng = np.random.default_rng(77)
-    query = rng.standard_normal((rows, width)).astype(np.float32)
-    values = rng.standard_normal((blocks, width)).astype(np.float32)
+    query = rng.standard_normal((queries, width)).astype(np.float32)
+    values = rng.standard_normal((blocks, rows, width)).astype(np.float32)
     source = malloc(query.nbytes, runtime=runtime)
     stack = malloc(values.nbytes, runtime=runtime)
-    out = malloc(query.nbytes, runtime=runtime)
+    out = malloc(rows * queries * width * 4, runtime=runtime)
     runtime.memcpy(source.ptr, query.ctypes.data, query.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
     runtime.memcpy(stack.ptr, values.ctypes.data, values.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
     try:
-        res.launch_residual_read(source.ptr, stack.ptr, out.ptr, rows, blocks, width, target_arch=arch)
+        res.launch_residual_read(source.ptr, stack.ptr, out.ptr, rows, blocks, queries, width, target_arch=arch)
         runtime.stream_synchronize(0)
-        actual = np.empty_like(query)
+        actual = np.empty((queries, rows, width), np.float32)
         runtime.memcpy(actual.ctypes.data, out.ptr, actual.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
-        expected = _mix_residual_rows(query, values)
+        expected = np.moveaxis(_mix_residual_rows(query, values.transpose(1, 0, 2)), -2, 0)
         np.testing.assert_allclose(actual, expected, rtol=3e-6, atol=2e-6)
         # The same stack and query must reproduce bit for bit.
-        res.launch_residual_read(source.ptr, stack.ptr, out.ptr, rows, blocks, width, target_arch=arch)
+        res.launch_residual_read(source.ptr, stack.ptr, out.ptr, rows, blocks, queries, width, target_arch=arch)
         runtime.stream_synchronize(0)
-        repeat = np.empty_like(query)
+        repeat = np.empty_like(actual)
         runtime.memcpy(repeat.ctypes.data, out.ptr, repeat.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
         np.testing.assert_array_equal(repeat.view(np.uint32), actual.view(np.uint32))
     finally:

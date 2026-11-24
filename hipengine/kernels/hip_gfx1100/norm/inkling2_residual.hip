@@ -64,16 +64,22 @@ __global__ void inkling2_row_add(const float* a, const float* b, float* out, int
     for (int j = threadIdx.x; j < width; j += blockDim.x) out[base + j] = a[base + j] + b[base + j];
 }
 
-// out = softmax((query . values) / sqrt(width)) . values over `blocks` rows, one block per query row.
-__global__ void inkling2_residual_read(const float* query, const float* values, float* out, int blocks, int width,
-                                       float divisor) {
+// out[i][r] = softmax((query[i] . values[b][r]) / sqrt(width)) . values[b][r] over `blocks` rows.
+// `values` is block-major: block b holds the `rows` normalized rows of `width` elements. The
+// output is query-major, so one query's `rows` results are contiguous.
+__global__ void inkling2_residual_read(const float* query, const float* values, float* out, int rows, int blocks,
+                                       int queries, int width, float divisor) {
     extern __shared__ float shared[];          // blocks scores, then the weights
     float* scores = shared;
     float* weights = shared + blocks;
-    const int row = blockIdx.x;
-    const float* q = query + size_t(row) * width;
+    const int index = blockIdx.x;
+    const int row = index / queries;
+    const int which = index % queries;
+    const float* q = query + size_t(which) * width;
+    const float* base = values + size_t(row) * width;
+    const size_t stride = size_t(rows) * width;
     for (int b = 0; b < blocks; ++b) {
-        const float* v = values + size_t(b) * width;
+        const float* v = base + size_t(b) * stride;
         float part = 0.0f;
         for (int j = threadIdx.x; j < width; j += blockDim.x) part += q[j] * v[j];
         // Every lane needs the total before the next block starts.
@@ -94,10 +100,10 @@ __global__ void inkling2_residual_read(const float* query, const float* values, 
         for (int b = 0; b < blocks; ++b) weights[b] = __fmul_rn(weights[b], inverse);
     }
     __syncthreads();
-    float* target = out + size_t(row) * width;
+    float* target = out + (size_t(which) * rows + row) * width;
     for (int j = threadIdx.x; j < width; j += blockDim.x) {
         float acc = 0.0f;
-        for (int b = 0; b < blocks; ++b) acc += __fmul_rn(weights[b], values[size_t(b) * width + j]);
+        for (int b = 0; b < blocks; ++b) acc += __fmul_rn(weights[b], base[size_t(b) * stride + j]);
         target[j] = acc;
     }
 }
@@ -122,11 +128,11 @@ extern "C" int hipengine_inkling2_row_add(const float* a, const float* b, float*
 }
 
 extern "C" int hipengine_inkling2_residual_read(const float* query, const float* values, float* out, int rows,
-                                                int blocks, int width) {
-    if (!query || !values || !out || rows <= 0 || rows > 65535 || blocks <= 0 || blocks > 64 ||
-        width <= 0 || width > 8192) return hipErrorInvalidValue;
+                                                int blocks, int queries, int width) {
+    if (!query || !values || !out || rows <= 0 || blocks <= 0 || blocks > 64 || queries <= 0 || queries > 8 ||
+        width <= 0 || width > 8192 || size_t(rows) * size_t(queries) > 65535) return hipErrorInvalidValue;
     const size_t shared = size_t(2 * blocks + kThreads / 32) * sizeof(float);
-    hipLaunchKernelGGL(inkling2_residual_read, dim3(rows), dim3(kThreads), shared, 0, query, values, out, blocks,
-                       width, 1.0f / sqrtf(float(width)));
+    hipLaunchKernelGGL(inkling2_residual_read, dim3(rows * queries), dim3(kThreads), shared, 0, query, values, out,
+                       rows, blocks, queries, width, 1.0f / sqrtf(float(width)));
     return hipGetLastError();
 }

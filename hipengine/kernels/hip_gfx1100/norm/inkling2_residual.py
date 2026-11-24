@@ -46,9 +46,14 @@ def launch_row_add(a, b, out, rows, width, *, target_arch=None):
     _check(_build("row_add", target_arch, 3, 2)(a, b, out, rows, width), "residual add")
 
 
-def launch_residual_read(query, values, out, rows, blocks, width, *, target_arch=None):
-    """out = softmax((query . values) / sqrt(width)) . values over `blocks` normalized rows."""
-    _check(_build("residual_read", target_arch, 3, 3)(query, values, out, rows, blocks, width), "residual read")
+def launch_residual_read(query, values, out, rows, blocks, queries, width, *, target_arch=None):
+    """out[i][r] = softmax((query[i] . values[b][r]) / sqrt(width)) . values[b][r].
+
+    `values` is block-major, so block `b` holds the `rows` normalized rows every block row
+    reads, and the result is query-major so one query's rows stay contiguous.
+    """
+    _check(_build("residual_read", target_arch, 3, 4)(query, values, out, rows, blocks, queries, width),
+           "residual read")
 
 
 def host_row_rms(x, out, rows, width, eps, **kwargs):
@@ -67,11 +72,11 @@ def host_row_add(a, b, out, rows, width, **kwargs):
     return (np.asarray(a, np.float32).reshape(rows, width) + np.asarray(b, np.float32).reshape(rows, width))
 
 
-def host_residual_read(query, values, out, rows, blocks, width, **kwargs):
+def host_residual_read(query, values, out, rows, blocks, queries, width, **kwargs):
     from hipengine.runtime.inkling2_mini_reference import _mix_residual_rows
 
-    query = np.asarray(query, np.float32).reshape(rows, width)
-    values = np.asarray(values, np.float32).reshape(blocks, width)
+    query = np.asarray(query, np.float32).reshape(queries, width)
+    values = np.asarray(values, np.float32).reshape(blocks, rows, width).transpose(1, 0, 2)
     return _mix_residual_rows(query, values)
 
 
