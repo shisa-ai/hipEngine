@@ -8779,6 +8779,13 @@ class Qwen35GGUFFullStackRunner:
             max_batch_size=max_batch_size,
         )
 
+    def _quiesce_failed_prefill_sessions(self) -> None:
+        # A session may already have been removed from a failed row's lease.
+        # Keep a strong owner here until successful session teardown, so outer
+        # cleanup cannot discard the launched work's shared dependencies.
+        for session in tuple(self.__dict__.get("_unquiesced_prefill_sessions", {}).values()):
+            session._drain_deferred_prefill_cleanup()
+
     def close(self) -> None:
         """Release the mapped host table and resident weights independently.
 
@@ -8789,6 +8796,9 @@ class Qwen35GGUFFullStackRunner:
         retried into a double release.
         """
 
+        self._quiesce_failed_prefill_sessions()
+        for session in tuple(self.__dict__.get("_unquiesced_prefill_sessions", {}).values()):
+            session.close()
         errors: list[BaseException] = []
         try:
             self._unmap_host_token_embedding()
@@ -13195,6 +13205,9 @@ class Qwen35GGUFResidentSession:
     prefill_flight_recorder_path: str | Path | None = None
     prefill_flight_recorder_granularity: str = "chunk"
     prefill_queue_drain: str = "none"
+    # Request-owned host callback. The serving adapter installs it only while
+    # executing this session; no device calls are made by the frontend.
+    prefill_control: Callable[[], None] | None = None
     kv_policy: FixedPagedKVPolicy | None = None
     kv_scale_dtype: str | DType = DType.FP16
     kv_scale_granularity: str = "per_token_head"
@@ -14877,6 +14890,7 @@ class Qwen35GGUFResidentSession:
         one_pass = (self.dms_decision_mode == "sidecar"
                     and source.config.prefill_selection_mode == "exact_budget")
         try:
+            self._check_prefill_control()
             if one_pass:
                 eligible = max(0, tokens - int(source.config.window_size) - 1)
                 ratio = int(source.config.target_compression_ratio)
@@ -14889,10 +14903,12 @@ class Qwen35GGUFResidentSession:
                     dms_capture=dms_capture,
                     record_gpu_stage_timings=record_gpu_stage_timings,
                 )
+                self._check_prefill_control()
                 decisions = dms_capture.finalize(stream=0)
                 positions = np.arange(tokens, dtype=np.int32)
                 max_live = 1
                 for layer in range(source.config.num_layers):
+                    self._check_prefill_control()
                     for head in range(source.config.num_kv_heads):
                         keep = build_dms_live_mask(
                             decisions[:, layer, head][None, :],
@@ -14944,6 +14960,7 @@ class Qwen35GGUFResidentSession:
                     )
                 finally:
                     self._dms_layer_outer_pack = None
+                self._check_prefill_control()
                 if one_pass:
                     decisions = dms_capture.finalize(stream=0)
                 if getattr(self, "_dms_cache_capture_tokens", None) is not None:
@@ -14973,8 +14990,10 @@ class Qwen35GGUFResidentSession:
                 )
             except BaseException:
                 # The backend stays locally owned until all cleanup succeeds.
+                # If device quiescence failed, cleanup is deferred to teardown
+                # rather than freeing storage that queued work still reads.
                 try:
-                    backend.close()
+                    self._cleanup_prefill_resource(backend.close)
                 except Exception:  # noqa: BLE001 - cleanup best effort
                     pass
                 raise
@@ -14983,8 +15002,8 @@ class Qwen35GGUFResidentSession:
             self.runner.__dict__["_dms_decode_owner"] = self
             return result
         finally:
-            dms_capture.close()
-            self._release_dms_prefill_oracle()
+            self._cleanup_prefill_resource(dms_capture.close)
+            self._cleanup_prefill_resource(self._release_dms_prefill_oracle)
 
     def _run_external_dms_full_attention(
         self,
@@ -18897,6 +18916,62 @@ class Qwen35GGUFResidentSession:
             ),
         )
 
+    def _synchronize_prefill_work(self, *, stream: int = 0) -> None:
+        runtime = self.runtime or get_hip_runtime()
+        try:
+            runtime.stream_synchronize(stream)
+        except BaseException:
+            self.__dict__.setdefault("_prefill_failed_streams", set()).add(stream)
+            owner = getattr(self, "runner", None)
+            if owner is not None:
+                owner.__dict__.setdefault("_unquiesced_prefill_sessions", {})[id(self)] = self
+            raise
+
+    def _cleanup_prefill_resource(self, cleanup: Callable[[], None], *, stream: int = 0) -> None:
+        """Retain owners if device quiescence failed; never free on that unwind."""
+        deferred = self.__dict__.setdefault("_deferred_prefill_cleanup", [])
+        if getattr(self, "_prefill_failed_streams", None):
+            if cleanup not in deferred:
+                deferred.append(cleanup)
+            return
+        if getattr(self, "prefill_control", None) is not None:
+            try:
+                self._synchronize_prefill_work(stream=stream)
+            except BaseException:
+                deferred.append(cleanup)
+                raise
+        cleanup()
+
+    def _drain_deferred_prefill_cleanup(self) -> None:
+        """Called before session teardown; a failed retry leaves owners intact."""
+        for stream in tuple(getattr(self, "_prefill_failed_streams", ())):
+            self._synchronize_prefill_work(stream=stream)
+        self.__dict__.pop("_prefill_failed_streams", None)
+        deferred = self.__dict__.get("_deferred_prefill_cleanup", [])
+        while deferred:
+            deferred[0]()
+            deferred.pop(0)
+
+    @contextmanager
+    def _closing_prefill_resource(self, resource):
+        try:
+            yield resource
+        finally:
+            self._cleanup_prefill_resource(resource.close)
+
+    def _check_prefill_control(self, *, stream: int = 0) -> None:
+        """Bound queued work at an existing boundary before checking stop intent.
+
+        Preserve chunk geometry and arithmetic order. A controlled request must
+        not enqueue an entire multi-minute prompt before noticing a disconnect.
+        Synchronizing first also makes exception cleanup safe for oracle and
+        compact-store buffers referenced by preceding launches.
+        """
+        control = getattr(self, "prefill_control", None)
+        if control is not None:
+            self._synchronize_prefill_work(stream=stream)
+            control()
+
     def _drain_prefill_queue(
         self,
         boundary: str,
@@ -19047,7 +19122,7 @@ class Qwen35GGUFResidentSession:
                     dms_capture.close()
                     raise
             with (
-                closing(dms_capture) if internal_dms_capture else nullcontext(),
+                self._closing_prefill_resource(dms_capture) if internal_dms_capture else nullcontext(),
                 q8_t16_two_wave_prefill_session(
                     _gguf_q8_t16_two_wave_prefill_applies(
                         getattr(self.runner, "backend", "hip_gfx1100"),
@@ -19424,6 +19499,7 @@ class Qwen35GGUFResidentSession:
                     )
                     gpu_stage_recorder.mark("prefill_chunk_metadata")
                     for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                        self._check_prefill_control(stream=stream)
                         layer_sequence = 0
                         if recorder is not None:
                             layer_sequence = recorder.submit(
@@ -19587,6 +19663,7 @@ class Qwen35GGUFResidentSession:
                 active_chunk_key: tuple[int, int, int] | None = None
                 active_bulk_scratch = None
                 for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
+                    self._check_prefill_control(stream=stream)
                     expert_sidecar = None
                     if (
                         self.use_expert_sidecar
@@ -19614,6 +19691,7 @@ class Qwen35GGUFResidentSession:
                         else:
                             raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
                         for start, end in layer_ranges:
+                            self._check_prefill_control(stream=stream)
                             chunk_rows = end - start
                             layer_sequence = 0
                             if recorder is not None:
@@ -19702,7 +19780,9 @@ class Qwen35GGUFResidentSession:
                         )
                     finally:
                         if expert_sidecar is not None:
-                            expert_sidecar.free(runtime=runtime)
+                            self._cleanup_prefill_resource(
+                                partial(expert_sidecar.free, runtime=runtime), stream=stream,
+                            )
                     if layer_type == FULL_ATTENTION and dms_pack_sink is not None:
                         # Layer-outer DMS pack: this layer's K/V is complete in
                         # the shared oracle pair; pack it into the compact store
@@ -19844,6 +19924,7 @@ class Qwen35GGUFResidentSession:
                     stream=stream,
                     capture_hidden_seed_fp32=False,
                 )
+            self._check_prefill_control(stream=stream)
             gpu_stage_recorder.mark("prefill_output_norm")
             self._last_target_hidden_ptr = int(last_src_ptr)
             self._position = rows
@@ -19878,8 +19959,8 @@ class Qwen35GGUFResidentSession:
                 recorder.complete(sample_sequence, stream=stream)
             return result
         finally:
-            gpu_stage_recorder.close()
-            self._release_int8_prefill_oracle_buffers()
+            self._cleanup_prefill_resource(gpu_stage_recorder.close, stream=stream)
+            self._cleanup_prefill_resource(self._release_int8_prefill_oracle_buffers, stream=stream)
 
     def _verify_token_embedding_reader_cached(self) -> GGUFReader:
         reader = self._verify_token_embedding_reader
@@ -30177,6 +30258,7 @@ class Qwen35GGUFResidentSession:
         return tuple(errors)
 
     def close(self) -> None:
+        self._drain_deferred_prefill_cleanup()
         runtime = self.runtime or get_hip_runtime()
         # Refuse an invalid close order before mutating any live resource. The
         # journal must release its borrowed producer buffers before its target.
@@ -30271,6 +30353,8 @@ class Qwen35GGUFResidentSession:
         memory = StateMemory(runtime, malloc, free)
         state.rollback.close(memory)
         state.canonical.close_scratch(memory)
+        if self.runner is not None:
+            self.runner.__dict__.get("_unquiesced_prefill_sessions", {}).pop(id(self), None)
         if self.runner is not None and self._owns_runner:
             self.runner.close()
         self.runner = None

@@ -982,7 +982,10 @@ class SubmitPollTextGenerator:
                     cancel_requested=cancel_requested,
                     sampling=PerRowSamplingParams.from_generation_request(request),
                 )
-            runner_request = replace(request, deadline_at=None)
+            runner_request = (
+                request if getattr(self._runner, "supports_cooperative_prefill_deadlines", False)
+                else replace(request, deadline_at=None)
+            )
             self._runner.register_batch(
                 (request_id,),
                 runner_request,
@@ -1155,14 +1158,13 @@ class SubmitPollTextGenerator:
                 request_ids.append(
                     self._loop.submit(prompt_row, max_new_tokens=row_limit)
                 )
-            # Native resident scheduling owns row deadlines/cancellation. Keep
-            # the original request on the submission, but prevent one row's
-            # expired deadline from raising through a shared physical model
-            # batch. The serial compatibility bridge keeps its prior direct
-            # token/deadline contract with the inner generator.
+            # Native shared batches leave deadlines to scheduler cancellation.
+            # A runner that explicitly owns single-row cooperative checkpoints
+            # may retain the original deadline through its backend call.
             runner_request = (
                 replace(normalized, deadline_at=None)
                 if self._has_resident_runner
+                and not getattr(self._runner, "supports_cooperative_prefill_deadlines", False)
                 else normalized
             )
             self._runner.register_batch(

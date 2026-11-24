@@ -1,0 +1,283 @@
+{
+  "schema_version": 1,
+  "kind": "control_ownership_validation",
+  "baseline_commit": "50a8dc4d1dc1e3da724f4548299fe53684fcf2e8",
+  "observed_probe_stage": "Before the final fault-only shared-weight teardown and reclaim-error escalation additions; those additions have separate fake-runtime regression coverage.",
+  "observed_review_candidate": "553c6250606b57885cd97fa4a2185c52e833b5b3c2ecb44fbde4317b12479287",
+  "observed_server_execution": "e7ac77e9-242f-4e47-91d5-0d605dc21101",
+  "successful_client_execution": "7d598299-2226-45cf-8d94-d21094987615",
+  "configuration": {
+    "model": "/mnt/nvme1/models/qwen38-27b/Qwen3.8-27B-Q4_K_M.gguf",
+    "dms_metadata": "/mnt/nvme1/models/qwen38-27b-dms/dms_metadata.json",
+    "backend": "hip_gfx1100",
+    "ROCR_VISIBLE_DEVICES": "1",
+    "max_context_tokens": 204800,
+    "max_active_requests": 1,
+    "kv_storage": "int8_per_token_head",
+    "kv_scale_dtype": "fp32",
+    "dms_prefill_mode": "layer_outer",
+    "prefix_cache": "off",
+    "speculative_mtp_serving": "off",
+    "listen": "127.0.0.1:8081"
+  },
+  "environment": {
+    "python": "3.12.9",
+    "platform": "Linux-7.1.3-2-cachyos-x86_64-with-glibc2.44"
+  },
+  "http_probe": {
+    "events": [
+      {
+        "kind": "prefill_enter",
+        "at": 9415323.943262303,
+        "sequence": 5,
+        "prompt_tokens": 5,
+        "runner": "Qwen35GGUFDMSModelRunner",
+        "linear_launches": 0,
+        "notified": false
+      },
+      {
+        "kind": "prefill_gpu_boundary",
+        "at": 9415323.966713022,
+        "sequence": 5,
+        "prompt_tokens": 5,
+        "runner": "Qwen35GGUFDMSModelRunner",
+        "linear_launches": 1,
+        "notified": true
+      },
+      {
+        "kind": "prefill_exit",
+        "at": 9415324.3506695,
+        "sequence": 5,
+        "prompt_tokens": 5,
+        "runner": "Qwen35GGUFDMSModelRunner",
+        "linear_launches": 96,
+        "notified": true,
+        "error": null
+      },
+      {
+        "kind": "prefill_enter",
+        "at": 9415324.826672804,
+        "sequence": 6,
+        "prompt_tokens": 17889,
+        "runner": "Qwen35GGUFDMSModelRunner",
+        "linear_launches": 0,
+        "notified": false
+      },
+      {
+        "kind": "prefill_gpu_boundary",
+        "at": 9415324.869976992,
+        "sequence": 6,
+        "prompt_tokens": 17889,
+        "runner": "Qwen35GGUFDMSModelRunner",
+        "linear_launches": 1,
+        "notified": true
+      },
+      {
+        "kind": "prefill_exit",
+        "at": 9415329.406300329,
+        "sequence": 6,
+        "prompt_tokens": 17889,
+        "runner": "Qwen35GGUFDMSModelRunner",
+        "linear_launches": 155,
+        "notified": true,
+        "error": "GenerationCancelled"
+      },
+      {
+        "kind": "prefill_enter",
+        "at": 9415329.81636438,
+        "sequence": 7,
+        "prompt_tokens": 5,
+        "runner": "Qwen35GGUFDMSModelRunner",
+        "linear_launches": 0,
+        "notified": false
+      },
+      {
+        "kind": "prefill_gpu_boundary",
+        "at": 9415329.839440323,
+        "sequence": 7,
+        "prompt_tokens": 5,
+        "runner": "Qwen35GGUFDMSModelRunner",
+        "linear_launches": 1,
+        "notified": true
+      },
+      {
+        "kind": "prefill_exit",
+        "at": 9415330.222497027,
+        "sequence": 7,
+        "prompt_tokens": 5,
+        "runner": "Qwen35GGUFDMSModelRunner",
+        "linear_launches": 96,
+        "notified": true,
+        "error": null
+      },
+      {
+        "kind": "prefill_enter",
+        "at": 9415330.697023332,
+        "sequence": 8,
+        "prompt_tokens": 17889,
+        "runner": "Qwen35GGUFDMSModelRunner",
+        "linear_launches": 0,
+        "notified": false
+      },
+      {
+        "kind": "prefill_gpu_boundary",
+        "at": 9415330.74010463,
+        "sequence": 8,
+        "prompt_tokens": 17889,
+        "runner": "Qwen35GGUFDMSModelRunner",
+        "linear_launches": 1,
+        "notified": true
+      },
+      {
+        "kind": "prefill_exit",
+        "at": 9415330.75550263,
+        "sequence": 8,
+        "prompt_tokens": 17889,
+        "runner": "Qwen35GGUFDMSModelRunner",
+        "linear_launches": 2,
+        "notified": true,
+        "error": "GenerationCancelled"
+      }
+    ],
+    "checks": [
+      {
+        "name": "initial_public_request",
+        "status": 200,
+        "text": " hot."
+      },
+      {
+        "name": "tokenize_during_gpu_prefill",
+        "elapsed_ms": 1.782,
+        "status": 200,
+        "at": 9415324.871879263,
+        "sequence": 6
+      },
+      {
+        "name": "count_tokens_during_gpu_prefill",
+        "elapsed_ms": 0.866,
+        "status": 200,
+        "at": 9415324.872748192,
+        "sequence": 6
+      },
+      {
+        "name": "detokenize_during_gpu_prefill",
+        "elapsed_ms": 0.769,
+        "status": 200,
+        "at": 9415324.87352046,
+        "sequence": 6
+      },
+      {
+        "name": "deadline_unwinds_real_prefill",
+        "elapsed_s": 5.028,
+        "response": {
+          "error": {
+            "message": "request deadline exceeded",
+            "type": "timeout_error",
+            "param": "timeout_ms",
+            "code": "deadline_exceeded",
+            "hipengine": {
+              "code": "deadline_exceeded",
+              "status_code": 408,
+              "retryable": true
+            },
+            "finish_details": {
+              "reason": "deadline_exceeded",
+              "deadline_exceeded": true
+            }
+          }
+        },
+        "prefill_exit": {
+          "kind": "prefill_exit",
+          "at": 9415329.406300329,
+          "sequence": 6,
+          "prompt_tokens": 17889,
+          "runner": "Qwen35GGUFDMSModelRunner",
+          "linear_launches": 155,
+          "notified": true,
+          "error": "GenerationCancelled"
+        }
+      },
+      {
+        "name": "request_after_deadline",
+        "status": 200,
+        "text": " hot."
+      },
+      {
+        "name": "disconnect_unwinds_real_prefill",
+        "elapsed_s": 0.015,
+        "prefill_exit": {
+          "kind": "prefill_exit",
+          "at": 9415330.75550263,
+          "sequence": 8,
+          "prompt_tokens": 17889,
+          "runner": "Qwen35GGUFDMSModelRunner",
+          "linear_launches": 2,
+          "notified": true,
+          "error": "GenerationCancelled"
+        }
+      },
+      {
+        "name": "request_after_disconnect",
+        "status": 200,
+        "text": " hot."
+      },
+      {
+        "name": "final_readiness",
+        "status": 200
+      }
+    ]
+  },
+  "validation_sources": {
+    "hipengine_longop_observed_server.py": {
+      "sha256": "6202b3cc73297313fddcb22e9c16d81f06cdeb78f8b9edced4a4691b84e0b5d6",
+      "source": "\"\"\"Validation-only observer; run the unchanged public serve CLI with GPU checkpoints.\"\"\"\nimport json\nimport socket\nimport sys\nimport time\nfrom functools import wraps\n\nsys.path.insert(0, '/home/lhl/hipEngine-main')\nfrom hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner\nfrom hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession, Qwen35GGUFFullStackRunner\n\nobserver = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)\nobserver.setblocking(False)\ncurrent = None\nsequence = 0\n\n\ndef emit(kind, **fields):\n    message = {'kind': kind, 'at': time.monotonic(), **fields}\n    print('CONTROL_PROBE ' + json.dumps(message), flush=True)\n    try:\n        observer.sendto(json.dumps(message).encode(), '/tmp/hipengine-control-observer.sock')\n    except OSError:\n        pass\n\n\ndef observe_prefill(original):\n    @wraps(original)\n    def prefill(self, row, *args, **kwargs):\n        global current, sequence\n        sequence += 1\n        current = {'sequence': sequence, 'prompt_tokens': len(row.prompt_ids),\n                   'runner': type(self).__name__, 'linear_launches': 0, 'notified': False}\n        emit('prefill_enter', **current)\n        try:\n            result = original(self, row, *args, **kwargs)\n        except BaseException as exc:\n            emit('prefill_exit', **current, error=type(exc).__name__)\n            raise\n        else:\n            emit('prefill_exit', **current, error=None)\n            return result\n        finally:\n            current = None\n    return prefill\n\n\noriginal_linear = Qwen35GGUFFullStackRunner._run_linear_attention_prefill_layer_rows\n@wraps(original_linear)\ndef linear(self, *args, **kwargs):\n    result = original_linear(self, *args, **kwargs)\n    if current is not None:\n        current['linear_launches'] += 1\n    return result\n\n\noriginal_check = Qwen35GGUFResidentSession._check_prefill_control\n@wraps(original_check)\ndef check(self, *args, **kwargs):\n    result = original_check(self, *args, **kwargs)\n    if current is not None and current['linear_launches'] and not current['notified']:\n        current['notified'] = True\n        emit('prefill_gpu_boundary', **current)\n    return result\n\n\nQwen35GGUFFullStackRunner._run_linear_attention_prefill_layer_rows = linear\nQwen35GGUFResidentSession._check_prefill_control = check\nfor method in ('_prefill_native_row', '_prefill_sampled_row'):\n    setattr(Qwen35GGUFResidentModelRunner, method,\n            observe_prefill(getattr(Qwen35GGUFResidentModelRunner, method)))\nfrom hipengine.cli import main\nraise SystemExit(main())\n"
+    },
+    "hipengine_longop_http_probe.py": {
+      "sha256": "70bb5eb7061931367fa997116c06a53550f02d27f9fe843e929d9c4ceb4596d8",
+      "source": "\"\"\"Bounded public HTTP checks, synchronized to observed real GPU prefill work.\"\"\"\nimport asyncio\nimport contextlib\nimport json\nfrom pathlib import Path\nimport socket\nimport time\n\nimport httpx\n\nBASE = 'http://127.0.0.1:8081'\nMODEL = 'qwen38-27b-dms'\nPATH = Path('/tmp/hipengine-control-observer.sock')\nREPORT = Path('/tmp/hipengine-longop-http-result.json')\nLONG = '\\n'.join(f'Record {i}: the patient engineer checks all fields before returning the result.' for i in range(1000))\n\n\nasync def main():\n    PATH.unlink(missing_ok=True)\n    observer = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)\n    observer.bind(str(PATH))\n    observer.setblocking(False)\n    loop = asyncio.get_running_loop()\n    evidence = {'events': [], 'checks': []}\n\n    async def event(kind, sequence=None):\n        for _ in range(50):\n            packet = await asyncio.wait_for(loop.sock_recv(observer, 16384), 30)\n            item = json.loads(packet)\n            evidence['events'].append(item)\n            if (item['kind'] == kind and item.get('prompt_tokens', 0) > 1000\n                    and (sequence is None or item['sequence'] == sequence)):\n                return item\n        raise AssertionError(f'No matching event: {kind} {sequence}')\n\n    async with httpx.AsyncClient(base_url=BASE, timeout=60) as client:\n        async def post(prompt, **kwargs):\n            return await client.post('/v1/completions', json={\n                'model': MODEL, 'prompt': prompt, 'max_tokens': 2, 'temperature': 0,\n                **kwargs,\n            })\n\n        async def success(label):\n            response = await post('The opposite of cold is')\n            assert response.status_code == 200, response.text\n            assert response.json()['choices']\n            evidence['checks'].append({'name': label, 'status': response.status_code,\n                                       'text': response.json()['choices'][0]['text']})\n\n        await success('initial_public_request')\n        started = time.monotonic()\n        pending = asyncio.create_task(post(LONG, timeout_ms=5000))\n        try:\n            boundary = await event('prefill_gpu_boundary')\n            assert not pending.done(), 'request finished before concurrent tokenization'\n            for endpoint, payload in (\n                ('tokenize', {'text': 'concurrent tokenizer probe'}),\n                ('count_tokens', {'text': 'concurrent count probe'}),\n                ('detokenize', {'token_ids': [1, 2]}),\n            ):\n                t = time.monotonic()\n                response = await asyncio.wait_for(client.post(\n                    '/v1/hipengine/' + endpoint, json=payload,\n                ), 2)\n                assert response.status_code == 200, response.text\n                assert not pending.done(), 'long request ended during tokenizer checks'\n                evidence['checks'].append({'name': endpoint + '_during_gpu_prefill',\n                    'elapsed_ms': round((time.monotonic() - t) * 1000, 3),\n                    'status': response.status_code, 'at': time.monotonic(),\n                    'sequence': boundary['sequence']})\n            response = await asyncio.wait_for(pending, 30)\n            assert response.status_code == 408, response.text\n            assert response.json()['error']['code'] == 'deadline_exceeded', response.text\n            exited = await event('prefill_exit', boundary['sequence'])\n            assert exited['error'] in ('GenerationDeadlineExceeded', 'GenerationCancelled'), exited\n            evidence['checks'].append({'name': 'deadline_unwinds_real_prefill',\n                'elapsed_s': round(time.monotonic() - started, 3),\n                'response': response.json(), 'prefill_exit': exited})\n        finally:\n            if not pending.done():\n                pending.cancel()\n                with contextlib.suppress(asyncio.CancelledError):\n                    await pending\n        await success('request_after_deadline')\n\n        request = client.build_request('POST', '/v1/completions', json={\n            'model': MODEL, 'prompt': LONG, 'max_tokens': 128,\n            'temperature': 0, 'stream': True, 'timeout_ms': 30000,\n        })\n        stream = await client.send(request, stream=True)\n        assert stream.status_code == 200\n        try:\n            boundary = await event('prefill_gpu_boundary')\n            disconnected = time.monotonic()\n        finally:\n            await stream.aclose()\n        exited = await event('prefill_exit', boundary['sequence'])\n        assert exited['error'] == 'GenerationCancelled', exited\n        evidence['checks'].append({'name': 'disconnect_unwinds_real_prefill',\n            'elapsed_s': round(exited['at'] - disconnected, 3), 'prefill_exit': exited})\n        await success('request_after_disconnect')\n        ready = await client.get('/ready')\n        assert ready.status_code == 200, ready.text\n        evidence['checks'].append({'name': 'final_readiness', 'status': ready.status_code})\n    observer.close()\n    PATH.unlink(missing_ok=True)\n    REPORT.write_text(json.dumps(evidence, indent=2) + '\\n')\n    print(json.dumps(evidence, indent=2), flush=True)\n\n\nasyncio.run(main())\n"
+    }
+  },
+  "final_production_sources": {
+    "hipengine/generation/deadline.py": "3d88eb2acaadaa363f68b22d4d67dc3def4357098f010ed0956e7bc514b10f5b",
+    "hipengine/generation/engine_loop.py": "c5ea9afd9d8eeeb9b18e07bdf890b538ae966469d3e56b0827e887a3efc49513",
+    "hipengine/generation/engine_service.py": "0ba0935863115e372e119e25facdba4f9ac6d20f9fe60d7ea7f6010f8fb20386",
+    "hipengine/generation/qwen35_gguf.py": "ef07c5c32fa32785bda54143a174230a9cfca5949533f27089d7a049e2bc6cb2",
+    "hipengine/generation/qwen35_gguf_dms.py": "b35c5ca60c73ec538be0428af633a6f9edac3903c506e1991ce24cb279f2d5f3",
+    "hipengine/runtime/qwen35_gguf_runner.py": "7cb0082767ccf692e6187521f898b1e881b30daad6e63b7720ec8a780e058725"
+  },
+  "final_normal_server": {
+    "execution": "14ebb0fe-aca3-436a-a540-dae7702db4e3",
+    "status": "ready",
+    "observation_wrappers": false,
+    "source_hashes_match_launch_and_disk": true,
+    "readiness_http_status": 200,
+    "completion_http_status": 200,
+    "completion_text": " hot.",
+    "configured_context": 204800,
+    "requested_storage": "int8_per_token_head"
+  },
+  "limits": [
+    "One observed 17889-token prompt, not a full-context capacity or throughput claim.",
+    "Observation wrappers record real public prefill entry, an existing drained boundary after actual GPU layer work, and exit; they do not change chunk geometry or arithmetic.",
+    "The initial client run failed because its assertion checked error.type instead of documented error.code. The corrected client passed without a production change.",
+    "No hardware failure was injected. HIP synchronization and reclamation failure paths use deterministic fake-runtime tests.",
+    "No evaluation campaign, full-logit parity gate, or generalized tokenizer stress test was run."
+  ],
+  "cpu_validation": {
+    "default_unit_suite_exit_code": 0,
+    "final_affected_bundle": {
+      "passed": 200,
+      "failed": 0
+    },
+    "deterministic_gates": [
+      "compileall",
+      "check_fixtures",
+      "registry smoke",
+      "CPU fixture smoke",
+      "smoke-add-plan",
+      "test tiers",
+      "git diff --check"
+    ],
+    "actual_hardware_fault_injected": false
+  }
+}

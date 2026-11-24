@@ -17,7 +17,7 @@ from collections import Counter, deque
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from types import SimpleNamespace
-from functools import wraps
+from functools import partial, wraps
 from pathlib import Path
 from typing import Any, ClassVar, Iterator, Mapping, Sequence
 
@@ -53,7 +53,9 @@ from hipengine.generation.packed_decode_ownership import (
     flush_packed_decode_owners_if_chunk_changed,
 )
 from hipengine.generation.constraints import token_sequence_state_for_tokens
-from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.deadline import (
+    raise_if_generation_deadline_expired, raise_if_generation_stop_requested,
+)
 from hipengine.speculative.weight_uploads import WeightUploadCache
 from hipengine.generation.engine_loop import (
     ExecutionFailure,
@@ -3781,6 +3783,9 @@ class Qwen35GGUFBringupGenerator:
 
         if bool(getattr(self, "_closed", False)):
             return
+        quiesce = getattr(getattr(self, "_shared_runner", None), "_quiesce_failed_prefill_sessions", None)
+        if callable(quiesce):
+            quiesce()
         self._closed = True
         self._ensure_shared_pools()
         with self._shared_session_pool_lock:
@@ -3956,6 +3961,10 @@ class Qwen35GGUFBringupGenerator:
                 session.prefill_config or PrefillConfig(),
                 attn_aotriton_min_tokens=int(aotriton_min_tokens),
             )
+
+    # Tokenizer construction finishes in __post_init__; encode/decode read only
+    # CPU vocabulary/BPE state and may run while the device driver is occupied.
+    supports_thread_safe_tokenization = True
 
     def tokenize(self, text: str) -> tuple[int, ...]:
         return tuple(int(token) for token in self.tokenizer.encode(str(text)))
@@ -10431,6 +10440,9 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
     def close(self) -> None:
         if self._closed:
             return
+        quiesce = getattr(getattr(self, "_shared_runner", None), "_quiesce_failed_prefill_sessions", None)
+        if callable(quiesce):
+            quiesce()
         self._closed = True
         error: BaseException | None = None
         with hip_target_arch_environment(self.generator.target_arch):
@@ -10832,7 +10844,30 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
             raise RuntimeError("GGUF MTP2 streaming prompt adapter disappeared")
         adapter.finish_prompt_streaming(ids, success=bool(success), stream=int(stream))
 
+    @property
+    def supports_cooperative_prefill_deadlines(self) -> bool:
+        # DMS executes one owned row at a time and attributes partial mutations
+        # before entering the backend. Dense shared physical batches must keep
+        # relying on scheduler cancellation rather than per-row exceptions.
+        return bool(getattr(self.generator, "dms_metadata_path", None))
+
+    @contextmanager
+    def _prefill_request_control(self, row):
+        raise_if_generation_stop_requested(row.request)
+        row.lease = row.lease or self._acquire_lease()
+        session = row.lease.session
+        previous_control = getattr(session, "prefill_control", None)
+        session.prefill_control = partial(raise_if_generation_stop_requested, row.request)
+        try:
+            yield
+        finally:
+            session.prefill_control = previous_control
+
     def _prefill_dms_row(self, row: _GGUFResidentLoopRow) -> None:
+        with self._prefill_request_control(row):
+            self._prefill_dms_row_controlled(row)
+
+    def _prefill_dms_row_controlled(self, row: _GGUFResidentLoopRow) -> None:
         raise_if_generation_deadline_expired(row.request)
         row.lease = row.lease or self._acquire_lease()
         session = row.lease.session
@@ -10913,11 +10948,13 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
                     **({"target_hidden_chunk_sink": sink,
                         "target_hidden_request_id": row.request_id} if sink is not None else {}),
                 )
+                session._check_prefill_control()
                 if cache_eligible:
                     from hipengine.runtime.dms_prefix import capture_prompt
                     captured = capture_prompt(
                         session, row.prompt_ids, result, sampled=bool(row.native_sampled)
                     )
+            session._check_prefill_control()
         except BaseException:
             self._finish_mtp2_prompt_streaming((row,), sinks, success=False)
             raise
@@ -11122,6 +11159,8 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         lease = row.lease
         if lease is None:
             raise RuntimeError("GGUF sampled prefill finished without a session lease")
+        if getattr(lease.session, "prefill_control", None) is not None:
+            lease.session._check_prefill_control()
         sampling_request, sampling_state = self._prepare_sampled_prefill(row)
         if native_sample is None:
             if row.native_sampler:
@@ -11925,6 +11964,8 @@ class Qwen35GGUFResidentModelRunner(StagedAdapterDelegation):
         lease = row.lease
         if lease is None:
             raise RuntimeError("GGUF resident prefill finished without a session lease")
+        if getattr(lease.session, "prefill_control", None) is not None:
+            lease.session._check_prefill_control()
         token = int(getattr(result, "token_id"))
         vocab_size = int(
             getattr(getattr(self, "_shared_runner", None), "vocab_size", 0) or 0

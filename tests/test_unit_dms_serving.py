@@ -105,6 +105,7 @@ def test_dms_ar_prefill_does_not_pass_a_hidden_sink_request_id():
 
     calls = []
     session = SimpleNamespace(prefill=lambda tokens, **kwargs: calls.append(kwargs) or SimpleNamespace(token_id=42))
+    session._check_prefill_control = lambda: session.prefill_control()
     runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
     runner._prefix_cache_mode = "off"
     runner._acquire_lease = lambda: SimpleNamespace(session=session)
@@ -144,6 +145,7 @@ def test_dms_ar_cache_hit_restores_state_instead_of_calling_prefill(monkeypatch)
     from hipengine.runtime import dms_prefix
 
     session = SimpleNamespace(prefill=lambda *a, **k: pytest.fail("cache hit ran prefill"))
+    session._check_prefill_control = lambda: session.prefill_control()
     snapshot = SimpleNamespace(matches=lambda *a: True, nbytes=123, tokens=(1, 2, 3))
     restored = []
     monkeypatch.setattr(dms_prefix, "restore_prompt",

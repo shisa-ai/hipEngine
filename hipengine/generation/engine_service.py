@@ -10,7 +10,7 @@ from collections.abc import Mapping
 import time
 import traceback
 from dataclasses import dataclass, field, replace
-from typing import Any, Iterator, Sequence
+from typing import Any, Callable, Iterator, Sequence
 
 from hipengine.generation.concurrency2 import (
     BlockingOutputCollector,
@@ -20,7 +20,9 @@ from hipengine.generation.concurrency2 import (
     StreamingOutputCollector,
     stream_mailbox_bound,
 )
-from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
+from hipengine.generation.deadline import (
+    GenerationCancellationToken, GenerationCancelled, generation_deadline_expired,
+)
 from hipengine.generation.engine_loop import (
     EngineLoopEvent,
     GenerationAdmissionRejected,
@@ -75,6 +77,44 @@ class EngineCommandTimeout(TimeoutError):
     be answered as a non-retryable ``internal_error`` and blame the client's
     request for a stalled server.
     """
+
+
+class _ChildCancellationToken(GenerationCancellationToken):
+    """Keep handle cancellation local while observing its parent's stop intent."""
+
+    def __init__(self, parent: Any) -> None:
+        super().__init__()
+        self._parent = parent
+
+    @property
+    def cancel_requested(self) -> bool:
+        return super().cancel_requested or bool(getattr(
+            self._parent, "cancel_requested", getattr(self._parent, "cancelled", False),
+        ))
+
+    @property
+    def cancelled(self) -> bool:
+        return super().cancelled or bool(getattr(self._parent, "cancelled", False))
+
+    @property
+    def finish_details(self) -> FinishDetails:
+        if super().cancel_requested or super().cancelled:
+            return super().finish_details
+        return FinishDetails.from_value(getattr(self._parent, "finish_details", None))
+
+    def set_cancel_dispatch(self, dispatch: Callable[[FinishDetails], None]) -> None:
+        super().set_cancel_dispatch(dispatch)
+        register = getattr(self._parent, "set_cancel_dispatch", None)
+        if callable(register):
+            register(dispatch)
+
+    def clear_cancel_dispatch(self, dispatch: Callable[[FinishDetails], None]) -> None:
+        super().clear_cancel_dispatch(dispatch)
+        # The parent acknowledges its stop only when its final registered child
+        # is reclaimed. Explicit cancellation of this child does not cancel it.
+        unregister = getattr(self._parent, "clear_cancel_dispatch", None)
+        if callable(unregister):
+            unregister(dispatch)
 
 
 @dataclass(slots=True)
@@ -246,6 +286,13 @@ class EngineService:
         self._buffer_speculative_stream = (
             isinstance(capabilities, Mapping)
             and capabilities.get("resident_streaming_mode", capabilities.get("streaming_mode")) == "buffered_public"
+        )
+        # This adapter capability promises these methods use only initialized,
+        # immutable CPU tokenizer state, not model/device/session ownership.
+        self._frontend_controls = (
+            {name: getattr(driver, name) for name in ("tokenize", "count_tokens", "detokenize")}
+            if getattr(driver, "supports_thread_safe_tokenization", False)
+            else {}
         )
         self._canonical_token_events = bool(
             getattr(driver, "canonical_token_events", True)
@@ -541,6 +588,16 @@ class EngineService:
         return tuple(EngineServiceHandle(self, state) for state in states)
 
     def cancel(self, service_request_id: int, *, reason: str = "cancel") -> bool:
+        # Publish intent immediately; only the driver may reclaim or complete a
+        # row. Runtime checkpoints can observe intent while poll is still busy.
+        state = self._states_by_service_id.get(int(service_request_id))
+        if state is not None and not state.terminal:
+            token = state.request.cancellation_token
+            if token is not None:
+                token.cancel(FinishDetails(
+                    reason="deadline_exceeded" if reason == "timeout" else "cancelled",
+                    deadline_exceeded=reason == "timeout", cancelled=reason != "timeout",
+                ))
         response = _CommandResponse()
         self._enqueue(
             _ServiceCommand(
@@ -856,6 +913,10 @@ class EngineService:
     ) -> _ChildState:
         if len(request.prompts) != 1:
             raise ValueError("one engine child requires exactly one prompt")
+        request = replace(request, cancellation_token=(
+            GenerationCancellationToken() if request.cancellation_token is None
+            else _ChildCancellationToken(request.cancellation_token)
+        ))
         service_request_id = self._allocate_service_request_id()
         collector: OutputCollector
         if streaming:
@@ -920,6 +981,12 @@ class EngineService:
             ) from exc
 
     def _control(self, method_name: str, *args: Any, **kwargs: Any) -> Any:
+        frontend = self._frontend_controls.get(method_name)
+        if frontend is not None:
+            with self._lifecycle_lock:
+                if self._closing or self._closed:
+                    raise self._closed_service_error()
+            return frontend(*args, **kwargs)
         if threading.get_ident() == self._driver_thread_id:
             return getattr(self._driver, method_name)(*args, **kwargs)
         response = _CommandResponse()
@@ -1019,7 +1086,7 @@ class EngineService:
                     break
                 pending.response.finish(
                     error=(close_error if pending.kind == "shutdown" else
-                           RuntimeError("engine service closed before command execution"))
+                           self._closed_service_error())
                 )
             if shutdown_response is not None:
                 shutdown_response.finish(error=close_error)
@@ -1060,7 +1127,9 @@ class EngineService:
         self._states_by_service_id[state.service_request_id] = state
         self._states_by_backend_id[backend_request_id] = state
 
-    def _admit_child_state(self, state: _ChildState) -> None:
+    def _admit_child_state(
+        self, state: _ChildState, owned: list[GenerationSubmission],
+    ) -> None:
         if state.execution_mode == "ar":
             submission = self._driver.submit_detailed(state.request)
         else:
@@ -1070,11 +1139,41 @@ class EngineService:
                     "speculative submission is unavailable before child admission"
                 )
             submission = submit(state.request)
+        owned.append(submission)
         self._bind_child_submission(
             state,
             submission,
             expected_mode=(None if state.execution_mode == "ar" else state.execution_mode),
         )
+
+    def _rollback_admissions(self, states, owned) -> None:
+        """Reclaim returned submissions even if binding never completed.
+
+        A reclamation failure is reported on the child's terminal; like an
+        explicit-cancel reclaim error, it does not close the service.
+        """
+        abort = getattr(self._driver, "abort_submission", None)
+        if not callable(abort):
+            abort = getattr(self._driver, "cancel_submission", None)
+        seen = set()
+        for submission in owned:
+            if id(submission) in seen:
+                continue
+            seen.add(id(submission))
+            reclaim_error: BaseException | None = None
+            try:
+                if callable(abort):
+                    abort(submission, reason="parent_submit_error")
+            except BaseException as exc:
+                reclaim_error = exc
+            for state in states:
+                if (state.submission is submission
+                        and self._states_by_service_id.get(state.service_request_id) is state):
+                    details = FinishDetails(reason="cancelled", cancelled=True)
+                    self._publish_terminal(
+                        state, generation_output=None, finish_details=details,
+                        error=reclaim_error or GenerationCancelled(details),
+                    )
 
     def _process_command(self, command: _ServiceCommand) -> _CommandResponse | None:
         self._active_command_kind = command.kind
@@ -1169,8 +1268,7 @@ class EngineService:
                 if command.kind == "submit" and command.state is not None
                 else command.states
             )
-            admitted: list[_ChildState] = []
-            batch_submissions: tuple[GenerationSubmission, ...] = ()
+            owned: list[GenerationSubmission] = []
             try:
                 states = tuple(state for state in states if not self._retire_expired_state(state))
                 batch_submit = (
@@ -1182,7 +1280,7 @@ class EngineService:
                     submissions = tuple(
                         batch_submit(tuple(state.request for state in states))
                     )
-                    batch_submissions = submissions
+                    owned.extend(submissions)
                     if len(submissions) != len(states):
                         raise RuntimeError(
                             "speculative batch submission must return one submission per child"
@@ -1211,22 +1309,11 @@ class EngineService:
                             expected_mode="verify_chain",
                             backend_ids=backend_ids,
                         )
-                        admitted.append(state)
                 else:
                     for state in states:
-                        self._admit_child_state(state)
-                        admitted.append(state)
+                        self._admit_child_state(state, owned)
             except BaseException as exc:
-                for state in admitted:
-                    self._cancel_state(state, reason="parent_submit_error")
-                if batch_submissions and not admitted:
-                    abort = getattr(self._driver, "abort_submission", None)
-                    if callable(abort):
-                        for submission in batch_submissions:
-                            try:
-                                abort(submission, reason="parent_submit_error")
-                            except BaseException:
-                                pass
+                self._rollback_admissions(states, owned)
                 command.response.finish(error=exc)
             else:
                 command.response.finish(

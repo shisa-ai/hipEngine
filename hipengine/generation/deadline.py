@@ -34,7 +34,7 @@ class GenerationCancellationToken:
         self._event = threading.Event()
         self._lock = threading.Lock()
         self._finish_details = FinishDetails(reason="cancelled", cancelled=True)
-        self._cancel_dispatch: Callable[[FinishDetails], None] | None = None
+        self._cancel_dispatches: list[Callable[[FinishDetails], None]] = []
         self._cancel_requested = False
 
     @property
@@ -58,24 +58,33 @@ class GenerationCancellationToken:
         with self._lock:
             self._finish_details = details
             self._cancel_requested = True
-            dispatch = self._cancel_dispatch
-            if dispatch is None:
+            dispatches = tuple(self._cancel_dispatches)
+            if not dispatches:
                 self._event.set()
-        if dispatch is not None:
+        for dispatch in dispatches:
             dispatch(details)
 
     def set_cancel_dispatch(self, dispatch: Callable[[FinishDetails], None]) -> None:
-        """Route cancellation through a scheduler command before exposing it."""
+        """Register one scheduler owner; a parent token may own several children."""
 
         with self._lock:
-            self._cancel_dispatch = dispatch
+            if any(existing is dispatch for existing in self._cancel_dispatches):
+                return
+            self._cancel_dispatches.append(dispatch)
+            requested = self._cancel_requested
+            details = self._finish_details
+        # Registration may race a cancellation that already took its snapshot.
+        # Replay outside the lock; owners deduplicate queued cancellation work.
+        if requested:
+            dispatch(details)
 
     def clear_cancel_dispatch(self, dispatch: Callable[[FinishDetails], None]) -> None:
         with self._lock:
-            if self._cancel_dispatch is dispatch:
-                self._cancel_dispatch = None
-                if self._cancel_requested:
-                    self._event.set()
+            self._cancel_dispatches = [
+                existing for existing in self._cancel_dispatches if existing is not dispatch
+            ]
+            if not self._cancel_dispatches and self._cancel_requested:
+                self._event.set()
 
     def acknowledge_cancel(self, finish_details: FinishDetails | None = None) -> None:
         """Publish cancellation only after scheduler-owned row reclamation."""
@@ -88,6 +97,19 @@ class GenerationCancellationToken:
     def raise_if_cancelled(self) -> None:
         if self.cancelled:
             raise GenerationCancelled(self.finish_details)
+
+
+def raise_if_generation_stop_requested(request: Any) -> None:
+    """Observe stop intent inside owned work, without acknowledging row release.
+
+    Scheduler dispatch deliberately defers ``cancelled`` until reclamation.
+    An in-flight backend must also see ``cancel_requested`` or it cannot yield
+    to that scheduler. Callers must quiesce device work before unwinding.
+    """
+    token = getattr(request, "cancellation_token", None)
+    if token is not None and bool(getattr(token, "cancel_requested", False)):
+        raise GenerationCancelled(token.finish_details)
+    raise_if_generation_deadline_expired(request)
 
 
 def generation_deadline_expired(deadline_at: float | None) -> bool:
