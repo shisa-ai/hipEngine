@@ -4,7 +4,7 @@ owns: Inkling 2 Mini performance campaign: same-checkpoint Loom comparison, exte
 ---
 # Inkling 2 Mini: match Loom on Strix Halo
 
-**Goal:** Match or beat Loom on the same Strix Halo host, using the exact same Inkling 2 Mini checkpoint and workload. Start with ordinary text generation. Measure drafting separately, and do not count it as a speedup unless it preserves the declared output contract. There is no same-weight hipEngine result yet: the first deliverable is packed GGUF generation on `gfx1151`, not a faster result on another GPU or quantization.
+**Goal:** Match or beat Loom on the same Strix Halo host, using the exact same Inkling 2 Mini checkpoint and workload. Start with ordinary text generation. Measure drafting separately, and do not count it as a speedup unless it preserves the declared output contract. Packed hipEngine generation runs on the pinned `gfx1151` file. The [ordinary same-host comparison](../../worklog/entries/20261122T053851.330818Z-lhl-inkling2-mini-e5e1c9.md) found a gap, not output parity. Use the [GGUF implementation plan](INKLING2-MINI-GGUF-EXECUTION.md) for the current code paths, source comparison, prioritized experiments and tests.
 
 ## Comparison lanes
 
@@ -33,6 +33,8 @@ owns: Inkling 2 Mini performance campaign: same-checkpoint Loom comparison, exte
 **Maya Inkling engine.** The [guide][maya-guide] of [alesha-pro/maya-inkling-mini][maya-repo] documents a CUDA engine for the same Unsloth `UD-Q4_K_XL` file as the Loom lane. On one RTX 3090 it reports **128 tok/s plain decode** and **2,742 tok/s prefill at 4,096 tokens**, with `llama.cpp` at 57 and 1,052 on the same card. A token replays as one CUDA graph of 781 launches with routing and every expert on the device, and prompts are read in 2,048-token chunks through FP16 GEMMs, with a grouped expert path for prompts up to 96 tokens. Its matrix-core kernels are `mma.sync` and do not run on AMD, so what transfers is the structure and the order of work; the [local review](../../worklog/entries/20261123T233607.588698Z-lhl-inkling2-mini-826f0a.md) maps it to hipEngine and lists what the author reports did not help. These are author measurements, not reproduced here.
 
 ## Execution order
+
+These are the original milestones. Packed public generation (stage 1) now runs on both layouts. Stages 2–5 are partly implemented; take new assignments from the [GGUF implementation plan](INKLING2-MINI-GGUF-EXECUTION.md#work-queue-ordered-by-expected-impact), not from the original bring-up checklist.
 
 | Stage | Work | Advance when |
 | --- | --- | --- |
