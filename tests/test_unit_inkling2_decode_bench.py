@@ -13,11 +13,16 @@ spec.loader.exec_module(bench)
 
 
 class _Stream:
-    def __init__(self, chunks):
+    """One chunk per token; the token counter advances as each chunk is handed out."""
+
+    def __init__(self, chunks, tokens):
         self._chunks = list(chunks)
+        self._tokens = tokens
 
     def __iter__(self):
-        return iter(self._chunks)
+        for index, chunk in enumerate(self._chunks, 1):
+            self._tokens[0] = index
+            yield chunk
 
     def close(self):
         pass
@@ -27,10 +32,11 @@ class _LLM:
     def __init__(self, chunks):
         self._chunks = chunks
         self.requests = 0
+        self.tokens = [0]
 
     def stream_detailed(self, ids, sampling):
         self.requests += 1
-        return _Stream(self._chunks)
+        return _Stream(self._chunks, self.tokens)
 
 
 def chunk(text, ids, diagnostics=None, reason=None):
@@ -49,11 +55,30 @@ def test_prompt_ids_repeats_the_seed_to_the_exact_length():
         bench.prompt_ids([1], 0)
 
 
+def test_install_token_counter_counts_what_the_generator_yields():
+    class Generator:
+        def _iterate_row(self, request, index, row):
+            self.seen = (request, index, row)
+            yield from (7, 8, 9)
+
+    generator = Generator()
+    tokens = bench.install_token_counter(generator)
+    assert tokens == [0]
+    steps = generator._iterate_row("request", 0, "row")
+    assert next(steps) == 7 and tokens == [1]
+    next(steps)
+    assert tokens == [2]
+    assert list(steps) == [9] and tokens == [3]
+    assert generator.seen == ("request", 0, "row")
+
+
 def test_stream_once_times_from_the_first_text_delta_to_close():
-    # The first delta carries no text, so the decode window opens at the second token.
+    # The first delta carries no text, so the decode window opens at the second token and
+    # holds one decode step for three generated tokens.
     llm = _LLM([chunk("", [10]), chunk("a", [10, 11]),
                 chunk("b", [10, 11, 12], {"execution_path": "x"}, "stop")])
-    sample = bench.stream_once(llm, (1, 2, 3), None)
+    llm.tokens[0] = 500  # a count left over from an earlier request
+    sample = bench.stream_once(llm, (1, 2, 3), None, tokens=llm.tokens)
     assert llm.requests == 1
     assert sample["prompt_tokens"] == 3
     assert sample["decode_intervals"] == 1
@@ -66,10 +91,12 @@ def test_stream_once_times_from_the_first_text_delta_to_close():
 
 
 def test_stream_once_rejects_a_window_without_a_decode_step():
+    first_only = _LLM([chunk("a", [10])])
     with pytest.raises(RuntimeError):
-        bench.stream_once(_LLM([chunk("a", [10])]), (1,), None)
+        bench.stream_once(first_only, (1,), None, tokens=first_only.tokens)
+    no_text = _LLM([chunk("", [10, 11])])
     with pytest.raises(RuntimeError):
-        bench.stream_once(_LLM([chunk("", [10, 11])]), (1,), None)
+        bench.stream_once(no_text, (1,), None, tokens=no_text.tokens)
 
 
 def _sample(tok, digest, calls=None):
@@ -80,6 +107,7 @@ def _sample(tok, digest, calls=None):
 def test_summarize_reports_medians_and_output_identity():
     same = bench.summarize([_sample(10, "a"), _sample(12, "a"), _sample(11, "a")])
     assert same["reps"] == 3
+    assert same["decode_intervals"] == 10
     assert same["decode_tok_s"] == {"median": 11, "min": 10, "max": 12}
     assert same["decode_ms_per_token"] == pytest.approx(1e3 / 11 / 10)
     assert same["identical_output"] and same["output_ids_sha256"] == ["a"]
@@ -87,11 +115,13 @@ def test_summarize_reports_medians_and_output_identity():
     assert not mixed["identical_output"] and mixed["output_ids_sha256"] == ["a", "b"]
 
 
-def test_summarize_averages_hip_calls_per_request():
-    calls = {"stream_synchronize": {"calls": 4, "seconds": 0.4, "bytes": 0}}
+def test_summarize_averages_hip_calls_per_request_and_per_token():
+    calls = {"stream_synchronize": {"calls": 40, "seconds": 0.4, "bytes": 8}}
     summary = bench.summarize([_sample(10, "a", calls), _sample(10, "a", None)])
     assert summary["calls_per_request"] == {
-        "stream_synchronize": {"calls": 2, "seconds": pytest.approx(0.2), "bytes": 0}}
+        "stream_synchronize": {"calls": 20, "seconds": pytest.approx(0.2), "bytes": 4}}
+    assert summary["calls_per_token"] == {
+        "stream_synchronize": {"calls": 2, "seconds": pytest.approx(0.02), "bytes": pytest.approx(0.4)}}
 
 
 def test_provenance_records_repo_model_and_protocol():

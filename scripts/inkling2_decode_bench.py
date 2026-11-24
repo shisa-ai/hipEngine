@@ -121,9 +121,34 @@ def _direction(kind):
     return (getattr(kind, "name", None) or str(kind)).lower()
 
 
-def stream_once(llm, ids, sampling, *, counts=False):
-    """Stream one request and return its timings, generated IDs and diagnostics."""
+def install_token_counter(generator):
+    """Return ``[count]``, advanced once per token the text generator hands its stream.
+
+    The stream yields a chunk only for non-empty text and carries token IDs only on its last
+    chunk, so neither the chunk count nor the IDs on the first delta give the token count.
+    Counting where the generator yields does.
+    """
+    counter = [0]
+    original = generator._iterate_row
+
+    def counting(*args, **kwargs):
+        for token in original(*args, **kwargs):
+            counter[0] += 1
+            yield token
+
+    generator._iterate_row = counting
+    return counter
+
+
+def stream_once(llm, ids, sampling, *, tokens, counts=False):
+    """Stream one request and return its timings, generated IDs and diagnostics.
+
+    ``tokens`` is the counter from ``install_token_counter``. It is reset here and read when
+    the first non-empty text delta arrives; the tokens generated before that point came out of
+    prompt processing, so they are not decode steps.
+    """
     counter = CallCounter(HipRuntime) if counts else None
+    tokens[0] = 0
     started = time.perf_counter()
     first_at = None
     first_count = 0
@@ -136,7 +161,7 @@ def stream_once(llm, ids, sampling, *, counts=False):
                 seen = chunk.generated_token_ids
                 if first_at is None and chunk.text:
                     first_at = time.perf_counter()
-                    first_count = len(seen or ())
+                    first_count = tokens[0]
                     if counter is not None:
                         counter.start()
                 if seen is not None:
@@ -186,15 +211,19 @@ def summarize(samples):
         for field in entry:
             entry[field] /= len(samples)
     seconds_median = statistics.median(sample["decode_s"] for sample in samples)
+    intervals = samples[0]["decode_intervals"]
+    per_token = {name: {field: value / intervals for field, value in entry.items()} for name, entry in calls.items()}
     return {
         "reps": len(samples),
         "first_token_s": spread("first_token_s"),
         "decode_tok_s": spread("decode_tok_s"),
-        "decode_ms_per_token": seconds_median * 1e3 / samples[0]["decode_intervals"],
+        "decode_intervals": intervals,
+        "decode_ms_per_token": seconds_median * 1e3 / intervals,
         "identical_output": len(digests) == 1,
         "output_ids_sha256": sorted(digests),
         "diagnostics": samples[-1]["diagnostics"],
         "calls_per_request": calls,
+        "calls_per_token": per_token,
     }
 
 
@@ -268,6 +297,7 @@ def main(argv=None) -> int:
     llm = LLM(model=str(model), backend=args.backend, execution_profile=profile,
               max_sequence_length=args.max_sequence_length, prefix_cache="off", speculative_mtp_serving="off")
     try:
+        tokens = install_token_counter(llm._get_text_generator())
         seed = llm.tokenize(_SEED)
         sampling = SamplingParams(temperature=0, max_tokens=args.output_tokens, ignore_eos=True)
         depths = []
@@ -276,8 +306,8 @@ def main(argv=None) -> int:
         for count in args.prompt_tokens:
             ids = prompt_ids(seed, count)
             for _ in range(args.warmup):
-                stream_once(llm, ids, sampling)
-            samples = [stream_once(llm, ids, sampling, counts=args.counts) for _ in range(args.reps)]
+                stream_once(llm, ids, sampling, tokens=tokens)
+            samples = [stream_once(llm, ids, sampling, tokens=tokens, counts=args.counts) for _ in range(args.reps)]
             depths.append({"prompt_tokens": count, **summarize(samples)})
             first_output_ids[str(count)] = samples[0]["output_ids"]
             repetitions.extend({key: value for key, value in sample.items()
