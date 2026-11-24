@@ -82,3 +82,42 @@ def test_empty_routes_return_empty():
                                                       scale_table=np.ones(8, dtype=np.float32))
     assert records.shape == (0, 5)
     assert scales is not None and scales.shape == (0,)
+
+
+def test_unwritten_capacity_is_negative_one():
+    import ctypes
+
+    from hipengine.core.memory import copy_device_to_host, free, host_array_ptr, malloc
+    from hipengine.kernels.hip_gfx1100.moe.inkling2_route_tiles import (
+        build_inkling2_route_tiles,
+        launch_route_tiles,
+    )
+
+    ids = np.array([3, 3, 9, 3, 9], dtype=np.int64)
+    routes, width, experts = ids.size, 4, 16
+    stride = width + 1
+    library = build_inkling2_route_tiles(load=True)
+    ids_buf = malloc(ids.nbytes)
+    rec_buf = malloc(routes * stride * 4)
+    cnt_buf = malloc(4)
+    # Fill device records with a sentinel; the kernel must overwrite the
+    # written region and leave the tail as -1.
+    filler = np.full(routes * stride, 7, dtype=np.int32)
+    from hipengine.core.memory import copy_host_to_device
+    copy_host_to_device(rec_buf, host_array_ptr(filler), filler.nbytes)
+    copy_host_to_device(ids_buf, host_array_ptr(ids), ids.nbytes)
+    try:
+        launch_route_tiles(ids_buf.ptr, routes, experts, width, None, None,
+                           rec_buf.ptr, cnt_buf.ptr, routes, library=library)
+        cnt = np.empty(1, dtype=np.int32)
+        copy_device_to_host(host_array_ptr(cnt), cnt_buf, 4)
+        raw = np.empty(routes * stride, dtype=np.int32)
+        copy_device_to_host(host_array_ptr(raw), rec_buf, raw.nbytes)
+    finally:
+        free(ids_buf)
+        free(rec_buf)
+        free(cnt_buf)
+    tiles = int(cnt[0])
+    assert tiles == 2  # expert 3 -> 1 tile (3 routes), expert 9 -> 1 tile
+    assert raw[tiles * stride:].tolist() == [-1] * (len(raw) - tiles * stride)
+    assert raw[:tiles * stride].reshape(tiles, stride).tolist() == _host(ids, width).tolist()

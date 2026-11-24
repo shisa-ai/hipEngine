@@ -28,7 +28,8 @@ __global__ void inkling2_route_tiles_kernel(
     const float* __restrict__ scale_table,
     float* __restrict__ gathered_scales,
     int* __restrict__ records,
-    int* __restrict__ tile_count) {
+    int* __restrict__ tile_count,
+    int record_capacity) {
   __shared__ int counts[kMaxExperts];
   __shared__ int offsets[kMaxExperts];
   for (int e = threadIdx.x; e < num_experts; e += blockDim.x) {
@@ -59,7 +60,10 @@ __global__ void inkling2_route_tiles_kernel(
     total_tiles += (counts[e] + width - 1) / width;
   }
   const int stride = width + 1;
-  for (int i = threadIdx.x; i < total_tiles * stride; i += blockDim.x) {
+  // Zero-fill the whole caller-provided capacity so tiles past the real tile
+  // count read as -1 (skipped by the grouped projection kernels) and the
+  // caller never needs the tile count on the host.
+  for (int i = threadIdx.x; i < record_capacity * stride; i += blockDim.x) {
     records[i] = -1;
   }
   __syncthreads();
@@ -96,11 +100,15 @@ extern "C" int hipengine_inkling2_route_tiles_from_ids(
     void* gathered_scales,
     void* records,
     void* tile_count,
+    int record_capacity,
     hipStream_t stream) {
   if (routes < 0 || num_experts <= 0 || num_experts > kMaxExperts ||
       (width != 2 && width != 4) || ids == nullptr || records == nullptr ||
       tile_count == nullptr || (scale_table == nullptr) != (gathered_scales == nullptr)) {
     return 1;
+  }
+  if (record_capacity < routes) {
+    return 3;
   }
   if (routes > 0) {
     inkling2_route_tiles_kernel<<<1, 256, 0, stream>>>(
@@ -108,7 +116,8 @@ extern "C" int hipengine_inkling2_route_tiles_from_ids(
         reinterpret_cast<const float*>(scale_table),
         reinterpret_cast<float*>(gathered_scales),
         reinterpret_cast<int*>(records),
-        reinterpret_cast<int*>(tile_count));
+        reinterpret_cast<int*>(tile_count),
+        record_capacity);
   } else {
     hipMemsetAsync(tile_count, 0, sizeof(int), stream);
   }

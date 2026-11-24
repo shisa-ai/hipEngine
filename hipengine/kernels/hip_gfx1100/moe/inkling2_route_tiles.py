@@ -30,6 +30,7 @@ _ARGTYPES = (
     ctypes.c_void_p,  # gathered scales (f32, [routes]) or NULL
     ctypes.c_void_p,  # records out (int32, [routes * (width + 1)] max)
     ctypes.c_void_p,  # tile_count out (int32[1])
+    ctypes.c_int,     # record_capacity (tiles the records buffer can hold)
     ctypes.c_void_p,  # stream
 )
 
@@ -60,13 +61,15 @@ def build_inkling2_route_tiles(*, cache_root=None, compiler_version=None, profil
 
 
 def launch_route_tiles(ids_ptr, routes, num_experts, width, scale_table_ptr, gathered_ptr,
-                       records_ptr, count_ptr, *, stream: int = 0, library=None, runtime: HipRuntime | None = None):
+                       records_ptr, count_ptr, record_capacity, *, stream: int = 0,
+                       library=None, runtime: HipRuntime | None = None):
     """Launch the device tile builder. Pointers are raw device addresses."""
     library = library or build_inkling2_route_tiles(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL, _ARGTYPES, ctypes.c_int)
     err = fn(ids_ptr, int(routes), int(num_experts), int(width),
-             scale_table_ptr, gathered_ptr, records_ptr, count_ptr, stream)
+             scale_table_ptr, gathered_ptr, records_ptr, count_ptr,
+             int(record_capacity), stream)
     if err != HIP_SUCCESS:
         runtime.check(err)
 
@@ -109,7 +112,7 @@ def build_expert_route_tiles_device(ids, num_experts, *, width: int = 4, scale_t
         launch_route_tiles(ids_buf.ptr, routes, num_experts, width,
                            scale_buf.ptr if scale_buf is not None else None,
                            gathered_buf.ptr if gathered_buf is not None else None,
-                           rec_buf.ptr, cnt_buf.ptr, stream=0, library=library, runtime=runtime)
+                           rec_buf.ptr, cnt_buf.ptr, routes, stream=0, library=library, runtime=runtime)
         runtime.stream_synchronize(0)
         from hipengine.core.memory import copy_device_to_host
         count = np.empty(1, dtype=np.int32)
