@@ -1,5 +1,11 @@
 """gfx1100 MoE/router kernel wrappers."""
 
+from hipengine.kernels.hip_gfx1100.moe.inkling2_route_tiles import (
+    build_inkling2_route_tiles,
+    build_expert_route_tiles_device,
+    launch_route_tiles,
+    plan_inkling2_route_tiles_build,
+)
 from hipengine.kernels.hip_gfx1100.moe.laguna_router import (
     build_laguna_router,
     laguna_router_topk_bf16_hidden_correction_bias_persistent_wave_top10,
@@ -61,7 +67,11 @@ from hipengine.kernels.hip_gfx1100.moe.router import (
 )
 
 __all__ = [
+    "build_inkling2_route_tiles",
+    "build_expert_route_tiles_device",
     "build_laguna_router",
+    "launch_route_tiles",
+    "plan_inkling2_route_tiles_build",
     "build_qwen35_moe_group_scatter",
     "laguna_router_topk_bf16_hidden_correction_bias_persistent_wave_top10",
     "laguna_sigmoid_correction_topk_compact_wave32_f32",
