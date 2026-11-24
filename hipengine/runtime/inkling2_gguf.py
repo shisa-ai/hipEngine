@@ -120,7 +120,8 @@ class Inkling2GGUFText(Inkling2TextReference):
             self.resident_block = self._resident_block if projection.supports_resident_block else None
         self._graph_state = None
         self._graph_disabled = False
-        self._queries_staged = False
+        self._query_bank_ptr = None
+        self._query_rows = None
         self.decode_graph = False
 
     def _resident_attention(self, session, visit, inputs, messages, norm_names):
@@ -450,35 +451,42 @@ class Inkling2GGUFText(Inkling2TextReference):
         self.projection.download(at("stack"), blocks)
         return result, [np.ascontiguousarray(block) for block in blocks]
 
-    def _stage_query_uploads(self, session, base, offsets, hidden):
-        """Upload the per-visit residual-read queries once per arena; both decode paths read the slots."""
-        if self._queries_staged:
-            return
-        item = np.dtype(np.float32).itemsize
-        span = 16 * hidden * item  # rows 0-3 attention read queries, 4-7 loop-message queries, row 8 mlp read query
+    def _query_bank(self):
+        """Device copy of every visit's residual-read queries, and the row count each one has.
+
+        These are model weights, so they live in the projection's residency for its lifetime. They
+        used to be uploaded into the step arena, which is shared scratch: the next request's prompt
+        blocks wrote over it, and every request after the first read clobbered queries. Rows 0-3 of
+        a slot hold attention read queries, 4-7 loop-message queries and row 8 the mlp read query.
+        """
+        if self._query_bank_ptr is not None:
+            return self._query_bank_ptr
+        hidden = self.config["hidden_size"]
+        slots = 1 + max(v.state_slot for v in self.plan.visits)
 
         def query(layer, stem):
             return np.ascontiguousarray(self.weights.dense(f"attn_res.{stem}.{layer}"), dtype=np.float32)
 
-        rows_by_slot = {}
+        bank = np.zeros((slots, 16, hidden), np.float32)
+        rows = {}
 
         def put(slot, part, row, array):
             array = np.ascontiguousarray(array, dtype=np.float32).reshape(-1, hidden)
             if array.shape[0] > 4:
                 raise RuntimeError(f"residual-read query block of {array.shape[0]} rows exceeds its slot")
-            self.projection.upload(base + offsets["queries"] + slot * span + row * hidden * item, array)
-            rows_by_slot[(slot, part)] = array.shape[0]
+            bank[slot, row:row + array.shape[0]] = array
+            rows[(slot, part)] = array.shape[0]
 
         for visit in self.plan.visits:
-            slot = visit.state_slot
             layer = visit.weight_layer
             if layer:
-                put(slot, "attn", 0, query(layer - 1, "attn_queries"))
+                put(visit.state_slot, "attn", 0, query(layer - 1, "attn_queries"))
             if visit.message_pass is not None:
-                put(slot, "msg", 4, self.loop_queries(visit))
-            put(slot, "mlp", 8, query(layer, "mlp_queries"))
-        self._query_rows = rows_by_slot
-        self._queries_staged = True
+                put(visit.state_slot, "msg", 4, self.loop_queries(visit))
+            put(visit.state_slot, "mlp", 8, query(layer, "mlp_queries"))
+        self._query_bank_ptr = self.projection.resident_vector("attn_res.residual_read_queries", bank)
+        self._query_rows = rows
+        return self._query_bank_ptr
 
     def _resident_body(self, session, h, *, limit, recording):
         c, w, tensors = self.config, self.weights, self.weights.names
@@ -519,11 +527,10 @@ class Inkling2GGUFText(Inkling2TextReference):
                 probe = self._attention_plan(session, visit, (blank,) * (1 if visit.is_local else 3), None, names,
                                              sources=(0,) * (1 if visit.is_local else 3))
             attention_bytes = max(attention_bytes, sum(projection.attention_resident_extent(probe)))
-        query_slots = 1 + max(v.state_slot for v in self.plan.visits)
+        queries = self._query_bank()
         query_stride = 16 * hidden * item
         regions = (("h", row), ("branch", row), ("m", row), ("normalized", 3 * row),
                    ("read", 4 * row), ("messages", 4 * row),
-                   ("queries", query_slots * query_stride),
                    ("stack", capacity * row), ("previous", capacity * row), ("snapshot", capacity * row),
                    ("saved_h", row), ("previous_h", row), ("attention", attention_bytes))
         offsets, extent = {}, 0
@@ -536,20 +543,17 @@ class Inkling2GGUFText(Inkling2TextReference):
                 return base + offsets[name]
 
             def qslot(visit, row):
-                return at("queries") + visit.state_slot * query_stride + row * hidden * item
+                return queries + visit.state_slot * query_stride + row * hidden * item
 
             if recording is not None:
                 rt = recording["runtime"]
                 stream = recording["stream"]
-                self._stage_query_uploads(session, base, offsets, hidden)
-                rt.stream_synchronize(0)  # staged slots must be visible before capture begins
                 rt.stream_begin_capture(stream, 2)  # relaxed capture
                 set_capture_stream(stream)
                 rt.memcpy_async(at("h"), recording["pin_ptr"], h.nbytes, HipMemcpyKind.HOST_TO_DEVICE, stream)
                 launch_resident_tick(recording["headers"].ptr, recording["caps"].ptr, recording["counter"].ptr,
                                      1 + max(v.state_slot for v in visits), stream=stream)
             else:
-                self._stage_query_uploads(session, base, offsets, hidden)
                 projection.upload(at("h"), h)
             count, working, saved, previous = 0, "stack", None, None
             for visit in visits:
