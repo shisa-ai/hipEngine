@@ -2,19 +2,24 @@
 """Time ordinary single-stream Inkling 2 GGUF decode at several prompt depths in one process.
 
 For each prompt depth this streams a fixed number of output tokens after a prompt of exactly
-that many tokens and reports, for every repetition:
+that many tokens. The decode window runs from the first token that produces text to the last
+one, so it holds ``output tokens minus the leading text-less tokens`` decode steps. For every
+repetition it reports:
 
 ``first_token_s``
     Request start to the first non-empty text delta: prompt processing plus the first token.
-``decode_s``, ``decode_tok_s``
-    That first delta to stream close, divided by the tokens generated in between.
+``decode_tok_s``
+    Decode steps in the window divided by the time from that first delta to stream close.
+``engine_decode_tok_s``
+    The same steps timed where the engine loop runs them, from the entry of the first to the
+    exit of the last. It should agree with ``decode_tok_s``; a gap is streaming latency.
 ``output_ids_sha256``, ``diagnostics``
     What was generated and which path ran. Two runs are compared on these before their timings.
 
-``--counts`` wraps the HIP runtime's synchronizing and copy calls for the decode window and
-reports how many ran and how long the host spent inside each. Time inside those calls is GPU
-work plus launch latency as seen from the host; time outside them is host work and launch
-submission. It does not measure GPU-busy time.
+``--counts`` wraps the HIP runtime's synchronizing and copy calls inside each decode step and
+reports, for the steps of the window, how many ran and how long the host spent inside each.
+Time inside those calls is GPU work plus launch latency as seen from the host; time outside
+them is host work and launch submission. It does not measure GPU-busy time.
 
 Greedy, one stream, prefix cache off, drafting off. This is the in-process control for
 optimization units. The matched Loom protocol is ``scripts/inkling2_ordinary_pairs.py`` against
@@ -50,7 +55,8 @@ COUNTED = ("stream_synchronize", "event_synchronize", "device_synchronize", "str
            "event_record", "event_query", "graph_launch")
 COPIED = ("memcpy", "memcpy_async")
 PROTOCOL = ("one greedy stream, prefix cache off, drafting off; first_token_s is request start to the first "
-            "non-empty text delta; decode is that delta to stream close over the tokens generated in between")
+            "non-empty text delta; the decode window is that delta to stream close over the decode steps "
+            "it contains, which is the output tokens minus the leading tokens that decode to no text")
 
 
 def prompt_ids(seed, count):
@@ -121,76 +127,111 @@ def _direction(kind):
     return (getattr(kind, "name", None) or str(kind)).lower()
 
 
-def install_step_counter(model_class):
-    """Return ``[count]``, advanced once per decode tick the resident runner executes.
+class DecodeSteps:
+    """Decode steps of one request, recorded from the thread that runs them.
 
-    The public ``LLM`` stream runs through the engine loop, not the text generator: a tick
-    calls ``Inkling2GGUFText.decode_rows`` once and produces one token for the row, while the
-    first token comes out of prompt processing. Chunks are emitted only for non-empty text and
-    carry token IDs only at the end, so the tick count is the only exact measure of how many
-    tokens the first text delta represents.
+    The public ``LLM`` stream runs through the engine loop, which calls
+    ``Inkling2GGUFText.decode_rows`` once per tick. The first tick hands it no rows and only
+    samples the first token from the prompt logits; each later tick is one decode step for the
+    row. A token's chunk reaches the caller just after the next step has started, so the
+    caller cannot count steps from the chunks it receives.
     """
-    counter = [0]
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.prompt_done_at = None
+        self.started = []
+        self.finished = []
+        self.calls = []
+        self.count_calls = False
+
+
+def install_step_timer(model_class, steps):
+    """Fill ``steps`` from ``model_class.decode_rows``; return it."""
     original = model_class.decode_rows
 
-    def counting(self, rows):
-        counter[0] += 1
-        return original(self, rows)
+    def timed(self, rows):
+        if not rows:
+            steps.prompt_done_at = time.perf_counter()
+            return original(self, rows)
+        counter = CallCounter(HipRuntime) if steps.count_calls else None
+        if counter is not None:
+            counter.start()
+        started = time.perf_counter()
+        try:
+            return original(self, rows)
+        finally:
+            steps.finished.append(time.perf_counter())
+            steps.started.append(started)
+            if counter is not None:
+                steps.calls.append(counter.stop())
 
-    model_class.decode_rows = counting
-    return counter
+    model_class.decode_rows = timed
+    return steps
 
 
-def stream_once(llm, ids, sampling, *, steps, counts=False):
-    """Stream one request and return its timings, generated IDs and diagnostics.
+def first_text_tokens(ids, detokenize):
+    """Generated tokens up to and including the first one that decodes to text."""
+    for index, token in enumerate(ids):
+        if detokenize([token], skip_special=True):
+            return index + 1
+    raise RuntimeError("no generated token produced text")
 
-    ``steps`` is the counter from ``install_step_counter``. It is reset here and read when the
-    first non-empty text delta arrives; that delta is the token after the ticks counted, and
-    everything before it came out of prompt processing rather than a decode step.
-    """
-    counter = CallCounter(HipRuntime) if counts else None
-    steps[0] = 0
+
+def merge_tallies(tallies):
+    merged = {}
+    for tally in tallies:
+        for name, entry in tally.items():
+            total = merged.setdefault(name, {"calls": 0, "seconds": 0.0, "bytes": 0})
+            for field in total:
+                total[field] += entry[field]
+    return merged
+
+
+def stream_once(llm, ids, sampling, *, steps, detokenize, counts=False):
+    """Stream one request and return its timings, generated IDs and diagnostics."""
+    steps.reset()
+    steps.count_calls = counts
     started = time.perf_counter()
     first_at = None
-    first_count = 0
+    last_at = started
     output_ids = None
     diagnostics = None
     finish = None
-    try:
-        with closing(llm.stream_detailed(ids, sampling)) as stream:
-            for chunk in stream:
-                seen = chunk.generated_token_ids
-                if first_at is None and chunk.text:
-                    first_at = time.perf_counter()
-                    first_count = steps[0] + 1
-                    if counter is not None:
-                        counter.start()
-                if seen is not None:
-                    output_ids = tuple(int(token) for token in seen)
-                if chunk.telemetry is not None and chunk.telemetry.diagnostics:
-                    diagnostics = dict(chunk.telemetry.diagnostics)
-                if chunk.finish_details is not None:
-                    finish = chunk.finish_details.reason
-        ended = time.perf_counter()
-    finally:
-        calls = counter.stop() if counter is not None and counter._originals else None
+    with closing(llm.stream_detailed(ids, sampling)) as stream:
+        for chunk in stream:
+            last_at = time.perf_counter()
+            if first_at is None and chunk.text:
+                first_at = last_at
+            if chunk.generated_token_ids is not None:
+                output_ids = tuple(int(token) for token in chunk.generated_token_ids)
+            if chunk.telemetry is not None and chunk.telemetry.diagnostics:
+                diagnostics = dict(chunk.telemetry.diagnostics)
+            if chunk.finish_details is not None:
+                finish = chunk.finish_details.reason
     if first_at is None or not output_ids:
         raise RuntimeError("no text delta or no generated token IDs")
-    intervals = len(output_ids) - first_count
-    if intervals < 1:
-        raise RuntimeError("no decode step after the first text delta")
-    decode_s = ended - first_at
+    leading = first_text_tokens(output_ids, detokenize) - 1
+    intervals = len(output_ids) - leading - 1
+    if intervals < 1 or len(steps.started) < len(output_ids) - 1:
+        raise RuntimeError("the decode window holds no step, or the engine ran fewer steps than tokens")
+    # Step j (counting from 1) produces token j + 1; the window holds steps leading + 1 .. N - 1.
+    engine_s = steps.finished[len(output_ids) - 2] - steps.started[leading]
     return {
         "prompt_tokens": len(ids),
         "first_token_s": first_at - started,
-        "decode_s": decode_s,
+        "decode_s": last_at - first_at,
         "decode_intervals": intervals,
-        "decode_tok_s": intervals / decode_s,
+        "decode_tok_s": intervals / (last_at - first_at),
+        "engine_decode_s": engine_s,
+        "engine_decode_tok_s": intervals / engine_s,
         "output_ids_sha256": hashlib.sha256(json.dumps(output_ids, separators=(",", ":")).encode()).hexdigest(),
         "output_ids": list(output_ids),
         "finish": finish,
         "diagnostics": diagnostics,
-        "calls": calls,
+        "calls": merge_tallies(steps.calls[leading:len(output_ids) - 1]) if counts else None,
     }
 
 
@@ -202,24 +243,21 @@ def summarize(samples):
         values = [sample[key] for sample in samples]
         return {"median": statistics.median(values), "min": min(values), "max": max(values)}
 
-    calls = {}
-    for sample in samples:
-        for name, entry in (sample.get("calls") or {}).items():
-            total = calls.setdefault(name, {"calls": 0, "seconds": 0.0, "bytes": 0})
-            for field in total:
-                total[field] += entry[field]
-    for entry in calls.values():
-        for field in entry:
-            entry[field] /= len(samples)
-    seconds_median = statistics.median(sample["decode_s"] for sample in samples)
     intervals = samples[0]["decode_intervals"]
+    calls = merge_tallies(sample["calls"] for sample in samples if sample.get("calls"))
+    if any(sample.get("calls") for sample in samples):
+        counted = sum(1 for sample in samples if sample.get("calls"))
+        for entry in calls.values():
+            for field in entry:
+                entry[field] /= counted
     per_token = {name: {field: value / intervals for field, value in entry.items()} for name, entry in calls.items()}
     return {
         "reps": len(samples),
         "first_token_s": spread("first_token_s"),
         "decode_tok_s": spread("decode_tok_s"),
+        "engine_decode_tok_s": spread("engine_decode_tok_s"),
         "decode_intervals": intervals,
-        "decode_ms_per_token": seconds_median * 1e3 / intervals,
+        "decode_ms_per_token": statistics.median(sample["decode_s"] for sample in samples) * 1e3 / intervals,
         "identical_output": len(digests) == 1,
         "output_ids_sha256": sorted(digests),
         "diagnostics": samples[-1]["diagnostics"],
@@ -279,7 +317,7 @@ def main(argv=None) -> int:
     parser.add_argument("--max-sequence-length", type=int, default=4096)
     parser.add_argument("--reps", type=int, default=5)
     parser.add_argument("--warmup", type=int, default=1)
-    parser.add_argument("--counts", action="store_true", help="count HIP calls inside the decode window")
+    parser.add_argument("--counts", action="store_true", help="count HIP calls inside each decode step")
     parser.add_argument("--label", default="")
     parser.add_argument("--quant", default=None, help="quantization label recorded in the provenance block")
     parser.add_argument("--output", type=Path, default=None, help="write the summary JSON here")
@@ -299,7 +337,7 @@ def main(argv=None) -> int:
               max_sequence_length=args.max_sequence_length, prefix_cache="off", speculative_mtp_serving="off")
     try:
         from hipengine.runtime.inkling2_gguf import Inkling2GGUFText
-        steps = install_step_counter(Inkling2GGUFText)
+        steps = install_step_timer(Inkling2GGUFText, DecodeSteps())
         seed = llm.tokenize(_SEED)
         sampling = SamplingParams(temperature=0, max_tokens=args.output_tokens, ignore_eos=True)
         depths = []
@@ -308,8 +346,9 @@ def main(argv=None) -> int:
         for count in args.prompt_tokens:
             ids = prompt_ids(seed, count)
             for _ in range(args.warmup):
-                stream_once(llm, ids, sampling, steps=steps)
-            samples = [stream_once(llm, ids, sampling, steps=steps, counts=args.counts) for _ in range(args.reps)]
+                stream_once(llm, ids, sampling, steps=steps, detokenize=llm.detokenize)
+            samples = [stream_once(llm, ids, sampling, steps=steps, detokenize=llm.detokenize,
+                                   counts=args.counts) for _ in range(args.reps)]
             depths.append({"prompt_tokens": count, **summarize(samples)})
             first_output_ids[str(count)] = samples[0]["output_ids"]
             repetitions.extend({key: value for key, value in sample.items()

@@ -12,17 +12,33 @@ bench = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bench)
 
 
-class _Stream:
-    """One chunk per token; ``steps`` holds the decode ticks run before each chunk is handed out."""
+def chunk(text, ids, diagnostics=None, reason=None):
+    telemetry = None if diagnostics is None else SimpleNamespace(diagnostics=diagnostics)
+    finish = None if reason is None else SimpleNamespace(reason=reason)
+    return SimpleNamespace(text=text, generated_token_ids=None if ids is None else tuple(ids),
+                           telemetry=telemetry, finish_details=finish)
 
-    def __init__(self, chunks, steps):
+
+def detokenize(ids, *, skip_special):
+    """Token 10 decodes to nothing, like a leading special token."""
+    return "" if ids == [10] else "text"
+
+
+class _Stream:
+    """One chunk per token. The engine side runs step ``index + 1`` while chunk ``index`` is delivered."""
+
+    def __init__(self, chunks, steps, calls):
         self._chunks = list(chunks)
         self._steps = steps
+        self._calls = calls
 
     def __iter__(self):
-        for index, chunk in enumerate(self._chunks):
-            self._steps[0] = index
-            yield chunk
+        for index, piece in enumerate(self._chunks):
+            self._steps.started.append(float(index))
+            self._steps.finished.append(index + 1.0)
+            if self._calls:
+                self._steps.calls.append({"stream_synchronize": {"calls": index + 1, "seconds": 0.5, "bytes": 0}})
+            yield piece
 
     def close(self):
         pass
@@ -31,19 +47,13 @@ class _Stream:
 class _LLM:
     def __init__(self, chunks):
         self._chunks = chunks
+        self.steps = bench.DecodeSteps()
+        self.calls = False
         self.requests = 0
-        self.steps = [0]
 
     def stream_detailed(self, ids, sampling):
         self.requests += 1
-        return _Stream(self._chunks, self.steps)
-
-
-def chunk(text, ids, diagnostics=None, reason=None):
-    telemetry = None if diagnostics is None else SimpleNamespace(diagnostics=diagnostics)
-    finish = None if reason is None else SimpleNamespace(reason=reason)
-    return SimpleNamespace(text=text, generated_token_ids=None if ids is None else tuple(ids),
-                           telemetry=telemetry, finish_details=finish)
+        return _Stream(self._chunks, self.steps, self.calls)
 
 
 def test_prompt_ids_repeats_the_seed_to_the_exact_length():
@@ -55,31 +65,25 @@ def test_prompt_ids_repeats_the_seed_to_the_exact_length():
         bench.prompt_ids([1], 0)
 
 
-def test_install_step_counter_counts_decode_ticks():
-    class Model:
-        def decode_rows(self, rows):
-            return [len(rows)]
-
-    original = Model.decode_rows
-    steps = bench.install_step_counter(Model)
-    assert steps == [0]
-    assert Model().decode_rows([(1, 2)]) == [1] and steps == [1]
-    assert Model().decode_rows([(1, 2)]) == [1] and steps == [2]
-    Model.decode_rows = original
-    assert Model().decode_rows([(1, 2)]) == [1] and steps == [2]
+def test_first_text_tokens_counts_up_to_the_first_token_with_text():
+    assert bench.first_text_tokens([10, 10, 11], detokenize) == 3
+    assert bench.first_text_tokens([11, 10], detokenize) == 1
+    with pytest.raises(RuntimeError):
+        bench.first_text_tokens([10, 10], detokenize)
 
 
-def test_stream_once_times_from_the_first_text_delta_to_close():
-    # The first delta carries no text, so the decode window opens at the second token and
-    # holds one decode step for three generated tokens.
-    llm = _LLM([chunk("", [10]), chunk("a", [10, 11]),
-                chunk("b", [10, 11, 12], {"execution_path": "x"}, "stop")])
-    llm.steps[0] = 500  # a count left over from an earlier request
-    sample = bench.stream_once(llm, (1, 2, 3), None, steps=llm.steps)
+def test_stream_once_times_the_decode_steps_in_the_window():
+    # Token 10 has no text, so the window opens at token 2 and holds one step: the step that
+    # produces token 3.
+    llm = _LLM([chunk("", [10]), chunk("a", [10, 11]), chunk("b", [10, 11, 12], {"execution_path": "x"}, "stop")])
+    llm.steps.started, llm.steps.finished = [99.0], [100.0]  # left over from an earlier request
+    sample = bench.stream_once(llm, (1, 2, 3), None, steps=llm.steps, detokenize=detokenize)
     assert llm.requests == 1
     assert sample["prompt_tokens"] == 3
     assert sample["decode_intervals"] == 1
     assert sample["decode_tok_s"] == pytest.approx(1 / sample["decode_s"])
+    assert sample["engine_decode_s"] == pytest.approx(2.0 - 1.0)
+    assert sample["engine_decode_tok_s"] == pytest.approx(1.0)
     assert sample["first_token_s"] >= 0
     assert sample["output_ids"] == [10, 11, 12]
     assert sample["diagnostics"] == {"execution_path": "x"}
@@ -87,18 +91,61 @@ def test_stream_once_times_from_the_first_text_delta_to_close():
     assert sample["calls"] is None
 
 
+def test_stream_once_counts_hip_calls_of_the_steps_in_the_window_only():
+    llm = _LLM([chunk("", [10]), chunk("a", [10, 11]), chunk("b", [10, 11, 12], None, "stop")])
+    llm.calls = True
+    sample = bench.stream_once(llm, (1, 2, 3), None, steps=llm.steps, detokenize=detokenize, counts=True)
+    # Three steps ran; only the second lies in the window.
+    assert sample["calls"] == {"stream_synchronize": {"calls": 2, "seconds": pytest.approx(0.5), "bytes": 0}}
+
+
 def test_stream_once_rejects_a_window_without_a_decode_step():
-    first_only = _LLM([chunk("a", [10])])
+    single = _LLM([chunk("a", [11], None, "stop")])
     with pytest.raises(RuntimeError):
-        bench.stream_once(first_only, (1,), None, steps=first_only.steps)
-    no_text = _LLM([chunk("", [10, 11])])
+        bench.stream_once(single, (1,), None, steps=single.steps, detokenize=detokenize)
+    silent = _LLM([chunk("", [10, 11], None, "length")])
     with pytest.raises(RuntimeError):
-        bench.stream_once(no_text, (1,), None, steps=no_text.steps)
+        bench.stream_once(silent, (1,), None, steps=silent.steps, detokenize=detokenize)
+    blank = _LLM([chunk("a", [10, 10], None, "stop")])
+    with pytest.raises(RuntimeError):
+        bench.stream_once(blank, (1,), None, steps=blank.steps, detokenize=detokenize)
+    stalled = _LLM([chunk("a", [11]), chunk("b", [11, 12], None, "stop")])
+    stalled.steps.count_calls = False
+    stalled.steps.started, stalled.steps.finished = [], []
+
+    class _NoSteps(_Stream):
+        def __iter__(self):
+            self._steps.started, self._steps.finished = [], []
+            yield from self._chunks
+
+    stalled.stream_detailed = lambda ids, sampling: _NoSteps(stalled._chunks, stalled.steps, False)
+    with pytest.raises(RuntimeError):
+        bench.stream_once(stalled, (1,), None, steps=stalled.steps, detokenize=detokenize)
+
+
+def test_install_step_timer_records_real_steps_and_skips_the_first_tick():
+    class Model:
+        def decode_rows(self, rows):
+            return [len(rows)]
+
+    steps = bench.DecodeSteps()
+    model = Model()
+    assert bench.install_step_timer(Model, steps) is steps
+    assert model.decode_rows([]) == [0]
+    assert steps.prompt_done_at is not None and steps.started == [] and steps.finished == []
+    assert model.decode_rows([(1, 2)]) == [1]
+    assert len(steps.started) == 1 and steps.finished[0] >= steps.started[0]
+    assert steps.calls == []
+    steps.count_calls = True
+    model.decode_rows([(1, 2)])
+    assert steps.calls == [{}]
+    from hipengine.core.hip import HipRuntime
+    assert "wrapped" not in HipRuntime.stream_synchronize.__name__
 
 
 def _sample(tok, digest, calls=None):
     return {"first_token_s": 0.5, "decode_s": 1.0 / tok, "decode_intervals": 10, "decode_tok_s": tok,
-            "output_ids_sha256": digest, "diagnostics": {"k": 1}, "calls": calls}
+            "engine_decode_tok_s": tok, "output_ids_sha256": digest, "diagnostics": {"k": 1}, "calls": calls}
 
 
 def test_summarize_reports_medians_and_output_identity():
@@ -106,19 +153,21 @@ def test_summarize_reports_medians_and_output_identity():
     assert same["reps"] == 3
     assert same["decode_intervals"] == 10
     assert same["decode_tok_s"] == {"median": 11, "min": 10, "max": 12}
+    assert same["engine_decode_tok_s"]["median"] == 11
     assert same["decode_ms_per_token"] == pytest.approx(1e3 / 11 / 10)
     assert same["identical_output"] and same["output_ids_sha256"] == ["a"]
+    assert same["calls_per_token"] == {}
     mixed = bench.summarize([_sample(10, "a"), _sample(10, "b")])
     assert not mixed["identical_output"] and mixed["output_ids_sha256"] == ["a", "b"]
 
 
-def test_summarize_averages_hip_calls_per_request_and_per_token():
+def test_summarize_averages_hip_calls_over_the_counted_repetitions():
     calls = {"stream_synchronize": {"calls": 40, "seconds": 0.4, "bytes": 8}}
     summary = bench.summarize([_sample(10, "a", calls), _sample(10, "a", None)])
     assert summary["calls_per_request"] == {
-        "stream_synchronize": {"calls": 20, "seconds": pytest.approx(0.2), "bytes": 4}}
+        "stream_synchronize": {"calls": 40, "seconds": pytest.approx(0.4), "bytes": 8}}
     assert summary["calls_per_token"] == {
-        "stream_synchronize": {"calls": 2, "seconds": pytest.approx(0.02), "bytes": pytest.approx(0.4)}}
+        "stream_synchronize": {"calls": 4, "seconds": pytest.approx(0.04), "bytes": pytest.approx(0.8)}}
 
 
 def test_provenance_records_repo_model_and_protocol():
