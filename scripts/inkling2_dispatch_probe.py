@@ -74,6 +74,9 @@ def main() -> int:
     parser.add_argument("--gemv-reps", type=int, default=50, help="GEMV iterations per shape")
     parser.add_argument("--gemv-warmup", type=int, default=30, help="GEMV warmup iterations per shape (GPU clock ramp)")
     parser.add_argument("--skip-gemv", action="store_true", help="skip the Q8_0 GEMV bandwidth probe")
+    parser.add_argument("--transports", nargs="*", default=[],
+                        choices=["aql", "pm4"],
+                        help="also submit the captured chain through these native transports")
     parser.add_argument("--output", default=None, help="write JSON here instead of stdout")
     args = parser.parse_args()
 
@@ -120,6 +123,7 @@ def main() -> int:
         results["launch_chain_default_stream"] = chain
 
         graph_results = {}
+        transport_results: dict[str, dict] = {}
         for n in args.sizes:
             stream = runtime.stream_create(nonblocking=True)
             try:
@@ -139,10 +143,42 @@ def main() -> int:
                     "speedup_over_eager": chain[n]["total_seconds"] / replay,
                 }
                 runtime.graph_exec_destroy(instance)
+                for transport in args.transports:
+                    entry: dict[str, object] = {}
+                    try:
+                        from hipengine.core.pm4.transport import create_graph_submission
+
+                        submission = create_graph_submission(
+                            backend="hip_gfx1100",
+                            gfx_arch="gfx1100",
+                            runtime=runtime,
+                            graph=graph,
+                            stream=stream,
+                            transport=transport,
+                        )
+                        try:
+                            start = time.perf_counter()
+                            for _ in range(args.graph_reps):
+                                submission.launch(stream)
+                            runtime.stream_synchronize(stream)
+                            replay = (time.perf_counter() - start) / args.graph_reps
+                            entry = {
+                                "graph_replay_seconds": replay,
+                                "per_launch_us": 1e6 * replay / n,
+                                "speedup_over_eager": chain[n]["total_seconds"] / replay,
+                                "submission": submission.name,
+                            }
+                        finally:
+                            submission.close()
+                    except Exception as exc:  # rejection is data, not a crash
+                        entry = {"error": f"{type(exc).__name__}: {exc}"}
+                    transport_results.setdefault(transport, {})[n] = entry
                 runtime.graph_destroy(graph)
             finally:
                 runtime.stream_destroy(stream)
         results["graph_chain"] = graph_results
+        if transport_results:
+            results["alternative_transports"] = transport_results
 
         event = ctypes.c_void_p()
         check(runtime, runtime.library.hipEventCreateWithFlags(ctypes.byref(event), ctypes.c_uint(0x2)))
