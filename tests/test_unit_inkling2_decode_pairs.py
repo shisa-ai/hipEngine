@@ -23,7 +23,7 @@ def _run(order, tokens, digest, tok=10.0, calls=None):
 
 def test_variables_reject_anything_but_a_named_hipengine_value():
     assert pairs.variables("HIPENGINE_SUBMISSION_TRANSPORT=aql") == {"HIPENGINE_SUBMISSION_TRANSPORT": "aql"}
-    for bad in ("HIPENGINE_X", "OTHER_X=1", "HIPENGINE_X=", "=1"):
+    for bad in ("HIPENGINE_", "OTHER_X=1", "HIPENGINE_lower=1", "=1"):
         with pytest.raises(ValueError):
             pairs.variables(bad)
 

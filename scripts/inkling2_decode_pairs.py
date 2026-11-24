@@ -54,10 +54,10 @@ BEAT = 1.03
 
 
 def variables(item):
-    """Parse ``HIPENGINE_NAME=value``."""
+    """Parse ``HIPENGINE_<name>=value``."""
     name, separator, value = item.partition("=")
     if not separator or not re.fullmatch(r"HIPENGINE_[A-Z0-9_]+", name) or not value:
-        raise ValueError(f"variable must look like HIPENGINE_NAME=value, got {item!r}")
+        raise ValueError(f"variable must look like HIPENGINE_<name>=value, got {item!r}")
     return {name: value}
 
 
@@ -67,7 +67,7 @@ def resolve_arms(names, settings):
     for setting in settings:
         arm, separator, item = setting.partition(":")
         if not separator or arm not in arms:
-            raise ValueError(f"--set expects an arm that runs, as ARM:HIPENGINE_NAME=value, got {setting!r}")
+            raise ValueError(f"--set expects an arm that runs, as ARM:VAR=VALUE, got {setting!r}")
         arms[arm].update(variables(item))
     return arms
 
@@ -87,7 +87,6 @@ def run_bench(model, args, arm_env, label, output):
     env = dict(os.environ)
     env.update(BASE)
     env.update(arm_env)
-    env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
     subprocess.run(command, check=True, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return json.loads(output.read_text(encoding="utf-8"))
 
@@ -280,7 +279,7 @@ def main(argv=None):
     paired.add_argument("--reps", type=int, default=3)
     paired.add_argument("--arms", nargs="+", default=list(ARMS),
                         help="arm names in run order; the first is the reference")
-    paired.add_argument("--set", action="append", default=[], metavar="ARM:HIPENGINE_NAME=value",
+    paired.add_argument("--set", action="append", default=[], metavar="ARM:VAR=VALUE",
                         help="replace one variable of one arm that runs")
     paired.add_argument("--kernel-trace", action="append", default=[], metavar="ARM=FILE",
                         help="JSON written by the trace command")
