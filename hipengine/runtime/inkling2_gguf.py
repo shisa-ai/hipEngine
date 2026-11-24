@@ -114,11 +114,22 @@ class Inkling2GGUFText(Inkling2TextReference):
             self.resident_controllers = (self._resident_controllers if projection.supports_resident_controllers
                                          else None)
             self.resident_attention = self._resident_attention if projection.supports_resident_attention else None
+            self.resident_block = self._resident_block if projection.supports_resident_block else None
 
     def _resident_attention(self, session, visit, inputs, messages, norm_names):
         """Attention half of one block visit on the device; only the branch output reaches the host.
 
         `inputs` holds the query, key and value controller inputs, one row matrix each.
+        """
+        return self.projection.project_attention_resident(
+            self._attention_plan(session, visit, inputs, messages, norm_names))
+
+    def _attention_plan(self, session, visit, inputs, messages, norm_names, *, sources=None, device=None):
+        """Bind one block visit's attention half to matrices and device pointers.
+
+        Without `sources` the plan carries host rows and `project_attention_resident` owns the arena.
+        A caller that owns an arena passes device `sources` and a `device` cursor instead, and keeps
+        the branch output resident.
         """
         c, w, tensors = self.config, self.weights, self.weights.names
         layer = f"layers.{visit.weight_layer}"
@@ -144,7 +155,11 @@ class Inkling2GGUFText(Inkling2TextReference):
         query = names("wq_du.weight", "wr_du.weight", "attn_sink_proj.weight", "gate_attn.weight")
         query_none = (None,) * len(query)
         # Controllers always yield three distinct rows; without them the inputs may be shared.
-        group = (0, 1, 2) if messages is not None or any(x is not inputs[0] for x in inputs) else (0, 0, 0)
+        if sources is not None:
+            group = (0, 1, 2) if len(sources) == 3 else (0, 0, 0)
+        else:
+            group = (0, 1, 2) if messages is not None or any(x is not inputs[0] for x in inputs) else (0, 0, 0)
+        distinct = messages is not None if sources is None else len(sources) == 3
         convolve = None
         if dynamic:
             key, value = names("wk_dv.weight", "k_sconv.weight_proj"), names("wv_dv.weight", "v_sconv.weight_proj")
@@ -157,7 +172,7 @@ class Inkling2GGUFText(Inkling2TextReference):
                                    (projected[7], (rows, nkv * ksize)))
 
             value_index = 6
-        elif messages is None:
+        elif not distinct:
             # Without loop controllers one normalized input feeds every attention projection.
             groups = ((0, query + names("wk_dv.weight", "wv_dv.weight"), query_none + (
                 partial(conv.apply_static, slot, "k", kv_taps("k"), position=pos),
@@ -169,7 +184,10 @@ class Inkling2GGUFText(Inkling2TextReference):
                       (group[2], names("wv_dv.weight"),
                        (partial(conv.apply_static, slot, "v", kv_taps("v"), position=pos),)))
             value_index = 5
-        if messages is None:
+        if sources is not None:
+            # The caller already normalized or blended its rows and keeps them resident.
+            controllers, norm_weights = None, ()
+        elif messages is None:
             # Without loop controllers each input is normalized on the host before its projection group.
             shared = all(x is inputs[0] for x in inputs)
             sources = tuple(_rms(x, c["rms_norm_eps"]) * w.dense(layer + "." + name + ".weight")
@@ -187,7 +205,7 @@ class Inkling2GGUFText(Inkling2TextReference):
         def attend(q, k, v, rel, sink, gate, out):
             session.attention.step_block_resident(slot, pos, q, k, v, rel, sink, gate, out, table, rel_width, rows)
 
-        return projection.project_attention_resident(SimpleNamespace(
+        return SimpleNamespace(
             rows=rows, hidden=inputs[0].shape[1], position=pos, eps=c["rms_norm_eps"], sources=sources,
             controllers=controllers, norm_weights=norm_weights, groups=groups, convolve=convolve, attend=attend,
             prepare=SimpleNamespace(
@@ -200,7 +218,8 @@ class Inkling2GGUFText(Inkling2TextReference):
                 query=0, relative=1, sink=2, gate=3, key=4, value=value_index),
             output=(*names("wo_ud.weight"),
                     partial(conv.apply_static, slot, "attn_sconv", w.dense(layer + ".attn_sconv.weight")[:, 0, ::-1],
-                            position=pos))))
+                            position=pos)),
+            device=device)
 
     def _resident_controllers(self, controllers, *, norm_weights, eps):
         # Blend and normalize loop controllers on the device; strict and unnamed profiles keep the host expression.
@@ -209,6 +228,153 @@ class Inkling2GGUFText(Inkling2TextReference):
             (((tensors[stem + "down_weight"].name, tensors[stem + "forget_weight"].name,
                tensors[stem + "gain_weight"].name), x, message) for stem, x, message in controllers),
             norm_weights=norm_weights, eps=eps))
+
+    def _resident_block(self, session, h, *, limit=None):
+        """Advance one prefill block with the hidden rows and residual stack resident.
+
+        Every read, normalization, residual add, the attention half and the expert chain run inside
+        one arena. Only the router logits per visit and the final rows cross the host.
+        """
+        c, w, tensors = self.config, self.weights, self.weights.names
+        projection, eps = self.projection, c["rms_norm_eps"]
+        rows, hidden = h.shape
+        item = np.dtype(np.float32).itemsize
+        row = rows * hidden * item
+        stride = c["n_layers_per_attn_res_block"]
+        loop_start = c["loop_config"]["core_start"]
+        capacity = session._residual_capacity
+        visits = self.plan.visits if limit is None else self.plan.visits[:limit]
+        row_rms = projection.residual_kernel("row_rms")
+        row_norm_mul = projection.residual_kernel("row_norm_mul")
+        row_add = projection.residual_kernel("row_add")
+        residual_read = projection.residual_kernel("residual_read")
+        blank = np.empty((rows, hidden), np.float32)
+
+        def norm_names(visit):
+            return (("attn_norm",) * 3 if visit.is_local
+                    else ("q_input_norm", "k_input_norm", "v_input_norm"))
+
+        def weight(layer, name):
+            return projection.resident_vector(tensors[f"layers.{layer}.{name}.weight"].name,
+                                              w.dense(f"layers.{layer}.{name}.weight"))
+
+        def query(layer, stem):
+            return np.ascontiguousarray(w.dense(f"attn_res.{stem}.{layer}"), dtype=np.float32)
+
+        # One probe per distinct visit shape sizes the arena the attention half needs.
+        attention_bytes, seen = 0, set()
+        for visit in visits:
+            shape = (visit.is_local, visit.message_pass is not None)
+            if shape in seen:
+                continue
+            seen.add(shape)
+            names = norm_names(visit)
+            if visit.message_pass is not None:
+                probe = self._attention_plan(session, visit, (blank,) * 3, np.empty((rows, 4, hidden), np.float32),
+                                             names)
+            else:
+                probe = self._attention_plan(session, visit, (blank,) * (1 if visit.is_local else 3), None, names,
+                                             sources=(0,) * (1 if visit.is_local else 3))
+            attention_bytes = max(attention_bytes, sum(projection.attention_resident_extent(probe)))
+        regions = (("h", row), ("branch", row), ("m", row), ("normalized", 3 * row),
+                   ("read", 4 * row), ("messages", 4 * row), ("query", 4 * hidden * item),
+                   ("stack", capacity * row), ("previous", capacity * row), ("snapshot", capacity * row),
+                   ("saved_h", row), ("previous_h", row), ("attention", attention_bytes))
+        offsets, extent = {}, 0
+        for name, nbytes in regions:
+            extent = (extent + 255) // 256 * 256
+            offsets[name] = extent
+            extent += nbytes
+        with projection.resident(extent) as base:
+            def at(name):
+                return base + offsets[name]
+
+            projection.upload(at("h"), h)
+            count, working, saved, previous = 0, "stack", None, None
+            for visit in visits:
+                layer = visit.weight_layer
+                if layer == loop_start:
+                    if saved is None:
+                        saved = count
+                        projection.copy_device(at("snapshot"), at(working), count * row)
+                        projection.copy_device(at("saved_h"), at("h"), row)
+                    else:
+                        # The abandoned pass keeps its stack; the entry block is restored for the next one.
+                        previous = (working, saved + 1, count - saved - 1)
+                        projection.copy_device(at("previous_h"), at("h"), row)
+                        projection.copy_device(at("h"), at("saved_h"), row)
+                        working = "previous" if working == "stack" else "stack"
+                        projection.copy_device(at(working), at("snapshot"), saved * row)
+                        count = saved
+                stack, names = at(working), norm_names(visit)
+                if layer:
+                    queries = query(layer - 1, "attn_queries").reshape(-1, hidden)
+                    projection.upload(at("query"), queries)
+                    row_rms(at("h"), stack + count * row, rows, hidden, eps)
+                    residual_read(at("query"), stack, at("read"), rows, count + 1, queries.shape[0], hidden)
+                    inputs = [at("read") + i * row for i in range(queries.shape[0])]
+                else:
+                    inputs = [at("h")]
+                if visit.message_pass is not None:
+                    region, start, blocks = previous
+                    queries = np.ascontiguousarray(self.loop_queries(visit), dtype=np.float32)
+                    projection.upload(at("query"), queries)
+                    row_rms(at("previous_h"), at(region) + (start + blocks) * row, rows, hidden, eps)
+                    residual_read(at("query"), at(region) + start * row, at("messages"), rows, blocks + 1,
+                                  queries.shape[0], hidden)
+                    cursor = at("attention")
+                    for i in range(3):
+                        projection.copy_device(cursor + i * row, inputs[0] if len(inputs) == 1 else inputs[i], row)
+                        projection.copy_device(cursor + 3 * row + i * row, at("messages") + i * row, row)
+                    plan = self._attention_plan(session, visit, (blank,) * 3, np.empty((rows, 4, hidden), np.float32),
+                                                names, device=SimpleNamespace(cursor=cursor, result=at("branch")))
+                else:
+                    sources = []
+                    for i, source in enumerate(inputs):
+                        row_norm_mul(source, weight(layer, names[i]), at("normalized") + i * row, rows, hidden, eps)
+                        sources.append(at("normalized") + i * row)
+                    plan = self._attention_plan(session, visit, (blank,) * len(inputs), None, names,
+                                                sources=sources,
+                                                device=SimpleNamespace(cursor=at("attention"), result=at("branch"),
+                                                                       sources=sources))
+                projection.project_attention_resident(plan)
+                if layer % stride == 0:
+                    if not layer:
+                        # The entry visit reads nothing, so its stack row is written here instead.
+                        row_rms(at("h"), stack, rows, hidden, eps)
+                    count += 1
+                    a = at("branch")
+                else:
+                    row_add(at("h"), at("branch"), at("h"), rows, hidden)
+                    a = at("h")
+                projection.upload(at("query"), query(layer, "mlp_queries").reshape(1, hidden))
+                row_rms(a, stack + count * row, rows, hidden, eps)
+                residual_read(at("query"), stack, at("read"), rows, count + 1, 1, hidden)
+                if visit.message_pass is None:
+                    row_norm_mul(at("read"), weight(layer, "mlp_norm"), at("normalized"), rows, hidden, eps)
+                    normalized = at("normalized")
+                else:
+                    chain = tuple(tensors[f"layers.{layer}.controllers.mlp.{op}_weight"].name
+                                  for op in ("down", "forget", "gain"))
+                    normalized = projection.blend_controllers_resident(
+                        at("attention"), (chain,), ((tensors[f"layers.{layer}.mlp_norm.weight"].name,
+                                                     w.dense(f"layers.{layer}.mlp_norm.weight")),), eps,
+                        [at("read")], [at("messages") + 3 * row], rows=rows, width=hidden)
+                logits = projection.project_from_device(tensors[f"layers.{layer}.mlp.gate.weight"].name, rows,
+                                                        normalized)
+                ids, mix = self._select_routes(visit, logits)
+                projection.project_experts_mixed_rows(
+                    visit, ((ids, mix, blank,
+                             partial(session.convolution.apply_static, visit.state_slot, "mlp_sconv",
+                                     w.dense(f"layers.{layer}.mlp_sconv.weight")[:, 0, ::-1],
+                                     position=session.position)),),
+                    device=(normalized, at("m")))
+                row_add(a, at("m"), at("h"), rows, hidden)
+            result = np.empty((rows, hidden), np.float32)
+            projection.download(at("h"), result)
+            blocks = np.empty((count, rows, hidden), np.float32)
+            projection.download(stack, blocks)
+        return result, [np.ascontiguousarray(block) for block in blocks]
 
     def decode_rows(self, rows):
         """Advance each visit in lockstep without sharing request state or scalar math."""

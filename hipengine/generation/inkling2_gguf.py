@@ -16,7 +16,11 @@ from hipengine.generation.inkling2_mini import Inkling2ReferenceGenerator
 from hipengine.generation.registry import DecodeState, GenerationStreamChunk, GenerationTelemetry, register_text_generator
 from hipengine.kernels.backends import hip_target_arch_for_backend
 from hipengine.kernels.hip_gfx1100.attention import inkling2_target_attention  # noqa: F401
-from hipengine.kernels.hip_gfx1100.norm import inkling2_attention_prepare, inkling2_controller  # noqa: F401
+from hipengine.kernels.hip_gfx1100.norm import (  # noqa: F401
+    inkling2_attention_prepare,
+    inkling2_controller,
+    inkling2_residual,
+)
 from hipengine.kernels.hip_gfx1100.quant import inkling2_short_conv  # noqa: F401
 from hipengine.kernels.registry import resolve
 from hipengine.loading.gguf import GGUFReader

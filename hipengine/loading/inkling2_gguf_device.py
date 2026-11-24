@@ -246,6 +246,33 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 raise RuntimeError("Inkling GGUF projection residency is closed")
             yield self._scratch("_resident", nbytes).ptr
 
+    def blend_controllers_resident(self, base, chains, norms, eps, hidden, message, *, rows, width):
+        """Blend and normalize resident controller rows and leave the result in the caller's arena.
+
+        `chains` are the down/forget/gain tensor names, `norms` are `(vector name, host row)` pairs,
+        and `hidden`/`message` are device rows. The blended rows land at `base + inp_bytes`.
+        """
+        plans, norm_weights = self._controller_plans(
+            [((down, forget, gain), np.empty((rows, width), np.float32), np.empty((rows, width), np.float32))
+             for down, forget, gain in chains], [host for _, host in norms])
+        inp_bytes, out_bytes = self._controller_extent(plans, norm_weights)
+        item = np.dtype(np.float32).itemsize
+        gate = len(plans) * rows * width * item
+        out = base + inp_bytes
+        for i in range(len(plans)):
+            self.copy_device(base + i * gate, hidden[i], gate)
+            self.copy_device(base + gate + i * gate, message[i], gate)
+        cursor = base + 2 * gate
+        for name, host in norms:
+            self.copy_device(cursor, self.resident_vector(name, host), host.nbytes)
+            cursor += host.nbytes
+        self._controller_kernels(base, out, plans, norm_weights, eps)
+        return out
+
+    def download(self, src, host):
+        """Read a resident region back to the host and fence preceding launches."""
+        self._transfer.download(src, host)
+
     def copy_device(self, dst, src, nbytes):
         """Copy inside device memory on stream zero, after any launch already queued."""
         if nbytes > 0:

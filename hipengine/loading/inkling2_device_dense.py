@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from threading import Lock
+from threading import Lock, RLock
 
 import numpy as np
 
@@ -19,7 +19,8 @@ class Inkling2DeviceDense:
         self._weights = weights
         self._runtime = runtime
         self._blas = blas  # Borrowed; the runner owns the rocBLAS handle.
-        self._lock = Lock() if lock is None else lock
+        # Reentrant: one resident block holds the arena across calls that take the lock again.
+        self._lock = RLock() if lock is None else lock
         self._matrices = {}
         self._input = self._output = None
         self._transfer = Inkling2ActivationTransfer(runtime)
