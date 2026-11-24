@@ -209,6 +209,7 @@ def main() -> int:
 
     if not args.skip_gemv:
         results["q8_0_gemv"] = q8_0_gemv_probe(args.gemv_reps, args.gemv_warmup)
+        results["nvfp4_8route_gemv"] = nvfp4_probe(args.gemv_reps, args.gemv_warmup)
 
     text = json.dumps(results, indent=2)
     if args.output:
@@ -216,6 +217,76 @@ def main() -> int:
     else:
         print(text)
     return 0
+
+
+_NVFP4_BYTES_PER_WEIGHT = 36 / 64  # 4 bytes fp8 scale per 64 values + 32 bytes of packed nibbles
+
+
+def nvfp4_probe(reps: int, warmup: int = 30) -> dict[str, object]:
+    """Time the eight-route NVFP4 selected-projection decode kernels.
+
+    Reads only the eight selected experts' weights, matching the expert
+    gather pattern of one MoE visit with top-8 routing. bytes/s is reported
+    against selected-expert bytes (not the full bank).
+    """
+    from hipengine.core.memory import copy_host_to_device, free, host_array_ptr, malloc
+    from hipengine.kernels.hip_gfx1100.quant.gguf_nvfp4_gemv import _launch_selected
+    from hipengine.kernels.backends import hip_target_arch_for_backend
+
+    target_arch = hip_target_arch_for_backend("hip_gfx1100")
+    rng = np.random.default_rng(0)
+    shapes = {
+        "gate_up_2304x2304": (2304, 2304),
+        "down_1152x2304": (1152, 2304),
+    }
+    ids = np.arange(8, dtype=np.int32)
+    scales = np.full(8, 1.0, dtype=np.float32)
+    report: dict[str, object] = {}
+    total_bytes = 0
+    for name, (in_features, out_features) in shapes.items():
+        rows_per_expert = out_features
+        bytes_per_row = in_features // 64 * 36
+        expert_nbytes = rows_per_expert * bytes_per_row
+        weights = rng.integers(0, 256, size=128 * expert_nbytes, dtype=np.uint8)
+        x = rng.normal(0, 1, size=(8, in_features)).astype(np.float32)
+        out = np.empty((8, out_features), dtype=np.float32)
+        w_buf, x_buf, o_buf = malloc(weights.nbytes), malloc(x.nbytes), malloc(out.nbytes)
+        ids_buf, scales_buf = malloc(ids.nbytes), malloc(scales.nbytes)
+        try:
+            copy_host_to_device(w_buf, host_array_ptr(weights), weights.nbytes)
+            copy_host_to_device(x_buf, host_array_ptr(x), x.nbytes)
+            copy_host_to_device(ids_buf, host_array_ptr(ids), ids.nbytes)
+            copy_host_to_device(scales_buf, host_array_ptr(scales), scales.nbytes)
+            launch = dict(target_arch=target_arch, stream=0)
+            for _ in range(warmup):
+                _launch_selected(x_buf.ptr, w_buf.ptr, o_buf.ptr, ids_buf.ptr, scales_buf.ptr,
+                                 8, 128, in_features, out_features, **launch)
+            from hipengine.core.hip import get_hip_runtime
+
+            runtime = get_hip_runtime()
+            runtime.stream_synchronize(0)
+            import time as _time
+
+            start = _time.perf_counter()
+            for _ in range(reps):
+                _launch_selected(x_buf.ptr, w_buf.ptr, o_buf.ptr, ids_buf.ptr, scales_buf.ptr,
+                                 8, 128, in_features, out_features, **launch)
+            runtime.stream_synchronize(0)
+            seconds = (_time.perf_counter() - start) / reps
+        finally:
+            for buf in (w_buf, x_buf, o_buf, ids_buf, scales_buf):
+                free(buf)
+        selected_bytes = 8 * expert_nbytes
+        total_bytes += selected_bytes
+        report[name] = {
+            "selected_weight_bytes": selected_bytes,
+            "seconds_per_call": seconds,
+            "gigabytes_per_second": selected_bytes / seconds / 1e9,
+        }
+    report["combined_bytes"] = total_bytes
+    report["combined_seconds"] = sum(v["seconds_per_call"] for v in report.values() if isinstance(v, dict))
+    report["combined_gigabytes_per_second"] = total_bytes / report["combined_seconds"] / 1e9
+    return report
 
 
 def platform_info() -> dict[str, str]:
