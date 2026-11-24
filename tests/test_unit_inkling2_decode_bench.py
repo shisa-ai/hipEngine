@@ -61,8 +61,9 @@ def test_install_token_counter_counts_what_the_generator_yields():
             self.seen = (request, index, row)
             yield from (7, 8, 9)
 
+    original = Generator._iterate_row
     generator = Generator()
-    tokens = bench.install_token_counter(generator)
+    tokens = bench.install_token_counter(Generator)
     assert tokens == [0]
     steps = generator._iterate_row("request", 0, "row")
     assert next(steps) == 7 and tokens == [1]
@@ -70,6 +71,7 @@ def test_install_token_counter_counts_what_the_generator_yields():
     assert tokens == [2]
     assert list(steps) == [9] and tokens == [3]
     assert generator.seen == ("request", 0, "row")
+    Generator._iterate_row = original
 
 
 def test_stream_once_times_from_the_first_text_delta_to_close():

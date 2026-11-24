@@ -121,22 +121,23 @@ def _direction(kind):
     return (getattr(kind, "name", None) or str(kind)).lower()
 
 
-def install_token_counter(generator):
+def install_token_counter(generator_class):
     """Return ``[count]``, advanced once per token the text generator hands its stream.
 
     The stream yields a chunk only for non-empty text and carries token IDs only on its last
     chunk, so neither the chunk count nor the IDs on the first delta give the token count.
-    Counting where the generator yields does.
+    Counting where ``generator_class._iterate_row`` yields does. The method is wrapped on the
+    class because the public ``LLM`` object does not hand out the generator instance.
     """
     counter = [0]
-    original = generator._iterate_row
+    original = generator_class._iterate_row
 
-    def counting(*args, **kwargs):
-        for token in original(*args, **kwargs):
+    def counting(self, *args, **kwargs):
+        for token in original(self, *args, **kwargs):
             counter[0] += 1
             yield token
 
-    generator._iterate_row = counting
+    generator_class._iterate_row = counting
     return counter
 
 
@@ -297,7 +298,8 @@ def main(argv=None) -> int:
     llm = LLM(model=str(model), backend=args.backend, execution_profile=profile,
               max_sequence_length=args.max_sequence_length, prefix_cache="off", speculative_mtp_serving="off")
     try:
-        tokens = install_token_counter(llm._get_text_generator())
+        from hipengine.generation.inkling2_gguf import Inkling2GGUFGenerator
+        tokens = install_token_counter(Inkling2GGUFGenerator)
         seed = llm.tokenize(_SEED)
         sampling = SamplingParams(temperature=0, max_tokens=args.output_tokens, ignore_eos=True)
         depths = []
