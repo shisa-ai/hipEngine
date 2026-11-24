@@ -279,17 +279,18 @@ class Inkling2DeviceAttention:
         live = min(position + rows, cap)
         headers = getattr(self, "capture_headers", None)
         if headers is not None:
-            # A captured decode graph refreshes per-visit headers on the device. The extent
-            # argument baked into the graph is only position-independent once every visit's
-            # window is saturated; the capture gate guarantees that.
             header = headers[visit]
         else:
             self.staging[:2].view(np.int32)[:] = (live, position)
             self.transfer.enqueue_upload(self._block_header, self.staging[:2])
             header = self._block_header
+        # A captured launch reads its live count from the header slot on every replay, so a later
+        # step serves more keys than the capture had. Its extent is the whole window the bias
+        # table covers; keys are still visited only up to the live count.
+        extent = min(extent, live if headers is None else cap)
         spans = replace(spans, live_counts=Tensor(header, (1,), DType.INT32, self.device),
                         row_positions=Tensor(header + 4, (1,), DType.INT32, self.device))
-        self.block_table(query, keys, values, rel, sink, out, spans, nq, nk, d, min(extent, live), key, value, rows,
+        self.block_table(query, keys, values, rel, sink, out, spans, nq, nk, d, extent, key, value, rows,
                          gain=gate, table=table, rel_width=rel_width)
         self.positions[visit] = position + rows
 

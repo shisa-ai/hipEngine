@@ -254,15 +254,6 @@ class Inkling2GGUFText(Inkling2TextReference):
     def _graph_floor(self):
         return int(self.config.get("log_scaling_n_floor", 8192))
 
-    def _graph_min_position(self, session):
-        attention = getattr(session, "attention", None)
-        geometry = getattr(attention, "geometry", None)
-        if not geometry:
-            return None
-        # The captured graph bakes min(extent, live) per visit; it stays valid while every
-        # visit's window is saturated, i.e. once the position passes every visit's window.
-        return max(min(g[4], g[0]) for g in geometry)
-
     def _drop_graph_state(self):
         state = getattr(self, "_graph_state", None)
         self._graph_state = None
@@ -316,9 +307,10 @@ class Inkling2GGUFText(Inkling2TextReference):
             return None
         if getattr(self, "_graph_disabled", False):
             return None
-        floor = self._graph_floor()
-        minimum = self._graph_min_position(session)
-        if minimum is None or session.position + 1 < minimum or session.position + 1 > floor:
+        attention = getattr(session, "attention", None)
+        if not getattr(attention, "geometry", None) or session.position + 1 > self._graph_floor():
+            # Without KV state there is nothing to record against. Past the log-scale floor the
+            # clip factors differ from the position the recorded kernels carry.
             return None
         return self._capture_graph(session, h)
 
