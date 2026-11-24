@@ -16,6 +16,7 @@ from hipengine.generation.inkling2_mini import Inkling2ReferenceGenerator
 from hipengine.generation.registry import DecodeState, GenerationStreamChunk, GenerationTelemetry, register_text_generator
 from hipengine.kernels.backends import hip_target_arch_for_backend
 from hipengine.kernels.hip_gfx1100.attention import inkling2_target_attention  # noqa: F401
+from hipengine.kernels.hip_gfx1100.norm import inkling2_controller  # noqa: F401
 from hipengine.kernels.hip_gfx1100.quant import inkling2_short_conv  # noqa: F401
 from hipengine.kernels.registry import resolve
 from hipengine.loading.gguf import GGUFReader
@@ -73,7 +74,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
             blas = Rocblas.load()
             owned.callback(blas.close)
             projection = owned.enter_context(Inkling2GGUFDeviceProjections(
-                weights, runtime=runtime, blas=blas, backend=backend, fast_experts=fast))
+                weights, runtime=runtime, blas=blas, backend=backend, fast_experts=fast, fast_controllers=fast))
             model = self.model = Inkling2GGUFText(weights, projection=projection)
             model.attention_factory = lambda cap: Inkling2DeviceAttention(
                 runtime=runtime, launch=attn, split=split, split_chunked=split_chunked, block=block,
@@ -181,6 +182,7 @@ def register_inkling2_gguf_profiles():
     counted_split_q8_evidence = "worklog/entries/20261123T052005.072756Z-lhl-inkling2-mini-b13bab.md"
     chunked_evidence = "worklog/entries/20261122T161527.676605Z-lhl-inkling2-mini-854a03.md"
     gate_evidence = "worklog/entries/20261123T032340.215296Z-lhl-inkling2-mini-9e502e.md"
+    controller_evidence = "worklog/entries/20261124T000430.839711Z-lhl-inkling2-mini-d2aa61.md"
     registered = registered_runtime_profile_keys()
     for backend in ("hip_gfx1100", "hip_gfx1151"):
         for profile, variant in (("strict", strict), ("fast", "selected_q8_dot_f32_f32_out")):
@@ -215,6 +217,9 @@ def register_inkling2_gguf_profiles():
                         VariantSelection("inkling2_target_attention", "committed_projected_prefill_gate",
                                          "block_sigmoid" if fast else "block", "block" if fast else None,
                                          gate_evidence if fast else None, registry_quant="inkling2_mixed"),
+                        VariantSelection("inkling2_controller", "committed_block_controllers",
+                                         "blend_norm" if fast else "host_blend_norm", "host_blend_norm" if fast else None,
+                                         controller_evidence if fast else None, registry_quant="inkling2_mixed"),
                     ),
                     kv_policy="fp32", graph_policy="eager",
                     factory=partial(Inkling2GGUFGenerator, backend=backend, fast=fast),

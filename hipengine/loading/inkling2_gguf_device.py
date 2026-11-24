@@ -27,7 +27,7 @@ _Q8_DECODE_MIN_OUTPUTS = 1024
 class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     """Share dense transfer scratch; upload physical expert banks only once."""
 
-    def __init__(self, weights, *, runtime, blas, backend, fast_experts=False):
+    def __init__(self, weights, *, runtime, blas, backend, fast_experts=False, fast_controllers=False):
         super().__init__(weights, runtime=runtime, blas=blas)
         load_backend_kernel_package(backend)
         self._tensors = {t.name: t for t in weights.reader.info.tensors}
@@ -91,6 +91,12 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             self._activation = partial(resolve(backend=backend, layer="inkling2_expert_pointwise",
                                                quant="inkling2_mixed", variant="split_activation_device"),
                                        target_arch=self._target_arch)
+        self._controller_input = self._controller_blend_norm = None
+        if fast_controllers:
+            for variant, name in (("input", "_controller_input"), ("blend_norm", "_controller_blend_norm")):
+                setattr(self, name, partial(resolve(backend=backend, layer="inkling2_controller",
+                                                    quant="inkling2_mixed", variant=variant),
+                                            target_arch=self._target_arch))
         self._bank_scales = {}
         self._upload_staging = None
 
@@ -101,6 +107,58 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     @property
     def supports_device_activation(self):
         return self._activation is not None
+
+    @property
+    def supports_resident_controllers(self):
+        return self._controller_input is not None
+
+    def project_controllers_normed(self, controllers, *, norm_weights, eps):
+        """Exchange raw controller inputs once: RMS and concatenate, project, then blend and normalize on the device."""
+        controllers = tuple(controllers)
+        norm_weights = tuple(np.ascontiguousarray(w, dtype=np.float32) for w in norm_weights)
+        if not controllers or len(controllers) != len(norm_weights):
+            raise ValueError("Inkling GGUF resident controllers need one norm weight per controller")
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling GGUF dense residency is closed")
+            plans = []
+            for (down, forget, gain), hidden, message in controllers:
+                hidden = np.ascontiguousarray(hidden, dtype=np.float32)
+                message = np.ascontiguousarray(message, dtype=np.float32)
+                first = self._matrix(down, None)
+                tails = (self._matrix(forget, None), self._matrix(gain, None))
+                width, inputs = first[1]
+                if (hidden.ndim != 2 or not all(hidden.shape) or hidden.shape != message.shape
+                        or inputs != 2 * hidden.shape[1] or any(m != (hidden.shape[1], width) for _, m, _ in tails)
+                        or norm_weights[len(plans)].shape != (hidden.shape[1],)):
+                    raise ValueError("Inkling GGUF resident controller geometry differs from its matrices")
+                plans.append((hidden, message, first, tails))
+            rows, hidden_size = plans[0][0].shape
+            if any(plan[0].shape != (rows, hidden_size) for plan in plans):
+                raise ValueError("Inkling GGUF resident controllers need one row count")
+            count = len(plans)
+            item = np.dtype(np.float32).itemsize
+            staging = np.concatenate([plan[0].ravel() for plan in plans] + [plan[1].ravel() for plan in plans]
+                                     + [w.ravel() for w in norm_weights])
+            output = np.empty((count, rows, hidden_size), dtype=np.float32)
+            gate = count * rows * hidden_size * item
+            down_bytes = 2 * gate
+            inp = self._scratch("_input", staging.nbytes + down_bytes + 2 * gate)
+            out = self._scratch("_output", output.nbytes + count * rows * plans[0][2][1][0] * item)
+            raw, down_inputs = inp.ptr, inp.ptr + staging.nbytes
+            forgets, gains = down_inputs + down_bytes, down_inputs + down_bytes + gate
+            intermediate = out.ptr + output.nbytes
+            with self._transfer.exchange(inp.ptr, out.ptr, staging, output, pinned=True):
+                self._controller_input(raw, raw + gate, down_inputs, rows, hidden_size, count, eps)
+                for i, (_, _, first, tails) in enumerate(plans):
+                    width = first[1][0]
+                    mid = intermediate + i * rows * width * item
+                    self._launch_projection(down_inputs + i * down_bytes // count, mid, rows, 2, first, None)
+                    self._launch_projection(mid, forgets + i * rows * hidden_size * item, rows, 2, tails[0], None)
+                    self._launch_projection(mid, gains + i * rows * hidden_size * item, rows, 2, tails[1], None)
+                self._controller_blend_norm(raw, raw + gate, forgets, gains, raw + 2 * gate, out.ptr,
+                                            rows, hidden_size, count, eps)
+            return output
 
     def _bind_packed(self, quant, launch):
         if quant == Q.NVFP4:

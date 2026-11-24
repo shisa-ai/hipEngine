@@ -110,6 +110,16 @@ class Inkling2GGUFText(Inkling2TextReference):
             self.project_device = self.project_block_device = self._project_device
             self.project_many_transformed = self._project_many_transformed
             self.project_groups_transformed = self._project_groups_transformed
+            self.resident_controllers = (self._resident_controllers if projection.supports_resident_controllers
+                                         else None)
+
+    def _resident_controllers(self, controllers, *, norm_weights, eps):
+        # Blend and normalize loop controllers on the device; strict and unnamed profiles keep the host expression.
+        tensors = self.weights.names
+        return tuple(self.projection.project_controllers_normed(
+            (((tensors[stem + "down_weight"].name, tensors[stem + "forget_weight"].name,
+               tensors[stem + "gain_weight"].name), x, message) for stem, x, message in controllers),
+            norm_weights=norm_weights, eps=eps))
 
     def decode_rows(self, rows):
         """Advance each visit in lockstep without sharing request state or scalar math."""

@@ -111,6 +111,7 @@ class Inkling2TextReference:
         self.project_block_device = None
         self.project_many_transformed = None
         self.project_groups_transformed = None
+        self.resident_controllers = None
 
     def project(self, name, hidden, *, limit=None):
         weight = self.weights.dense(name) if limit is None else self.weights.dense(name, slice(limit))
@@ -355,7 +356,15 @@ class Inkling2TextSession:
         def controller_input(x, message):
             return np.concatenate((_rms(x, eps), _rms(message, eps)), axis=-1)
 
-        def merge_controllers(inputs, names, incoming):
+        def merge_controllers(inputs, names, incoming, norm_names):
+            resident = (None if stage_controllers or self._undo is not None
+                        else getattr(self.model, "resident_controllers", None))
+            if resident is not None and not all(x.ndim == 2 for x in inputs):
+                resident = None
+            if resident is not None:
+                return resident(tuple((f"{prefix}controllers.{name}.", x, message)
+                                      for name, x, message in zip(names, inputs, incoming, strict=True)),
+                                norm_weights=tuple(get(name + ".weight") for name in norm_names), eps=eps)
             chains = []
             for x, name, message in zip(inputs, names, incoming, strict=True):
                 ctl = f"{prefix}controllers.{name}."
@@ -365,8 +374,9 @@ class Inkling2TextSession:
                 controls = yield visit, "controllers", tuple(chains)
             else:
                 controls = self.model.project_chains(chains)
-            return tuple(_blend_controller(x, message, forget, gain)
-                         for x, message, (forget, gain) in zip(inputs, incoming, controls, strict=True))
+            return tuple(norm(_blend_controller(x, message, forget, gain), name)
+                         for x, message, (forget, gain), name in zip(inputs, incoming, controls, norm_names,
+                                                                    strict=True))
 
         def norm(x, name):
             return _rms(x, eps) * get(name + ".weight")
@@ -383,12 +393,14 @@ class Inkling2TextSession:
         a = read_blocks(w.dense(f"attn_res.attn_queries.{layer - 1}"), blocks, h) if layer else h
         inputs = (a, a, a) if a.ndim == h.ndim else np.moveaxis(a, -2, 0)
         norm_names = ("attn_norm",) * 3 if visit.is_local else ("q_input_norm", "k_input_norm", "v_input_norm")
-        if messages is None and visit.is_local:
-            q, k, v = (norm(a, "attn_norm"),) * 3
+        if messages is None:
+            if visit.is_local:
+                q = k = v = norm(a, "attn_norm")
+            else:
+                q, k, v = (norm(x, name) for x, name in zip(inputs, norm_names, strict=True))
         else:
-            merged = inputs if messages is None else (yield from merge_controllers(
-                inputs, ("attn", "k", "v"), tuple(messages[..., i, :] for i in range(3))))
-            q, k, v = (norm(x, name) for x, name in zip(merged, norm_names, strict=True))
+            q, k, v = yield from merge_controllers(
+                inputs, ("attn", "k", "v"), tuple(messages[..., i, :] for i in range(3)), norm_names)
 
         attention_project = attention_output = None
         if self.attention is not None and self.convolution is not None:
@@ -425,8 +437,9 @@ class Inkling2TextSession:
             a = h + a
         m = read_blocks(w.dense(f"attn_res.mlp_queries.{layer}"), blocks, a)
         if messages is not None:
-            m, = yield from merge_controllers((m,), ("mlp",), (messages[..., 3, :],))
-        normalized = norm(m, "mlp_norm")
+            normalized, = yield from merge_controllers((m,), ("mlp",), (messages[..., 3, :],), ("mlp_norm",))
+        else:
+            normalized = norm(m, "mlp_norm")
 
         if self.model.ffn_device_output and self.convolution is not None:
             return a, normalized, device_conv("mlp_sconv"), None
