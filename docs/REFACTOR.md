@@ -1777,22 +1777,32 @@ undo/staging state, multi-row steps, or a missing device-route/resident capabili
 Non-NVFP4 expert banks (Q4_K/Q8_0/Q5_K) bounce their normalized rows through the host and reuse the
 ordinary routed path; the device-route fast path covers NVFP4 banks.
 
-Measured 2026-11-24 (W7900, UD-Q4_K_M artifact, fast profile, device routes on): the 48-token
-greedy chain is token-identical to the eager path, but wall time is ~4% slower
-(2.76 s vs 2.66 s per 48 tokens) — the chain is launch-bound at rows=1. Kept because it is the
-correct substrate for graph capture; do not promote to default on throughput grounds.
+Measured 2026-11-25 (W7900, UD-Q4_K_M artifact, fast profile, device routes on, 128 outputs,
+three repetitions after one warmup): 32.9 tok/s after 47 prompt tokens against 18.0 for the
+default path; 14.2 against 17.5 after 1,717. Two things held it at 10.3 tok/s on November 24.
+Single-row projections went through rocBLAS GEMM, which answers them with a 64x64-tile Tensile
+kernel at 143 µs against 12 µs for GEMV; one-row blocks now take the GEMV entry. Attention runs
+the block kernel at one row, which takes 0.9 ms per visit at 1,717 keys and is 45 ms of the 70 ms
+step; that is the remaining loss at depth. Until the same day every request after the first in a
+process read residual queries that the previous request's prompt blocks had overwritten, because
+they were staged once into shared scratch; the known-answer check scored 2 of 12. The queries now
+live in the projection's residency, the check scores 9 of 12 with the default path's IDs, and
+teacher-forced KL against strict is 1.39e-3 mean against 1.98e-3 for the default `fast` path
+over 640 rows.
 
-Done when: the resident traversal is wrapped in a captured HIP graph (or the per-visit launch
-count drops enough) that shows a measured win on the W7900 fast profile, or the path is removed
-along with this entry if graph capture is rejected. Validation: 48-token greedy token-identity
-check plus `tests/test_unit_inkling2_gguf_runtime.py`; expand the device-route coverage before any
-default flip.
+Done when: a decode attention kernel replaces the block kernel on this path and the step is
+faster than the default path at each of the campaign's 47, 575 and 2,057 prompt-token cells, with
+the production numerical gate passed; then the default becomes `1` and the flag is the rollback
+lever. If the step cannot beat the default at depth, remove the path, R0528 with it, and close
+this entry. Validation: `tests/test_unit_inkling2_resident_decode.py` and the known-answer check
+below; its twelve sequential requests are the regression guard for request-order state.
 
-Clearing command: `HIPENGINE_INKLING2_RESIDENT_DECODE=1 .venv/bin/python
-scripts/inkling2_gguf_task_check.py <model> --backend hip_gfx1100 --reverse` on the W7900 (the 12
-known-answer cases through `LLM.generate_detailed`), with the captured graph timed against the
-eager path by the 48-token greedy A/B recorded above. A measured win promotes the default to `1`
-and the flag becomes the rollback lever; no win removes the path and closes this entry.
+Clearing command: `HIPENGINE_INKLING2_DEVICE_ROUTES=1 HIPENGINE_INKLING2_RESIDENT_DECODE=1
+.venv/bin/python scripts/inkling2_decode_bench.py <model> --backend hip_gfx1100 --execution-profile
+fast --prompt-tokens 47 575 2057 --output-tokens 128` against the same command with the variable
+unset, plus `HIPENGINE_INKLING2_DEVICE_ROUTES=1 HIPENGINE_INKLING2_RESIDENT_DECODE=1
+.venv/bin/python scripts/inkling2_gguf_task_check.py <model> --backend hip_gfx1100 --reverse`
+(the 12 known-answer cases through `LLM.generate_detailed`) and the production numerical gate.
 ### R0528 — HIPENGINE_INKLING2_DECODE_GRAPH opt-in
 
 Owner: `hipengine/runtime/inkling2_gguf.py`.
@@ -1804,26 +1814,25 @@ and the capture-time upload pinning in `hipengine/loading/inkling2_activation_tr
 first decode
 step in a session runs eager and then records the graph; later steps replay it. A device-side
 tick kernel bumps a counter and rewrites every visit's (live, position) header inside the graph,
-so no per-step host upload remains. Baked position-dependent constants are made safe by the
-capture gate (every visit's window saturated; the graph is retired at the log-scaling floor) and
-capture-time uploads are baked in from dedicated pinned buffers; a host download inside capture
-aborts capture and the step runs eager. Decode only, one session at a time, single batch.
+so no per-step host upload remains. Baked position-dependent constants are made safe by retiring
+the graph at the log-scaling floor and by recording each visit with the whole bias extent its lag
+table covers; capture-time uploads are baked in from dedicated pinned buffers; a host download
+inside capture aborts capture and the step runs eager. Decode only, one session at a time, single batch.
 
-Status 2026-11-25 (W7900, UD-Q4_K_M artifact, fast profile, device routes on): graph captures and
-replays; eager fallback intact; no decode speedup measured yet (the 48-token wall is prefill-dominated;
-the expected win is removing ~190 launch dispatches per token). Output equivalence with the eager
-path is NOT established: one of three 48-token greedy runs matched eager exactly; two followed a
-different greedy branch from token 5; three eager runs were mutually identical. Whether the flip is
-run-to-run kernel nondeterminism or a capture defect is unresolved. Stays default-off.
+Status 2026-11-25 (W7900, UD-Q4_K_M artifact, fast profile, device routes on): replay matches
+resident eager bit for bit. Five fresh 48-token greedy runs each after a different-length warm
+request, at 67 and at 1,717 prompt tokens, gave zero logit difference at every one of 47 steps
+and the same IDs. A kernel trace shows the graph is bound by its kernels: 92 ms of them in a 97 ms
+step before the GEMV fix. The earlier sample, one of three runs matching, predates two fixes:
+replay shared the resident path's overwritten residual queries (R0527), and recording waited for
+every KV window to fill, so the graph never ran on ordinary prompts. Replay adds about 1% over
+resident eager (33.3 against 32.9 tok/s after 47 prompt tokens), so the flag's value depends on
+R0527, not on this entry. Stays default-off.
 
-Done when: a determinism investigation (isolated per-position logit comparison between replay and
-eager, and an eager-vs-eager run distribution on this model) shows the flips are ordinary run-to-run
-noise — or the defect is fixed — and a captured 48-token chain at least matches the eager chain often
-enough that greedy output is reproducible; then the task-check A/B shows a measured decode win and the
-flag flips to default with this entry closed. Until then the flag stays opt-in and the graph path is
-not used by any default configuration.
+Done when: R0527 is done. Then recording becomes unconditional for resident decode, the flag is
+removed, and this entry closes. If R0527's path is removed, remove this with it.
 
-Clearing command: `HIPENGINE_INKLING2_RESIDENT_DECODE=1 HIPENGINE_INKLING2_DECODE_GRAPH=1
-.venv/bin/python scripts/inkling2_gguf_task_check.py <model> --backend hip_gfx1100 --reverse` on the
-W7900 (the 12 known-answer cases through `LLM.generate_detailed`), plus the 48-token greedy A/B against
-`HIPENGINE_INKLING2_DECODE_GRAPH=0` and repeated fresh-process runs to establish the flip rate.
+Clearing command: `HIPENGINE_INKLING2_DEVICE_ROUTES=1 HIPENGINE_INKLING2_RESIDENT_DECODE=1
+HIPENGINE_INKLING2_DECODE_GRAPH=1 .venv/bin/python scripts/inkling2_gguf_task_check.py <model>
+--backend hip_gfx1100 --reverse` on the W7900 (the 12 known-answer cases through
+`LLM.generate_detailed`), plus the decode-rate command in R0527 with this variable set to `1`.
