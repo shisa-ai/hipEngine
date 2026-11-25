@@ -23,7 +23,7 @@ from hipengine.kernels.hip_gfx1100.norm import (  # noqa: F401
     inkling2_residual,
 )
 from hipengine.kernels.hip_gfx1100.quant import inkling2_short_conv  # noqa: F401
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.inkling2_gguf import Inkling2GGUFWeights
 from hipengine.loading.inkling2_gguf_device import Inkling2GGUFDeviceProjections
@@ -102,7 +102,13 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
         split_chunked = primitive("inkling2_target_attention", "split_chunked") if fast else None
         block = primitive("inkling2_target_attention", "block")
         block_sigmoid = primitive("inkling2_target_attention", "block_sigmoid") if fast else None
-        block_table = primitive("inkling2_target_attention", "block_table_sigmoid") if fast else None
+        # One 32-lane group per (row, KV head) where the backend registers it. That launcher sends the
+        # shapes it does not take to the tiled kernel.
+        block_table = None
+        if fast:
+            waves = KernelKey(backend, "inkling2_target_attention", INKLING2_MINI.default_quant, "block_table_waves")
+            block_table = primitive("inkling2_target_attention",
+                                    "block_table_waves" if is_registered(waves) else "block_table_sigmoid")
         decode_table = primitive("inkling2_target_attention", "decode_table_sigmoid") if fast else None
         write = primitive("inkling2_target_kv_write", "default")
         conv = primitive("inkling2_short_conv", "default")
@@ -228,6 +234,7 @@ def register_inkling2_gguf_profiles():
     gate_evidence = "worklog/entries/20261123T032340.215296Z-lhl-inkling2-mini-9e502e.md"
     controller_evidence = "worklog/entries/20261124T000430.839711Z-lhl-inkling2-mini-d2aa61.md"
     resident_evidence = "worklog/entries/20261124T093241.447865Z-lhl-inkling2-mini-4b3cf8.md"
+    wave_evidence = "worklog/entries/20261125T112427.985223Z-lhl-inkling2-mini-207009.md"
     wmma_evidence = "worklog/entries/20261125T030054.604272Z-lhl-inkling2-mini-1863be.md"
     registered = registered_runtime_profile_keys()
     for backend in ("hip_gfx1100", "hip_gfx1151"):
@@ -275,8 +282,8 @@ def register_inkling2_gguf_profiles():
                                          "blend_norm" if fast else "host_blend_norm", "host_blend_norm" if fast else None,
                                          controller_evidence if fast else None, registry_quant="inkling2_mixed"),
                         VariantSelection("inkling2_target_attention", "resident_block_relative_bias",
-                                         "block_table_sigmoid" if fast else "block_sigmoid",
-                                         "block_sigmoid" if fast else None, resident_evidence if fast else None,
+                                         "block_table_waves" if fast else "block_sigmoid",
+                                         "block_sigmoid" if fast else None, wave_evidence if fast else None,
                                          registry_quant="inkling2_mixed"),
                         VariantSelection("inkling2_attention_prepare", "resident_block_inputs",
                                          "clip" if fast else "host_clip", "host_clip" if fast else None,

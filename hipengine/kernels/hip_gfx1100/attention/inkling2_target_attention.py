@@ -151,6 +151,41 @@ def launch_attention_block_table_sigmoid(q, k, v, rel, sink, out, spans, nq, nk,
                             extent, block_k, block_v, rows, gain, table, rel_width, stream=stream)
 
 
+@lru_cache(maxsize=2)
+def _build_block_waves(target_arch):
+    fn = _library(target_arch).hipengine_inkling2_target_attention_block_waves
+    fn.argtypes = [ctypes.c_void_p] * 15 + [ctypes.c_int] * 7 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def waves_serve(nq, nk, dim, rel_width):
+    """Whether the block kernel of one 32-lane group per (row, KV head) takes this shape."""
+    groups = nq // nk if nk > 0 and nq > 0 and nq % nk == 0 else 0
+    return dim == 128 and 1 <= groups <= 4 and 0 < rel_width <= 32 and rel_width % 4 == 0
+
+
+def launch_attention_block_table_waves(q, k, v, rel, sink, out, spans, nq, nk, dim, extent, block_k, block_v, rows,
+                                       *, gain, table, rel_width, stream=None, target_arch=None):
+    """Block attention with one 32-lane group per (row, KV head), as `launch_attention_block_table_sigmoid`.
+
+    Same inputs and results up to rounding for 128-wide heads with up to four query heads per KV
+    head, a relative width that is a multiple of four up to 32, and 16-byte-aligned inputs.
+    Other layouts take the tiled kernel.
+    """
+    if (not waves_serve(nq, nk, dim, rel_width)
+            or any(ptr % 16 for ptr in (q, k, v, rel, block_k, block_v, table) if ptr)):
+        return launch_attention_block_table_sigmoid(q, k, v, rel, sink, out, spans, nq, nk, dim, extent, block_k,
+                                                    block_v, rows, gain=gain, table=table, rel_width=rel_width,
+                                                    stream=stream, target_arch=target_arch)
+    pointers = (q, k, v, rel, sink, out, *_span_pointers(spans), block_k, block_v, gain)
+    shape = (nq, nk, dim, extent, rows, spans.max_live_count)
+    status = _build_block_waves(target_arch)(*pointers, table, *shape, rel_width,
+                                             capture_stream() if stream is None else stream)
+    if status != HIP_SUCCESS:
+        raise HipError(status, "Inkling 2 wave block attention failed")
+
+
 # Fixed grid of the decode scores kernel: each of its blocks serves 16 keys per pass, and a session
 # of any length replays the same launch.
 _DECODE_SCORE_BLOCKS = 64
@@ -208,6 +243,8 @@ for _backend in ("hip_gfx1100", "hip_gfx1151"):
              launch_attention_block_sigmoid)
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "block_table_sigmoid"),
              launch_attention_block_table_sigmoid)
+    register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "block_table_waves"),
+             launch_attention_block_table_waves)
     register(KernelKey(_backend, "inkling2_target_kv_write", "inkling2_mixed", "default"), launch_cache_write)
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "default"), launch_target_attention)
     register(KernelKey(_backend, "inkling2_target_attention", "inkling2_mixed", "tiled"), launch_tiled_attention)

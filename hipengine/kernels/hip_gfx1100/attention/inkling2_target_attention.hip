@@ -213,6 +213,183 @@ __global__ void inkling2_target_cache_commit_block(
     if (ch == 0) positions[slot] = position;
 }
 
+// Block attention with one 32-lane group per (row, KV head), for 128-wide heads.
+//
+// `inkling2_target_attention_tiled` gives one 128-thread block to each (query head, row) and
+// walks the live context 16 keys at a time with three barriers per step. Here a group serves one
+// row and one KV head with its GROUPS query heads. Per pass, four groups of eight lanes each take
+// one key: a lane holds sixteen columns of that key and of the query heads, the running softmax
+// stays in registers, and the group reads each key and value row once. Scores, the softmax over
+// passes of four keys and the value sums follow another order than the tiled kernel's, which
+// stays the control.
+namespace {
+constexpr int kWavesPerBlock = 8;
+constexpr int kKeysPerPass = 4;
+constexpr int kLanesPerKey = 8;      // kKeysPerPass * kLanesPerKey is the wave's lane count
+constexpr int kColumnsPerLane = 16;   // kLanesPerKey * kColumnsPerLane is the head width
+
+__device__ __forceinline__ float accumulate4(float sum, float4 a, float4 b) {
+    return fmaf(a.w, b.w, fmaf(a.z, b.z, fmaf(a.y, b.y, fmaf(a.x, b.x, sum))));
+}
+
+__device__ __forceinline__ float4 shuffle4(float4 v, int lane_mask) {
+    return make_float4(__shfl_xor(v.x, lane_mask, 32), __shfl_xor(v.y, lane_mask, 32),
+                       __shfl_xor(v.z, lane_mask, 32), __shfl_xor(v.w, lane_mask, 32));
+}
+
+// The sum over the four keys of a pass: every lane then holds it.
+__device__ __forceinline__ float4 sum_over_keys(float4 v) {
+    const float4 a = shuffle4(v, 8), b = shuffle4(v, 16), c = shuffle4(v, 24);
+    return make_float4((v.x + a.x) + (b.x + c.x), (v.y + a.y) + (b.y + c.y),
+                       (v.z + a.z) + (b.z + c.z), (v.w + a.w) + (b.w + c.w));
+}
+}  // namespace
+
+// Eight wave groups per block: the bound lets each lane hold its query and value columns in registers.
+template <int GROUPS>
+__global__ __launch_bounds__(kWavesPerBlock * 32) void inkling2_target_attention_waves(
+        const float* q, const float* k, const float* v, const float* rel, const float* sink, float* out,
+        const int32_t* offsets, const int32_t* count, const int32_t* positions, const uint8_t* evicted,
+        const int32_t* row, const float* gate, int nq, int nk, int extent, const float* block_k,
+        const float* block_v, int capacity, const float* table, int rel_width, int rows) {
+    const int lane = threadIdx.x & 31;
+    const int key_lane = lane / kLanesPerKey;   // the key this lane serves in a pass
+    const int chunk = lane % kLanesPerKey;      // its sixteen columns
+    const int index = blockIdx.x * (blockDim.x / 32) + threadIdx.x / 32;
+    const int kh = index % nk, r = index / nk;
+    if (r >= rows) return;
+    const int base = *row;
+    const int position = base + r;
+    const int live = min(*count, position + 1);
+    const int newest = position % capacity;
+    const int width = nk * kLanesPerKey * kColumnsPerLane;
+    const size_t heads = size_t(r) * nq + size_t(kh) * GROUPS;
+    float4 query[GROUPS][4], value_sum[GROUPS][4], relative[GROUPS];
+    float highest[GROUPS], denom[GROUPS];
+    #pragma unroll
+    for (int h = 0; h < GROUPS; ++h) {
+        const float* qh = q + (heads + h) * kLanesPerKey * kColumnsPerLane + chunk * kColumnsPerLane;
+        #pragma unroll
+        for (int c = 0; c < 4; ++c) {
+            query[h][c] = *reinterpret_cast<const float4*>(qh + 4 * c);
+            value_sum[h][c] = make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+        }
+        relative[h] = chunk * 4 < rel_width
+            ? *reinterpret_cast<const float4*>(rel + (heads + h) * rel_width + chunk * 4)
+            : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+        highest[h] = sink[heads + h];
+        denom[h] = 1.0f;
+    }
+    for (int start = 0; start < live; start += kKeysPerPass) {
+        const int slot = start + key_lane;
+        const float *key = nullptr, *value = nullptr;
+        int lag = 0;
+        if (slot < live) {
+            const int distance = slot <= newest ? newest - slot : newest + capacity - slot;
+            const int staged = position - distance - base;
+            lag = staged >= 0 ? position - base - staged : position - positions[slot];
+            if (!evicted[slot] && lag >= 0 && lag < capacity) {
+                const size_t offset = staged >= 0 ? size_t(staged) : size_t(offsets[slot]);
+                key = (staged >= 0 ? block_k : k) + offset * width + kh * kLanesPerKey * kColumnsPerLane
+                    + chunk * kColumnsPerLane;
+                value = (staged >= 0 ? block_v : v) + offset * width + kh * kLanesPerKey * kColumnsPerLane
+                    + chunk * kColumnsPerLane;
+            }
+        }
+        float score[GROUPS], weight[GROUPS], rescale[GROUPS];
+        #pragma unroll
+        for (int h = 0; h < GROUPS; ++h) score[h] = 0.0f;
+        if (key) {
+            #pragma unroll
+            for (int c = 0; c < 4; ++c) {
+                const float4 kk = *reinterpret_cast<const float4*>(key + 4 * c);
+                #pragma unroll
+                for (int h = 0; h < GROUPS; ++h) score[h] = accumulate4(score[h], query[h][c], kk);
+            }
+            // The dot product is scaled; the table bias is not.
+            #pragma unroll
+            for (int h = 0; h < GROUPS; ++h) score[h] = score[h] * rsqrtf(float(kLanesPerKey * kColumnsPerLane));
+            if (lag < extent && chunk * 4 < rel_width) {
+                const float4 tt = *reinterpret_cast<const float4*>(table + lag * rel_width + chunk * 4);
+                #pragma unroll
+                for (int h = 0; h < GROUPS; ++h) score[h] = accumulate4(score[h], relative[h], tt);
+            }
+        }
+        // The eight chunks of this lane's key sum; its eight lanes then hold the same score.
+        #pragma unroll
+        for (int h = 0; h < GROUPS; ++h) {
+            score[h] += __shfl_xor(score[h], 4, 32);
+            score[h] += __shfl_xor(score[h], 2, 32);
+            score[h] += __shfl_xor(score[h], 1, 32);
+            if (!key) score[h] = -INFINITY;
+        }
+        #pragma unroll
+        for (int h = 0; h < GROUPS; ++h) {
+            const float a = __shfl_xor(score[h], 8, 32), b = __shfl_xor(score[h], 16, 32),
+                        c = __shfl_xor(score[h], 24, 32);
+            const float next = fmaxf(fmaxf(highest[h], score[h]), fmaxf(fmaxf(a, b), c));
+            rescale[h] = expf(highest[h] - next);
+            weight[h] = expf(score[h] - next);
+            highest[h] = next;
+            #pragma unroll
+            for (int c = 0; c < 4; ++c) value_sum[h][c] = value_sum[h][c] * rescale[h];
+        }
+        if (value) {
+            #pragma unroll
+            for (int c = 0; c < 4; ++c) {
+                const float4 vv = *reinterpret_cast<const float4*>(value + 4 * c);
+                #pragma unroll
+                for (int h = 0; h < GROUPS; ++h) {
+                    value_sum[h][c].x = fmaf(weight[h], vv.x, value_sum[h][c].x);
+                    value_sum[h][c].y = fmaf(weight[h], vv.y, value_sum[h][c].y);
+                    value_sum[h][c].z = fmaf(weight[h], vv.z, value_sum[h][c].z);
+                    value_sum[h][c].w = fmaf(weight[h], vv.w, value_sum[h][c].w);
+                }
+            }
+        }
+        #pragma unroll
+        for (int h = 0; h < GROUPS; ++h) {
+            // Every lane holds its key's weight; the four of a pass add up along with the sink row.
+            float sum = weight[h] + __shfl_xor(weight[h], 8, 32);
+            sum += __shfl_xor(sum, 16, 32);
+            denom[h] = fmaf(denom[h], rescale[h], sum);
+        }
+    }
+    // Every lane runs the sum: a shuffle reads nothing useful from a lane that skips it.
+    float4 total[GROUPS][4];
+    #pragma unroll
+    for (int h = 0; h < GROUPS; ++h) {
+        #pragma unroll
+        for (int c = 0; c < 4; ++c) total[h][c] = sum_over_keys(value_sum[h][c]);
+    }
+    if (key_lane == 0) {
+        #pragma unroll
+        for (int h = 0; h < GROUPS; ++h) {
+            const float* g = gate ? gate + (heads + h) * kLanesPerKey * kColumnsPerLane + chunk * kColumnsPerLane
+                                  : nullptr;
+            #pragma unroll
+            for (int c = 0; c < 4; ++c) {
+                float values[4];
+                values[0] = total[h][c].x / denom[h];
+                values[1] = total[h][c].y / denom[h];
+                values[2] = total[h][c].z / denom[h];
+                values[3] = total[h][c].w / denom[h];
+                float applied[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+                if (gate) {
+                    #pragma unroll
+                    for (int e = 0; e < 4; ++e) {
+                        const float z = expf(-fabsf(g[4 * c + e]));
+                        applied[e] = (g[4 * c + e] >= 0.0f ? 1.0f : z) / (1.0f + z);
+                    }
+                }
+                float* o = out + (heads + h) * kLanesPerKey * kColumnsPerLane + chunk * kColumnsPerLane + 4 * c;
+                #pragma unroll
+                for (int e = 0; e < 4; ++e) o[e] = gate ? __fmul_rn(values[e], applied[e]) : values[e];
+            }
+        }
+    }
+}
+
 template <bool ApplySigmoid, bool TableBias>
 static int launch_attention_block(
     const float* q, float* k, float* v, const float* bias, const float* sink, float* out,
@@ -268,6 +445,37 @@ extern "C" int hipengine_inkling2_target_attention_block_table_sigmoid(
     return launch_attention_block<true, true>(q, k, v, rel, sink, out, offsets, count, positions, evicted,
                                               row, block_k, block_v, gate, nq, nk, dim, extent, rows, capacity,
                                               table, rel_width, stream);
+}
+
+// The same inputs and results up to rounding, through one 32-lane group per (row, KV head).
+// Serves up to four query heads per KV head, 128-wide heads and a relative width that is a
+// multiple of four up to 32; other shapes are the caller's to send to the tiled kernel.
+#define INKLING2_WAVES_ARGS                                                                                       \
+    q, k, v, rel, sink, out, offsets, count, positions, evicted, row, gate, nq, nk, extent, block_k, block_v, \
+        capacity, table, rel_width, rows
+extern "C" int hipengine_inkling2_target_attention_block_waves(
+        const float* q, float* k, float* v, const float* rel, const float* sink, float* out,
+        const int32_t* offsets, const int32_t* count, int32_t* positions, const uint8_t* evicted,
+        const int32_t* row, const float* block_k, const float* block_v, const float* gate, const float* table,
+        int nq, int nk, int dim, int extent, int rows, int capacity, int rel_width, hipStream_t stream) {
+    if (nq <= 0 || nk <= 0 || nq % nk || nq / nk > 4 || dim != kLanesPerKey * kColumnsPerLane ||
+        extent <= 0 || rows <= 0 || rows > 65535 || capacity <= 0 || !table || rel_width <= 0 || rel_width > 32 ||
+        rel_width % 4) return hipErrorInvalidValue;
+    const dim3 grid(1 + (rows * nk - 1) / kWavesPerBlock), block(kWavesPerBlock * 32);
+    switch (nq / nk) {
+        case 1: hipLaunchKernelGGL((inkling2_target_attention_waves<1>), grid, block, 0, stream, INKLING2_WAVES_ARGS); break;
+        case 2: hipLaunchKernelGGL((inkling2_target_attention_waves<2>), grid, block, 0, stream, INKLING2_WAVES_ARGS); break;
+        case 3: hipLaunchKernelGGL((inkling2_target_attention_waves<3>), grid, block, 0, stream, INKLING2_WAVES_ARGS); break;
+        default: hipLaunchKernelGGL((inkling2_target_attention_waves<4>), grid, block, 0, stream, INKLING2_WAVES_ARGS); break;
+    }
+    hipError_t status = hipGetLastError();
+    if (status != hipSuccess) return status;
+    const int width = nk * dim;
+    const int committed = rows < capacity ? rows : capacity;
+    hipLaunchKernelGGL(inkling2_target_cache_commit_block, dim3(1 + (width - 1) / 256, committed), dim3(256), 0, stream,
+                       block_k, block_v, k, v, offsets, count, positions, evicted, row, capacity, width,
+                       rows - committed);
+    return hipGetLastError();
 }
 
 extern "C" int hipengine_inkling2_target_attention(const float* q, const float* k, const float* v,
