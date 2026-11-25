@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from hipengine.runtime.inkling2_device_attention import Inkling2DeviceAttention
 from hipengine.runtime.inkling2_gguf import Inkling2GGUFText
 
@@ -179,3 +181,94 @@ def test_discarding_a_capture_closes_the_submission_and_the_graph():
     submission.close.assert_called_once()
     rt.graph_destroy.assert_called_once_with(0x1234)
     rt.graph_exec_destroy.assert_not_called()
+
+
+def test_session_close_releases_the_graph_recorded_against_it(monkeypatch):
+    # The graph pins a host page for its input row. Unmapped while still registered, that page
+    # made a later model in the same process fault on copies through the same addresses.
+    import mmap
+
+    import hipengine.runtime.inkling2_gguf as runtime_module
+
+    freed = []
+    monkeypatch.setattr(runtime_module, "free", lambda buffer, runtime: freed.append((buffer, runtime)))
+    model = _model()
+    session = _session(3)
+    session.attention.capture_headers = [0x10, 0x18]
+    pin = mmap.mmap(-1, mmap.PAGESIZE)
+    rt, submission = Mock(), Mock()
+    model._graph_state = {"session": session, "runtime": rt, "stream": 7, "graph_object": 0x1234, "pin": pin,
+                          "pin_ptr": 0x5000, "counter": "c", "headers": "h", "caps": "p", "submission": submission}
+    model.release_session(session)
+    assert model._graph_state is None and session.attention.capture_headers is None
+    submission.close.assert_called_once()
+    rt.graph_destroy.assert_called_once_with(0x1234)
+    rt.stream_destroy.assert_called_once_with(7)
+    rt.host_unregister.assert_called_once_with(0x5000)
+    assert freed == [("c", rt), ("h", rt), ("p", rt)]
+    with pytest.raises(ValueError):
+        pin[0] = b"\0"
+    # Releasing again, or for another session, touches nothing.
+    model.release_session(session)
+    model._graph_state = {"session": _session(5), "runtime": rt}
+    model.release_session(session)
+    assert rt.host_unregister.call_count == 1 and rt.stream_destroy.call_count == 1
+
+
+def test_closing_a_session_tells_its_model_before_the_attention_state_goes():
+    from hipengine.runtime.inkling2_mini_reference import Inkling2TextSession
+
+    events = []
+    session = Inkling2TextSession.__new__(Inkling2TextSession)
+    session.model = SimpleNamespace(release_session=lambda s: events.append(
+        ("release", s is session, s.attention is not None)))
+    session.attention = SimpleNamespace(close=lambda: events.append("attention"))
+    session.convolution = SimpleNamespace(close=lambda: events.append("convolution"))
+    session.close()
+    assert events == ["convolution", ("release", True, True), "attention"]
+    # A model that records nothing closes as before.
+    events.clear()
+    session.model = SimpleNamespace()
+    session.attention = SimpleNamespace(close=lambda: events.append("attention"))
+    session.convolution = None
+    session.close()
+    assert events == ["attention"]
+
+
+def test_the_floor_retires_one_sessions_graph_and_not_the_next_ones():
+    model = _model()
+    session = _session(8192)
+    dropped = []
+
+    def drop():
+        dropped.append(1)
+        model._graph_state = None
+
+    model._drop_graph_state = drop
+    model._graph_state = {"session": session}
+    assert model._graph_step(session, None) is None
+    assert dropped == [1] and not getattr(model, "_graph_disabled", False)
+    # The same session stays eager; it is past the floor.
+    model._capture_graph = Mock(return_value="recorded")
+    assert model._graph_step(session, None) is None
+    model._capture_graph.assert_not_called()
+    assert model._graph_step(_session(46), None) == "recorded"
+
+
+def test_generator_close_drops_a_graph_before_the_owned_resources():
+    from contextlib import ExitStack
+
+    from hipengine.generation.inkling2_gguf import Inkling2GGUFGenerator
+
+    events = []
+    generator = Inkling2GGUFGenerator.__new__(Inkling2GGUFGenerator)
+    generator.model = SimpleNamespace(_drop_graph_state=lambda: events.append("graph"))
+    owned = ExitStack()
+    owned.callback(events.append, "owned")
+    generator._owned = owned
+    generator.close()
+    assert events == ["graph", "owned"]
+    generator.model = SimpleNamespace()
+    generator._owned = ExitStack()
+    generator.close()
+    assert events == ["graph", "owned"]

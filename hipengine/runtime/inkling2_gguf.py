@@ -263,42 +263,11 @@ class Inkling2GGUFText(Inkling2TextReference):
         return int(self.config.get("log_scaling_n_floor", 8192))
 
     def _drop_graph_state(self):
+        """Release the recorded graph and everything it holds. Calling it twice touches nothing."""
         state = getattr(self, "_graph_state", None)
         self._graph_state = None
         if state:
-            session = state.get("session")
-            attention = getattr(session, "attention", None) if session is not None else None
-            if attention is not None and getattr(attention, "capture_headers", None) is not None:
-                attention.capture_headers = None
-        else:
-            return
-        rt = state.get("runtime")
-        if rt is not None:
-            if state.get("graph"):
-                try:
-                    rt.graph_exec_destroy(state["graph"])
-                except Exception:
-                    pass
-            stream = state.get("stream")
-            if stream:
-                try:
-                    rt.stream_destroy(stream)
-                except Exception:
-                    pass
-            for key in ("counter", "headers", "caps"):
-                buf = state.get(key)
-                if buf is not None:
-                    try:
-                        free(buf, runtime=rt)
-                    except Exception:
-                        pass
-            pin = state.get("pin")
-            if pin is not None:
-                try:
-                    rt.host_unregister(state["pin_ptr"])
-                except Exception:
-                    pass
-                pin.close()
+            self._discard_capture(state, state.get("session"))
 
     def _graph_step(self, session, h):
         state = getattr(self, "_graph_state", None)
@@ -309,9 +278,10 @@ class Inkling2GGUFText(Inkling2TextReference):
         if state is not None:
             if session.position + 1 <= self._graph_floor():
                 return self._replay_graph(session, h, state)
-            # Past the log-scale floor the clip factors differ; retire the graph.
+            # Past the log-scale floor the clip factors differ; retire the graph. This session then
+            # stays eager (the floor test below refuses it); a later session starts below the floor
+            # and records its own.
             self._drop_graph_state()
-            self._graph_disabled = True
             return None
         if getattr(self, "_graph_disabled", False):
             return None
@@ -321,6 +291,17 @@ class Inkling2GGUFText(Inkling2TextReference):
             # clip factors differ from the position the recorded kernels carry.
             return None
         return self._capture_graph(session, h)
+
+    def release_session(self, session):
+        """Let go of a decode graph recorded against a session that is closing.
+
+        The graph holds a registered host page. Left to the collector, that page is unmapped
+        while the runtime still lists it as pinned, and a later allocation on the same addresses
+        is read through the stale mapping.
+        """
+        state = getattr(self, "_graph_state", None)
+        if state is not None and state.get("session") is session:
+            self._drop_graph_state()
 
     def _capture_graph(self, session, h):
         """Record the whole decode step; the current step itself runs eagerly.
@@ -363,6 +344,13 @@ class Inkling2GGUFText(Inkling2TextReference):
         if graph and rt is not None:
             try:
                 rt.graph_destroy(graph)
+            except Exception:
+                pass
+        # A graph instantiated in place of a submission transport owns its executable.
+        executable = state.pop("graph", None)
+        if executable and rt is not None:
+            try:
+                rt.graph_exec_destroy(executable)
             except Exception:
                 pass
         for key in ("stream", "counter", "headers", "caps"):

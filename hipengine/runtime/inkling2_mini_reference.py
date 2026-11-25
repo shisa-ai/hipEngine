@@ -193,8 +193,15 @@ class Inkling2TextSession:
             if self.convolution is not None:
                 self.convolution.close()
         finally:
-            if self.attention is not None:
-                self.attention.close()
+            try:
+                # Anything the model recorded against this session (a decode graph) goes first,
+                # while the session's attention state still exists.
+                release = getattr(self.model, "release_session", None)
+                if release is not None:
+                    release(self)
+            finally:
+                if self.attention is not None:
+                    self.attention.close()
 
     def _convolve(self, visit, name, x, taps, *, dynamic=False, offset=0):
         position = self.position + offset

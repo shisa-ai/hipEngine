@@ -213,6 +213,10 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
         ))
 
     def close(self):
+        # A graph still recorded against an open session goes before the buffers it names.
+        drop = getattr(getattr(self, "model", None), "_drop_graph_state", None)
+        if drop is not None:
+            drop()
         self._owned.close()
 
 
