@@ -185,8 +185,9 @@ registered plan keeps the migration path, which remains tracked for removal in
 `qwen3_5_gguf`/`hip_gfx1151`/`gguf_q4_k_m`,
 `qwen3_5_moe_gguf`/`hip_gfx1100`/`gguf_q4_k_m`,
 `qwen3_5_moe_gguf`/`hip_gfx1151`/`gguf_q4_k_m`,
-`qwen3_5_moe_paro`/`hip_gfx1100`/`w4_paro`, and
-`qwen4_exp_gguf`/`hip_gfx1151`/`gguf_ud_q4_k_xl`. Each one is covered by a
+`qwen3_5_moe_paro`/`hip_gfx1100`/`w4_paro`,
+`qwen4_exp_gguf`/`hip_gfx1151`/`gguf_ud_q4_k_xl`, `inkling2_gguf`/`hip_gfx1100`/`gguf_inkling2`,
+and `inkling2_gguf`/`hip_gfx1151`/`gguf_inkling2`. Each one is covered by a
 decision section below and keeps a registered strict fallback, so
 `execution_profile="strict"` still selects exact arithmetic, and
 `batch_invariant` still falls back per scope wherever its composition gate has
@@ -804,6 +805,90 @@ coverage, not a numerical or task-quality gate; see
 The numerical evidence and task-review limits stated in this section still apply.
 No kernel composition was changed by the resolver.
 
+
+### 2.14 Inkling 2 Mini GGUF production plan (2026-11-26)
+
+**Decision.** `inkling2_gguf` resolves an omitted profile to `production` on
+`hip_gfx1100` and on `hip_gfx1151` (`gguf_inkling2`). `strict` stays
+registered as the exact parent, and `execution_profile="strict"` selects it.
+`fast` stays opt-in and is never a default: its Q8-dot decode experts fail
+§2.11 on the code category on both backends.
+
+**What the plan selects.** The prompt blocks of `fast` with the decode
+arithmetic the gate passed:
+
+| Scope | `production` | `strict` |
+| --- | --- | --- |
+| Experts of a prompt block of 192 rows or more | `selected_wmma_f16_parts_f32_out` | `selected_tile4_*_f32_f32_out` |
+| Block attention with a relative bias | `block_table_waves` | `block_sigmoid` |
+| Prefill gate, block controllers, block attention inputs | `block_sigmoid`, `blend_norm`, `clip` | `block`, `host_blend_norm`, `host_clip` |
+| Expert activation | `split_activation_device` | `split_activation_host` |
+| Single-token gate over a shared input row | `selected_shared_register_fp4_f32_f32_out` | `selected_register_fp4_f32_f32_out` |
+| Resident single-token attention | `decode_table_sigmoid` | `split` |
+| Every other decode expert scope | the strict F32 kernel | the same |
+| Eager decode attention from 513 live keys | `split` | the same |
+| Decode | one device-resident visit per token with device routes, recorded once per session and replayed as a whole-token graph | eager |
+
+The decode expert kernels are the strict ones, so a decode token's logits sit
+at rounding scale from strict: median KL 1.4e-13 on both hosts. KV storage is
+FP32 and the graph policy is `resident_single_token_whole_token_graph`.
+
+**Gate measured** (`scripts/inkling2_profile_gate.py --candidate production`,
+clean trees, 687 teacher-forced rows against strict: 672 decode rows and 15
+prompt block ends over 25 prompts):
+
+| Host | Tree | Verdict | KL median | KL p90 | Top-1 | Code scope, 48 rows | Artifact |
+| --- | --- | --- | ---: | ---: | ---: | --- | --- |
+| Radeon Pro W7900 (`gfx1100`) | `cd3b3d69c` | all six gates pass | 1.4e-13 | 6.0e-4 | 99.85% | KL p90 2.0e-12, top-1 100% | [row](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-production.json) |
+| Radeon 8060S (`gfx1151`) | `f74d87751` | all six gates pass | 1.4e-13 | 4.1e-4 | 99.71% | KL p90 3.8e-12, top-1 100% | [row](../benchmarks/results/2026-11-25-strixhalo-inkling2-mini-gguf-profile-gate-production.json) |
+
+The other gates pass on both: three bit-stable repeats of every prompt, 25 of
+25 requests bit-identical in a fresh process with the schedule reversed, the
+public generate route reproducing the captured route token for token, and
+the 12 known-answer cases at 9 correct against strict's 9 with the
+candidate's generated IDs equal to strict's on all 12. No row is over the
+damage line. `long_context` carries the largest KL (p90 4.3e-3 on the W7900
+and 4.7e-3 on the Strix Halo), which is where the prompt-block kernels act.
+
+**Measured effect** (`scripts/inkling2_decode_bench.py`, 128 output tokens;
+five repetitions on the W7900, three on the Strix Halo):
+
+| Host | Prompt tokens | First token: `production`, `strict` | Decode: `production`, `strict` | 128 output tokens |
+| --- | ---: | --- | --- | --- |
+| W7900 | 47 | 0.201 s, 0.798 s | 37.8, 14.7 tok/s | the same |
+| W7900 | 575 | 1.170 s, 9.856 s | 33.1, 12.8 tok/s | the same |
+| W7900 | 2,057 | 4.000 s, 37.509 s | 29.6, 11.2 tok/s | different |
+| Strix Halo | 47 | 0.356 s, 0.737 s | 21.5, 12.5 tok/s | the same |
+| Strix Halo | 575 | 3.057 s, 9.469 s | 18.3, 9.1 tok/s | the same |
+| Strix Halo | 2,057 | 10.585 s, 38.089 s | 17.0, 7.4 tok/s | the same |
+
+Artifacts: W7900 [`production`](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-production-default-bench.json) and [strict](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-strict-bench.json);
+Strix Halo [`production`](../benchmarks/results/2026-11-25-strixhalo-inkling2-mini-gguf-production-default-bench.json) and [strict](../benchmarks/results/2026-11-25-strixhalo-inkling2-mini-gguf-strict-bench.json).
+
+Serving on the W7900 at `fb4c81995` (`scripts/inkling2_serve_check.py`:
+`hipengine serve` with a 4,096-token context, cache and drafting off, one
+37-token prompt with 64 output tokens): a single request takes 1.82 s
+against strict's 4.97 s (median of three), and four identical requests
+posted together take 11.63 s of wall against 16.77 s, 22.0 against 15.3
+output tokens per second in aggregate. The server reports the resolved
+profile and manifest on `/v1/models`. Every request on both profiles
+returned the same text ([`production`](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-serve-production.json), [strict](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-serve-strict.json)).
+
+**Consequence, stated because it is product-visible.** After 2,057 prompt
+tokens the W7900's 128-token stream differs from strict's, and a sampled
+trajectory can diverge earlier. Four concurrent requests do not use the
+resident visit: their rows step together through the lockstep eager path
+with the strict F32 expert tiles, at 22 tok/s in aggregate where one request
+decodes at 37.8. The [campaign plan](campaigns/INKLING2-MINI-GGUF-EXECUTION.md#6-serve-four-ordinary-streams)
+tracks that gap. The server needs `--kv-storage auto` for this model; its
+default, `bf16`, is refused by name.
+
+**Rollback.** `execution_profile="strict"` selects the exact parent. Under
+`production`, `HIPENGINE_INKLING2_RESIDENT_DECODE=0` returns decode to the
+eager path with F32 experts and ordered attention, and
+`HIPENGINE_INKLING2_DECODE_GRAPH=0` keeps the resident visit eager. Tests:
+`tests/test_gpu_inkling2_production_default.py`,
+`tests/test_unit_inkling2_gguf_runtime.py`.
 
 ## 3. Profile is orthogonal to model representation
 

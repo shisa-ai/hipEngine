@@ -1781,6 +1781,13 @@ been run. Gate command: `PYTHONPATH=. .venv/bin/python scripts/inkling2_profile_
 failed the code category](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-fast.json), and the [Q8-dot chain's row that was
 rejected](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-fast-resident-q8-dot-rejected.json).
 
+Default 2026-11-26: the `production` plan turns the flag on for `inkling2_gguf` on gfx1100 and
+gfx1151 ([decision](EXECUTION-PROFILES.md#214-inkling-2-mini-gguf-production-plan-2026-11-26)). The
+condition above is met: the [Strix Halo row](../benchmarks/results/2026-11-25-strixhalo-inkling2-mini-gguf-profile-gate-wave-attention-fast-resident.json)
+at `832d43611` passes every gate with the device routes on (687 rows, median KL 1.4e-13, p90 4.1e-4,
+top-1 99.71%), as the W7900 rows do. `0` is the rollback lever and stays how the gate measures the
+arm without route flags. Remove the flag together with that arm, which depends on it.
+
 ### R0527 — HIPENGINE_INKLING2_RESIDENT_DECODE opt-in
 
 Owner: `hipengine/runtime/inkling2_gguf.py`.
@@ -1844,6 +1851,17 @@ unset, plus `HIPENGINE_INKLING2_DEVICE_ROUTES=1 HIPENGINE_INKLING2_RESIDENT_DECO
 (the 12 known-answer cases through `LLM.generate_detailed`) and the production numerical gate,
 `PYTHONPATH=. .venv/bin/python scripts/inkling2_profile_gate.py <model> --backend hip_gfx1100
 --candidate fast_resident --json <out>.json`.
+Default 2026-11-26: `production` turns the flag on where the plan is registered. Through the
+public route on the W7900 at `cd3b3d69c` ([bench](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-production-default-bench.json), [strict](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-strict-bench.json)) the omitted profile decodes at 37.8, 33.1 and
+29.6 tok/s after 47, 575 and 2,057 prompt tokens, where `strict` gives 14.7, 12.8 and 11.2, and its
+first token comes at 0.201, 1.170 and 4.000 s against 0.798, 9.856 and 37.509 s. The 128 output
+tokens equal strict's after 47 and 575 prompt tokens and differ after 2,057. What two-to-four-row
+decode runs: the lockstep path through the selected F32 tiles, the strict selections; four
+concurrent requests reach 22.1 tok/s in aggregate against 35.1 for one
+([server row](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-serve-production.json)). A graph recorded against a session is
+released when the session closes ([entry](../worklog/entries/20261125T152718.024327Z-lhl-inkling2-mini-3116a0.md)).
+The flag stays as the rollback lever and for the gate's arms.
+
 ### R0528 — HIPENGINE_INKLING2_DECODE_GRAPH opt-in
 
 Owner: `hipengine/runtime/inkling2_gguf.py`.
@@ -1900,3 +1918,12 @@ Clearing command: `PYTHONPATH=. .venv/bin/python scripts/inkling2_decode_pairs.p
 HIPENGINE_INKLING2_DECODE_GRAPH=1 .venv/bin/python scripts/inkling2_gguf_task_check.py <model>
 --backend hip_gfx1100 --reverse` on the W7900 (the 12 known-answer cases through
 `LLM.generate_detailed`).
+
+Default 2026-11-26: `production` records for resident decode on gfx1100 and gfx1151; the flag is the
+rollback lever and the gate's arm. The [Strix Halo row](../benchmarks/results/2026-11-25-strixhalo-inkling2-mini-gguf-profile-gate-wave-attention-fast-graph.json)
+at `832d43611` passes every gate and repeats the resident row's numbers, so the graph replays the
+eager visit bit for bit there too. On that host the graph is worth 1.41 to 1.46 times: 21.8 against
+14.9 tok/s after 47 prompt tokens, 18.5 against 13.1 after 575, 17.3 against 11.9 after 2,057
+([bench](../benchmarks/results/2026-11-25-strixhalo-inkling2-mini-gguf-wave-attention-bench-fast-graph.json)). The model still holds one
+recorded graph: a session switch re-records it, and the lockstep path that serves several streams
+at once does not use it. Remove the flag when no profile selects an eager resident decode.

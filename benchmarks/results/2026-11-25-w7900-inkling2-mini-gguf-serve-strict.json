@@ -1,0 +1,145 @@
+{
+ "kind": "hipengine_inkling2_serve_check",
+ "tool": "scripts/inkling2_serve_check.py",
+ "collected_at": "2026-11-25T16:25:20.940402+00:00",
+ "model": {
+  "path": "/home/lhl/.cache/hipengine-inkling-gguf-test/Inkling-2-Mini-UD-Q4_K_M-mainline.gguf",
+  "bytes": 16610544608
+ },
+ "backend": "hip_gfx1100",
+ "requested_profile": "strict",
+ "execution_profile": {
+  "requested": "strict",
+  "resolved": "strict",
+  "manifest_sha256": "3cc686f68333a8f997f60d7f56c02defeec5d83e3cbbe3e120b7f9c894be107e",
+  "strict_manifest_sha256": "3cc686f68333a8f997f60d7f56c02defeec5d83e3cbbe3e120b7f9c894be107e",
+  "fell_back_to_strict": false,
+  "migration_default_preserved": false
+ },
+ "context": {
+  "configured_max_context_tokens": 4096,
+  "effective_max_context_tokens": 4096,
+  "chat_default_max_tokens": 4096
+ },
+ "prompt": "Explain in three short sentences why the sky looks blue.",
+ "max_tokens": 64,
+ "reps": 3,
+ "streams": 4,
+ "timing_protocol": "wall_clock_http_nonstream_v1",
+ "single": [
+  {
+   "seconds": 5.032202864065766,
+   "completion_tokens": 64,
+   "prompt_tokens": 37,
+   "text": "The sky looks blue because sunlight scatters in the atmosphere, with shorter blue wavelengths scattering more than longer wavelengths. This scattered blue light reaches our eyes from all directions, making the sky appear blue. The effect is strongest when the sun is high in the sky."
+  },
+  {
+   "seconds": 4.970581702888012,
+   "completion_tokens": 64,
+   "prompt_tokens": 37,
+   "text": "The sky looks blue because sunlight scatters in the atmosphere, with shorter blue wavelengths scattering more than longer wavelengths. This scattered blue light reaches our eyes from all directions, making the sky appear blue. The effect is strongest when the sun is high in the sky."
+  },
+  {
+   "seconds": 4.941241880878806,
+   "completion_tokens": 64,
+   "prompt_tokens": 37,
+   "text": "The sky looks blue because sunlight scatters in the atmosphere, with shorter blue wavelengths scattering more than longer wavelengths. This scattered blue light reaches our eyes from all directions, making the sky appear blue. The effect is strongest when the sun is high in the sky."
+  }
+ ],
+ "concurrent": {
+  "wall_seconds": 16.76530035608448,
+  "requests": [
+   {
+    "seconds": 16.570229653036222,
+    "completion_tokens": 64,
+    "prompt_tokens": 37,
+    "text": "The sky looks blue because sunlight scatters in the atmosphere, with shorter blue wavelengths scattering more than longer wavelengths. This scattered blue light reaches our eyes from all directions, making the sky appear blue. The effect is strongest when the sun is high in the sky."
+   },
+   {
+    "seconds": 16.69377865991555,
+    "completion_tokens": 64,
+    "prompt_tokens": 37,
+    "text": "The sky looks blue because sunlight scatters in the atmosphere, with shorter blue wavelengths scattering more than longer wavelengths. This scattered blue light reaches our eyes from all directions, making the sky appear blue. The effect is strongest when the sun is high in the sky."
+   },
+   {
+    "seconds": 16.763979187933728,
+    "completion_tokens": 64,
+    "prompt_tokens": 37,
+    "text": "The sky looks blue because sunlight scatters in the atmosphere, with shorter blue wavelengths scattering more than longer wavelengths. This scattered blue light reaches our eyes from all directions, making the sky appear blue. The effect is strongest when the sun is high in the sky."
+   },
+   {
+    "seconds": 16.764459914993495,
+    "completion_tokens": 64,
+    "prompt_tokens": 37,
+    "text": "The sky looks blue because sunlight scatters in the atmosphere, with shorter blue wavelengths scattering more than longer wavelengths. This scattered blue light reaches our eyes from all directions, making the sky appear blue. The effect is strongest when the sun is high in the sky."
+   }
+  ],
+  "output_tokens": 256,
+  "aggregate_tok_s": 15.269633979870346
+ },
+ "environment": {
+  "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/inkling-baseline/compiler.txt"
+ },
+ "provenance": {
+  "kind": "hipengine_artifact_provenance",
+  "schema_version": 3,
+  "collected_at": "2026-11-25T16:25:21.219672+00:00",
+  "host_name": "epyc",
+  "repo_root": "/tmp/inkling-ab-head",
+  "hipengine_commit": "fb4c8199537623bb35d1b8edf14d367c8447a586",
+  "git_branch": null,
+  "staged_dirty": false,
+  "unstaged_dirty": false,
+  "untracked_dirty": false,
+  "untracked_count": 0,
+  "dirty": false,
+  "dirty_paths": [],
+  "dirty_path_count": 0,
+  "untracked_paths": [],
+  "execution_affecting_dirty": false,
+  "execution_affecting_paths": [],
+  "configured_backend": "hip_gfx1100",
+  "resolved_backend": "hip_gfx1100",
+  "target_arch": "gfx1100",
+  "device_name": "AMD Radeon Pro W7900",
+  "model_path": "/home/lhl/.cache/hipengine-inkling-gguf-test/Mainline_Support/Inkling-2-Mini-UD-Q4_K_M.gguf_file",
+  "model_revision": null,
+  "model_fingerprint": {
+   "algorithm": "sha256-sampled-v1",
+   "value": "1e29c800fc4499b7d63ddda2458ccae6890f325b74d8603f2ae9aa2d54b97948",
+   "size_bytes": 16610544608,
+   "sampled_bytes": 3145728,
+   "sample_offsets": [
+    0,
+    8304748016,
+    16609496032
+   ],
+   "exists": true,
+   "path_type": "file"
+  },
+  "quant": null,
+  "kv_dtype": "fp32",
+  "command": [
+   "scripts/inkling2_serve_check.py",
+   "/home/lhl/.cache/hipengine-inkling-gguf-test/Inkling-2-Mini-UD-Q4_K_M-mainline.gguf",
+   "--backend",
+   "hip_gfx1100",
+   "--execution-profile",
+   "strict",
+   "--port",
+   "8792",
+   "--output",
+   "/tmp/inkling-gate-runs16/serve-strict.json"
+  ],
+  "environment": {
+   "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/inkling-baseline/compiler.txt"
+  },
+  "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+  "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+  "build_profile": null,
+  "timing_protocol": "wall_clock_http_nonstream_v1",
+  "warmups": 1,
+  "repetitions": 3,
+  "profiler": null
+ }
+}
