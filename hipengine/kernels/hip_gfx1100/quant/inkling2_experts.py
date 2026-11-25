@@ -111,9 +111,26 @@ def launch_split_expert_activation(gate_up, out, routes, width, gate_cap, up_cap
         raise HipError(status, "Inkling 2 split expert activation failed")
 
 
+@lru_cache(maxsize=2)
+def _replicate_symbol(target_arch):
+    fn = _expert_library(target_arch).hipengine_inkling2_replicate_row
+    fn.argtypes = [ctypes.c_void_p] * 2 + [ctypes.c_int] * 2 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def launch_replicate_row(src, dst, values, count, *, stream=None, target_arch=None):
+    """Write the FP32 row at `src` into `count` consecutive rows at `dst`."""
+    status = _replicate_symbol(target_arch)(src, dst, values, count, capture_stream() if stream is None else stream)
+    if status != HIP_SUCCESS:
+        raise HipError(status, "Inkling 2 row replication failed")
+
+
 for _backend in ("hip_gfx1100", "hip_gfx1151"):
     register(KernelKey(_backend, "inkling2_expert_pointwise", "inkling2_mixed", "ordered_mix_exact"),
              launch_expert_mix_exact)
+    register(KernelKey(_backend, "inkling2_expert_pointwise", "inkling2_mixed", "replicate_row"),
+             launch_replicate_row)
     register(KernelKey(_backend, "inkling2_expert_pointwise", "inkling2_mixed", "split_activation_device"),
              launch_split_expert_activation)
     register(KernelKey(_backend, "inkling2_expert_pointwise", "inkling2_mixed", "split_activation_host"),

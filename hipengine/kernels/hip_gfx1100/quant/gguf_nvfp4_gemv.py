@@ -55,6 +55,28 @@ def _launch_selected(x, weight, output, ids, scales, rows, experts, in_features,
 
 
 @lru_cache(maxsize=None)
+def _shared_selected(target_arch, register_fp4):
+    variant = "selected_shared_register_fp4" if register_fp4 else "selected_shared"
+    fn = getattr(_library(target_arch), f"hipengine_gguf_nvfp4_{variant}_f32_f32_out")
+    fn.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_int] * 5 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    return fn
+
+
+def _launch_shared_selected(x, weight, output, ids, scales, routes, experts, in_features, out_features, *,
+                            target_arch, routes_per_input, stream=0, register_fp4=False):
+    """Selected rows that share input rows: route r reads input row r // routes_per_input.
+
+    Same arithmetic as the selected projection over replicated rows, without the copies.
+    """
+    status = _shared_selected(target_arch, register_fp4)(x, weight, output, ids, scales, routes, experts,
+                                                          in_features, out_features, routes_per_input,
+                                                          _ambient(stream))
+    if status != HIP_SUCCESS:
+        raise HipError(status, "GGUF NVFP4 shared-input selected projection failed")
+
+
+@lru_cache(maxsize=None)
 def _tiled(target_arch, shared):
     layout = "_shared_input" if shared else ""
     fn = getattr(_library(target_arch), f"hipengine_gguf_nvfp4_selected_tile4{layout}_f32_f32_out")
@@ -84,6 +106,9 @@ for _backend in ("hip_gfx1100", "hip_gfx1151"):
              partial(_launch_selected, target_arch=_arch))
     register(KernelKey(_backend, "moe_linear", "gguf_nvfp4", "selected_register_fp4_f32_f32_out"),
              partial(_launch_selected, target_arch=_arch, register_fp4=True))
+    for _fp4, _name in ((False, "selected_shared"), (True, "selected_shared_register_fp4")):
+        register(KernelKey(_backend, "moe_linear", "gguf_nvfp4", f"{_name}_f32_f32_out"),
+                 partial(_launch_shared_selected, target_arch=_arch, register_fp4=_fp4))
     register(KernelKey(_backend, "moe_linear", "gguf_nvfp4", "selected_tile4_f32_f32_out"),
              partial(_launch_tiled, target_arch=_arch))
     register(KernelKey(_backend, "moe_linear", "gguf_nvfp4", "selected_tile4_shared_input_f32_f32_out"),

@@ -948,6 +948,8 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         ("linear", "gguf_nvfp4", "gemv_f32_f32_out"),
         ("moe_linear", "gguf_nvfp4", "selected_f32_f32_out"),
         ("moe_linear", "gguf_nvfp4", "selected_register_fp4_f32_f32_out"),
+        ("moe_linear", "gguf_nvfp4", "selected_shared_f32_f32_out"),
+        ("moe_linear", "gguf_nvfp4", "selected_shared_register_fp4_f32_f32_out"),
         ("moe_linear", "gguf_nvfp4", "selected_q8_dot_f32_f32_out"),
         ("moe_linear", "gguf_nvfp4", "selected_tile4_f32_f32_out"),
         # The dense-H5120 narrow Q4T16 col4 rowtile and the dense-H5120

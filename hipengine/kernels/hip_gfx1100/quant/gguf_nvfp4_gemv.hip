@@ -69,6 +69,48 @@ __global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_gemv_f32_ke
     }
 }
 
+template<bool register_fp4>
+__global__ __launch_bounds__(wave * waves_per_block) void gguf_nvfp4_selected_shared_f32_kernel(
+        const float * x, const uint8_t * weights, float * out, int routes, int experts, int in_features,
+        int out_features, int routes_per_input, const int32_t * ids, const float * scales) {
+    // Same per-wave arithmetic as gguf_nvfp4_gemv_f32_kernel<true, register_fp4>; route r reads
+    // input row r / routes_per_input, so routes that share a row need no replicated copy.
+    const size_t index = static_cast<size_t>(blockIdx.x) * waves_per_block + threadIdx.x / wave;
+    if (index >= static_cast<size_t>(routes) * out_features) {
+        return;
+    }
+    const int lane = threadIdx.x % wave;
+    const int batch = index / out_features;
+    const int row = index % out_features;
+    const int blocks = in_features / values_per_block;
+    const int expert = ids[batch];
+    if (expert < 0 || expert >= experts) {
+        if (lane == 0) {
+            out[index] = 0;
+        }
+        return;
+    }
+    const uint8_t * packed = weights + (static_cast<size_t>(expert) * out_features + row) * blocks * bytes_per_block;
+    const float * input = x + static_cast<size_t>(batch / routes_per_input) * in_features;
+    const int group = lane / 8;
+    const int first = group * 16 + lane % 8;
+    float sum = 0.0f;
+    for (int b = 0; b < blocks; ++b) {
+        const float scale = decode_scale(packed[group]);
+        const unsigned codes = packed[4 + lane];
+        sum = fmaf(scale * decode_fp4<register_fp4>(codes & 15), input[first], sum);
+        sum = fmaf(scale * decode_fp4<register_fp4>(codes >> 4), input[first + 8], sum);
+        packed += bytes_per_block;
+        input += values_per_block;
+    }
+    for (int shift = wave / 2; shift; shift /= 2) {
+        sum += __shfl_down(sum, shift, wave);
+    }
+    if (lane == 0) {
+        out[index] = sum * (scales ? scales[batch] : 1.0f);
+    }
+}
+
 template<bool shared_input, int active_routes, int outputs>
 __device__ __forceinline__ void selected_tile_f32(
         const float* x, const uint8_t* weights, float* out, const int32_t* records, const float* scales,
@@ -206,6 +248,25 @@ int launch_tile4(const float* x, const uint8_t* weights, float* out, const int32
     }
     return hipGetLastError();
 }
+template<bool register_fp4>
+int launch_shared_selected(const float * x, const uint8_t * weights, float * out, const int32_t * ids,
+                           const float * scales, int routes, int experts, int in_features, int out_features,
+                           int routes_per_input, hipStream_t stream) {
+    if (!x || !weights || !out || !ids || routes <= 0 || experts <= 0 || in_features <= 0
+            || in_features % values_per_block || out_features <= 0 || routes_per_input <= 0
+            || routes % routes_per_input) {
+        return hipErrorInvalidValue;
+    }
+    const size_t output_values = static_cast<size_t>(routes) * out_features;
+    const size_t blocks = (output_values + waves_per_block - 1) / waves_per_block;
+    if (blocks > INT32_MAX) {
+        return hipErrorInvalidValue;
+    }
+    hipLaunchKernelGGL((gguf_nvfp4_selected_shared_f32_kernel<register_fp4>), dim3(blocks),
+                       dim3(wave * waves_per_block), 0, stream, x, weights, out, routes, experts, in_features,
+                       out_features, routes_per_input, ids, scales);
+    return hipGetLastError();
+}
 }  // namespace
 
 extern "C" int hipengine_gguf_nvfp4_gemv_f32_f32_out(
@@ -224,6 +285,20 @@ extern "C" int hipengine_gguf_nvfp4_selected_register_fp4_f32_f32_out(
         const float* x, const uint8_t* weights, float* out, const int32_t* ids, const float* scales,
         int batch, int experts, int in_features, int out_features, hipStream_t stream) {
     return launch<true, true>(x, weights, out, batch, in_features, out_features, 1.0f, stream, ids, scales, experts);
+}
+
+extern "C" int hipengine_gguf_nvfp4_selected_shared_f32_f32_out(
+        const float * x, const uint8_t * weights, float * out, const int32_t * ids, const float * scales,
+        int routes, int experts, int in_features, int out_features, int routes_per_input, hipStream_t stream) {
+    return launch_shared_selected<false>(x, weights, out, ids, scales, routes, experts, in_features, out_features,
+                                         routes_per_input, stream);
+}
+
+extern "C" int hipengine_gguf_nvfp4_selected_shared_register_fp4_f32_f32_out(
+        const float * x, const uint8_t * weights, float * out, const int32_t * ids, const float * scales,
+        int routes, int experts, int in_features, int out_features, int routes_per_input, hipStream_t stream) {
+    return launch_shared_selected<true>(x, weights, out, ids, scales, routes, experts, in_features, out_features,
+                                        routes_per_input, stream);
 }
 
 extern "C" int hipengine_gguf_nvfp4_selected_tile4_f32_f32_out(

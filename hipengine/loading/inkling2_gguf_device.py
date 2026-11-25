@@ -101,6 +101,19 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             if is_registered(key):
                 launch = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
                 self._selected_launches[quant] = self._bind_packed(quant, launch)
+        # Routes that share one input row read it through the shared-input projection, so a decode
+        # row is not copied once per route. Banks without it replicate the row in one launch.
+        self._shared_selected_launches = {}
+        self._replicate = None
+        shared = KernelKey(backend, "moe_linear", "gguf_nvfp4", "selected_shared_register_fp4_f32_f32_out")
+        if is_registered(shared):
+            self._shared_selected_launches[Q.NVFP4] = resolve(backend=shared.backend, layer=shared.layer,
+                                                               quant=shared.quant, variant=shared.variant)
+        replicate = KernelKey(backend, "inkling2_expert_pointwise", "inkling2_mixed", "replicate_row")
+        if is_registered(replicate):
+            self._replicate = partial(resolve(backend=replicate.backend, layer=replicate.layer,
+                                               quant=replicate.quant, variant=replicate.variant),
+                                      target_arch=self._target_arch)
         self._mix = None
         key = KernelKey(backend, "inkling2_expert_pointwise", "inkling2_mixed", "ordered_mix_exact")
         if (is_registered(key) and all(Q(layer.down.weight.ggml_type) in self._selected_launches
@@ -779,14 +792,28 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             if gate_q in self._selected_launches and down_q in self._selected_launches:
                 if self._activation is None:
                     raise RuntimeError("device route projection requires the split activation")
-                # The selected kernels read one src row per route, so the single resident hidden row
-                # is replicated once per route on device. Each takes the per-route outer scales.
-                hidden_rep = self._scratch("_device_route_hidden_rep", routes * gn * 4).ptr
-                for i in range(routes):
-                    self.copy_device(hidden_rep + i * gn * 4, int(hidden_ptr), gn * 4)
+                # The selected kernels read one src row per route. With the shared-input projection every
+                # route of a token reads that token's resident hidden row; other banks get the row written
+                # once per route by one launch. Each takes the per-route outer scales.
+                routes_per_input = 1
+                shared = getattr(self, "_shared_selected_launches", {}).get(gate_q)
+                if shared is not None:
+                    hidden_rep = int(hidden_ptr)
+                    routes_per_input = k
+                else:
+                    hidden_rep = self._scratch("_device_route_hidden_rep", routes * gn * 4).ptr
+                    if getattr(self, "_replicate", None) is None:
+                        for i in range(routes):
+                            self.copy_device(hidden_rep + i * gn * 4, int(hidden_ptr), gn * 4)
+                    else:
+                        self._replicate(int(hidden_ptr), hidden_rep, gn, routes)
                 active = interim + routes * gm * 4
-                self._selected_launches[gate_q](hidden_rep, gate_weight.ptr, interim, ids_ptr,
-                                                int(route["gate_scales"] or 0), routes, experts, gn, gm)
+                gate_src = (hidden_rep, gate_weight.ptr, interim, ids_ptr, int(route["gate_scales"] or 0),
+                            routes, experts, gn, gm)
+                if shared is not None:
+                    shared(*gate_src, routes_per_input=routes_per_input)
+                else:
+                    self._selected_launches[gate_q](*gate_src)
                 self._activation(interim, active, routes, dn, mapping.gate_cap, mapping.up_cap)
                 self._selected_launches[down_q](active, down_weight.ptr, interim, ids_ptr,
                                                 int(route["down_scales"] or 0), routes, experts, dn, dm)

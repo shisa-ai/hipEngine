@@ -324,3 +324,21 @@ extern "C" int hipengine_inkling2_expert_pointwise(const float* x, const float* 
     }
     return hipGetLastError();
 }
+
+// One FP32 input row written once per route. Selected projections that read a row per route use
+// this where they have no shared-input variant; it replaces one device copy per route.
+__global__ void inkling2_replicate_row(const float* src, float* dst, size_t size, int values) {
+    const size_t index = blockIdx.x * size_t(blockDim.x) + threadIdx.x;
+    if (index < size) {
+        dst[index] = src[index % values];
+    }
+}
+
+extern "C" int hipengine_inkling2_replicate_row(const float* src, float* dst, int values, int count,
+                                                 hipStream_t stream) {
+    if (!src || !dst || values <= 0 || count <= 0) return hipErrorInvalidValue;
+    const size_t size = size_t(values) * count;
+    hipLaunchKernelGGL(inkling2_replicate_row, dim3(1 + (size - 1) / 256), dim3(256), 0, stream, src, dst, size,
+                       values);
+    return hipGetLastError();
+}
