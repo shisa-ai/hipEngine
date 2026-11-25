@@ -308,3 +308,130 @@ def test_shared_static_taps_outlive_one_session_without_sharing_history(monkeypa
             cache.pointer(slot, name, taps)
     finally:
         free(buf, runtime=runtime)
+
+
+def _conv_device():
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError as exc:
+        pytest.skip(f"HIP unavailable: {exc}")
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.backends import resolve_backend
+
+    backend = resolve_backend("auto", execution_device=True)
+    if backend not in ("hip_gfx1100", "hip_gfx1151"):
+        pytest.skip("test requires gfx1100 or gfx1151")
+    return get_hip_runtime(), backend.removeprefix("hip_")
+
+
+def _upload(array, runtime):
+    from hipengine.core.hip import HipMemcpyKind
+    from hipengine.core.memory import malloc
+
+    array = np.ascontiguousarray(array, dtype=np.float32)
+    buffer = malloc(array.nbytes, runtime=runtime)
+    runtime.memcpy(buffer.ptr, array.ctypes.data, array.nbytes, HipMemcpyKind.HOST_TO_DEVICE)
+    return buffer, array
+
+
+def _download(buffer, like, runtime):
+    from hipengine.core.hip import HipMemcpyKind
+
+    host = np.empty_like(like)
+    runtime.memcpy(host.ctypes.data, buffer.ptr, host.nbytes, HipMemcpyKind.DEVICE_TO_HOST)
+    return host
+
+
+@pytest.mark.parametrize("rows", [1, 2, 3, 7, 8, 9, 15, 16, 17, 63, 256])
+@pytest.mark.parametrize("channels", [1024, 2304, 100])
+@pytest.mark.parametrize("width", [4, 1, 3])
+@pytest.mark.parametrize("per_row", [False, True])
+def test_row_block_convolution_is_the_serial_kernel_bit_for_bit(rows, channels, width, per_row):
+    from hipengine.core.memory import free
+    from hipengine.kernels.hip_gfx1100.quant import inkling2_short_conv as conv
+
+    runtime, arch = _conv_device()
+    rng = np.random.default_rng(1000 + rows + channels + width)
+    # Inputs large enough that every partial sum rounds: the order of the terms is what is compared.
+    history = rng.standard_normal((channels, width), dtype=np.float32) * 1e3
+    x = rng.standard_normal((rows, channels), dtype=np.float32) * 1e2
+    taps = rng.standard_normal((rows, channels, width) if per_row else (channels, width), dtype=np.float32)
+    scale = np.float32(1 / np.sqrt(width + 1))
+    serial_history, _ = _upload(history, runtime)
+    row_history, _ = _upload(history, runtime)
+    source, _ = _upload(x, runtime)
+    tap_buffer, _ = _upload(taps, runtime)
+    serial_out, _ = _upload(np.zeros_like(x), runtime)
+    row_out, _ = _upload(np.zeros_like(x), runtime)
+    try:
+        stride = channels * width if per_row else 0
+        conv._serial_symbol("block", arch)(serial_history.ptr, source.ptr, tap_buffer.ptr, serial_out.ptr, channels,
+                                           width, scale, rows, stride, 0)
+        conv.launch_short_conv_block(row_history.ptr, source.ptr, tap_buffer.ptr, row_out.ptr, channels, width, scale,
+                                     rows, dynamic_taps=per_row, target_arch=arch)
+        runtime.stream_synchronize(0)
+        expected = _download(serial_out, x, runtime)
+        actual = _download(row_out, x, runtime)
+        assert np.count_nonzero(actual.view(np.uint32) != expected.view(np.uint32)) == 0
+        expected_history = _download(serial_history, history, runtime)
+        actual_history = _download(row_history, history, runtime)
+        assert np.count_nonzero(actual_history.view(np.uint32) != expected_history.view(np.uint32)) == 0
+        # A block leaves the newest inputs in its history; a block shorter than the history keeps the rest.
+        for back in range(min(width, rows)):
+            np.testing.assert_array_equal(actual_history[:, back], x[rows - 1 - back])
+    finally:
+        for buffer in (serial_history, row_history, source, tap_buffer, serial_out, row_out):
+            free(buffer, runtime=runtime)
+
+
+@pytest.mark.parametrize("rows", [1, 3, 8, 256])
+@pytest.mark.parametrize(("heads", "dim", "width"), [(8, 128, 4), (3, 67, 3), (2, 32, 1)])
+def test_row_dynamic_convolution_is_the_serial_kernel_bit_for_bit(rows, heads, dim, width):
+    from hipengine.core.memory import free
+    from hipengine.kernels.hip_gfx1100.quant import inkling2_short_conv as conv
+
+    runtime, arch = _conv_device()
+    channels = heads * dim
+    rng = np.random.default_rng(2000 + rows + channels)
+    history = rng.standard_normal((channels, width), dtype=np.float32) * 1e3
+    x = rng.standard_normal((rows, channels), dtype=np.float32) * 1e2
+    fixed = rng.standard_normal((channels, width), dtype=np.float32)
+    dynamic = rng.standard_normal((rows, heads, width), dtype=np.float32)
+    scale = np.float32(1 / np.sqrt(2 * width + 1))
+    serial_history, _ = _upload(history, runtime)
+    row_history, _ = _upload(history, runtime)
+    serial_x, _ = _upload(x, runtime)
+    fixed_buffer, _ = _upload(fixed, runtime)
+    dynamic_buffer, _ = _upload(dynamic, runtime)
+    row_out, _ = _upload(np.zeros_like(x), runtime)
+    try:
+        conv._serial_symbol("dynamic", arch)(serial_history.ptr, serial_x.ptr, fixed_buffer.ptr, dynamic_buffer.ptr,
+                                             heads, dim, width, rows, scale, 0)
+        # The row kernel reads the block it convolves, so the caller keeps the input apart from the output.
+        source = _upload(x, runtime)[0]
+        try:
+            conv.launch_short_conv_dynamic(row_history.ptr, source.ptr, fixed_buffer.ptr, dynamic_buffer.ptr, heads,
+                                           dim, width, rows, scale, out=row_out.ptr, target_arch=arch)
+            runtime.stream_synchronize(0)
+        finally:
+            free(source, runtime=runtime)
+        expected = _download(serial_x, x, runtime)
+        actual = _download(row_out, x, runtime)
+        assert np.count_nonzero(actual.view(np.uint32) != expected.view(np.uint32)) == 0
+        expected_history = _download(serial_history, history, runtime)
+        actual_history = _download(row_history, history, runtime)
+        assert np.count_nonzero(actual_history.view(np.uint32) != expected_history.view(np.uint32)) == 0
+    finally:
+        for buffer in (serial_history, row_history, serial_x, fixed_buffer, dynamic_buffer, row_out):
+            free(buffer, runtime=runtime)
+
+
+def test_row_kernels_refuse_what_the_serial_kernel_allowed():
+    from hipengine.kernels.hip_gfx1100.quant import inkling2_short_conv as conv
+
+    with pytest.raises(ValueError, match="apart from its input"):
+        conv.launch_short_conv_block(1, 2, 3, 2, 1024, 4, 1.0, 256, target_arch="gfx1100")
+    with pytest.raises(ValueError, match="needs an output"):
+        conv.launch_short_conv_dynamic(1, 2, 3, 4, 8, 128, 4, 4, 1.0, target_arch="gfx1100")
+    with pytest.raises(ValueError, match="one to sixteen"):
+        conv.launch_short_conv_block(1, 2, 3, 5, 1024, 17, 1.0, 256, target_arch="gfx1100")

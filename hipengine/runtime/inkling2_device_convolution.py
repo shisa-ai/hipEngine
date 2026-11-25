@@ -6,7 +6,7 @@ from threading import Lock
 
 import numpy as np
 
-from hipengine.core.hip import HipMemcpyKind
+from hipengine.core.hip import HipMemcpyKind, capture_stream
 from hipengine.core.memory import free, malloc
 from hipengine.loading.inkling2_activation_transfer import Inkling2ActivationTransfer
 
@@ -55,6 +55,7 @@ class Inkling2DeviceConvolution:
         self.channels, self.width = channels, width
         self.histories = {}
         self._block_scratch = None
+        self._conv_scratch = None
         self.closed = False
         with ExitStack() as owner:
             if tap_cache is None:
@@ -162,6 +163,17 @@ class Inkling2DeviceConvolution:
                               dynamic_taps=dynamic)
         return result[0], result[1]
 
+    def _conv_output(self, nbytes):
+        """Device output of a block convolution that is applied in place."""
+        scratch = self._conv_scratch
+        if scratch is None or scratch.nbytes < nbytes:
+            self._close_conv_scratch()
+            self._conv_scratch = scratch = malloc(1 << (nbytes - 1).bit_length(), runtime=self.rt)
+        return scratch
+
+    def _copy_back(self, dst, src, nbytes):
+        self.rt.memcpy_async(dst, src, nbytes, HipMemcpyKind.DEVICE_TO_DEVICE, capture_stream())
+
     def _reserve_block_scratch(self, nbytes):
         scratch = self._block_scratch
         if scratch is None or scratch.nbytes < nbytes:
@@ -180,6 +192,11 @@ class Inkling2DeviceConvolution:
         with self.transfer.exchange(scratch.ptr, scratch.ptr, active, result, pinned=True):
             self.apply_static(visit, name, taps, scratch.ptr, active.shape, position=position, undo=undo)
         return result
+
+    def _close_conv_scratch(self):
+        if self._conv_scratch is not None:
+            free(self._conv_scratch, runtime=self.rt)
+            self._conv_scratch = None
 
     def _close_block_scratch(self):
         if self._block_scratch is not None:
@@ -201,8 +218,13 @@ class Inkling2DeviceConvolution:
         channels = shape[-1]
         history = self._history(visit, name, (channels,), taps)
         rows = 1 if len(shape) == 1 else shape[0]
+        # Rows read the rows before them, so a block convolves into its own buffer and is copied back.
+        out = self._conv_output(rows * channels * 4) if rows > 1 else None
         self.launch_dynamic(history.ptr, ptr, self._static_tap_ptr(visit, name, taps), delta_ptr,
-                            heads, channels // heads, self.width, rows, self._scale(True))
+                            heads, channels // heads, self.width, rows, self._scale(True),
+                            out=None if out is None else out.ptr)
+        if out is not None:
+            self._copy_back(ptr, out.ptr, rows * channels * 4)
 
     def apply_static(self, visit, name, taps, ptr, shape, *, position=0, undo=None):
         """Convolve a device buffer in place using immutable taps for this visit."""
@@ -214,7 +236,9 @@ class Inkling2DeviceConvolution:
         scale = self._scale(False)
         rows = 1 if len(shape) == 1 else shape[0]
         if rows > 1 and undo is None and self.launch_block is not None:
-            self.launch_block(history.ptr, ptr, tap_ptr, ptr, channels, self.width, scale, rows)
+            out = self._conv_output(rows * channels * 4)
+            self.launch_block(history.ptr, ptr, tap_ptr, out.ptr, channels, self.width, scale, rows)
+            self._copy_back(ptr, out.ptr, rows * channels * 4)
             return
         for i in range(rows):
             self._snapshot(history, position + i, undo)
@@ -226,5 +250,7 @@ class Inkling2DeviceConvolution:
         try:
             self._close_block_scratch()
         finally:
+            self._close_conv_scratch()
+
             self.owner.close()
             self.histories.clear()
