@@ -1015,14 +1015,20 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             self._transfer.download(out, result)
             return tuple(results)
 
+    def _wmma_banks(self, visit):
+        """True when this visit's expert banks are raw NVFP4, the only layout the grouped kernel reads.
+
+        A mixed-quantization file keeps higher-precision experts in its last layers.
+        """
+        layer = self._weights.mapping.layers[visit.weight_layer]
+        return layer.gate_up.weight.ggml_type == Q.NVFP4 and layer.down.weight.ggml_type == Q.NVFP4
+
     def _wmma_rows(self, visit, inputs):
         """One prompt block of at least 192 rows, on raw NVFP4 banks."""
         if self._wmma is None or len(inputs) != 1:
             return False
         ids = inputs[0][0]
-        layer = self._weights.mapping.layers[visit.weight_layer]
-        return (ids.ndim == 2 and ids.shape[0] >= _WMMA_MIN_ROWS
-                and layer.gate_up.weight.ggml_type == Q.NVFP4 and layer.down.weight.ggml_type == Q.NVFP4)
+        return ids.ndim == 2 and ids.shape[0] >= _WMMA_MIN_ROWS and self._wmma_banks(visit)
 
     def _project_experts_wmma(self, visit, item, *, device):
         """Project one prompt block through the grouped WMMA kernels.
@@ -1124,7 +1130,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     def block_device_routes_supported(self, visit, rows):
         """True when a prompt block can select its routes and build its schedule on the device."""
         return (self._wmma is not None and rows >= _WMMA_MIN_ROWS and self.device_routes_enabled()
-                and self.device_routes_supported(visit))
+                and self.device_routes_supported(visit) and self._wmma_banks(visit))
 
     def project_experts_block_device_routes(self, visit, *, rows, router, hidden_ptr, out_ptr, transform_output=None):
         """Project one prompt block from device-resident routes; nothing crosses the host.
@@ -1141,10 +1147,11 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             gate, down = layer.gate_up, layer.down
             ge, gm, gn = gate.weight.shape
             de, dm, dn = down.weight.shape
+            gate_q, down_q = Q(gate.weight.ggml_type), Q(down.weight.ggml_type)
             if (self._wmma is None or rows < _WMMA_MIN_ROWS or not (gm == 2 * dn and dm == gn and de == ge)
-                    or gn % 64 or dn % 64 or gm % 32 or dm % 32):
+                    or gn % 64 or dn % 64 or gm % 32 or dm % 32 or gate_q != Q.NVFP4 or down_q != Q.NVFP4):
                 raise ValueError("Inkling GGUF device-routed expert blocks need the grouped WMMA projection "
-                                 f"of {rows} rows")
+                                 f"of raw NVFP4 experts ({gate_q.name} gate/up, {down_q.name} down) for {rows} rows")
             gate_weight, _ = self._bank(gate)
             down_weight, _ = self._bank(down)
             logits_ptr, _ = self.project_router_logits_ptr(router, rows, hidden_ptr)

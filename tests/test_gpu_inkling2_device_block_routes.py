@@ -4,9 +4,10 @@ With the fast profile, the resident traversal and device routes, a block of 192 
 its router logits projected on the device, its routes selected there and its grouped schedule built
 there, so its expert stage downloads nothing and uploads nothing. Its mix scales are the host
 router's, a row's routes in expert order, and the rows it writes are bitwise those of the
-host-routed block given the same routes and scales. The model is a multi-gigabyte local file,
-so this test runs only when ``HIPENGINE_INKLING2_MINI_GGUF`` points at it and a HIP runtime
-loads.
+host-routed block given the same routes and scales. Only visits whose experts are raw NVFP4 take
+it; a mixed-quantization file keeps other layouts in some layers. The model is a multi-gigabyte
+local file, so this test runs only when ``HIPENGINE_INKLING2_MINI_GGUF`` points at it and a HIP
+runtime loads.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import pytest
 
 from hipengine import LLM, SamplingParams
 from hipengine.core.hip import HipMemcpyKind as Copy, get_hip_runtime
+from hipengine.quant.gguf import GGMLQuantizationType as Q
 
 PROMPT = (
     "Tide pools are shallow pools of seawater that form in the rocky intertidal zone, the part of "
@@ -46,7 +48,7 @@ PROMPT = (
     "Repeated from the top of the page, the same account follows once more so that the prompt is "
     "long enough to fill several blocks of tokens. "
 ) * 2
-PARAMS = dict(max_tokens=8, temperature=0.0, ignore_eos=True)
+PARAMS = dict(max_tokens=32, temperature=0.0, ignore_eos=True)
 
 
 def _skip_unless_runnable() -> str:
@@ -60,6 +62,10 @@ def _skip_unless_runnable() -> str:
     return model
 
 
+def _router_name(text, visit):
+    return text.weights.names[f"layers.{visit.weight_layer}.mlp.gate.weight"].name
+
+
 def test_prompt_block_routes_on_the_device_like_the_host(monkeypatch):
     model = _skip_unless_runnable()
     monkeypatch.setenv("HIPENGINE_INKLING2_RESIDENT_DECODE", "1")
@@ -69,8 +75,18 @@ def test_prompt_block_routes_on_the_device_like_the_host(monkeypatch):
         text = llm._get_text_generator().model
         projection = text.projection
         visit = text.plan.visits[0]
+        assert projection._wmma_banks(visit)
         assert projection.block_device_routes_supported(visit, 192)
         assert not projection.block_device_routes_supported(visit, 191)
+        # A layer whose experts are not raw NVFP4 keeps the host-routed block: the grouped kernel
+        # reads one layout. In this file those are the last four layers, Q5_K gate/up and Q8_0 down.
+        other = [item for item in text.plan.visits if not projection._wmma_banks(item)]
+        assert other
+        for item in other:
+            gate_q = Q(text.mapping.layers[item.weight_layer].gate_up.weight.ggml_type).name
+            assert gate_q != "NVFP4"
+        assert not projection.block_device_routes_supported(other[0], 256)
+
         width = text.mapping.layers[0].gate_up.weight.shape[2]
         rows = 256
         hidden = np.random.default_rng(23).normal(0, 0.1, (rows, width)).astype(np.float32)
@@ -80,13 +96,16 @@ def test_prompt_block_routes_on_the_device_like_the_host(monkeypatch):
         hidden_buffer, result_buffer = rt.malloc(hidden.nbytes), rt.malloc(hidden.nbytes)
         try:
             rt.memcpy(hidden_buffer, hidden.ctypes.data, hidden.nbytes, Copy.HOST_TO_DEVICE)
-            router = text.weights.names[f"layers.{visit.weight_layer}.mlp.gate.weight"].name
+            real_block = projection.project_experts_block_device_routes
+            with pytest.raises(ValueError, match="raw NVFP4"):
+                real_block(other[0], rows=rows, router=_router_name(text, other[0]),
+                           hidden_ptr=hidden_buffer, out_ptr=result_buffer)
 
             def block():
-                projection.project_experts_block_device_routes(visit, rows=rows, router=router,
-                                                                hidden_ptr=hidden_buffer, out_ptr=result_buffer)
+                real_block(visit, rows=rows, router=_router_name(text, visit), hidden_ptr=hidden_buffer,
+                           out_ptr=result_buffer)
 
-            # The first call uploads the router bias and the expert scale tables, which are kept.
+            # The first call uploads the router bias, which is kept.
             block()
             rt.stream_synchronize(0)
             download, upload = projection._transfer.download, projection._transfer.enqueue_upload
@@ -116,19 +135,30 @@ def test_prompt_block_routes_on_the_device_like_the_host(monkeypatch):
         finally:
             rt.free(hidden_buffer)
             rt.free(result_buffer)
-        # Through the public route a long prompt reaches the device-routed block: one call for the
-        # expert stage of every visit of every full block, and none for the tail.
-        real_block = projection.project_experts_block_device_routes
+
+        # Through the public route a long prompt reaches the device-routed block once per visit of
+        # every full block whose experts are raw NVFP4, and never for the other visits or the tail.
         calls = []
 
-        def counted(visit, **kwargs):
-            calls.append(kwargs["rows"])
-            return real_block(visit, **kwargs)
+        def counted(item, **kwargs):
+            calls.append((item.weight_layer, kwargs["rows"]))
+            return real_block(item, **kwargs)
 
+        real_supported = projection.block_device_routes_supported
         projection.project_experts_block_device_routes = counted
         try:
             out = llm.generate_detailed([PROMPT], SamplingParams(**PARAMS))[0]
         finally:
             projection.project_experts_block_device_routes = real_block
-        assert set(calls) == {256} and len(calls) >= 2 * len(text.plan.visits)
+        wmma_visits = [item.weight_layer for item in text.plan.visits if projection._wmma_banks(item)]
+        assert calls and {count for _, count in calls} == {256}
+        assert len(calls) % len(wmma_visits) == 0
+        assert sorted(layer for layer, _ in calls) == sorted(wmma_visits * (len(calls) // len(wmma_visits)))
         assert out.telemetry.diagnostics["execution_path"] == "inkling2_gguf_packed_hip"
+        # The same prompt with host-routed blocks gives the same greedy tokens.
+        projection.block_device_routes_supported = lambda item, count: False
+        try:
+            host = llm.generate_detailed([PROMPT], SamplingParams(**PARAMS))[0]
+        finally:
+            projection.block_device_routes_supported = real_supported
+        assert out.generated_token_ids == host.generated_token_ids
