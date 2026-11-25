@@ -1787,6 +1787,9 @@ Owner: `hipengine/runtime/inkling2_gguf.py`.
 
 Scope: `_resident_block` in that file (previously uncalled) and the `width == 1` branch that
 `Inkling2TextSession._forward` in `hipengine/runtime/inkling2_mini_reference.py` uses to reach it.
+Since 2026-11-25 committed prompt blocks of more than one row reach the same traversal without
+the flag ([entry](../worklog/entries/20261125T003544.771590Z-lhl-inkling2-mini-23a730.md)); the
+flag covers only the single-token route.
 The branch routes single-token greedy decode through the whole-token device-resident traversal
 (attention controllers, projections, expert FFN, residual updates inside one arena; the host sees
 only the final hidden row and the residual-stack blocks). Opt-in via

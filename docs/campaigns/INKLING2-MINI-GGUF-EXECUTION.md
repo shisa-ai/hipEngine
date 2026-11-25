@@ -110,6 +110,15 @@ Priorities are hypotheses tied to measured work, not promised speedups. **Start 
 
 ### 1. Correct the block oracle, then finish device-resident prefill
 
+**Status 2026-11-25.** Committed prompt blocks now run the whole-block traversal in `fast`
+([entry](../../worklog/entries/20261125T003544.771590Z-lhl-inkling2-mini-23a730.md)); first token is
+1.23 to 1.28 times faster on the W7900. The two block paths cannot be bit-equal: they round the
+expert input differently and swap near-tie routes. The judge is the profile gate with a row at
+every block end, and the plan's width list is at rounding scale against strict at each prompt end.
+The oracle test of item 1 is `test_capture_points_are_not_visit_exit_states` in
+`tests/test_unit_inkling2_reference.py`. Device-routed experts for blocks (item 5) and wider
+blocks (step 3) are open.
+
 **Why first:** the [resident attention run][attention-run] removed a measured part of request time; completing the traversal is the shortest path to testing the remaining host visits. The [pinned upload race][upload-fix] was real and fixed. The [previous public block attempt][block-reject] failed repeat/quality checks **before** that fix. Neither establishes the result after it.
 
 1. **Make a CPU RED test for observation points.** The scratch sweep used `prefill_block(..., capture=...)` and subtracted `trace[k]` from `_resident_block(..., limit=k)[0]`. In [`_traverse`/`_forward`][traversal], `capture(k, h)` is *entry* to visit `k`, **after** a prelude restore. At 18 and 30 that is not the preceding visit's exit. At 48 the callback gets `_output_hidden(h, blocks)`, not raw `h`. The [reported spikes][sweep] land on precisely these three boundaries. The [CPU-only reproduction][capture-repro] uses `TinyWeights` from [the existing fixture][tiny]. Turn its assertions into a unit test in `tests/test_unit_inkling2_reference.py` before editing a kernel. It invalidates this subtraction, **not** the earlier failed public test or the possibility of a real device error. The [matched dump][matched] confirms that reading for one prompt; it does not replace this unit test or the public retest in item 3.

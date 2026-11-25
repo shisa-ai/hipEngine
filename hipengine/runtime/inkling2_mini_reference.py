@@ -318,21 +318,25 @@ class Inkling2TextSession:
         return _rms(read_blocks(w.dense("attn_res.output_query"), blocks, h), c["rms_norm_eps"]) * w.dense("norm.weight")
 
     def _forward(self, h, width, *, logits, capture, last_only=False):
-        resident_decode = (
-            width == 1 and capture is None and self._undo is None
-            and getattr(self.model, "resident_decode", False)
-            and getattr(self.model, "resident_block", None) is not None
+        committed = capture is None and self._undo is None
+        resident_block = getattr(self.model, "resident_block", None) if committed else None
+        # One token follows the decode route when the model routes it. A committed prompt block
+        # that projects only its last row, or nothing, runs the traversal too: every visit stays on
+        # the device except the expert rows, which the traversal stages per visit.
+        resident = resident_block is not None and (
+            (width == 1 and getattr(self.model, "resident_decode", False))
+            or (width > 1 and last_only)
         )
-        if resident_decode:
+        if resident:
             rows = h[None, :] if h.ndim == 1 else h
-            h_rows, block_rows = self.model.resident_block(
-                self, np.ascontiguousarray(rows, dtype=np.float32))
-            h = h_rows[0]
-            blocks = [block[0] for block in block_rows]
+            h_rows, block_rows = resident_block(self, np.ascontiguousarray(rows, dtype=np.float32))
             self.position += width
             if not logits:
                 return None
-            hidden = self._output_hidden(h, blocks)
+            if width == 1:
+                hidden = self._output_hidden(h_rows[0], [block[0] for block in block_rows])
+            else:
+                hidden = self._output_hidden(h_rows[-1], [block[-1] for block in block_rows])
             return self.model.cap_logits(self.model.project_logits(hidden))
         try:
             next(self._traverse(h, capture))
