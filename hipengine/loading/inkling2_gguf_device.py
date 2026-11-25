@@ -144,9 +144,10 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 setattr(self, name, partial(resolve(backend=backend, layer="inkling2_controller",
                                                     quant="inkling2_mixed", variant=variant),
                                             target_arch=self._target_arch))
-        self._prepare_clip = self._prepare_rms = None
+        self._prepare_clip = self._prepare_rms = self._prepare_group = None
         if fast_controllers:
-            for variant, name in (("clip", "_prepare_clip"), ("rms", "_prepare_rms")):
+            for variant, name in (("clip", "_prepare_clip"), ("rms", "_prepare_rms"),
+                                  ("group", "_prepare_group")):
                 key = KernelKey(backend, "inkling2_attention_prepare", "inkling2_mixed", variant)
                 if is_registered(key):
                     setattr(self, name, partial(resolve(backend=backend, layer=key.layer, quant=key.quant,
@@ -429,14 +430,26 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         key, value = query + query_bytes, query + query_bytes + kv_bytes
         rel = value + kv_bytes
         scaled = dict(first=plan.position + 1, target_arch=self._target_arch)
-        self._prepare_clip(projected[prep.query], query, prep.clip, rows, prep.dim, prep.nh, prep.threshold,
-                           alpha=alpha, floor=floor, logscale=prep.logscale is not None, **scaled)
-        self._prepare_clip(projected[prep.key], key, 0, rows, prep.dim, prep.nkv, prep.threshold,
-                           logscale=False, **scaled)
-        self._prepare_rms(projected[prep.value], value, rows, prep.dim, prep.nkv, prep.eps, target_arch=self._target_arch)
-        self._prepare_clip(projected[prep.relative], rel, prep.rel_scale, rows, prep.rel_width, prep.nh,
-                           prep.rel_threshold, alpha=alpha, floor=floor, logscale=prep.logscale is not None,
-                           **scaled)
+        if self._prepare_group is not None:
+            # One launch for the four steps; each part is the separate kernel's arithmetic.
+            self._prepare_group(projected[prep.query], query, prep.clip, prep.nh, prep.threshold,
+                                alpha=alpha, floor=floor, logscale=prep.logscale is not None, **scaled,
+                                key=projected[prep.key], key_out=key, key_heads=prep.nkv,
+                                key_threshold=prep.threshold, value=projected[prep.value], value_out=value,
+                                value_heads=prep.nkv, eps=prep.eps, relative=projected[prep.relative],
+                                relative_out=rel, relative_scale=prep.rel_scale, relative_heads=prep.nh,
+                                relative_threshold=prep.rel_threshold, relative_width=prep.rel_width,
+                                dim=prep.dim, rows=rows)
+        else:
+            self._prepare_clip(projected[prep.query], query, prep.clip, rows, prep.dim, prep.nh, prep.threshold,
+                               alpha=alpha, floor=floor, logscale=prep.logscale is not None, **scaled)
+            self._prepare_clip(projected[prep.key], key, 0, rows, prep.dim, prep.nkv, prep.threshold,
+                               logscale=False, **scaled)
+            self._prepare_rms(projected[prep.value], value, rows, prep.dim, prep.nkv, prep.eps,
+                              target_arch=self._target_arch)
+            self._prepare_clip(projected[prep.relative], rel, prep.rel_scale, rows, prep.rel_width, prep.nh,
+                               prep.rel_threshold, alpha=alpha, floor=floor, logscale=prep.logscale is not None,
+                               **scaled)
         attended = rel + rows * prep.nh * prep.rel_width * item
         plan.attend(query, key, value, rel, projected[prep.sink], projected[prep.gate], attended)
         result = attended + query_bytes if result_ptr is None else result_ptr

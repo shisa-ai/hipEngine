@@ -176,7 +176,7 @@ gfx1151 compilation; it does not enable every gfx1100 variant.
 | `convert/gather.hip` | Gather rows by integer index. |
 | `norm/rmsnorm.hip` | Root-mean-square normalization and residual/head variants. |
 | `norm/inkling2_controller.hip` | Inkling loop-controller input (`input`: RMS and concatenate) and gated blend with RMS normalization (`blend_norm`). GGUF `fast` uses both for multi-row controller merges; `host_blend_norm` is the host expression that `strict` and unnamed profiles keep. |
-| `norm/inkling2_attention_prepare.hip` | Inkling attention input preparation: per-head L2 clip with an optional scale and log position factor (`clip`) and per-head RMS normalization (`rms`). GGUF `fast` uses both for resident block attention; `host_clip` is the host expression that `strict` and unnamed profiles keep. |
+| `norm/inkling2_attention_prepare.hip` | Inkling attention input preparation: per-head L2 clip with an optional scale and log position factor (`clip`) and per-head RMS normalization (`rms`). GGUF `fast` uses `group` for resident block attention, one launch holding the query clip, key clip, value normalization and relative clip of a row with the separate kernels' arithmetic; `host_clip` is the host expression that `strict` and unnamed profiles keep. |
 | `rotary/paro_rotate.hip` | PARO rotations and fused normalization/rotation. |
 | `rotary/qwen35_rotary.hip` | Qwen partial rotary embeddings and query/gate splitting. |
 | `fused/gguf_ops.hip` | GGUF normalization, head rotary, and attention-gate composites. |

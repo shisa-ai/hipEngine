@@ -51,7 +51,39 @@ def clip_rows(x, scale, threshold):
     return _clip(x if scale is None else x * scale, threshold)
 
 
+@lru_cache(maxsize=2)
+def _group_symbol(target_arch):
+    launch = _library(target_arch).hipengine_inkling2_attention_prepare_group
+    # query (x, out, scale, heads, threshold, alpha, floor, first), key (x, out, heads, threshold),
+    # value (x, out, heads, eps), relative (x, out, scale, heads, threshold, width), dim, rows, stream
+    launch.argtypes = ([ctypes.c_void_p] * 3 + [ctypes.c_int, ctypes.c_float, ctypes.c_float, ctypes.c_double,
+                       ctypes.c_int] + [ctypes.c_void_p] * 2 + [ctypes.c_int, ctypes.c_float]
+                       + [ctypes.c_void_p] * 2 + [ctypes.c_int, ctypes.c_float] + [ctypes.c_void_p] * 3
+                       + [ctypes.c_int, ctypes.c_float, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                          ctypes.c_void_p])
+    launch.restype = ctypes.c_int
+    return launch
+
+
+def launch_prepare_group(query, query_out, query_scale, query_heads, query_threshold, *, alpha, floor, first,
+                         key, key_out, key_heads, key_threshold, value, value_out, value_heads, eps,
+                         relative, relative_out, relative_scale, relative_heads, relative_threshold,
+                         relative_width, dim, rows, logscale, stream=None, target_arch=None):
+    """Query clip, key clip, value normalization and relative clip of attention rows in one launch.
+
+    `logscale` applies the position scale to the query and relative clips, as the separate clips do.
+    """
+    status = _group_symbol(target_arch)(
+        query, query_out, query_scale, query_heads, query_threshold, alpha, floor, first,
+        key, key_out, key_heads, key_threshold, value, value_out, value_heads, eps,
+        relative, relative_out, relative_scale, relative_heads, relative_threshold, relative_width, dim, rows,
+        1 if logscale else 0, capture_stream() if stream is None else stream)
+    if status != HIP_SUCCESS:
+        raise HipError(status, "Inkling 2 attention preparation group failed")
+
+
 for _backend in ("hip_gfx1100", "hip_gfx1151"):
     register(KernelKey(_backend, "inkling2_attention_prepare", "inkling2_mixed", "host_clip"), clip_rows)
+    register(KernelKey(_backend, "inkling2_attention_prepare", "inkling2_mixed", "group"), launch_prepare_group)
     register(KernelKey(_backend, "inkling2_attention_prepare", "inkling2_mixed", "clip"), launch_prepare_clip)
     register(KernelKey(_backend, "inkling2_attention_prepare", "inkling2_mixed", "rms"), launch_prepare_rms)
