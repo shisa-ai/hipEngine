@@ -526,6 +526,10 @@ class Inkling2GGUFText(Inkling2TextReference):
         row_norm_mul = projection.residual_kernel("row_norm_mul")
         row_add = projection.residual_kernel("row_add")
         residual_read = projection.residual_kernel("residual_read")
+        # One launch for add, the stack row and the read when the backend has it; else the three kernels.
+        residual_update = projection.optional_residual_kernel("update")
+        # One launch for the input norms when the backend has it.
+        norm_group = projection.optional_residual_kernel("norm_group")
         blank = np.empty((rows, hidden), np.float32)
 
         def norm_names(visit):
@@ -598,17 +602,26 @@ class Inkling2GGUFText(Inkling2TextReference):
                 stack, names = at(working), norm_names(visit)
                 if layer:
                     qrows = self._query_rows[(visit.state_slot, "attn")]
-                    row_rms(at("h"), stack + count * row, rows, hidden, eps)
-                    residual_read(qslot(visit, 0), stack, at("read"), rows, count + 1, qrows, hidden)
+                    if residual_update is not None:
+                        residual_update(at("h"), None, None, stack, stack + count * row, qslot(visit, 0),
+                                        at("read"), rows, count, qrows, hidden, eps)
+                    else:
+                        row_rms(at("h"), stack + count * row, rows, hidden, eps)
+                        residual_read(qslot(visit, 0), stack, at("read"), rows, count + 1, qrows, hidden)
                     inputs = [at("read") + i * row for i in range(qrows)]
                 else:
                     inputs = [at("h")]
                 if visit.message_pass is not None:
                     region, start, blocks = previous
                     qrows = self._query_rows[(visit.state_slot, "msg")]
-                    row_rms(at("previous_h"), at(region) + (start + blocks) * row, rows, hidden, eps)
-                    residual_read(qslot(visit, 4), at(region) + start * row, at("messages"), rows, blocks + 1,
-                                  qrows, hidden)
+                    if residual_update is not None:
+                        residual_update(at("previous_h"), None, None, at(region) + start * row,
+                                        at(region) + (start + blocks) * row, qslot(visit, 4), at("messages"),
+                                        rows, blocks, qrows, hidden, eps)
+                    else:
+                        row_rms(at("previous_h"), at(region) + (start + blocks) * row, rows, hidden, eps)
+                        residual_read(qslot(visit, 4), at(region) + start * row, at("messages"), rows, blocks + 1,
+                                      qrows, hidden)
                     cursor = at("attention")
                     for i in range(3):
                         projection.copy_device(cursor + i * row, inputs[0] if len(inputs) == 1 else inputs[i], row)
@@ -617,9 +630,17 @@ class Inkling2GGUFText(Inkling2TextReference):
                                                 names, device=SimpleNamespace(cursor=cursor, result=at("branch")))
                 else:
                     sources = []
-                    for i, source in enumerate(inputs):
-                        row_norm_mul(source, weight(layer, names[i]), at("normalized") + i * row, rows, hidden, eps)
-                        sources.append(at("normalized") + i * row)
+                    if norm_group is not None:
+                        # A local visit normalizes one input for all three projections; a global visit three.
+                        norms = 1 if all(name == names[0] for name in names) else 3
+                        norm_group(inputs[:norms], [weight(layer, names[i]) for i in range(norms)],
+                                   at("normalized"), rows, hidden, eps, norms)
+                        sources = [at("normalized") + (i * row if norms == 3 else 0) for i in range(3)]
+                    else:
+                        for i, source in enumerate(inputs):
+                            row_norm_mul(source, weight(layer, names[i]), at("normalized") + i * row, rows,
+                                         hidden, eps)
+                            sources.append(at("normalized") + i * row)
                     plan = self._attention_plan(session, visit, (blank,) * len(inputs), None, names,
                                                 sources=sources,
                                                 device=SimpleNamespace(cursor=at("attention"), result=at("branch"),
@@ -630,12 +651,17 @@ class Inkling2GGUFText(Inkling2TextReference):
                         # The entry visit reads nothing, so its stack row is written here instead.
                         row_rms(at("h"), stack, rows, hidden, eps)
                     count += 1
-                    a = at("branch")
+                    a, added = at("branch"), None
                 else:
-                    row_add(at("h"), at("branch"), at("h"), rows, hidden)
-                    a = at("h")
-                row_rms(a, stack + count * row, rows, hidden, eps)
-                residual_read(qslot(visit, 8), stack, at("read"), rows, count + 1, 1, hidden)
+                    a, added = at("h"), at("branch")
+                if residual_update is not None:
+                    residual_update(a, added, at("h") if added else None, stack, stack + count * row,
+                                    qslot(visit, 8), at("read"), rows, count, 1, hidden, eps)
+                else:
+                    if added:
+                        row_add(at("h"), at("branch"), at("h"), rows, hidden)
+                    row_rms(a, stack + count * row, rows, hidden, eps)
+                    residual_read(qslot(visit, 8), stack, at("read"), rows, count + 1, 1, hidden)
                 if visit.message_pass is None:
                     row_norm_mul(at("read"), weight(layer, "mlp_norm"), at("normalized"), rows, hidden, eps)
                     normalized = at("normalized")

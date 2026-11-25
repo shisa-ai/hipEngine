@@ -88,9 +88,31 @@ def host_residual_read(query, values, out, rows, blocks, queries, width, **kwarg
     return _mix_residual_rows(query, values)
 
 
+def launch_row_norm_mul_group(sources, weights, out, rows, width, eps, count, *, stream=None, target_arch=None):
+    """Normalize one or three input rows with their weights in one launch, as launch_row_norm_mul would."""
+    sources, weights = list(sources) + [0] * (3 - len(sources)), list(weights) + [0] * (3 - len(weights))
+    _check(_build("row_norm_mul_group", target_arch, 7, 3, 1)(*sources, *weights, out, rows, width, count, eps,
+                                                              capture_stream() if stream is None else stream),
+           "grouped normalized rows")
+
+
+def launch_residual_update(a, b, h, stack, row_out, query, out, rows, blocks, queries, width, eps, *,
+                           stream=None, target_arch=None):
+    """h = a + b (when `b` is given), append rms(h) to the stack and read the stack, in one launch.
+
+    Same results as launch_row_add, launch_row_rms and launch_residual_read with `blocks + 1` rows.
+    """
+    _check(_build("residual_update", target_arch, 7, 4, 1)(a, b, h, stack, row_out, query, out, rows, blocks,
+                                                        queries, width, eps,
+                                                        capture_stream() if stream is None else stream),
+           "residual update")
+
+
 for _backend in ("hip_gfx1100", "hip_gfx1151"):
     for _variant, _launch in (("row_rms", launch_row_rms), ("row_norm_mul", launch_row_norm_mul),
-                              ("row_add", launch_row_add), ("residual_read", launch_residual_read)):
+                              ("row_add", launch_row_add), ("residual_read", launch_residual_read),
+                              ("residual_update", launch_residual_update),
+                              ("row_norm_mul_group", launch_row_norm_mul_group)):
         register(KernelKey(_backend, "inkling2_residual", "inkling2_mixed", _variant), _launch)
     for _variant, _launch in (("host_row_rms", host_row_rms), ("host_row_norm_mul", host_row_norm_mul),
                               ("host_row_add", host_row_add), ("host_residual_read", host_residual_read)):

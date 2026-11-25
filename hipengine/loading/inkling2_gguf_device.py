@@ -163,6 +163,12 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             self._residual = {variant: partial(resolve(backend=key.backend, layer=key.layer, quant=key.quant,
                                                        variant=variant), target_arch=self._target_arch)
                               for variant, key in keys.items()}
+            for variant, name in (("residual_update", "update"), ("row_norm_mul_group", "norm_group")):
+                fused = KernelKey(backend, "inkling2_residual", "inkling2_mixed", variant)
+                if is_registered(fused):
+                    self._residual[name] = partial(resolve(backend=fused.backend, layer=fused.layer,
+                                                           quant=fused.quant, variant=fused.variant),
+                                                   target_arch=self._target_arch)
 
     @property
     def backend(self):
@@ -198,6 +204,10 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         if self._residual is None:
             raise RuntimeError("Inkling GGUF residual kernels are not available")
         return self._residual[variant]
+
+    def optional_residual_kernel(self, variant):
+        """Return a registered residual-stack launcher, or None when this backend has no such variant."""
+        return None if self._residual is None else self._residual.get(variant)
 
     def attention_resident_extent(self, plan):
         """Input, output and scratch bytes one resident attention launch needs."""
