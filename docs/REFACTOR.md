@@ -1818,7 +1818,10 @@ tokens (1.818 and 1.814 in the two orders), 29.22 against 17.68 after 575 (1.650
 26.52 against 17.24 after 2,057 (1.540 and 1.538), with the default path's 128 output IDs at every
 depth. The [gate row](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-fast-resident.json) passes at `d79ccd5e6`: median KL 1.1e-13 against strict, p90
 1.3e-10, no row over the damage line, 744 calls matching their controls, three bit-stable repeats,
-25 of 25 requests bit-identical in a reversed-order replay.
+25 of 25 requests bit-identical in a reversed-order replay. With the block traversal in `fast` the
+[row at `5d2bb6e03`](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-block-prefill-fast-resident.json) judges 744 rows, 72 of them prefill block ends:
+median KL 1.3e-13, p90 1.2e-5, top-1 99.87%. First token on the same tree is 1.23 to 1.28 times
+the [baseline's](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-block-prefill-bench.json).
 
 Done when: the step is faster than the default path in paired runs at each of the campaign's 47,
 575 and 2,057 prompt-token cells, with the production numerical gate passed; then the default
@@ -1871,8 +1874,9 @@ Paired rows later on 2026-11-25 with the selected F32 experts (the three files n
 default path), 29.36 against 29.22 after 575 (1.659 and 1.665) and 26.66 against 26.52 after 2,057
 (1.545 and 1.545). One capture of 29 to 30 ms per request, 0.992 replays per token and 22 HIP calls
 per token against 1,152 to 1,308 for resident eager. The [gate row](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-fast-graph.json) passes and its 672
-candidate rows equal the resident row's bit for bit across two processes. It stays at `0` for the
-reason `HIPENGINE_INKLING2_RESIDENT_DECODE` does.
+candidate rows equal the resident row's bit for bit across two processes. The [row at
+`5d2bb6e03`](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-block-prefill-fast-graph.json) with the block traversal passes on 744 rows with the
+resident row's numbers. It stays at `0` for the reason `HIPENGINE_INKLING2_RESIDENT_DECODE` does.
 
 Done when: R0527 is done, the Inkling adapter of the production numerical gate admits the path,
 and the step wins at every campaign depth. Then recording becomes unconditional for resident
