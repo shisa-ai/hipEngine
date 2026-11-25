@@ -16,7 +16,7 @@ from hipengine.core.rocblas import Rocblas
 from hipengine.kernels.backends import resolve_backend
 from hipengine.kernels.cpu_reference.inkling2_mini import _sigmoid
 from hipengine.loading.inkling2_gguf import Inkling2GGUFWeights
-from hipengine.loading.inkling2_gguf_device import Inkling2GGUFDeviceProjections
+from hipengine.loading.inkling2_gguf_device import Q, Inkling2GGUFDeviceProjections
 
 from tests.test_unit_inkling2_gguf import _file
 
@@ -71,7 +71,9 @@ def test_wide_prompt_block_matches_the_fp32_tile_path(legacy, rows):
             assert not fast._wmma_rows(visit, ((ids[:64], mix[:64], hidden[:64], None),))
             assert not fast._wmma_rows(visit, ((ids[:160], mix[:160], hidden[:160], None),))
             launches = fast._wmma
-            fast._wmma = (Mock(side_effect=launches[0]), Mock(side_effect=launches[1]))
+            counted = (Mock(side_effect=launches[0]), Mock(side_effect=launches[1]))
+            fast._wmma = counted
+            fast._wmma_by_quant[Q.NVFP4] = counted[0]
             uploads = fast._transfer.enqueue_upload = Mock(wraps=fast._transfer.enqueue_upload)
             downloads = fast._transfer.download = Mock(wraps=fast._transfer.download)
             consumer = Mock()
@@ -82,6 +84,7 @@ def test_wide_prompt_block_matches_the_fp32_tile_path(legacy, rows):
             consumer.assert_called_once()
             assert consumer.call_args.args[1] == want.shape
             fast._wmma = launches
+            fast._wmma_by_quant[Q.NVFP4] = launches[0]
     # FP32 accumulation in another order: small outputs that cancel carry the same absolute error
     # as large ones, so the tolerance follows the largest output of the block.
     np.testing.assert_allclose(actual, want, rtol=1e-4, atol=1e-5 * np.abs(want).max())

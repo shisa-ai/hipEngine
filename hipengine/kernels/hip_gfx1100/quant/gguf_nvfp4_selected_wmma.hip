@@ -9,6 +9,11 @@
 //
 // Arithmetic differs from the FP32 tile kernels (selected_tile4_f32_f32_out), which stay the
 // strict control: this is a production arithmetic candidate behind the profile gate.
+//
+// The same kernel reads Q5_K and Q8_0 banks, which a mixed file keeps in its last layers. Those
+// weights are not exact in FP16, so each comes as a high and a residual part too, and the tile
+// takes three products: a high and a low by weight high, and activation high by weight low. The
+// product of the two residual parts is below FP32 rounding and is left out.
 #include <hip/hip_runtime.h>
 #include <stdint.h>
 
@@ -22,8 +27,9 @@ constexpr int TILE_COLS = 32;   // 16 * TM output columns per wave
 constexpr int TILE_ROWS = 64;   // 16 * TN compact rows per wave and group
 constexpr int TM = TILE_COLS / 16;
 constexpr int TN = TILE_ROWS / 16;
-constexpr int BLOCK_VALUES = 64;
-constexpr int BLOCK_BYTES = 36;
+enum WeightFormat : int { NVFP4_FORMAT = 0, Q5_K_FORMAT = 1, Q8_0_FORMAT = 2 };
+constexpr int kBlockValues[3] = {64, 256, 32};
+constexpr int kBlockBytes[3] = {36, 176, 34};
 
 __device__ __forceinline__ float decode_scale(uint8_t code) {
     // GGUF NVFP4 uses unsigned E4M3; its integer FP4 table is doubled.
@@ -57,8 +63,91 @@ __device__ __forceinline__ half16_t dequant16(uint32_t lo, uint32_t hi, float sc
     return out;
 }
 
-template<int PARTS>
-__launch_bounds__(32) __global__ void nvfp4_selected_wmma_kernel(
+typedef half_t __attribute__((ext_vector_type(2))) half2_t;
+
+// A value as an FP16 high part and the FP16 residual of that rounding.
+__device__ __forceinline__ half2_t split16(float value) {
+    const half_t hi = static_cast<half_t>(value);
+    return half2_t{hi, static_cast<half_t>(value - static_cast<float>(hi))};
+}
+
+__device__ __forceinline__ float half_at(const uint8_t* p) {
+    return static_cast<float>(*reinterpret_cast<const half_t*>(p));
+}
+
+// Sixteen bytes at an even address: four aligned words, or five when the address is two bytes past
+// a word. The last two bytes of that case are loaded alone: a word there could pass the weights.
+__device__ __forceinline__ uint4 load16_even(const uint8_t* p) {
+    const bool shifted = (reinterpret_cast<uintptr_t>(p) & 2) != 0;
+    const uint32_t* words = reinterpret_cast<const uint32_t*>(p - 2 * shifted);
+    const uint32_t w0 = words[0], w1 = words[1], w2 = words[2], w3 = words[3];
+    if (!shifted) return make_uint4(w0, w1, w2, w3);
+    const uint32_t w4 = static_cast<uint32_t>(p[14]) | (static_cast<uint32_t>(p[15]) << 8);
+    return make_uint4(__byte_perm(w0, w1, 0x5432), __byte_perm(w1, w2, 0x5432),
+                      __byte_perm(w2, w3, 0x5432), __byte_perm(w3, w4, 0x5432));
+}
+
+// Q8_0: 32 signed bytes and one FP16 scale per block. A weight is scale times byte, exact in FP32.
+__device__ __forceinline__ void dequant16_q8_0(const uint8_t* row, int64_t kt, half16_t& hi, half16_t& lo) {
+    const uint8_t* block = row + (kt >> 1) * kBlockBytes[Q8_0_FORMAT];
+    const float scale = half_at(block);
+    const uint4 packed = load16_even(block + 2 + 16 * (kt & 1));
+    const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
+    #pragma unroll
+    for (int w = 0; w < 4; ++w) {
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            const int value = static_cast<int8_t>((words[w] >> (8 * j)) & 255u);
+            const half2_t parts = split16(scale * static_cast<float>(value));
+            hi[w * 4 + j] = parts[0];
+            lo[w * 4 + j] = parts[1];
+        }
+    }
+}
+
+__device__ __forceinline__ uint8_t q5_k_scale(const uint8_t* scales, int sub) {
+    if (sub < 4) return scales[sub] & 0x3fu;
+    const int index = sub - 4;
+    return (scales[8 + index] & 0x0fu) | ((scales[index] >> 2) & 0x30u);
+}
+
+__device__ __forceinline__ uint8_t q5_k_min(const uint8_t* scales, int sub) {
+    if (sub < 4) return scales[4 + sub] & 0x3fu;
+    const int index = sub - 4;
+    return (scales[8 + index] >> 4) | ((scales[4 + index] >> 2) & 0x30u);
+}
+
+// Q5_K: 256 weights in eight sub-blocks of 32 around one FP16 scale and minimum, each sub-block
+// with a 6-bit scale and minimum of its own. The low four bits of a weight are in `qs`, two
+// sub-blocks to a byte; the fifth is bit `sub` of `qh[lane]`.
+__device__ __forceinline__ void dequant16_q5_k(const uint8_t* row, int64_t kt, half16_t& hi, half16_t& lo) {
+    const uint8_t* block = row + (kt >> 4) * kBlockBytes[Q5_K_FORMAT];
+    const float d = half_at(block);
+    const float dmin = half_at(block + 2);
+    const int sub = (kt >> 1) & 7;
+    const float scale = d * static_cast<float>(q5_k_scale(block + 4, sub));
+    const float minimum = dmin * static_cast<float>(q5_k_min(block + 4, sub));
+    const int tile = kt & 1;
+    const uint4 packed = *reinterpret_cast<const uint4*>(block + 48 + (sub >> 1) * 32 + 16 * tile);
+    const uint4 high = *reinterpret_cast<const uint4*>(block + 16 + 16 * tile);
+    const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
+    const uint32_t highs[4] = {high.x, high.y, high.z, high.w};
+    #pragma unroll
+    for (int w = 0; w < 4; ++w) {
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            const unsigned byte = (words[w] >> (8 * j)) & 255u;
+            const unsigned low = (sub & 1) ? (byte >> 4) : (byte & 15u);
+            const unsigned bit = ((highs[w] >> (8 * j)) >> sub) & 1u;
+            const half2_t parts = split16(scale * static_cast<float>(low | (bit << 4)) - minimum);
+            hi[w * 4 + j] = parts[0];
+            lo[w * 4 + j] = parts[1];
+        }
+    }
+}
+
+template<int PARTS, int FORMAT>
+__launch_bounds__(32) __global__ void selected_wmma_kernel(
         const half_t* __restrict__ x_hi, const half_t* __restrict__ x_lo,
         const int64_t* __restrict__ expert_start_compact, const int32_t* __restrict__ group_expert,
         const int32_t* __restrict__ group_first_row, const int32_t* __restrict__ row_source,
@@ -75,7 +164,7 @@ __launch_bounds__(32) __global__ void nvfp4_selected_wmma_kernel(
     if (expert < 0) return;
     const int64_t compact_base = expert_start_compact[expert];
     const int64_t count = expert_start_compact[expert + 1] - compact_base;
-    const int64_t row_bytes = in_features / BLOCK_VALUES * BLOCK_BYTES;
+    const int64_t row_bytes = in_features / kBlockValues[FORMAT] * kBlockBytes[FORMAT];
     const uint8_t* expert_base = qweight + static_cast<int64_t>(expert) * out_features * row_bytes;
     const float scale = outer ? outer[expert] : 1.0f;
 
@@ -107,14 +196,25 @@ __launch_bounds__(32) __global__ void nvfp4_selected_wmma_kernel(
         #pragma unroll
         for (int tm = 0; tm < TM; ++tm) {
             const int64_t col = col_start + tm * 16 + lane16;
-            const uint8_t* block = expert_base + col * row_bytes + (kt >> 2) * BLOCK_BYTES;
-            const uint32_t* codes = reinterpret_cast<const uint32_t*>(block + 4 + (kt & 3) * 8);
-            const half16_t b = dequant16(codes[0], codes[1], decode_scale(block[kt & 3]));
+            const uint8_t* row = expert_base + col * row_bytes;
+            half16_t b_hi, b_lo;
+            if constexpr (FORMAT == NVFP4_FORMAT) {
+                const uint8_t* block = row + (kt >> 2) * kBlockBytes[FORMAT];
+                const uint32_t* codes = reinterpret_cast<const uint32_t*>(block + 4 + (kt & 3) * 8);
+                b_hi = dequant16(codes[0], codes[1], decode_scale(block[kt & 3]));
+            } else if constexpr (FORMAT == Q5_K_FORMAT) {
+                dequant16_q5_k(row, kt, b_hi, b_lo);
+            } else {
+                dequant16_q8_0(row, kt, b_hi, b_lo);
+            }
             #pragma unroll
             for (int tn = 0; tn < TN; ++tn) {
-                acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_hi[tn], b, acc[tm][tn]);
+                acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_hi[tn], b_hi, acc[tm][tn]);
                 if constexpr (PARTS == 2) {
-                    acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_lo[tn], b, acc[tm][tn]);
+                    acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_lo[tn], b_hi, acc[tm][tn]);
+                }
+                if constexpr (FORMAT != NVFP4_FORMAT) {
+                    acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_hi[tn], b_lo, acc[tm][tn]);
                 }
             }
         }
@@ -202,18 +302,18 @@ __global__ void route_schedule_kernel(const int32_t* __restrict__ ids, const flo
     }
 }
 
-template<int PARTS>
+template<int PARTS, int FORMAT>
 int launch_wmma(const void* x_hi, const void* x_lo, const int64_t* expert_start_compact,
                 const int32_t* group_expert, const int32_t* group_first_row, const int32_t* row_source,
                 const int32_t* row_route, const float* outer, const uint8_t* weights, float* out, int groups,
                 int in_features, int out_features, const int32_t* group_count, hipStream_t stream) {
     if (!x_hi || (PARTS == 2 && !x_lo) || !expert_start_compact || !group_expert || !group_first_row || !weights
-            || !out || groups <= 0 || in_features <= 0 || in_features % BLOCK_VALUES || out_features <= 0
+            || !out || groups <= 0 || in_features <= 0 || in_features % kBlockValues[FORMAT] || out_features <= 0
             || out_features % TILE_COLS) {
         return hipErrorInvalidValue;
     }
     const dim3 grid(static_cast<unsigned>(out_features / TILE_COLS), static_cast<unsigned>(groups));
-    hipLaunchKernelGGL((nvfp4_selected_wmma_kernel<PARTS>), grid, dim3(32), 0, stream,
+    hipLaunchKernelGGL((selected_wmma_kernel<PARTS, FORMAT>), grid, dim3(32), 0, stream,
                        static_cast<const half_t*>(x_hi), static_cast<const half_t*>(x_lo), expert_start_compact,
                        group_expert, group_first_row, row_source, row_route, outer, weights, out,
                        static_cast<int64_t>(in_features), static_cast<int64_t>(out_features), group_count);
@@ -227,7 +327,7 @@ extern "C" int hipengine_gguf_nvfp4_selected_wmma_f16_f32_out(
         const int32_t* group_first_row, const int32_t* row_source, const int32_t* row_route, const float* outer,
         const uint8_t* weights, float* out, int groups, int in_features, int out_features,
         const int32_t* group_count, hipStream_t stream) {
-    return launch_wmma<1>(x_hi, x_lo, expert_start_compact, group_expert, group_first_row, row_source, row_route,
+    return launch_wmma<1, NVFP4_FORMAT>(x_hi, x_lo, expert_start_compact, group_expert, group_first_row, row_source, row_route,
                           outer, weights, out, groups, in_features, out_features, group_count, stream);
 }
 
@@ -236,9 +336,25 @@ extern "C" int hipengine_gguf_nvfp4_selected_wmma_f16_parts_f32_out(
         const int32_t* group_first_row, const int32_t* row_source, const int32_t* row_route, const float* outer,
         const uint8_t* weights, float* out, int groups, int in_features, int out_features,
         const int32_t* group_count, hipStream_t stream) {
-    return launch_wmma<2>(x_hi, x_lo, expert_start_compact, group_expert, group_first_row, row_source, row_route,
+    return launch_wmma<2, NVFP4_FORMAT>(x_hi, x_lo, expert_start_compact, group_expert, group_first_row, row_source, row_route,
                           outer, weights, out, groups, in_features, out_features, group_count, stream);
 }
+
+#define INKLING2_KQUANT_WMMA_ENTRY(name, parts, format)                                                             \
+extern "C" int name(const void* x_hi, const void* x_lo, const int64_t* expert_start_compact,                  \
+                    const int32_t* group_expert, const int32_t* group_first_row, const int32_t* row_source,   \
+                    const int32_t* row_route, const float* outer, const uint8_t* weights, float* out,         \
+                    int groups, int in_features, int out_features, const int32_t* group_count,                 \
+                    hipStream_t stream) {                                                                    \
+    return launch_wmma<parts, format>(x_hi, x_lo, expert_start_compact, group_expert, group_first_row,        \
+                                      row_source, row_route, outer, weights, out, groups, in_features,        \
+                                      out_features, group_count, stream);                                     \
+}
+
+INKLING2_KQUANT_WMMA_ENTRY(hipengine_gguf_q5_k_selected_wmma_f16_f32_out, 1, Q5_K_FORMAT)
+INKLING2_KQUANT_WMMA_ENTRY(hipengine_gguf_q5_k_selected_wmma_f16_parts_f32_out, 2, Q5_K_FORMAT)
+INKLING2_KQUANT_WMMA_ENTRY(hipengine_gguf_q8_0_selected_wmma_f16_f32_out, 1, Q8_0_FORMAT)
+INKLING2_KQUANT_WMMA_ENTRY(hipengine_gguf_q8_0_selected_wmma_f16_parts_f32_out, 2, Q8_0_FORMAT)
 
 extern "C" int hipengine_nvfp4_route_schedule(
         const int32_t* ids, const float* scaled, int routes, int experts, int top, int64_t* start,

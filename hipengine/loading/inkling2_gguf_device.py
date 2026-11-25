@@ -131,15 +131,24 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                                                quant="inkling2_mixed", variant="split_activation_device"),
                                        target_arch=self._target_arch)
         self._wmma = self._wmma_arena = self._wmma_down = self._wmma_parts = None
+        # The grouped kernel of each expert layout the backend registers it for: NVFP4, and the Q5_K
+        # and Q8_0 banks a mixed file keeps in its last layers.
+        self._wmma_by_quant = {}
         if fast_experts:
-            key = KernelKey(backend, "moe_linear", "gguf_nvfp4", "selected_wmma_f16_parts_f32_out")
             split = KernelKey(backend, "inkling2_expert_pointwise", "inkling2_mixed", "fp16_parts")
-            if is_registered(key) and is_registered(split):
-                self._wmma = (partial(resolve(backend=key.backend, layer=key.layer, quant=key.quant,
-                                              variant=key.variant), target_arch=self._target_arch),
-                              partial(resolve(backend=split.backend, layer=split.layer, quant=split.quant,
-                                              variant=split.variant), target_arch=self._target_arch))
-                self._wmma_parts = 2
+            if is_registered(split):
+                for quant in (Q.NVFP4, Q.Q5_K, Q.Q8_0):
+                    key = KernelKey(backend, "moe_linear", f"gguf_{quant.name.lower()}",
+                                    "selected_wmma_f16_parts_f32_out")
+                    if is_registered(key):
+                        self._wmma_by_quant[quant] = partial(resolve(backend=key.backend, layer=key.layer,
+                                                                     quant=key.quant, variant=key.variant),
+                                                             target_arch=self._target_arch)
+                if Q.NVFP4 in self._wmma_by_quant:
+                    self._wmma = (self._wmma_by_quant[Q.NVFP4],
+                                  partial(resolve(backend=split.backend, layer=split.layer, quant=split.quant,
+                                                  variant=split.variant), target_arch=self._target_arch))
+                    self._wmma_parts = 2
         self._controller_input = self._controller_blend_norm = None
         self._controller_direct = None
         if fast_controllers:
@@ -1123,15 +1132,17 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             return tuple(results)
 
     def _wmma_banks(self, visit):
-        """True when this visit's expert banks are raw NVFP4, the only layout the grouped kernel reads.
+        """True when the grouped kernel reads both of this visit's expert banks.
 
-        A mixed-quantization file keeps higher-precision experts in its last layers.
+        NVFP4 is read in one FP16 part; the Q5_K and Q8_0 banks of a mixed file's last layers in a
+        high and a residual part.
         """
         layer = self._weights.mapping.layers[visit.weight_layer]
-        return layer.gate_up.weight.ggml_type == Q.NVFP4 and layer.down.weight.ggml_type == Q.NVFP4
+        return (Q(layer.gate_up.weight.ggml_type) in self._wmma_by_quant
+                and Q(layer.down.weight.ggml_type) in self._wmma_by_quant)
 
     def _wmma_rows(self, visit, inputs):
-        """One prompt block of at least 192 rows, on raw NVFP4 banks."""
+        """One prompt block of at least 192 rows, on banks the grouped kernel reads."""
         if self._wmma is None or len(inputs) != 1:
             return False
         ids = inputs[0][0]
@@ -1195,7 +1206,8 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                     "down_scale": inp + at["down_scale"] if "down_scale" in at else 0,
                     "mix": inp + at["mix"], "down": out + result.nbytes, "groups": len(group_expert)}
         geometry = dict(tokens=tokens, routes=routes, k=k, gn=gn, gm=gm, dn=dn, dm=dm,
-                        gate_weight=gate_weight.ptr, down_weight=down_weight.ptr)
+                        gate_weight=gate_weight.ptr, down_weight=down_weight.ptr,
+                        gate_quant=Q(gate.weight.ggml_type), down_quant=Q(down.weight.ggml_type))
         if device is None:
             self._transfer.enqueue_upload(inp, packed)
             self._run_wmma(schedule, x_ptr=inp, out_ptr=out, transform_output=transform_output, **geometry)
@@ -1207,11 +1219,12 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self.copy_device(result_ptr, out, result.nbytes)
         return ()
 
-    def _run_wmma(self, schedule, *, tokens, routes, k, gn, gm, dn, dm, gate_weight, down_weight, x_ptr, out_ptr,
-                  transform_output=None):
+    def _run_wmma(self, schedule, *, tokens, routes, k, gn, gm, dn, dm, gate_weight, down_weight, gate_quant,
+                  down_quant, x_ptr, out_ptr, transform_output=None):
         """Launch the grouped projection: FP16 parts, gate/up, the activation, down, the ordered mix."""
         mapping = self._weights.mapping
-        wmma, split = self._wmma
+        split = self._wmma[1]
+        gate_wmma, down_wmma = self._wmma_by_quant[gate_quant], self._wmma_by_quant[down_quant]
         parts = self._wmma_parts
         itemsize, half = np.dtype(np.float32).itemsize, np.dtype(np.float16).itemsize
         x_bytes = tokens * gn * half
@@ -1224,12 +1237,13 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         # A schedule built on the device brings its group count.
         count = schedule.get("count")
         split(x_ptr, x_hi, x_lo, tokens * gn, parts)
-        wmma(x_hi, x_lo, schedule["start"], schedule["group"], schedule["first"], schedule["source"], 0,
-             schedule["gate_scale"], gate_weight, gate_out, schedule["groups"], gn, gm, group_count=count)
+        gate_wmma(x_hi, x_lo, schedule["start"], schedule["group"], schedule["first"], schedule["source"], 0,
+                  schedule["gate_scale"], gate_weight, gate_out, schedule["groups"], gn, gm, group_count=count)
         self._activation(gate_out, act, routes, dn, mapping.gate_cap, mapping.up_cap)
         split(act, act_hi, act_lo, routes * dn, parts)
-        wmma(act_hi, act_lo, schedule["start"], schedule["group"], schedule["first"], 0, schedule["route"],
-             schedule["down_scale"], down_weight, schedule["down"], schedule["groups"], dn, dm, group_count=count)
+        down_wmma(act_hi, act_lo, schedule["start"], schedule["group"], schedule["first"], 0, schedule["route"],
+                  schedule["down_scale"], down_weight, schedule["down"], schedule["groups"], dn, dm,
+                  group_count=count)
         self._mix(schedule["down"], schedule["mix"], out_ptr, k, dm, tokens=tokens)
         if transform_output is not None:
             transform_output(out_ptr, (tokens, dm))
@@ -1256,9 +1270,11 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             de, dm, dn = down.weight.shape
             gate_q, down_q = Q(gate.weight.ggml_type), Q(down.weight.ggml_type)
             if (self._wmma is None or rows < _WMMA_MIN_ROWS or not (gm == 2 * dn and dm == gn and de == ge)
-                    or gn % 64 or dn % 64 or gm % 32 or dm % 32 or gate_q != Q.NVFP4 or down_q != Q.NVFP4):
+                    or gn % 64 or dn % 64 or gm % 32 or dm % 32
+                    or gate_q not in self._wmma_by_quant or down_q not in self._wmma_by_quant):
                 raise ValueError("Inkling GGUF device-routed expert blocks need the grouped WMMA projection "
-                                 f"of raw NVFP4 experts ({gate_q.name} gate/up, {down_q.name} down) for {rows} rows")
+                                 f"of NVFP4, Q5_K or Q8_0 experts ({gate_q.name} gate/up, {down_q.name} down) "
+                                 f"for {rows} rows")
             gate_weight, _ = self._bank(gate)
             down_weight, _ = self._bank(down)
             logits_ptr, _ = self.project_router_logits_ptr(router, rows, hidden_ptr)
@@ -1270,8 +1286,9 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                         "down": self._scratch("_wmma_down", route["routes"] * dm * 4).ptr,
                         "groups": grouped["capacity"], "count": grouped["total"]}
             self._run_wmma(schedule, tokens=rows, routes=route["routes"], k=route["top_k"], gn=gn, gm=gm, dn=dn,
-                           dm=dm, gate_weight=gate_weight.ptr, down_weight=down_weight.ptr, x_ptr=int(hidden_ptr),
-                           out_ptr=int(out_ptr), transform_output=transform_output)
+                           dm=dm, gate_weight=gate_weight.ptr, down_weight=down_weight.ptr, gate_quant=gate_q,
+                           down_quant=down_q, x_ptr=int(hidden_ptr), out_ptr=int(out_ptr),
+                           transform_output=transform_output)
             return int(out_ptr)
 
     def _device_schedule(self, route):

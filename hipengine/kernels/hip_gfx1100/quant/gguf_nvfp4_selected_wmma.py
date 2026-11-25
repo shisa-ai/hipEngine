@@ -21,10 +21,14 @@ def _library(arch):
                      profile='prefill', target_arch=arch, output_name='gguf_nvfp4_selected_wmma.so')
 
 
-@lru_cache(maxsize=8)
-def _symbol(arch, parts):
+# Weight layouts the kernel reads: NVFP4 in one FP16 part, Q5_K and Q8_0 in a high and a residual part.
+WEIGHT_FORMATS = ('nvfp4', 'q5_k', 'q8_0')
+
+
+@lru_cache(maxsize=16)
+def _symbol(arch, parts, fmt='nvfp4'):
     kind = 'f16_parts' if parts == 2 else 'f16'
-    fn = getattr(_library(arch), f'hipengine_gguf_nvfp4_selected_wmma_{kind}_f32_out')
+    fn = getattr(_library(arch), f'hipengine_gguf_{fmt}_selected_wmma_{kind}_f32_out')
     # (ten pointers, groups, in, out, group count pointer, stream)
     fn.argtypes = [ctypes.c_void_p] * 10 + [ctypes.c_int] * 3 + [ctypes.c_void_p] * 2
     fn.restype = ctypes.c_int
@@ -50,7 +54,7 @@ def _parts_symbol(arch):
 
 
 def launch_wmma(x_hi, x_lo, expert_start, group_expert, group_first_row, row_source, row_route, outer, weight, out,
-                groups, n, m, *, parts, target_arch, stream=None, group_count=None):
+                groups, n, m, *, parts, target_arch, stream=None, group_count=None, fmt='nvfp4'):
     """Project grouped routes: `out[row_route[c]]` is expert `e(c)` applied to row `row_source[c]` of `x`.
 
     `expert_start` is int64 ``[experts + 1]`` over compact rows. Each of the `groups` pairs in
@@ -61,11 +65,11 @@ def launch_wmma(x_hi, x_lo, expert_start, group_expert, group_first_row, row_sou
     With `group_count` (a device int holding the number of groups of a schedule built on the
     device) `groups` is the grid's fixed height and the groups beyond the count are not read.
     """
-    status = _symbol(target_arch, parts)(x_hi, x_lo, expert_start, group_expert, group_first_row, row_source,
-                                         row_route, outer, weight, out, groups, n, m, group_count,
-                                         capture_stream() if stream is None else stream)
+    status = _symbol(target_arch, parts, fmt)(x_hi, x_lo, expert_start, group_expert, group_first_row, row_source,
+                                             row_route, outer, weight, out, groups, n, m, group_count,
+                                             capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
-        raise HipError(status, 'GGUF NVFP4 grouped WMMA projection failed')
+        raise HipError(status, f'GGUF {fmt} grouped WMMA projection failed')
 
 
 def launch_route_schedule(ids, scaled, routes, experts, top, start, group_expert, group_first, source, route, mix,
@@ -101,3 +105,7 @@ for _backend in ('hip_gfx1100', 'hip_gfx1151'):
              partial(launch_wmma, parts=2, target_arch=_arch))
     register(KernelKey(_backend, 'inkling2_expert_pointwise', 'inkling2_mixed', 'fp16_parts'),
              partial(launch_fp16_parts, target_arch=_arch))
+    # Q5_K and Q8_0 experts: each weight in a high and a residual FP16 part.
+    for _fmt, _quant in (('q5_k', 'gguf_q5_k'), ('q8_0', 'gguf_q8_0')):
+        register(KernelKey(_backend, 'moe_linear', _quant, 'selected_wmma_f16_parts_f32_out'),
+                 partial(launch_wmma, parts=2, fmt=_fmt, target_arch=_arch))

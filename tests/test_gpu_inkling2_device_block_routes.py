@@ -78,14 +78,13 @@ def test_prompt_block_routes_on_the_device_like_the_host(monkeypatch):
         assert projection._wmma_banks(visit)
         assert projection.block_device_routes_supported(visit, 192)
         assert not projection.block_device_routes_supported(visit, 191)
-        # A layer whose experts are not raw NVFP4 keeps the host-routed block: the grouped kernel
-        # reads one layout. In this file those are the last four layers, Q5_K gate/up and Q8_0 down.
-        other = [item for item in text.plan.visits if not projection._wmma_banks(item)]
-        assert other
-        for item in other:
-            gate_q = Q(text.mapping.layers[item.weight_layer].gate_up.weight.ggml_type).name
-            assert gate_q != "NVFP4"
-        assert not projection.block_device_routes_supported(other[0], 256)
+        # Every layer of this file is read by the grouped kernel: NVFP4, and in the last four layers
+        # Q5_K gate/up with Q8_0 down.
+        assert not [item for item in text.plan.visits if not projection._wmma_banks(item)]
+        mixed = [item for item in text.plan.visits
+                 if Q(text.mapping.layers[item.weight_layer].gate_up.weight.ggml_type) is Q.Q5_K]
+        assert mixed and Q(text.mapping.layers[mixed[0].weight_layer].down.weight.ggml_type) is Q.Q8_0
+        assert projection.block_device_routes_supported(mixed[0], 192)
 
         width = text.mapping.layers[0].gate_up.weight.shape[2]
         rows = 256
@@ -97,9 +96,9 @@ def test_prompt_block_routes_on_the_device_like_the_host(monkeypatch):
         try:
             rt.memcpy(hidden_buffer, hidden.ctypes.data, hidden.nbytes, Copy.HOST_TO_DEVICE)
             real_block = projection.project_experts_block_device_routes
-            with pytest.raises(ValueError, match="raw NVFP4"):
-                real_block(other[0], rows=rows, router=_router_name(text, other[0]),
-                           hidden_ptr=hidden_buffer, out_ptr=result_buffer)
+            real_block(mixed[0], rows=rows, router=_router_name(text, mixed[0]),
+                       hidden_ptr=hidden_buffer, out_ptr=result_buffer)
+            rt.stream_synchronize(0)
 
             def block():
                 real_block(visit, rows=rows, router=_router_name(text, visit), hidden_ptr=hidden_buffer,

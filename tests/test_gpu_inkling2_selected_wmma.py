@@ -316,3 +316,61 @@ def test_grouped_projection_reads_a_device_schedule_the_same(parts):
     expert_in_slot[route] = expert_of_compact
     np.testing.assert_array_equal(out['device', 0],
                                   out['host', 0][position[_route_of_slot(ids, top, expert_in_slot)[route]]])
+
+
+@pytest.mark.parametrize('fmt,quant,qtype,block_size,block_bytes', [('q5_k', 'gguf_q5_k', Q.Q5_K, 256, 176),
+                                                                     ('q8_0', 'gguf_q8_0', Q.Q8_0, 32, 34)])
+@pytest.mark.parametrize('n,m', [(512, 96), (2304, 64)])
+def test_kquant_selected_wmma_matches_dequantized_reference(fmt, quant, qtype, block_size, block_bytes, n, m):
+    """Q5_K and Q8_0 weights come in two FP16 parts: the result is the FP32 reference to rounding."""
+    backend = _runnable()
+    launch = resolve(backend=backend, layer='moe_linear', quant=quant, variant='selected_wmma_f16_parts_f32_out')
+    rt = get_hip_runtime()
+    rng = np.random.default_rng(97 + n + block_bytes)
+    experts, rows, top = 7, 150, 8
+    ids = np.concatenate([rng.permutation(experts)[:top] for _ in range(rows)]).astype(np.int32)
+    routes = ids.size
+    order, start, group_expert, group_first = _groups(ids, experts)
+    outer = rng.uniform(-0.5, 0.5, experts).astype(np.float32)
+    source = (order // top).astype(np.int32)
+    x = rng.normal(0, 0.7, (rows, n)).astype(np.float32)
+    hi = x.astype(np.float16)
+    lo = (x - hi.astype(np.float32)).astype(np.float16)
+    blocks = n // block_size
+    raw = rng.integers(0, 256, (experts, m, blocks, block_bytes), dtype=np.uint8)
+    # The scales are FP16 values of a usable size; every packed field stays random.
+    pairs = (experts, m, blocks, 2 if block_size == 256 else 1)
+    scales = (rng.normal(0, 0.02, pairs) * 2.0 ** rng.integers(-6, 3, pairs)).astype(np.float16)
+    raw[..., :scales.shape[-1] * 2] = scales.view(np.uint8).reshape(experts, m, blocks, -1)
+    actual = np.full((routes + 3, m), np.nan, np.float32)
+    with ExitStack() as owned:
+        def alloc(data):
+            ptr = rt.malloc(max(data.nbytes, 16))
+            owned.callback(rt.free, ptr)
+            rt.memcpy(ptr, data.ctypes.data, data.nbytes, Copy.HOST_TO_DEVICE)
+            return ptr
+
+        hi_ptr, lo_ptr, raw_ptr, out_ptr = (alloc(a) for a in (hi, lo, raw, actual))
+        start_ptr, group_ptr, first_ptr, source_ptr, route_ptr, outer_ptr = (
+            alloc(a) for a in (start, group_expert, group_first, source, order, outer))
+        launch(hi_ptr, lo_ptr, start_ptr, group_ptr, first_ptr, source_ptr, route_ptr, outer_ptr, raw_ptr, out_ptr,
+               len(group_expert), n, m)
+        rt.memcpy(actual.ctypes.data, out_ptr, actual.nbytes, Copy.DEVICE_TO_HOST)
+    dense = np.stack([dequantize_gguf_data(bank.reshape(m, -1), qtype).astype(np.float64) for bank in raw])
+    assert np.isfinite(dense).all()
+    value = hi.astype(np.float64) + lo.astype(np.float64)
+    got = actual[order].astype(np.float64)
+    for expert in range(experts):
+        first, stop = start[expert], start[expert + 1]
+        rows_of = source[first:stop]
+        scale = float(outer[expert])
+        expected = (dense[expert] @ value[rows_of].T).T * scale
+        # The weight's residual part is FP16 too, and the product of the two residual parts is left
+        # out: both are below 2^-21 of the product magnitudes. What remains is the FP32 rounding of
+        # the sum, the same as for a reference that accumulated in FP32.
+        bound = (np.abs(dense[expert]) @ np.abs(value[rows_of]).T).T * abs(scale) + 1e-30
+        worst = float((np.abs(got[first:stop] - expected) / bound).max())
+        assert worst <= 2e-5, worst
+    untouched = np.ones(routes + 3, bool)
+    untouched[order] = False
+    assert np.isnan(actual[untouched]).all()

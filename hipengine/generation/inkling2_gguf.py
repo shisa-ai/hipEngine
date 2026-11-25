@@ -267,6 +267,7 @@ def register_inkling2_gguf_profiles():
     tile_shared = "selected_tile4_shared_input_f32_f32_out"
     tile = "selected_tile4_f32_f32_out"
     wmma = "selected_wmma_f16_parts_f32_out"
+    mixed_evidence = "worklog/entries/20261125T171057.976897Z-lhl-inkling2-mini-851bcb.md"
     # (layer, scope, strict, fast, fast evidence, production). A production variant equal to the
     # strict one is the F32 kernel the device-resident decode runs, or the ordered path its eager
     # fallback keeps.
@@ -281,6 +282,8 @@ def register_inkling2_gguf_profiles():
          counted_split_q8_evidence, strict),
         ("moe_linear", "prompt_block_ge_192_rows_top8_nvfp4_gate_n2304_m2304", tile_shared, wmma, wmma_evidence, wmma),
         ("moe_linear", "prompt_block_ge_192_rows_top8_nvfp4_split_down_n1152_m2304", tile, wmma, wmma_evidence, wmma),
+        ("moe_linear", "prompt_block_ge_192_rows_top8_q5_k_gate_n2304_m2304", tile_shared, wmma, mixed_evidence, wmma),
+        ("moe_linear", "prompt_block_ge_192_rows_top8_q8_0_split_down_n1152_m2304", tile, wmma, mixed_evidence, wmma),
         ("inkling2_expert_pointwise", "selected_split_gate_up", "split_activation_host", "split_activation_device",
          activation_evidence, "split_activation_device"),
         ("inkling2_target_attention", "decode_live_ge_513", "split", "split_chunked", chunked_evidence, "split"),
@@ -296,7 +299,10 @@ def register_inkling2_gguf_profiles():
     )
     def selection(profile, layer, name, exact, reduced, reduced_evidence, production):
         """One scope's selection under a profile; every non-strict one names its strict fallback."""
-        registry_quant = "gguf_nvfp4" if layer == "moe_linear" else "inkling2_mixed"
+        # The registry quant of an expert bank follows its scope: NVFP4 unless the scope names the layout.
+        registry_quant = "inkling2_mixed"
+        if layer == "moe_linear":
+            registry_quant = next((f"gguf_{tag}" for tag in ("q5_k", "q8_0") if f"_{tag}_" in name), "gguf_nvfp4")
         if profile == "strict":
             return VariantSelection(layer, name, exact, None, None, registry_quant=registry_quant)
         if profile == "fast":
