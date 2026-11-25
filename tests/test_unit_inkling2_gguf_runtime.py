@@ -119,6 +119,14 @@ def test_inkling_gguf_fast_profile_keeps_strict_and_default_distinct(backend):
     assert counted_split["selected_variant"] == "selected_counted_split_activation_q8_dot_f32_f32_out"
     assert all(item["strict_fallback_variant"] == "selected_register_fp4_f32_f32_out"
                for item in (ordinary, shared, counted, fused, counted_split))
+    block_gate = expert_selections["prompt_block_ge_192_rows_top8_nvfp4_gate_n2304_m2304"]
+    block_down = expert_selections["prompt_block_ge_192_rows_top8_nvfp4_split_down_n1152_m2304"]
+    assert block_gate["selected_variant"] == block_down["selected_variant"] == "selected_wmma_f16_parts_f32_out"
+    assert block_gate["strict_fallback_variant"] == "selected_tile4_shared_input_f32_f32_out"
+    assert block_down["strict_fallback_variant"] == "selected_tile4_f32_f32_out"
+    strict_experts = {item["scope"]: item for item in strict.manifest["selections"] if item["layer"] == "moe_linear"}
+    assert strict_experts["prompt_block_ge_192_rows_top8_nvfp4_gate_n2304_m2304"]["selected_variant"] == (
+        "selected_tile4_shared_input_f32_f32_out")
     assert selections["inkling2_expert_pointwise"]["selected_variant"] == "split_activation_device"
     assert selections["inkling2_expert_pointwise"]["strict_fallback_variant"] == "split_activation_host"
     attention = {item["scope"]: item for item in fast.manifest["selections"]

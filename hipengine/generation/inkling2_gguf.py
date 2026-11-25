@@ -228,6 +228,7 @@ def register_inkling2_gguf_profiles():
     gate_evidence = "worklog/entries/20261123T032340.215296Z-lhl-inkling2-mini-9e502e.md"
     controller_evidence = "worklog/entries/20261124T000430.839711Z-lhl-inkling2-mini-d2aa61.md"
     resident_evidence = "worklog/entries/20261124T093241.447865Z-lhl-inkling2-mini-4b3cf8.md"
+    wmma_evidence = "worklog/entries/20261125T030054.604272Z-lhl-inkling2-mini-1863be.md"
     registered = registered_runtime_profile_keys()
     for backend in ("hip_gfx1100", "hip_gfx1151"):
         for profile, variant in (("strict", strict), ("fast", "selected_q8_dot_f32_f32_out")):
@@ -252,6 +253,14 @@ def register_inkling2_gguf_profiles():
                         VariantSelection("moe_linear", "two_to_four_decode_rows_top8_nvfp4_split_down_n1152_m2304",
                                          counted_split_q8 if fast else strict, strict if fast else None,
                                          counted_split_q8_evidence if fast else None, registry_quant="gguf_nvfp4"),
+                        VariantSelection("moe_linear", "prompt_block_ge_192_rows_top8_nvfp4_gate_n2304_m2304",
+                                         "selected_wmma_f16_parts_f32_out" if fast else "selected_tile4_shared_input_f32_f32_out",
+                                         "selected_tile4_shared_input_f32_f32_out" if fast else None,
+                                         wmma_evidence if fast else None, registry_quant="gguf_nvfp4"),
+                        VariantSelection("moe_linear", "prompt_block_ge_192_rows_top8_nvfp4_split_down_n1152_m2304",
+                                         "selected_wmma_f16_parts_f32_out" if fast else "selected_tile4_f32_f32_out",
+                                         "selected_tile4_f32_f32_out" if fast else None,
+                                         wmma_evidence if fast else None, registry_quant="gguf_nvfp4"),
                         VariantSelection("inkling2_expert_pointwise", "selected_split_gate_up",
                                          "split_activation_device" if fast else "split_activation_host",
                                          "split_activation_host" if fast else None,
