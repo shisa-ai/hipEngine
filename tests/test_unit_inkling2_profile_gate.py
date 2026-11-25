@@ -401,9 +401,11 @@ def test_block_end_rows_come_first_and_carry_their_own_labels():
 
 def test_both_arms_take_the_candidate_profiles_prompt_blocks():
     """The gate reads prompts in the candidate's blocks; profiles may declare different widths."""
+    from hipengine.generation.inkling2_gguf import Inkling2GGUFGenerator
+
     for backend in ("hip_gfx1100", "hip_gfx1151"):
         for name, arm in gate.CANDIDATES.items():
-            assert gate.candidate_block_width(backend, arm) == 256, name
+            assert gate.candidate_block_width(backend, arm) == Inkling2GGUFGenerator.fast_prefill_block_width == 1024, name
         assert gate.candidate_block_width(backend, gate.STRICT_ARM) == 64
 
 

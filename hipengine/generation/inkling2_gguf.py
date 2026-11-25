@@ -77,14 +77,15 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
     # Packed target verification changed ordinary fast output on the GGUF prompt suite.
     packed_verification = False
     vision = None
-    # Prompt blocks per profile. `fast` reads 256 rows: with 64-row blocks the expert weights are
-    # read four times more often and every visit pays its host work four times more per token, and
-    # the first token comes 25% sooner at 575 prompt tokens. A wider block is a longer step for the
-    # other streams of a multi-request server. `strict` keeps 64 rows, where it is 6 to 8% faster to
-    # the first token than at 256. Both are measured in worklog
-    # 20261125T023627.416022Z-lhl-inkling2-mini-91a27c.
+    # Prompt blocks per profile. A prompt block of `fast` and `production` is 1,024 rows: with 256
+    # rows the grouped expert kernel padded each expert's rows to 64 and did four times the work,
+    # and every visit paid its host work four times more per token. First token after 575 prompt
+    # tokens: 0.937 s at 256 rows against 0.631 at 1,024; after 2,057, 3.130 against 2.381 (W7900,
+    # 2026-11-26, worklog 20261125T173325.971349Z-lhl-inkling2-mini-23550f). A wider block is a longer step for the other streams of
+    # a multi-request server. `strict` keeps 64 rows, where it is 6 to 8% faster to the first token
+    # than at 256 (worklog 20261125T023627.416022Z-lhl-inkling2-mini-91a27c).
     prefill_block_width = 64
-    fast_prefill_block_width = 256
+    fast_prefill_block_width = 1024
     engine_loop_config_defaults = _prefill_loop_defaults(prefill_block_width)
     fast_engine_loop_config_defaults = _prefill_loop_defaults(fast_prefill_block_width)
 

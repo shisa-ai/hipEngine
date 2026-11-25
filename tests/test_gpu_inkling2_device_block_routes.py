@@ -150,8 +150,16 @@ def test_prompt_block_routes_on_the_device_like_the_host(monkeypatch):
         finally:
             projection.project_experts_block_device_routes = real_block
         wmma_visits = [item.weight_layer for item in text.plan.visits if projection._wmma_banks(item)]
-        assert calls and {count for _, count in calls} == {256}
-        assert len(calls) % len(wmma_visits) == 0
+        # Every block of at least 192 rows: the full ones of the profile's width, and the tail when
+        # it is wide enough.
+        from hipengine.generation.inkling2_gguf import Inkling2GGUFGenerator
+
+        tokens, width = len(llm.tokenize(PROMPT)), Inkling2GGUFGenerator.fast_prefill_block_width
+        assert width > 192
+        tail = tokens % width
+        sizes = ({width} if tokens >= width else set()) | ({tail} if tail >= 192 else set())
+        assert calls and {count for _, count in calls} == sizes
+        assert len(calls) == len(wmma_visits) * (tokens // width + (tail >= 192))
         assert sorted(layer for layer, _ in calls) == sorted(wmma_visits * (len(calls) // len(wmma_visits)))
         assert out.telemetry.diagnostics["execution_path"] == "inkling2_gguf_packed_hip"
         # The same prompt with host-routed blocks gives the same greedy tokens.

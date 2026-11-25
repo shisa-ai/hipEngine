@@ -203,7 +203,8 @@ def test_inkling_gguf_production_plan_names_the_gated_route_and_keeps_f32_expert
     # The factory builds the production route, and its prompt blocks are the fast plan's.
     keywords = production.factory.keywords
     assert keywords["production"] is True and keywords["fast"] is False
-    assert Inkling2GGUFGenerator.prefill_schedule(True)[0] == Inkling2GGUFGenerator.fast_prefill_block_width == 256
+    assert Inkling2GGUFGenerator.prefill_schedule(True)[0] == Inkling2GGUFGenerator.fast_prefill_block_width == 1024
+    assert Inkling2GGUFGenerator.fast_engine_loop_config_defaults["max_prefill_chunk_tokens"] == 1024
     assert Inkling2GGUFGenerator.prefill_schedule(False)[0] == 64
     assert set(PRODUCTION_BACKENDS) == {"hip_gfx1100", "hip_gfx1151"}
 
