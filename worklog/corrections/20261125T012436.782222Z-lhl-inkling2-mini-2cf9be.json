@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261125T012436.782222Z-lhl-inkling2-mini-2cf9be.md",
+  "sha256": "b2b21862f7acddcade3f74c48dcda1d507bbf5519a7426281a9ba262b5eb751c",
+  "defects": [
+    "missing_required_sections"
+  ],
+  "reason": "the entry was committed without its '## Changes' and '## Validation' headings: the worklog check's failure was masked by the shell pipeline that preceded the commit.",
+  "base_commit": null,
+  "superseded_by": "worklog/entries/20261125T012524.445129Z-lhl-inkling2-mini-b7405e.md"
+}
