@@ -25,7 +25,18 @@ def _library(arch):
 def _symbol(arch, parts):
     kind = 'f16_parts' if parts == 2 else 'f16'
     fn = getattr(_library(arch), f'hipengine_gguf_nvfp4_selected_wmma_{kind}_f32_out')
-    fn.argtypes = [ctypes.c_void_p] * 10 + [ctypes.c_int] * 3 + [ctypes.c_void_p]
+    # (ten pointers, groups, in, out, group count pointer, stream)
+    fn.argtypes = [ctypes.c_void_p] * 10 + [ctypes.c_int] * 3 + [ctypes.c_void_p] * 2
+    fn.restype = ctypes.c_int
+    return fn
+
+
+@lru_cache(maxsize=4)
+def _schedule_symbol(arch):
+    fn = _library(arch).hipengine_nvfp4_route_schedule
+    # (ids, scales, routes, experts, top, seven pointers, capacity, stream)
+    fn.argtypes = ([ctypes.c_void_p] * 2 + [ctypes.c_int] * 3 + [ctypes.c_void_p] * 7
+                   + [ctypes.c_int, ctypes.c_void_p])
     fn.restype = ctypes.c_int
     return fn
 
@@ -39,19 +50,40 @@ def _parts_symbol(arch):
 
 
 def launch_wmma(x_hi, x_lo, expert_start, group_expert, group_first_row, row_source, row_route, outer, weight, out,
-                groups, n, m, *, parts, target_arch, stream=None):
+                groups, n, m, *, parts, target_arch, stream=None, group_count=None):
     """Project grouped routes: `out[row_route[c]]` is expert `e(c)` applied to row `row_source[c]` of `x`.
 
     `expert_start` is int64 ``[experts + 1]`` over compact rows. Each of the `groups` pairs in
     `group_expert` and `group_first_row` names an expert and the first of 64 of its compact rows.
     A null `row_source` reads compact row `c` of `x`; a null `row_route` stores compact row `c`;
     a null `outer` applies no per-expert scale. `x_lo` is required for two parts.
+
+    With `group_count` (a device int holding the number of groups of a schedule built on the
+    device) `groups` is the grid's fixed height and the groups beyond the count are not read.
     """
     status = _symbol(target_arch, parts)(x_hi, x_lo, expert_start, group_expert, group_first_row, row_source,
-                                         row_route, outer, weight, out, groups, n, m,
+                                         row_route, outer, weight, out, groups, n, m, group_count,
                                          capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
         raise HipError(status, 'GGUF NVFP4 grouped WMMA projection failed')
+
+
+def launch_route_schedule(ids, scaled, routes, experts, top, start, group_expert, group_first, source, route, mix,
+                          total_groups, group_capacity, *, target_arch, stream=None):
+    """Group a block's routes by expert on the device.
+
+    `ids` and `scaled` are the expert and the mix scale of each of `routes` routes, `top` per row.
+    `start` is int64 ``[experts + 1]`` over the compact rows; `group_expert` and `group_first` take
+    up to `group_capacity` groups of 64 compact rows; `source` takes the row of each compact row,
+    `route` the slot where each compact row's output goes and `mix` the scales in slot order, a
+    row's routes in expert order; `total_groups` takes the number of groups, or -1 when they do not
+    fit the capacity.
+    """
+    status = _schedule_symbol(target_arch)(ids, scaled, routes, experts, top, start, group_expert, group_first,
+                                           source, route, mix, total_groups, group_capacity,
+                                           capture_stream() if stream is None else stream)
+    if status != HIP_SUCCESS:
+        raise HipError(status, 'GGUF NVFP4 route schedule failed')
 
 
 def launch_fp16_parts(x, hi, lo, count, parts, *, target_arch, stream=None):

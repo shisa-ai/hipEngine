@@ -656,6 +656,12 @@ class Inkling2GGUFText(Inkling2TextReference):
                     projection.project_experts_device_routes(
                         visit, hidden_ptr=normalized, out_ptr=at("m"), route=route,
                         transform_output=transform)
+                elif getattr(projection, "block_device_routes_supported", lambda v, r: False)(visit, rows):
+                    # A prompt block on the grouped projection: its routes and schedule are built on
+                    # the device from the resident rows.
+                    projection.project_experts_block_device_routes(
+                        visit, rows=rows, router=tensors[f"layers.{layer}.mlp.gate.weight"].name,
+                        hidden_ptr=normalized, out_ptr=at("m"), transform_output=transform)
                 else:
                     # No device-route kernel for this bank: stage the normalized rows on the host,
                     # take the ordinary routed path, and upload the branch output back into the arena.

@@ -64,8 +64,11 @@ __launch_bounds__(32) __global__ void nvfp4_selected_wmma_kernel(
         const int32_t* __restrict__ group_first_row, const int32_t* __restrict__ row_source,
         const int32_t* __restrict__ row_route, const float* __restrict__ outer,
         const uint8_t* __restrict__ qweight, float* __restrict__ out, int64_t in_features,
-        int64_t out_features) {
+        int64_t out_features, const int32_t* __restrict__ group_count) {
     const int64_t col_start = static_cast<int64_t>(blockIdx.x) * TILE_COLS;
+    // A schedule built on the device does not say how many groups it has: extra blocks of the
+    // grid's fixed height leave here.
+    if (group_count && static_cast<int>(blockIdx.y) >= group_count[0]) return;
     const int expert = group_expert[blockIdx.y];
     const int first_row = group_first_row[blockIdx.y];
     const int tid = threadIdx.x, lane16 = tid & 15, half_id = tid >> 4;
@@ -144,11 +147,66 @@ __global__ void fp16_parts_kernel(const float* __restrict__ x, half_t* __restric
     if (parts == 2) lo[index] = static_cast<half_t>(value - static_cast<float>(high));
 }
 
+// The grouped schedule of a block from the per-route expert ids and mix scales of its rows: the
+// expert starts over compact rows, the 64-row groups, the token row of each compact row, and the
+// slot where each compact row's down output goes so that a row's top-k routes are laid out in
+// expert order for the ordered mix (``mix`` is gathered in the same order). One workgroup. Routes
+// of one expert land in any order among themselves (LDS atomics): a route's row is computed on its
+// own, so the order inside an expert changes no result. ``total_groups`` receives the group count.
+__global__ void route_schedule_kernel(const int32_t* __restrict__ ids, const float* __restrict__ scaled,
+                                      int routes, int experts, int top, int64_t* __restrict__ start,
+                                      int32_t* __restrict__ group_expert, int32_t* __restrict__ group_first,
+                                      int32_t* __restrict__ source, int32_t* __restrict__ route,
+                                      float* __restrict__ mix, int32_t* __restrict__ total_groups,
+                                      int group_capacity) {
+    extern __shared__ int32_t shared[];
+    int32_t* counts = shared;
+    int32_t* cursor = shared + experts;
+    int32_t* group_base = shared + 2 * experts;
+    for (int e = threadIdx.x; e < experts; e += blockDim.x) counts[e] = 0;
+    __syncthreads();
+    for (int r = threadIdx.x; r < routes; r += blockDim.x) atomicAdd(&counts[ids[r]], 1);
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        int64_t rows = 0;
+        int groups = 0;
+        for (int e = 0; e < experts; ++e) {
+            start[e] = rows;
+            cursor[e] = static_cast<int32_t>(rows);
+            rows += counts[e];
+            group_base[e] = groups;
+            groups += (counts[e] + TILE_ROWS - 1) / TILE_ROWS;
+        }
+        start[experts] = rows;
+        total_groups[0] = groups <= group_capacity ? groups : -1;
+    }
+    __syncthreads();
+    for (int e = threadIdx.x; e < experts; e += blockDim.x) {
+        const int first = group_base[e];
+        const int count = (counts[e] + TILE_ROWS - 1) / TILE_ROWS;
+        for (int j = 0; j < count; ++j) {
+            group_expert[first + j] = e;
+            group_first[first + j] = j * TILE_ROWS;
+        }
+    }
+    for (int r = threadIdx.x; r < routes; r += blockDim.x) {
+        // The slot of a route in its row: the routes with a smaller expert come first.
+        const int first = r - r % top;
+        int slot = 0;
+        for (int other = first; other < first + top; ++other) slot += ids[other] < ids[r];
+        const int32_t position = first + slot;
+        mix[position] = scaled[r];
+        const int compact = atomicAdd(&cursor[ids[r]], 1);
+        source[compact] = r / top;
+        route[compact] = position;
+    }
+}
+
 template<int PARTS>
 int launch_wmma(const void* x_hi, const void* x_lo, const int64_t* expert_start_compact,
                 const int32_t* group_expert, const int32_t* group_first_row, const int32_t* row_source,
                 const int32_t* row_route, const float* outer, const uint8_t* weights, float* out, int groups,
-                int in_features, int out_features, hipStream_t stream) {
+                int in_features, int out_features, const int32_t* group_count, hipStream_t stream) {
     if (!x_hi || (PARTS == 2 && !x_lo) || !expert_start_compact || !group_expert || !group_first_row || !weights
             || !out || groups <= 0 || in_features <= 0 || in_features % BLOCK_VALUES || out_features <= 0
             || out_features % TILE_COLS) {
@@ -158,7 +216,7 @@ int launch_wmma(const void* x_hi, const void* x_lo, const int64_t* expert_start_
     hipLaunchKernelGGL((nvfp4_selected_wmma_kernel<PARTS>), grid, dim3(32), 0, stream,
                        static_cast<const half_t*>(x_hi), static_cast<const half_t*>(x_lo), expert_start_compact,
                        group_expert, group_first_row, row_source, row_route, outer, weights, out,
-                       static_cast<int64_t>(in_features), static_cast<int64_t>(out_features));
+                       static_cast<int64_t>(in_features), static_cast<int64_t>(out_features), group_count);
     return hipGetLastError();
 }
 
@@ -167,17 +225,33 @@ int launch_wmma(const void* x_hi, const void* x_lo, const int64_t* expert_start_
 extern "C" int hipengine_gguf_nvfp4_selected_wmma_f16_f32_out(
         const void* x_hi, const void* x_lo, const int64_t* expert_start_compact, const int32_t* group_expert,
         const int32_t* group_first_row, const int32_t* row_source, const int32_t* row_route, const float* outer,
-        const uint8_t* weights, float* out, int groups, int in_features, int out_features, hipStream_t stream) {
+        const uint8_t* weights, float* out, int groups, int in_features, int out_features,
+        const int32_t* group_count, hipStream_t stream) {
     return launch_wmma<1>(x_hi, x_lo, expert_start_compact, group_expert, group_first_row, row_source, row_route,
-                          outer, weights, out, groups, in_features, out_features, stream);
+                          outer, weights, out, groups, in_features, out_features, group_count, stream);
 }
 
 extern "C" int hipengine_gguf_nvfp4_selected_wmma_f16_parts_f32_out(
         const void* x_hi, const void* x_lo, const int64_t* expert_start_compact, const int32_t* group_expert,
         const int32_t* group_first_row, const int32_t* row_source, const int32_t* row_route, const float* outer,
-        const uint8_t* weights, float* out, int groups, int in_features, int out_features, hipStream_t stream) {
+        const uint8_t* weights, float* out, int groups, int in_features, int out_features,
+        const int32_t* group_count, hipStream_t stream) {
     return launch_wmma<2>(x_hi, x_lo, expert_start_compact, group_expert, group_first_row, row_source, row_route,
-                          outer, weights, out, groups, in_features, out_features, stream);
+                          outer, weights, out, groups, in_features, out_features, group_count, stream);
+}
+
+extern "C" int hipengine_nvfp4_route_schedule(
+        const int32_t* ids, const float* scaled, int routes, int experts, int top, int64_t* start,
+        int32_t* group_expert, int32_t* group_first, int32_t* source, int32_t* route, float* mix,
+        int32_t* total_groups, int group_capacity, hipStream_t stream) {
+    if (!ids || !scaled || !start || !group_expert || !group_first || !source || !route || !mix
+            || !total_groups || routes <= 0 || experts <= 0 || top <= 0 || group_capacity <= 0) {
+        return hipErrorInvalidValue;
+    }
+    const size_t shared = static_cast<size_t>(3 * experts) * sizeof(int32_t);
+    hipLaunchKernelGGL(route_schedule_kernel, dim3(1), dim3(256), shared, stream, ids, scaled, routes, experts, top,
+                       start, group_expert, group_first, source, route, mix, total_groups, group_capacity);
+    return hipGetLastError();
 }
 
 extern "C" int hipengine_fp16_parts(const float* x, void* hi, void* lo, int64_t count, int parts, hipStream_t stream) {

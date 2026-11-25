@@ -13,8 +13,9 @@ from hipengine.kernels.backends import hip_target_arch_for_backend, load_backend
 from hipengine.kernels.hip_gfx1100.moe.inkling2_route_tiles import launch_route_ids_i32
 from hipengine.kernels.hip_gfx1100.moe.laguna_router import laguna_sigmoid_correction_topk_f32
 from hipengine.kernels.hip_gfx1100.quant import (  # noqa: F401
-    gguf_nvfp4_gemv, gguf_nvfp4_q8_dot, gguf_nvfp4_selected_wmma, inkling2_experts,
+    gguf_nvfp4_gemv, gguf_nvfp4_q8_dot, inkling2_experts,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_nvfp4_selected_wmma import launch_route_schedule
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.loading.inkling2_device_dense import Inkling2DeviceDense
@@ -74,6 +75,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._route_scale_cache: dict[str, int] = {}
         self._route_buffer_handles = []
         self._route_state = None
+        self._schedule_state = None
         prefill = KernelKey(backend, "linear", "gguf_q8_0", "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out")
         self._q8_prefill = (self._bind_packed(Q.Q8_0, resolve(backend=prefill.backend, layer=prefill.layer,
                                                            quant=prefill.quant, variant=prefill.variant))
@@ -113,7 +115,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             self._activation = partial(resolve(backend=backend, layer="inkling2_expert_pointwise",
                                                quant="inkling2_mixed", variant="split_activation_device"),
                                        target_arch=self._target_arch)
-        self._wmma = self._wmma_arena = self._wmma_parts = None
+        self._wmma = self._wmma_arena = self._wmma_down = self._wmma_parts = None
         if fast_experts:
             key = KernelKey(backend, "moe_linear", "gguf_nvfp4", "selected_wmma_f16_parts_f32_out")
             split = KernelKey(backend, "inkling2_expert_pointwise", "inkling2_mixed", "fp16_parts")
@@ -803,7 +805,8 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         finally:
             self._upload_staging = None
             with self._lock:
-                for name in ("_q8_dot_scratch", "_resident", "_wmma_arena", "_device_route_hidden", "_device_route_hidden_rep", "_router_logits",
+                for name in ("_q8_dot_scratch", "_resident", "_wmma_arena", "_wmma_down", "_device_route_hidden",
+                         "_device_route_hidden_rep", "_router_logits",
                          "_device_route_interim", "_device_route_out"):
                     buffer = getattr(self, name)
                     if buffer is not None:
@@ -813,6 +816,10 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                     for buffer in self._route_state["buffers"]:
                         free(buffer, runtime=self._runtime)
                     self._route_state = None
+                if self._schedule_state is not None:
+                    for buffer in self._schedule_state["buffers"]:
+                        free(buffer, runtime=self._runtime)
+                    self._schedule_state = None
                 for buffer in getattr(self, "_route_buffer_handles", ()):
                     free(buffer, runtime=self._runtime)
                 self._route_buffer_handles = []
@@ -1036,8 +1043,6 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                 or hidden.shape != (ids.shape[0], gn) or gm != 2 * dn
                 or gn % 64 or dn % 64 or gm % 32 or dm % 32):
             raise ValueError("invalid Inkling GGUF grouped WMMA expert projection geometry")
-        wmma, split = self._wmma
-        parts = self._wmma_parts
         experts = min(ge, de)
         flat = np.ascontiguousarray(ids.ravel(), dtype=np.int32)
         tokens, k = ids.shape
@@ -1050,7 +1055,6 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         source = (order // k).astype(np.int32)
         gate_weight, gate_scales = self._bank(gate)
         down_weight, down_scales = self._bank(down)
-        itemsize, half = np.dtype(np.float32).itemsize, np.dtype(np.float16).itemsize
         # One upload carries the schedule and the scales after the token rows. The int64 expert
         # starts follow rows whose size is a multiple of eight bytes.
         scale_values = [None if values is None else np.ascontiguousarray(values, dtype=np.float32)
@@ -1071,39 +1075,117 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             cursor += values.nbytes
         result = np.empty((tokens, dm), np.float32)
         inp = self._scratch("_input", packed.nbytes).ptr
-        x_bytes = tokens * gn * half
-        gate_bytes, act_bytes, act_half = routes * gm * itemsize, routes * dn * itemsize, routes * dn * half
-        arena = self._scratch("_wmma_arena", parts * x_bytes + gate_bytes + act_bytes + parts * act_half).ptr
-        out = self._scratch("_output", result.nbytes + routes * dm * itemsize).ptr
-        x_hi, x_lo = arena, arena + x_bytes
-        gate_out = arena + parts * x_bytes
-        act, act_hi = gate_out + gate_bytes, gate_out + gate_bytes + act_bytes
-        act_lo = act_hi + act_half
-        down_out = out + result.nbytes
-        groups = len(group_expert)
-
-        def project(rows_ptr):
-            split(rows_ptr, x_hi, x_lo, tokens * gn, parts)
-            wmma(x_hi, x_lo, inp + at["start"], inp + at["group"], inp + at["first"], inp + at["source"], 0,
-                 inp + at["gate_scale"] if "gate_scale" in at else 0, gate_weight.ptr, gate_out, groups, gn, gm)
-            self._activation(gate_out, act, routes, dn, mapping.gate_cap, mapping.up_cap)
-            split(act, act_hi, act_lo, routes * dn, parts)
-            wmma(act_hi, act_lo, inp + at["start"], inp + at["group"], inp + at["first"], 0, inp + at["route"],
-                 inp + at["down_scale"] if "down_scale" in at else 0, down_weight.ptr, down_out, groups, dn, dm)
-            self._mix(down_out, inp + at["mix"], out, k, dm, tokens=tokens)
-            if transform_output is not None:
-                transform_output(out, result.shape)
-
+        out = self._scratch("_output", result.nbytes + routes * dm * 4).ptr
+        schedule = {"start": inp + at["start"], "group": inp + at["group"], "first": inp + at["first"],
+                    "source": inp + at["source"], "route": inp + at["route"],
+                    "gate_scale": inp + at["gate_scale"] if "gate_scale" in at else 0,
+                    "down_scale": inp + at["down_scale"] if "down_scale" in at else 0,
+                    "mix": inp + at["mix"], "down": out + result.nbytes, "groups": len(group_expert)}
+        geometry = dict(tokens=tokens, routes=routes, k=k, gn=gn, gm=gm, dn=dn, dm=dm,
+                        gate_weight=gate_weight.ptr, down_weight=down_weight.ptr)
         if device is None:
             self._transfer.enqueue_upload(inp, packed)
-            project(inp)
+            self._run_wmma(schedule, x_ptr=inp, out_ptr=out, transform_output=transform_output, **geometry)
             self._transfer.download(out, result)
             return (result,)
         hidden_ptr, result_ptr = device
         self._transfer.enqueue_upload(inp, packed[rows_bytes:])
-        project(hidden_ptr)
+        self._run_wmma(schedule, x_ptr=hidden_ptr, out_ptr=out, transform_output=transform_output, **geometry)
         self.copy_device(result_ptr, out, result.nbytes)
         return ()
+
+    def _run_wmma(self, schedule, *, tokens, routes, k, gn, gm, dn, dm, gate_weight, down_weight, x_ptr, out_ptr,
+                  transform_output=None):
+        """Launch the grouped projection: FP16 parts, gate/up, the activation, down, the ordered mix."""
+        mapping = self._weights.mapping
+        wmma, split = self._wmma
+        parts = self._wmma_parts
+        itemsize, half = np.dtype(np.float32).itemsize, np.dtype(np.float16).itemsize
+        x_bytes = tokens * gn * half
+        gate_bytes, act_bytes, act_half = routes * gm * itemsize, routes * dn * itemsize, routes * dn * half
+        arena = self._scratch("_wmma_arena", parts * x_bytes + gate_bytes + act_bytes + parts * act_half).ptr
+        x_hi, x_lo = arena, arena + x_bytes
+        gate_out = arena + parts * x_bytes
+        act, act_hi = gate_out + gate_bytes, gate_out + gate_bytes + act_bytes
+        act_lo = act_hi + act_half
+        # A schedule built on the device brings its group count.
+        count = schedule.get("count")
+        split(x_ptr, x_hi, x_lo, tokens * gn, parts)
+        wmma(x_hi, x_lo, schedule["start"], schedule["group"], schedule["first"], schedule["source"], 0,
+             schedule["gate_scale"], gate_weight, gate_out, schedule["groups"], gn, gm, group_count=count)
+        self._activation(gate_out, act, routes, dn, mapping.gate_cap, mapping.up_cap)
+        split(act, act_hi, act_lo, routes * dn, parts)
+        wmma(act_hi, act_lo, schedule["start"], schedule["group"], schedule["first"], 0, schedule["route"],
+             schedule["down_scale"], down_weight, schedule["down"], schedule["groups"], dn, dm, group_count=count)
+        self._mix(schedule["down"], schedule["mix"], out_ptr, k, dm, tokens=tokens)
+        if transform_output is not None:
+            transform_output(out_ptr, (tokens, dm))
+
+    def block_device_routes_supported(self, visit, rows):
+        """True when a prompt block can select its routes and build its schedule on the device."""
+        return (self._wmma is not None and rows >= _WMMA_MIN_ROWS and self.device_routes_enabled()
+                and self.device_routes_supported(visit))
+
+    def project_experts_block_device_routes(self, visit, *, rows, router, hidden_ptr, out_ptr, transform_output=None):
+        """Project one prompt block from device-resident routes; nothing crosses the host.
+
+        The router logits are projected from the resident normalized rows, the routes are selected
+        on the device (:meth:`device_routes`) and the grouped schedule is built there, so the stage
+        has no download of the block and no upload of a schedule. The schedule puts a row's routes
+        in expert order for the ordered mix, as the host-routed block does.
+        """
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Inkling GGUF device projection residency is closed")
+            layer = self._weights.mapping.layers[visit.weight_layer]
+            gate, down = layer.gate_up, layer.down
+            ge, gm, gn = gate.weight.shape
+            de, dm, dn = down.weight.shape
+            if (self._wmma is None or rows < _WMMA_MIN_ROWS or not (gm == 2 * dn and dm == gn and de == ge)
+                    or gn % 64 or dn % 64 or gm % 32 or dm % 32):
+                raise ValueError("Inkling GGUF device-routed expert blocks need the grouped WMMA projection "
+                                 f"of {rows} rows")
+            gate_weight, _ = self._bank(gate)
+            down_weight, _ = self._bank(down)
+            logits_ptr, _ = self.project_router_logits_ptr(router, rows, hidden_ptr)
+            route = self.device_routes(visit, logits_ptr, rows)
+            grouped = self._device_schedule(route)
+            schedule = {"start": grouped["start"], "group": grouped["group"], "first": grouped["first"],
+                        "source": grouped["source"], "route": grouped["route"], "mix": grouped["mix"],
+                        "gate_scale": self._bank_scale_device(gate), "down_scale": self._bank_scale_device(down),
+                        "down": self._scratch("_wmma_down", route["routes"] * dm * 4).ptr,
+                        "groups": grouped["capacity"], "count": grouped["total"]}
+            self._run_wmma(schedule, tokens=rows, routes=route["routes"], k=route["top_k"], gn=gn, gm=gm, dn=dn,
+                           dm=dm, gate_weight=gate_weight.ptr, down_weight=down_weight.ptr, x_ptr=int(hidden_ptr),
+                           out_ptr=int(out_ptr), transform_output=transform_output)
+            return int(out_ptr)
+
+    def _device_schedule(self, route):
+        """Group the block's routes by expert on the device; returns the schedule's device pointers.
+
+        The grid of the grouped projection has a fixed height: no split can need more groups than
+        ``min(experts, routes) + ceil(routes / 64)``, and the kernel skips the groups beyond the count.
+        """
+        experts, routes, top = route["experts"], route["routes"], route["top_k"]
+        state = getattr(self, "_schedule_state", None)
+        capacity = min(experts, routes) + -(-routes // _WMMA_GROUP_ROWS)
+        if state is not None and (state["routes"] < routes or state["experts"] != experts
+                                  or state["capacity"] < capacity):
+            for buffer in state["buffers"]:
+                free(buffer, runtime=self._runtime)
+            state = None
+        if state is None:
+            buffers = {name: malloc(nbytes, runtime=self._runtime) for name, nbytes in
+                       (("start", (experts + 1) * 8), ("group", capacity * 4), ("first", capacity * 4),
+                        ("source", routes * 4), ("route", routes * 4), ("mix", routes * 4), ("total", 4))}
+            state = {"routes": routes, "experts": experts, "capacity": capacity,
+                     "buffers": list(buffers.values())}
+            state.update({name: buffer.ptr for name, buffer in buffers.items()})
+            self._schedule_state = state
+        launch_route_schedule(route["ids"], route["mix"], routes, experts, top, state["start"], state["group"],
+                              state["first"], state["source"], state["route"], state["mix"], state["total"],
+                              capacity, target_arch=self._target_arch, stream=capture_stream())
+        return state
 
     def _plan_counted_gate(self, bank, inputs, *, down=None):
         weight, scales = self._bank(bank)
