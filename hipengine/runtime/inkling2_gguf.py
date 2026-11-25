@@ -147,6 +147,7 @@ class Inkling2GGUFText(Inkling2TextReference):
         c, w, tensors = self.config, self.weights, self.weights.names
         layer = f"layers.{visit.weight_layer}"
         attn, prefix = layer + ".attn.", layer + ".controllers."
+        norm_tensors = ()
         projection = self.projection
         nh, nkv, dim = self.head_shape(visit)
         conv, slot, pos = session.convolution, visit.state_slot, session.position
@@ -213,6 +214,7 @@ class Inkling2GGUFText(Inkling2TextReference):
                                   tensors[prefix + name + ".gain_weight"].name), x, messages[:, i])
                                 for i, (name, x) in enumerate(zip(("attn", "k", "v"), inputs, strict=True)))
             norm_weights = tuple(w.dense(layer + "." + name + ".weight") for name in norm_names)
+            norm_tensors = tuple(tensors[layer + "." + name + ".weight"].name for name in norm_names)
         table = coefficient("rel_logits_proj.proj", w.dense(attn + "rel_logits_proj.proj").T, ":lag")
 
         def attend(q, k, v, rel, sink, gate, out):
@@ -220,7 +222,8 @@ class Inkling2GGUFText(Inkling2TextReference):
 
         return SimpleNamespace(
             rows=rows, hidden=inputs[0].shape[1], position=pos, eps=c["rms_norm_eps"], sources=sources,
-            controllers=controllers, norm_weights=norm_weights, groups=groups, convolve=convolve, attend=attend,
+            controllers=controllers, norm_weights=norm_weights, norm_names=norm_tensors, groups=groups,
+            convolve=convolve, attend=attend,
             prepare=SimpleNamespace(
                 nh=nh, nkv=nkv, dim=dim, rel_width=rel_width, eps=c["rms_norm_eps"],
                 clip=coefficient("q_l2_clip.scale", w.dense(attn + "q_l2_clip.scale")),
@@ -623,11 +626,23 @@ class Inkling2GGUFText(Inkling2TextReference):
                         residual_read(qslot(visit, 4), at(region) + start * row, at("messages"), rows, blocks + 1,
                                       qrows, hidden)
                     cursor = at("attention")
-                    for i in range(3):
-                        projection.copy_device(cursor + i * row, inputs[0] if len(inputs) == 1 else inputs[i], row)
-                        projection.copy_device(cursor + 3 * row + i * row, at("messages") + i * row, row)
+                    messages = [at("messages") + i * row for i in range(3)]
+                    if projection.controller_rows_in_place:
+                        # The controller kernels read the input and message rows where they are.
+                        device = SimpleNamespace(cursor=cursor, result=at("branch"),
+                                                 inputs=[inputs[min(i, len(inputs) - 1)] for i in range(3)],
+                                                 messages=messages, norm_weights=[
+                                                     projection.resident_vector(tensors[f"layers.{layer}.{name}.weight"].name,
+                                                                                w.dense(f"layers.{layer}.{name}.weight"))
+                                                     for name in names])
+                    else:
+                        for i in range(3):
+                            projection.copy_device(cursor + i * row,
+                                                   inputs[0] if len(inputs) == 1 else inputs[i], row)
+                            projection.copy_device(cursor + 3 * row + i * row, messages[i], row)
+                        device = SimpleNamespace(cursor=cursor, result=at("branch"))
                     plan = self._attention_plan(session, visit, (blank,) * 3, np.empty((rows, 4, hidden), np.float32),
-                                                names, device=SimpleNamespace(cursor=cursor, result=at("branch")))
+                                                names, device=device)
                 else:
                     sources = []
                     if norm_group is not None:

@@ -139,11 +139,19 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                                               variant=split.variant), target_arch=self._target_arch))
                 self._wmma_parts = 2
         self._controller_input = self._controller_blend_norm = None
+        self._controller_direct = None
         if fast_controllers:
             for variant, name in (("input", "_controller_input"), ("blend_norm", "_controller_blend_norm")):
                 setattr(self, name, partial(resolve(backend=backend, layer="inkling2_controller",
                                                     quant="inkling2_mixed", variant=variant),
                                             target_arch=self._target_arch))
+            # The same two kernels over input, message and weight rows that stay where they are.
+            direct = [KernelKey(backend, "inkling2_controller", "inkling2_mixed", variant)
+                      for variant in ("input_direct", "blend_norm_direct")]
+            if all(is_registered(key) for key in direct):
+                self._controller_direct = tuple(partial(resolve(backend=key.backend, layer=key.layer,
+                                                                 quant=key.quant, variant=key.variant),
+                                                        target_arch=self._target_arch) for key in direct)
         self._prepare_clip = self._prepare_rms = self._prepare_group = None
         if fast_controllers:
             for variant, name in (("clip", "_prepare_clip"), ("rms", "_prepare_rms"),
@@ -189,6 +197,11 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     @property
     def supports_resident_controllers(self):
         return self._controller_input is not None
+
+    @property
+    def controller_rows_in_place(self):
+        """The in-place controller kernels are registered for this backend."""
+        return getattr(self, "_controller_direct", None) is not None
 
     @property
     def supports_resident_attention(self):
@@ -303,6 +316,27 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             self._launch_projection(mid, gains + i * rows * hidden_size * item, rows, 2, tails[1], None)
         self._controller_blend_norm(raw, raw + gate, forgets, gains, raw + 2 * gate, out, rows, hidden_size, count, eps)
 
+    def _controller_kernels_direct(self, inputs, messages, out, plans, eps, weights, scratch):
+        """The controller chain over input, message and weight rows that stay where they are.
+
+        `scratch` holds the down inputs, the forget and gain rows; `out` the blended rows and, after
+        them, the gate values. Same kernels as `_controller_kernels` over unpacked rows.
+        """
+        rows, hidden_size = plans[0][0].shape
+        count = len(plans)
+        item = np.dtype(np.float32).itemsize
+        gate = count * rows * hidden_size * item
+        down_inputs, forgets, gains = scratch, scratch + 2 * gate, scratch + 3 * gate
+        mids = out + gate
+        form, blend = self._controller_direct
+        form(inputs, messages, down_inputs, rows, hidden_size, count, eps)
+        for i, (_, _, first, tails) in enumerate(plans):
+            mid = mids + i * rows * first[1][0] * item
+            self._launch_projection(down_inputs + i * 2 * rows * hidden_size * item, mid, rows, 2, first, None)
+            self._launch_projection(mid, forgets + i * rows * hidden_size * item, rows, 2, tails[0], None)
+            self._launch_projection(mid, gains + i * rows * hidden_size * item, rows, 2, tails[1], None)
+        blend(inputs, messages, forgets, gains, weights, out, rows, hidden_size, count, eps)
+
     @contextmanager
     def resident(self, nbytes):
         """Hold the projection lock over a device arena of at least `nbytes`."""
@@ -315,11 +349,20 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         """Blend and normalize resident controller rows and leave the result in the caller's arena.
 
         `chains` are the down/forget/gain tensor names, `norms` are `(vector name, host row)` pairs,
-        and `hidden`/`message` are device rows. The blended rows land at `base + inp_bytes`.
+        and `hidden`/`message` are device rows. The blended rows land at `base + inp_bytes` on the
+        staging path, and after the chain's own scratch (4 gates) on the in-place path.
         """
         plans, norm_weights = self._controller_plans(
             [((down, forget, gain), np.empty((rows, width), np.float32), np.empty((rows, width), np.float32))
              for down, forget, gain in chains], [host for _, host in norms])
+        if getattr(self, "_controller_direct", None) is not None:
+            # Nothing is staged: the rows are read where they are and the arena holds only what the
+            # chain writes (down inputs, gates, blended rows and gate values).
+            gate = len(plans) * rows * width * np.dtype(np.float32).itemsize
+            out = base + 4 * gate
+            self._controller_kernels_direct(list(hidden), list(message), out, plans, eps,
+                                            [self.resident_vector(name, host) for name, host in norms], base)
+            return out
         inp_bytes, out_bytes = self._controller_extent(plans, norm_weights)
         item = np.dtype(np.float32).itemsize
         gate = len(plans) * rows * width * item
@@ -387,14 +430,26 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         output = self._matrix(plan.output[0], None)
         if device is not None:
             if plans is not None:
-                weights = np.concatenate([np.ascontiguousarray(w, dtype=np.float32).ravel() for w in norm_weights])
-                self._transfer.enqueue_upload(device.cursor + 2 * len(plans) * rows * plan.hidden * item, weights)
-                self._controller_kernels(device.cursor, device.cursor + inp_bytes, plans, norm_weights, plan.eps)
-                sources = [device.cursor + inp_bytes + i * rows * plan.hidden * item for i in range(len(plans))]
+                direct = getattr(self, "_controller_direct", None)
+                if direct is not None and getattr(device, "messages", None) is not None:
+                    # Inputs, messages and norm weights are read where they are; the cursor holds the
+                    # down inputs, gates, blended rows and gate values.
+                    gate = len(plans) * rows * plan.hidden * item
+                    out = device.cursor + 4 * gate
+                    self._controller_kernels_direct(list(device.inputs), list(device.messages), out, plans, plan.eps,
+                                                    device.norm_weights, device.cursor)
+                    attention = out + out_bytes
+                else:
+                    weights = np.concatenate([np.ascontiguousarray(w, dtype=np.float32).ravel() for w in norm_weights])
+                    self._transfer.enqueue_upload(device.cursor + 2 * len(plans) * rows * plan.hidden * item, weights)
+                    self._controller_kernels(device.cursor, device.cursor + inp_bytes, plans, norm_weights, plan.eps)
+                    out = device.cursor + inp_bytes
+                    attention = out + out_bytes
+                sources = [out + i * rows * plan.hidden * item for i in range(len(plans))]
             else:
                 sources = list(device.sources)
-            self._attention_kernels(plan, matrices, sources, device.cursor + inp_bytes + out_bytes, output,
-                                    device.result, rows, item)
+                attention = device.cursor + inp_bytes + out_bytes
+            self._attention_kernels(plan, matrices, sources, attention, output, device.result, rows, item)
             return None
         prep = plan.prepare
         query_bytes = rows * prep.nh * prep.dim * item
