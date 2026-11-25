@@ -45,6 +45,27 @@ class Inkling2ReferenceGenerator:
     def detokenize(self, token_ids, *, skip_special=True):
         return self.tokenizer.decode(list(token_ids), skip_special_tokens=skip_special)
 
+    def count_tokens(self, text):
+        # The server counts tokens when it starts and before it admits a request.
+        return len(self.tokenize(text))
+
+    def prepare_request_scratch(self, *, max_prompt_tokens, max_new_tokens=0, sampling_params=None,
+                                max_batch_size=1, release_after_probe=True):
+        """The server's startup probe: prove every slot fits a request of the admitted size.
+
+        Each request owns its session state, so the probe opens one session per slot at the
+        requested capacity and releases them when it is only a probe.
+        """
+        del sampling_params
+        required = int(max_prompt_tokens) + max(0, int(max_new_tokens) - 1)
+        if int(max_batch_size) < 1 or not 0 < required <= self.max_sequence_length:
+            raise ValueError("Inkling 2 request scratch exceeds the sequence capacity")
+        sessions = [self.model.session(required) for _ in range(int(max_batch_size))]
+        if release_after_probe:
+            for session in sessions:
+                session.close()
+        return {"sequence_capacity": required, "sessions": len(sessions), "released": bool(release_after_probe)}
+
     def generate(self, request):
         return [item.text for item in self.generate_detailed(request)]
 

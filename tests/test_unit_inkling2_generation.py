@@ -88,3 +88,44 @@ def test_enabled_prefill_chunks_prompt_and_requests_only_last_logits(length):
     output, = gen.generate_detailed(req)
     assert output.generated_token_ids == (1,)
     assert calls == [(ids[i:i + 3], i + 3 >= length) for i in range(0, length, 3)]
+
+
+def test_generators_count_tokens_for_server_admission():
+    """`hipengine serve` counts tokens at startup and before admitting a request (2026-11-25)."""
+    from hipengine.generation.inkling2_gguf import Inkling2GGUFGenerator
+
+    class Tokenizer:
+        def encode(self, text, add_special_tokens=False):
+            return SimpleNamespace(ids=tuple(range(len(text.split()))))
+
+    for cls in (Inkling2ReferenceGenerator, Inkling2GGUFGenerator):
+        generator = cls.__new__(cls)
+        generator.tokenizer = Tokenizer()
+        assert generator.count_tokens("a b c") == 3 and generator.tokenize("a b") == (0, 1)
+
+
+def test_prepare_request_scratch_opens_one_session_per_slot_and_releases_them():
+    """The server's startup probe asks for the admitted size; each request owns its session."""
+    opened, closed = [], []
+
+    class Model:
+        def session(self, capacity):
+            opened.append(capacity)
+            return SimpleNamespace(close=lambda: closed.append(capacity))
+
+    generator = Inkling2ReferenceGenerator.__new__(Inkling2ReferenceGenerator)
+    generator.model = Model()
+    generator.max_sequence_length = 4096
+    result = generator.prepare_request_scratch(
+        max_prompt_tokens=4095, max_new_tokens=0, sampling_params=None, max_batch_size=2,
+        release_after_probe=True)
+    assert opened == [4095, 4095] and closed == [4095, 4095]
+    assert result == {"sequence_capacity": 4095, "sessions": 2, "released": True}
+    assert generator.prepare_request_scratch(max_prompt_tokens=100, max_new_tokens=9, max_batch_size=1,
+                                             release_after_probe=False) == {
+        "sequence_capacity": 108, "sessions": 1, "released": False}
+    assert opened == [4095, 4095, 108] and closed == [4095, 4095]
+    for prompt, new, batch in ((4096, 8, 1), (0, 1, 1), (10, 1, 0)):
+        with pytest.raises(ValueError, match="sequence capacity"):
+            generator.prepare_request_scratch(max_prompt_tokens=prompt, max_new_tokens=new, max_batch_size=batch)
+    assert opened == [4095, 4095, 108]

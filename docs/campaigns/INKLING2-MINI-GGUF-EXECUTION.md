@@ -258,7 +258,7 @@ HIPENGINE_BACKEND="$BACKEND" .venv/bin/python scripts/gguf_capacity_probe.py --m
 Exercise the shipping surface separately. Start one server at a time; this smoke request tests reachability, not a benchmark. Then run the step 0 driver with frozen rendered token IDs, 128 outputs, cache reuse and drafting off. Repeat a candidate through the intended **default** surface before calling it shipped; an explicit `fast` result stays labeled `fast`.
 
 ```bash
-.venv/bin/hipengine serve --model "$MODEL" --served-model-name inkling --backend "$BACKEND" --execution-profile fast --max-context-tokens 4096 --max-active-requests 4 --prefix-cache off --speculative-mtp-serving off --host 127.0.0.1 --port 8000
+.venv/bin/hipengine serve --model "$MODEL" --served-model-name inkling --backend "$BACKEND" --execution-profile fast --kv-storage auto --max-context-tokens 4096 --max-active-requests 4 --prefix-cache off --speculative-mtp-serving off --host 127.0.0.1 --port 8000
 # In another terminal:
 curl -fsS http://127.0.0.1:8000/v1/completions -H 'Content-Type: application/json' -d '{"model":"inkling","prompt":"The capital of France is","max_tokens":8,"temperature":0,"stream":true}'
 ```
