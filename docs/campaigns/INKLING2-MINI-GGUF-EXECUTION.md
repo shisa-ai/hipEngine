@@ -116,8 +116,8 @@ Priorities are hypotheses tied to measured work, not promised speedups. **Start 
 expert input differently and swap near-tie routes. The judge is the profile gate with a row at
 every block end, and the plan's width list is at rounding scale against strict at each prompt end.
 The oracle test of item 1 is `test_capture_points_are_not_visit_exit_states` in
-`tests/test_unit_inkling2_reference.py`. Device-routed experts for blocks (item 5) and wider
-blocks (step 3) are open.
+`tests/test_unit_inkling2_reference.py`. Device-routed experts for blocks (item 5) are open; the
+block width is set under step 3.
 
 **Why first:** the [resident attention run][attention-run] removed a measured part of request time; completing the traversal is the shortest path to testing the remaining host visits. The [pinned upload race][upload-fix] was real and fixed. The [previous public block attempt][block-reject] failed repeat/quality checks **before** that fix. Neither establishes the result after it.
 
@@ -140,6 +140,14 @@ blocks (step 3) are open.
 - Extend residency **one boundary at a time** on the scalar route: residual/controller → grouped Q/K/V and gated attention → experts/post-convolution → next visit. Keep eager launches first. Advance when counters fall and an unprofiled suffix or its isolated public phase improves in both orders.
 
 ### 3. Speed up grouped expert *prefill*, then widen prompt blocks
+
+**Status 2026-11-25.** `fast` reads prompts in 256-row blocks with matching scheduler budgets and
+`strict` keeps 64 rows ([entry](../../worklog/entries/20261125T023627.416022Z-lhl-inkling2-mini-91a27c.md)).
+Through the in-tree harness the first token comes 25 to 27% sooner after 575 and 2,057 prompt
+tokens, with the same 128 output tokens. In mixed load a decoding stream beside a 2,114-token
+prompt meets a longest gap of 1.14 s instead of 0.39 s and finishes 1.9 s sooner. Items 1 to 4
+and 6 and 7 are open: at 256 rows the expert projection is 57% of kernel time, block attention
+30%, the short convolution 7% and the dense projections 4% of a 2,048-token prompt on the W7900.
 
 **Why:** [the pinned Strix trace][strix-trace] attributes 2,821 of 5,158 ms of summed kernel time to grouped NVFP4 at 575 tokens (not wall time). On W7900, [wider blocks alone][width] reduced re-reads but did **not** reduce NVFP4 kernel time. On Strix Halo the re-reads themselves rule out 64-row blocks, and every block-visit also carries its host cost ([prompt budget](#prompt-budget-what-looms-prefill-requires)). Do not start by copying Maya's chunk size; take the width and the kernel from the measurements below.
 

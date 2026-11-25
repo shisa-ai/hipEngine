@@ -106,3 +106,44 @@ def test_resident_keeps_prefill_chunk_arithmetic_and_sampling_contract(options):
                 for session in sessions]
     assert sorted(schedule) == sorted(direct_schedule)
     assert all(session.closed for session in sessions)
+
+
+@pytest.mark.parametrize('fast', [False, True])
+def test_gguf_prompt_block_is_collected_and_computed_in_one_round(fast):
+    """The scheduler hands over a whole block per round; a narrower budget would idle the row."""
+    width, defaults = Inkling2GGUFGenerator._prefill_schedule(fast)
+    assert width > 0
+    assert defaults['max_prefill_chunk_tokens'] == width
+    assert defaults['round_prefill_token_budget'] == width
+
+
+def test_gguf_fast_reads_wider_prompt_blocks_than_strict():
+    """Fast blocks are 256 rows; strict keeps the 64 rows where it is faster to the first token."""
+    strict_width, strict_defaults = Inkling2GGUFGenerator._prefill_schedule(False)
+    fast_width, fast_defaults = Inkling2GGUFGenerator._prefill_schedule(True)
+    assert (strict_width, fast_width) == (64, 256)
+    assert strict_defaults is Inkling2GGUFGenerator.engine_loop_config_defaults
+    assert fast_defaults is Inkling2GGUFGenerator.fast_engine_loop_config_defaults
+
+
+def test_resident_waits_for_a_whole_block_when_the_budget_splits_it():
+    """A block runs only after the scheduler has handed over its whole width."""
+    inner, calls, _sessions = _generator()
+    request = GenerationRequest(prompts=((1,) * 7,), max_tokens=1, temperature=0.0, ignore_eos=True, top_p=1.0)
+
+    def blocks_per_tick(chunk):
+        calls.clear()
+        config = EngineLoopConfig(max_active_requests=1, max_prefill_chunk_tokens=chunk,
+                                  round_prefill_token_budget=chunk, prefix_cache='off', speculative_mtp_serving='off')
+        ticks = []
+        with closing(SubmitPollTextGenerator(inner, config=config)) as driver:
+            driver.submit_detailed(request)
+            for _ in range(3):
+                driver.poll(max_ticks=1)
+                ticks.append([part for _, part, _ in calls])
+        return ticks
+
+    # One three-token block per round, then the one-token tail that yields logits.
+    assert blocks_per_tick(3) == [[(1, 1, 1)], [(1, 1, 1), (1, 1, 1)], [(1, 1, 1), (1, 1, 1), (1,)]]
+    # Two tokens per round: the first block waits for the second round and the row idles between blocks.
+    assert blocks_per_tick(2) == [[], [(1, 1, 1)], [(1, 1, 1), (1, 1, 1)]]

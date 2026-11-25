@@ -29,12 +29,15 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.width >= 1:
-        Inkling2GGUFGenerator.prefill_block_width = args.width
-        Inkling2GGUFGenerator.engine_loop_config_defaults = {
-            **Inkling2GGUFGenerator.engine_loop_config_defaults,
-            "max_prefill_chunk_tokens": args.width,
-            "round_prefill_token_budget": args.width,
-        }
+        # Both profiles read their width and loop budgets from the class; override each pair.
+        for width_name, defaults_name in (("prefill_block_width", "engine_loop_config_defaults"),
+                                          ("fast_prefill_block_width", "fast_engine_loop_config_defaults")):
+            setattr(Inkling2GGUFGenerator, width_name, args.width)
+            setattr(Inkling2GGUFGenerator, defaults_name, {
+                **getattr(Inkling2GGUFGenerator, defaults_name),
+                "max_prefill_chunk_tokens": args.width,
+                "round_prefill_token_budget": args.width,
+            })
 
     prompt_text = (
         "Explain why the day gets longer in spring, using plain language and a few practical examples. "

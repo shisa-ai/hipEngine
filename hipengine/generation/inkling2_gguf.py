@@ -46,17 +46,36 @@ def _decode_graph_requested() -> bool:
     return os.environ.get("HIPENGINE_INKLING2_DECODE_GRAPH", "0") == "1"
 
 
+def _prefill_loop_defaults(width):
+    # The scheduler hands over a whole block per round, so a block is collected and computed in one round.
+    return {
+        "prefill_decode_policy": "fair",
+        "max_prefill_chunk_tokens": width,
+        "round_prefill_token_budget": width,
+    }
+
+
 class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
     supports_vision = False
     # Packed target verification changed ordinary fast output on the GGUF prompt suite.
     packed_verification = False
     vision = None
+    # Prompt blocks per profile. `fast` reads 256 rows: with 64-row blocks the expert weights are
+    # read four times more often and every visit pays its host work four times more per token, and
+    # the first token comes 25% sooner at 575 prompt tokens. A wider block is a longer step for the
+    # other streams of a multi-request server. `strict` keeps 64 rows, where it is 6 to 8% faster to
+    # the first token than at 256. Both are measured in worklog
+    # 20261125T023627.416022Z-lhl-inkling2-mini-91a27c.
     prefill_block_width = 64
-    engine_loop_config_defaults = {
-        "prefill_decode_policy": "fair",
-        "max_prefill_chunk_tokens": 64,
-        "round_prefill_token_budget": 64,
-    }
+    fast_prefill_block_width = 256
+    engine_loop_config_defaults = _prefill_loop_defaults(prefill_block_width)
+    fast_engine_loop_config_defaults = _prefill_loop_defaults(fast_prefill_block_width)
+
+    @classmethod
+    def _prefill_schedule(cls, fast):
+        if fast:
+            return cls.fast_prefill_block_width, cls.fast_engine_loop_config_defaults
+        return cls.prefill_block_width, cls.engine_loop_config_defaults
 
     def __init__(self, *, backend, model_path, weight_index, model_plugin, max_sequence_length=None,
                  fast=False):
@@ -68,6 +87,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
         self.max_sequence_length = m.max_context if max_sequence_length is None else max_sequence_length
         self.tokenizer, self.eos_token_id = inkling2_gguf_tokenizer(reader.info, m.vocab_size)
         self.model_path = reader.path
+        self.prefill_block_width, self.engine_loop_config_defaults = self._prefill_schedule(fast)
         self._draft_provider = None
         runtime = get_hip_runtime()
         arch = hip_target_arch_for_backend(backend)
