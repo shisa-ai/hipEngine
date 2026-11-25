@@ -1822,6 +1822,10 @@ depth. The [gate row](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-
 [row at `5d2bb6e03`](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-block-prefill-fast-resident.json) judges 744 rows, 72 of them prefill block ends:
 median KL 1.3e-13, p90 1.2e-5, top-1 99.87%. First token on the same tree is 1.23 to 1.28 times
 the [baseline's](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-block-prefill-bench.json).
+On 256-row `fast` blocks the [row at `cbe01e818`](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-256-row-blocks-fast-resident.json) passes on 687 rows,
+15 of them prefill block ends: median KL 1.0e-13, p90 3.5e-12, top-1 100%. The
+[bench](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-256-row-blocks-bench-fast.json) on that tree brings the first token 1.26 times sooner than the 64-row
+row after 575 and 2,057 prompt tokens.
 
 Done when: the step is faster than the default path in paired runs at each of the campaign's 47,
 575 and 2,057 prompt-token cells, with the production numerical gate passed; then the default
@@ -1876,7 +1880,8 @@ default path), 29.36 against 29.22 after 575 (1.659 and 1.665) and 26.66 against
 per token against 1,152 to 1,308 for resident eager. The [gate row](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-fast-graph.json) passes and its 672
 candidate rows equal the resident row's bit for bit across two processes. The [row at
 `5d2bb6e03`](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-block-prefill-fast-graph.json) with the block traversal passes on 744 rows with the
-resident row's numbers. It stays at `0` for the reason `HIPENGINE_INKLING2_RESIDENT_DECODE` does.
+resident row's numbers. The [row at `cbe01e818`](../benchmarks/results/2026-11-25-w7900-inkling2-mini-gguf-profile-gate-256-row-blocks-fast-graph.json) on 256-row `fast` blocks
+passes with the resident row's bytes. It stays at `0` for the reason `HIPENGINE_INKLING2_RESIDENT_DECODE` does.
 
 Done when: R0527 is done, the Inkling adapter of the production numerical gate admits the path,
 and the step wins at every campaign depth. Then recording becomes unconditional for resident

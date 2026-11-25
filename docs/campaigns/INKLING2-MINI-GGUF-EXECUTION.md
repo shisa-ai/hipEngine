@@ -145,7 +145,9 @@ block width is set under step 3.
 `strict` keeps 64 rows ([entry](../../worklog/entries/20261125T023627.416022Z-lhl-inkling2-mini-91a27c.md)).
 Through the in-tree harness the first token comes 25 to 27% sooner after 575 and 2,057 prompt
 tokens, with the same 128 output tokens. In mixed load a decoding stream beside a 2,114-token
-prompt meets a longest gap of 1.14 s instead of 0.39 s and finishes 1.9 s sooner. Items 1 to 4
+prompt meets a longest gap of 1.14 s instead of 0.39 s and finishes 1.9 s sooner. Both opt-in arms
+pass the profile gate on these blocks
+([rows](../../worklog/entries/20261125T041516.788045Z-lhl-inkling2-mini-94f50e.md)). Items 1 to 4
 and 6 and 7 are open: at 256 rows the expert projection is 57% of kernel time, block attention
 30%, the short convolution 7% and the dense projections 4% of a 2,048-token prompt on the W7900.
 
