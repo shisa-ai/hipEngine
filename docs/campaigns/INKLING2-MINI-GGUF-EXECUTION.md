@@ -239,7 +239,8 @@ python3 scripts/check_lineage.py --kind kernel --diff stat
 # Paired decode arms, each an environment: five pairs in each order, one JSON artifact with the decision.
 PYTHONPATH=. .venv/bin/python scripts/inkling2_decode_pairs.py run "$MODEL" --backend "$BACKEND" --execution-profile fast --quant UD-Q4_K_M --arms default routes resident graph --pairs 5 --reps 3 --output "$OUT/pairs.json"
 
-# Numerical gate of one decode arm against strict: 672 teacher-forced rows on 25 prompts in nine categories,
+# Numerical gate of one decode arm against strict: 672 teacher-forced decode rows and every prefill block end
+# on 25 prompts in nine categories,
 # the section 2.11 envelope, schedule-derived controls, three bit-stable repeats, a reversed-order replay in a
 # fresh process, public-route parity and the paired known-answer check. Candidates: fast, fast_resident, fast_graph.
 PYTHONPATH=. .venv/bin/python scripts/inkling2_profile_gate.py "$MODEL" --backend "$BACKEND" --candidate fast_graph --json "$OUT/gate-graph.json"

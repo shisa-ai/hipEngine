@@ -452,6 +452,8 @@ class Trajectory:
     fed: tuple[int, ...]
     calls: tuple[Call, ...]
     state: Mapping[str, Any]
+    # Logits at the end of every prefill block before the last one, in block order.
+    prefill_rows: np.ndarray | None = None
 
 
 def _download(ptr: int, nbytes: int, runtime: Any) -> np.ndarray:
@@ -525,6 +527,7 @@ def capture_trajectory(
     session = model.session(len(prompt_tokens) + decode_rows + 1)
     calls: list[Call] = []
     rows: list[np.ndarray] = []
+    block_ends: list[np.ndarray] = []
     fed: list[int] = []
     try:
         with _RouteRecorder(model) as routes:
@@ -532,15 +535,18 @@ def capture_trajectory(
                 block = prompt_tokens[start : start + int(block_width)]
                 final = start + len(block) == len(prompt_tokens)
                 before = (model._graph_captures, model._graph_replays)
+                # Every block end projects its last row: the earlier ones become gate rows too.
                 if len(block) == 1:
-                    row = session.step(block[0], logits=final)
+                    row = session.step(block[0], logits=True)
                 else:
-                    row = session.prefill_block(block, logits=final)
+                    row = session.prefill_block(block, logits=True)
                 calls.append(
                     _observe(WORK_PREFILL, block, session, model, before, routes.take(), row)
                 )
                 if final:
                     rows.append(np.asarray(row, dtype=np.float32))
+                else:
+                    block_ends.append(np.asarray(row, dtype=np.float32))
             for _ in range(decode_rows - 1):
                 token = int(np.argmax(rows[-1])) if forced is None else int(forced[len(fed)])
                 fed.append(token)
@@ -558,6 +564,7 @@ def capture_trajectory(
         fed=tuple(fed),
         calls=tuple(calls),
         state=state,
+        prefill_rows=np.stack(block_ends) if block_ends else np.zeros((0, rows[0].size), np.float32),
     )
 
 
@@ -840,10 +847,38 @@ def _route_metadata(llm: Any, model: Any, arm: Candidate) -> dict[str, Any]:
 
 
 def _steps(trajectory: Trajectory) -> tuple[dict[str, Any], ...]:
-    return tuple(
+    """Block-end rows first, then the last prefill row and the decode rows."""
+
+    ends = (
+        {"logits": row, "token_id": int(np.argmax(row))}
+        for row in (trajectory.prefill_rows if trajectory.prefill_rows is not None else ())
+    )
+    return tuple(ends) + tuple(
         {"logits": row, "token_id": token}
         for row, token in zip(trajectory.logits, trajectory.argmax, strict=True)
     )
+
+
+def block_end_count(trajectory: Trajectory) -> int:
+    return 0 if trajectory.prefill_rows is None else int(trajectory.prefill_rows.shape[0])
+
+
+def row_labels(block_ends: Mapping[str, int], buckets: Mapping[str, Sequence[str]]) -> tuple[Any, Any]:
+    """Shape and transition labels for a trajectory: block ends, the last prefill row, decode rows."""
+
+    def shape_for_step(step: int, prompt_id: str) -> str:
+        ends = block_ends[prompt_id]
+        return "prefill_block_end" if step < ends else ("prefill_last" if step == ends else "c1")
+
+    def transition_for_step(step: int, prompt_id: str) -> str:
+        ends = block_ends[prompt_id]
+        if step < ends:
+            return "prefill_block_end"
+        # Step ``ends + k`` is decode row ``k``, which is call ``ends + k``: each prefill block
+        # before the last adds one row and one call alike.
+        return "prefill_to_c1" if step == ends else str(buckets[prompt_id][step])
+
+    return shape_for_step, transition_for_step
 
 
 def run_task_cases(llm: Any) -> dict[str, dict[str, Any]]:
@@ -1226,13 +1261,16 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     )
     primary = {request["id"]: runs[request["id"]][0] for request in requests}
 
-    def shape_for_step(step: int, _prompt_id: str) -> str:
-        return "prefill_last" if step == 0 else "c1"
+    shape_for_step, transition_for_step = row_labels(
+        {request["id"]: block_end_count(strict_runs[request["id"]]) for request in requests},
+        {request["id"]: [call.bucket for call in primary[request["id"]].calls] for request in requests},
+    )
 
-    def transition_for_step(step: int, prompt_id: str) -> str:
-        if step == 0:
-            return "prefill_to_c1"
-        return str(primary[prompt_id].calls[step].bucket)
+    def all_rows(trajectory: Trajectory) -> np.ndarray:
+        return np.concatenate(
+            [trajectory.prefill_rows if trajectory.prefill_rows is not None else np.zeros((0, trajectory.logits.shape[1]), np.float32),
+             trajectory.logits]
+        )
 
     dense = build_candidate_quality(
         captures,
@@ -1242,16 +1280,18 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         shape_for_step=shape_for_step,
         transition_for_step=transition_for_step,
     )
-    strict_matrix = np.concatenate([strict_runs[request["id"]].logits for request in requests])
-    candidate_matrix = np.concatenate([primary[request["id"]].logits for request in requests])
-    labels = np.asarray(
-        [token for request in requests for token in strict_runs[request["id"]].argmax], dtype=np.int64
-    )
+    strict_matrix = np.concatenate([all_rows(strict_runs[request["id"]]) for request in requests])
+    candidate_matrix = np.concatenate([all_rows(primary[request["id"]]) for request in requests])
+    labels = np.asarray(np.argmax(strict_matrix, axis=1), dtype=np.int64)
     vectors = per_row_metrics(strict_matrix, candidate_matrix, labels, top_k=dense["quality"]["top_k"])
     verdict = section_211_verdict(
         vectors["kl_nats"],
         vectors["top1_equal"],
-        [str(request["category"]) for request in requests for _ in range(int(request["decode_steps"]))],
+        [
+            str(request["category"])
+            for request in requests
+            for _ in range(block_end_count(strict_runs[request["id"]]) + int(request["decode_steps"]))
+        ],
     )
     if args.save_logits is not None:
         args.save_logits.mkdir(parents=True, exist_ok=True)
@@ -1386,7 +1426,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "model": str(args.model),
             "prompt_suite": str(Path(args.suite).resolve()),
             "prompt_count": len(requests),
-            "teacher_forced_rows": int(strict_matrix.shape[0]),
+            "teacher_forced_rows": int(sum(int(request["decode_steps"]) for request in requests)),
+            "prefill_block_end_rows": int(strict_matrix.shape[0])
+            - sum(int(request["decode_steps"]) for request in requests),
+            "rows": int(strict_matrix.shape[0]),
             "session_calls_per_run": calls_before,
             "candidate_repeat_runs": int(args.repeat_runs),
             "prefill_block_width": block_width,

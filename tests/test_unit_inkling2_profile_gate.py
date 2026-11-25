@@ -367,3 +367,32 @@ def test_candidates_declare_their_mechanism_strict_fallback_and_flags():
         "device_routes": True, "resident_decode": True, "decode_graph": True
     }
     assert gate.CANDIDATES["fast_graph"].graph and not gate.CANDIDATES["fast_resident"].graph
+
+
+def _block_trajectory(request, chain, *, ends):
+    """A trajectory whose prompt takes ``ends + 1`` blocks, so ``ends`` block-end rows exist."""
+    base = _trajectory(request, chain)
+    extra = [gate.Call("PREFILL", (7,) * 64, ((0, 64 * (index + 1)),), True, "c1_eager", "r", True)
+             for index in range(ends)]
+    calls = tuple(extra) + base.calls  # the last prefill block and the decode calls follow
+    return gate.Trajectory(base.prompt_id, base.logits, base.argmax, base.fed, calls, base.state,
+                           np.full((ends, 4), 3.0, np.float32))
+
+
+def test_block_end_rows_come_first_and_carry_their_own_labels():
+    request = _requests()[0]
+    trajectory = _block_trajectory(request, (1, 2, 3), ends=2)
+    steps = gate._steps(trajectory)
+    assert [step["token_id"] for step in steps] == [0, 0, 0, 0, 0, 0] and len(steps) == 6
+    assert all(step["logits"].shape == (4,) for step in steps)
+    assert gate.block_end_count(trajectory) == 2 and gate.block_end_count(_trajectory(request, (1, 2, 3))) == 0
+    shape, transition = gate.row_labels({"short": 2}, {"short": [call.bucket for call in trajectory.calls]})
+    # calls: two block ends, the last prefill block, then three decode calls.
+    assert [shape(step, "short") for step in range(6)] == [
+        "prefill_block_end", "prefill_block_end", "prefill_last", "c1", "c1", "c1"]
+    assert [transition(step, "short") for step in range(6)] == [
+        "prefill_block_end", "prefill_block_end", "prefill_to_c1", "c1_eager", "c1_eager", "c1_eager"]
+    single = _trajectory(request, (1, 2, 3))
+    shape, transition = gate.row_labels({"short": 0}, {"short": [c.bucket for c in single.calls]})
+    assert [shape(step, "short") for step in range(4)] == ["prefill_last", "c1", "c1", "c1"]
+    assert [transition(step, "short") for step in range(4)] == ["prefill_to_c1", "c1_eager", "c1_eager", "c1_eager"]
