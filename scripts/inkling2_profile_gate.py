@@ -144,6 +144,25 @@ CANDIDATES = {
         },
         graph=True,
     ),
+    "production": Candidate(
+        name="production",
+        profile="production",
+        classification="T2",
+        mechanism=(
+            "the shipped plan: the prompt blocks of the fast plan, selected F32 expert kernels on "
+            "every path, and one device-resident decode visit per token recorded once per session "
+            "and replayed as a whole-token graph"
+        ),
+        strict_fallback="strict selected-expert F32 kernels and ordered mix",
+        # The plan's own routes, named so the packet can check them against what engaged. An unset
+        # flag takes the same value; the default route is checked by its own test.
+        environment={
+            "HIPENGINE_INKLING2_DEVICE_ROUTES": "1",
+            "HIPENGINE_INKLING2_RESIDENT_DECODE": "1",
+            "HIPENGINE_INKLING2_DECODE_GRAPH": "1",
+        },
+        graph=True,
+    ),
 }
 CANDIDATE_NAMES = tuple(CANDIDATES)
 
@@ -806,7 +825,7 @@ def candidate_block_width(backend: str, arm: Candidate) -> int:
 
     from hipengine.generation.inkling2_gguf import Inkling2GGUFGenerator
 
-    width, defaults = Inkling2GGUFGenerator.prefill_schedule(arm.profile == "fast")
+    width, defaults = Inkling2GGUFGenerator.prefill_schedule(arm.profile != STRICT_PROFILE)
     if int(width) <= 0 or defaults.get("max_prefill_chunk_tokens") != width:
         raise GateError(f"profile {arm.profile} declares an inconsistent prompt block width")
     return int(width)

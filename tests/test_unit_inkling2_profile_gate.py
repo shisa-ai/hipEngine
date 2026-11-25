@@ -362,11 +362,12 @@ def test_route_metadata_requires_the_profile_and_the_routes_under_test():
 def test_candidates_declare_their_mechanism_strict_fallback_and_flags():
     for name, candidate in gate.CANDIDATES.items():
         assert candidate.strict_fallback.startswith("strict") and candidate.mechanism
-        assert candidate.profile == "fast" and set(candidate.environment) == set(gate.ROUTE_ENV_KEYS)
-    assert gate.expected_flags(gate.CANDIDATES["fast_graph"]) == {
+        assert candidate.profile in ("fast", "production") and set(candidate.environment) == set(gate.ROUTE_ENV_KEYS)
+    assert gate.expected_flags(gate.CANDIDATES["fast_graph"]) == gate.expected_flags(gate.CANDIDATES["production"]) == {
         "device_routes": True, "resident_decode": True, "decode_graph": True
     }
-    assert gate.CANDIDATES["fast_graph"].graph and not gate.CANDIDATES["fast_resident"].graph
+    assert gate.CANDIDATES["fast_graph"].graph and gate.CANDIDATES["production"].graph
+    assert not gate.CANDIDATES["fast_resident"].graph and not gate.CANDIDATES["fast"].graph
 
 
 def _block_trajectory(request, chain, *, ends):

@@ -38,9 +38,11 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     """Share dense transfer scratch; upload physical expert banks only once."""
 
     def __init__(self, weights, *, runtime, blas, backend, fast_experts=False, fast_controllers=False,
-                 device_routes=False):
+                 device_routes=False, q8_dot_experts=None):
         super().__init__(weights, runtime=runtime, blas=blas)
         load_backend_kernel_package(backend)
+        if q8_dot_experts is None:
+            q8_dot_experts = fast_experts
         self._tensors = {t.name: t for t in weights.reader.info.tensors}
         self._backend = str(backend)
         self._target_arch = hip_target_arch_for_backend(backend)
@@ -51,17 +53,17 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._tiled_launches = {}
         self._shared_tiled_launches = {}
         self._q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
-                                variant="selected_q8_dot_f32_f32_out") if fast_experts else None)
+                                variant="selected_q8_dot_f32_f32_out") if q8_dot_experts else None)
         self._shared_q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
-                                       variant="selected_shared_input_q8_dot_f32_f32_out") if fast_experts else None)
+                                       variant="selected_shared_input_q8_dot_f32_f32_out") if q8_dot_experts else None)
         self._counted_q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
                                         variant="selected_counted_shared_input_q8_dot_f32_f32_out")
-                                 if fast_experts else None)
+                                 if q8_dot_experts else None)
         self._counted_split_q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
                                               variant="selected_counted_split_activation_q8_dot_f32_f32_out")
-                                       if fast_experts else None)
+                                       if q8_dot_experts else None)
         self._split_q8_dot = (resolve(backend=backend, layer="moe_linear", quant="gguf_nvfp4",
-                                      variant="selected_split_activation_q8_dot_f32_f32_out") if fast_experts else None)
+                                      variant="selected_split_activation_q8_dot_f32_f32_out") if q8_dot_experts else None)
         self._q8_dot_scratch = None
         self._k_library = None
         self._device_routes_requested = bool(device_routes)

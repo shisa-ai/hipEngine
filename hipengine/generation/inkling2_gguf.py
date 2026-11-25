@@ -34,16 +34,33 @@ from hipengine.runtime.inkling2_gguf import Inkling2GGUFText
 from hipengine.tokenization.inkling2_gguf import inkling2_gguf_tokenizer
 
 
-def _device_routes_requested() -> bool:
-    return os.environ.get("HIPENGINE_INKLING2_DEVICE_ROUTES", "0") == "1"
+ROUTE_DEVICE = "HIPENGINE_INKLING2_DEVICE_ROUTES"
+ROUTE_RESIDENT_DECODE = "HIPENGINE_INKLING2_RESIDENT_DECODE"
+ROUTE_DECODE_GRAPH = "HIPENGINE_INKLING2_DECODE_GRAPH"
+# Backends where the production plan's gate row passes. Another backend keeps `fast` opt-in until
+# its row exists.
+PRODUCTION_BACKENDS = ("hip_gfx1100",)
 
 
-def _resident_decode_requested() -> bool:
-    return os.environ.get("HIPENGINE_INKLING2_RESIDENT_DECODE", "0") == "1"
+def _route_flag(name, default=False):
+    # An unset flag takes the profile's route: off for `fast`, on for `production`. `1` and `0` are
+    # the caller's levers on both.
+    value = os.environ.get(name)
+    if value is None:
+        return bool(default)
+    return value == "1"
 
 
-def _decode_graph_requested() -> bool:
-    return os.environ.get("HIPENGINE_INKLING2_DECODE_GRAPH", "0") == "1"
+def _device_routes_requested(default=False):
+    return _route_flag(ROUTE_DEVICE, default)
+
+
+def _resident_decode_requested(default=False):
+    return _route_flag(ROUTE_RESIDENT_DECODE, default)
+
+
+def _decode_graph_requested(default=False):
+    return _route_flag(ROUTE_DECODE_GRAPH, default)
 
 
 def _prefill_loop_defaults(width):
@@ -79,7 +96,12 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
         return cls.prefill_block_width, cls.engine_loop_config_defaults
 
     def __init__(self, *, backend, model_path, weight_index, model_plugin, max_sequence_length=None,
-                 fast=False):
+                 fast=False, production=False):
+        # `production` shares the prompt blocks of `fast`. Its experts keep the selected F32 kernels
+        # on every path, its eager decode keeps the ordered attention, and the device-resident
+        # single-token traversal with its graph is its shipped route.
+        fast = fast or production
+        reduced = fast and not production
         reader = GGUFReader(weight_index.path)
         weights = Inkling2GGUFWeights(reader)
         m = weights.mapping
@@ -99,7 +121,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
 
         attn = primitive("inkling2_target_attention", "tiled")
         split = primitive("inkling2_target_attention", "split")
-        split_chunked = primitive("inkling2_target_attention", "split_chunked") if fast else None
+        split_chunked = primitive("inkling2_target_attention", "split_chunked") if reduced else None
         block = primitive("inkling2_target_attention", "block")
         block_sigmoid = primitive("inkling2_target_attention", "block_sigmoid") if fast else None
         # One 32-lane group per (row, KV head) where the backend registers it. That launcher sends the
@@ -121,10 +143,10 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
             owned.callback(blas.close)
             projection = owned.enter_context(Inkling2GGUFDeviceProjections(
                 weights, runtime=runtime, blas=blas, backend=backend, fast_experts=fast, fast_controllers=fast,
-                device_routes=_device_routes_requested()))
+                device_routes=_device_routes_requested(production), q8_dot_experts=reduced))
             model = self.model = Inkling2GGUFText(weights, projection=projection)
-            model.resident_decode = _resident_decode_requested()
-            model.decode_graph = _decode_graph_requested()
+            model.resident_decode = _resident_decode_requested(production)
+            model.decode_graph = _decode_graph_requested(production)
             model.attention_factory = lambda cap: Inkling2DeviceAttention(
                 runtime=runtime, launch=attn, split=split, split_chunked=split_chunked, block=block,
                 block_sigmoid=block_sigmoid, block_table=block_table, decode_table=decode_table, write=write,
@@ -240,61 +262,61 @@ def register_inkling2_gguf_profiles():
     resident_evidence = "worklog/entries/20261124T093241.447865Z-lhl-inkling2-mini-4b3cf8.md"
     wave_evidence = "worklog/entries/20261125T112427.985223Z-lhl-inkling2-mini-207009.md"
     wmma_evidence = "worklog/entries/20261125T030054.604272Z-lhl-inkling2-mini-1863be.md"
+    production_evidence = "worklog/entries/20261125T144054.580076Z-lhl-inkling2-mini-6a7d16.md"
+    shared_f32 = "selected_shared_register_fp4_f32_f32_out"
+    tile_shared = "selected_tile4_shared_input_f32_f32_out"
+    tile = "selected_tile4_f32_f32_out"
+    wmma = "selected_wmma_f16_parts_f32_out"
+    # (layer, scope, strict, fast, fast evidence, production). A production variant equal to the
+    # strict one is the F32 kernel the device-resident decode runs, or the ordered path its eager
+    # fallback keeps.
+    scopes = (
+        ("moe_linear", scope, strict, "selected_q8_dot_f32_f32_out", evidence, strict),
+        ("moe_linear", "single_token_top8_nvfp4_shared_gate_n1152_or_2304_m2304", strict, shared_q8,
+         shared_q8_evidence, shared_f32),
+        ("moe_linear", "two_to_four_decode_rows_top8_nvfp4_gate_n1152_or_2304_m2304", strict, counted_q8,
+         counted_q8_evidence, strict),
+        ("moe_linear", "single_token_top8_nvfp4_split_down_n1152_m2304", strict, split_q8, split_q8_evidence, strict),
+        ("moe_linear", "two_to_four_decode_rows_top8_nvfp4_split_down_n1152_m2304", strict, counted_split_q8,
+         counted_split_q8_evidence, strict),
+        ("moe_linear", "prompt_block_ge_192_rows_top8_nvfp4_gate_n2304_m2304", tile_shared, wmma, wmma_evidence, wmma),
+        ("moe_linear", "prompt_block_ge_192_rows_top8_nvfp4_split_down_n1152_m2304", tile, wmma, wmma_evidence, wmma),
+        ("inkling2_expert_pointwise", "selected_split_gate_up", "split_activation_host", "split_activation_device",
+         activation_evidence, "split_activation_device"),
+        ("inkling2_target_attention", "decode_live_ge_513", "split", "split_chunked", chunked_evidence, "split"),
+        ("inkling2_target_attention", "committed_projected_prefill_gate", "block", "block_sigmoid", gate_evidence,
+         "block_sigmoid"),
+        ("inkling2_controller", "committed_block_controllers", "host_blend_norm", "blend_norm", controller_evidence,
+         "blend_norm"),
+        ("inkling2_target_attention", "resident_block_relative_bias", "block_sigmoid", "block_table_waves",
+         wave_evidence, "block_table_waves"),
+        ("inkling2_attention_prepare", "resident_block_inputs", "host_clip", "clip", resident_evidence, "clip"),
+        ("inkling2_target_attention", "resident_single_token_relative_bias", "split", "split", None,
+         "decode_table_sigmoid"),
+    )
+    def selection(profile, layer, name, exact, reduced, reduced_evidence, production):
+        """One scope's selection under a profile; every non-strict one names its strict fallback."""
+        registry_quant = "gguf_nvfp4" if layer == "moe_linear" else "inkling2_mixed"
+        if profile == "strict":
+            return VariantSelection(layer, name, exact, None, None, registry_quant=registry_quant)
+        if profile == "fast":
+            return VariantSelection(layer, name, reduced, exact, reduced_evidence, registry_quant=registry_quant)
+        evidence_artifact = production_evidence if production != exact else None
+        return VariantSelection(layer, name, production, exact, evidence_artifact, registry_quant=registry_quant)
+
     registered = registered_runtime_profile_keys()
     for backend in ("hip_gfx1100", "hip_gfx1151"):
-        for profile, variant in (("strict", strict), ("fast", "selected_q8_dot_f32_f32_out")):
+        for profile in ("strict", "fast", *((("production",) if backend in PRODUCTION_BACKENDS else ()))):
             if RuntimeProfileKey(model, backend, quant, profile) in registered:
                 continue
-            fast = profile == "fast"
             register_runtime_profile_plan(
                 model=model, backend=backend, quant=quant, profile=profile,
                 plan=RuntimeProfilePlan(
-                    selections=(
-                        VariantSelection("moe_linear", scope, variant, strict if fast else None,
-                                         evidence if fast else None, registry_quant="gguf_nvfp4"),
-                        VariantSelection("moe_linear", "single_token_top8_nvfp4_shared_gate_n1152_or_2304_m2304",
-                                         shared_q8 if fast else strict, strict if fast else None,
-                                         shared_q8_evidence if fast else None, registry_quant="gguf_nvfp4"),
-                        VariantSelection("moe_linear", "two_to_four_decode_rows_top8_nvfp4_gate_n1152_or_2304_m2304",
-                                         counted_q8 if fast else strict, strict if fast else None,
-                                         counted_q8_evidence if fast else None, registry_quant="gguf_nvfp4"),
-                        VariantSelection("moe_linear", "single_token_top8_nvfp4_split_down_n1152_m2304",
-                                         split_q8 if fast else strict, strict if fast else None,
-                                         split_q8_evidence if fast else None, registry_quant="gguf_nvfp4"),
-                        VariantSelection("moe_linear", "two_to_four_decode_rows_top8_nvfp4_split_down_n1152_m2304",
-                                         counted_split_q8 if fast else strict, strict if fast else None,
-                                         counted_split_q8_evidence if fast else None, registry_quant="gguf_nvfp4"),
-                        VariantSelection("moe_linear", "prompt_block_ge_192_rows_top8_nvfp4_gate_n2304_m2304",
-                                         "selected_wmma_f16_parts_f32_out" if fast else "selected_tile4_shared_input_f32_f32_out",
-                                         "selected_tile4_shared_input_f32_f32_out" if fast else None,
-                                         wmma_evidence if fast else None, registry_quant="gguf_nvfp4"),
-                        VariantSelection("moe_linear", "prompt_block_ge_192_rows_top8_nvfp4_split_down_n1152_m2304",
-                                         "selected_wmma_f16_parts_f32_out" if fast else "selected_tile4_f32_f32_out",
-                                         "selected_tile4_f32_f32_out" if fast else None,
-                                         wmma_evidence if fast else None, registry_quant="gguf_nvfp4"),
-                        VariantSelection("inkling2_expert_pointwise", "selected_split_gate_up",
-                                         "split_activation_device" if fast else "split_activation_host",
-                                         "split_activation_host" if fast else None,
-                                         activation_evidence if fast else None, registry_quant="inkling2_mixed"),
-                        VariantSelection("inkling2_target_attention", "decode_live_ge_513",
-                                         "split_chunked" if fast else "split", "split" if fast else None,
-                                         chunked_evidence if fast else None, registry_quant="inkling2_mixed"),
-                        VariantSelection("inkling2_target_attention", "committed_projected_prefill_gate",
-                                         "block_sigmoid" if fast else "block", "block" if fast else None,
-                                         gate_evidence if fast else None, registry_quant="inkling2_mixed"),
-                        VariantSelection("inkling2_controller", "committed_block_controllers",
-                                         "blend_norm" if fast else "host_blend_norm", "host_blend_norm" if fast else None,
-                                         controller_evidence if fast else None, registry_quant="inkling2_mixed"),
-                        VariantSelection("inkling2_target_attention", "resident_block_relative_bias",
-                                         "block_table_waves" if fast else "block_sigmoid",
-                                         "block_sigmoid" if fast else None, wave_evidence if fast else None,
-                                         registry_quant="inkling2_mixed"),
-                        VariantSelection("inkling2_attention_prepare", "resident_block_inputs",
-                                         "clip" if fast else "host_clip", "host_clip" if fast else None,
-                                         resident_evidence if fast else None, registry_quant="inkling2_mixed"),
-                    ),
-                    kv_policy="fp32", graph_policy="eager",
-                    factory=partial(Inkling2GGUFGenerator, backend=backend, fast=fast),
+                    selections=tuple(selection(profile, *row) for row in scopes),
+                    kv_policy="fp32",
+                    graph_policy="resident_single_token_whole_token_graph" if profile == "production" else "eager",
+                    factory=partial(Inkling2GGUFGenerator, backend=backend, fast=profile == "fast",
+                                    production=profile == "production"),
                 ),
             )
 

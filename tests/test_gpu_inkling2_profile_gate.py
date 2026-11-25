@@ -33,7 +33,7 @@ def _skip_unless_runnable() -> str:
     return model
 
 
-@pytest.mark.parametrize("candidate", ["fast", "fast_graph"])
+@pytest.mark.parametrize("candidate", ["fast", "fast_graph", "production"])
 def test_profile_gate_screen_runs_every_section(tmp_path, candidate):
     model = _skip_unless_runnable()
     output = tmp_path / f"{candidate}.json"
@@ -51,7 +51,7 @@ def test_profile_gate_screen_runs_every_section(tmp_path, candidate):
     assert artifact["candidate"]["candidate_owner"]["routes"] == {
         "device_routes": candidate != "fast",
         "resident_decode": candidate != "fast",
-        "decode_graph": candidate == "fast_graph",
+        "decode_graph": candidate in ("fast_graph", "production"),
     }
     assert artifact["protocol"]["teacher_forced_rows"] == 48
     assert artifact["protocol"]["coverage"]["prompts"] == 2

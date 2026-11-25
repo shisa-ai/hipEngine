@@ -95,12 +95,19 @@ def test_inkling_gguf_attachment_preserves_draft_telemetry():
 
 @pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
 def test_inkling_gguf_fast_profile_keeps_strict_and_default_distinct(backend):
-    from hipengine.execution_profiles import resolve_default_execution_profile, resolve_runtime_profile
+    from hipengine.execution_profiles import (
+        ExecutionProfile,
+        resolve_default_execution_profile,
+        resolve_runtime_profile,
+    )
 
     register_builtin_generators()
     plugin = resolve_model("inkling2")
     key = dict(model=plugin.name, backend=backend, quant=plugin.default_quant)
-    assert resolve_default_execution_profile(**key) is None
+    # The omitted profile is `production` where that plan's gate row exists; elsewhere it keeps the
+    # path that names no profile.
+    shipped = backend == "hip_gfx1100"
+    assert resolve_default_execution_profile(**key) == (ExecutionProfile.PRODUCTION if shipped else None)
     strict = resolve_runtime_profile(**key, profile="strict")
     fast = resolve_runtime_profile(**key, profile="fast")
     assert not fast.fell_back_to_strict
@@ -135,6 +142,92 @@ def test_inkling_gguf_fast_profile_keeps_strict_and_default_distinct(backend):
     assert attention["decode_live_ge_513"]["strict_fallback_variant"] == "split"
     assert attention["committed_projected_prefill_gate"]["selected_variant"] == "block_sigmoid"
     assert attention["committed_projected_prefill_gate"]["strict_fallback_variant"] == "block"
+    if not shipped:
+        # Without a registered plan the request falls back to strict selections and says so.
+        production = resolve_runtime_profile(**key, profile="production")
+        assert production.fell_back_to_strict and production.source_profile is ExecutionProfile.STRICT
+        chosen = lambda profile: {(i["layer"], i["scope"]): i["selected_variant"] for i in profile.manifest["selections"]}  # noqa: E731
+        assert chosen(production) == chosen(strict)
+
+
+def _selections(profile):
+    return {(item["layer"], item["scope"]): item for item in profile.manifest["selections"]}
+
+
+def test_inkling_gguf_production_plan_names_the_gated_route_and_keeps_f32_experts():
+    from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
+    from hipengine.generation.inkling2_gguf import PRODUCTION_BACKENDS, Inkling2GGUFGenerator
+
+    register_builtin_generators()
+    plugin = resolve_model("inkling2")
+    key = dict(model=plugin.name, backend="hip_gfx1100", quant=plugin.default_quant)
+    strict = resolve_runtime_profile(**key, profile="strict")
+    fast = resolve_runtime_profile(**key, profile="fast")
+    production = resolve_runtime_profile(**key, profile=ExecutionProfile.PRODUCTION)
+    assert not production.fell_back_to_strict and production.source_profile is ExecutionProfile.PRODUCTION
+    assert production.strict_manifest_sha256 == fast.strict_manifest_sha256 == strict.manifest_sha256
+    exact, reduced, shipped = _selections(strict), _selections(fast), _selections(production)
+    assert exact.keys() == reduced.keys() == shipped.keys()
+    experts, attention = "moe_linear", "inkling2_target_attention"
+    for scope in (
+        "single_token_top8_nvfp4_n1152_or_2304_m2304",
+        "two_to_four_decode_rows_top8_nvfp4_gate_n1152_or_2304_m2304",
+        "single_token_top8_nvfp4_split_down_n1152_m2304",
+        "two_to_four_decode_rows_top8_nvfp4_split_down_n1152_m2304",
+    ):
+        # Every decode path keeps the selected F32 kernel: the Q8-dot chain of `fast` failed the envelope.
+        assert "q8" not in shipped[(experts, scope)]["selected_variant"]
+        assert shipped[(experts, scope)]["selected_variant"] == exact[(experts, scope)]["selected_variant"]
+        assert "q8_dot" in reduced[(experts, scope)]["selected_variant"]
+    shared = "single_token_top8_nvfp4_shared_gate_n1152_or_2304_m2304"
+    assert shipped[(experts, shared)]["selected_variant"] == "selected_shared_register_fp4_f32_f32_out"
+    assert shipped[(experts, shared)]["strict_fallback_variant"] == exact[(experts, shared)]["selected_variant"]
+    # The eager decode attention stays the ordered split; the resident single-token visit names its own.
+    assert shipped[(attention, "decode_live_ge_513")]["selected_variant"] == "split"
+    resident = (attention, "resident_single_token_relative_bias")
+    assert shipped[resident]["selected_variant"] == "decode_table_sigmoid"
+    assert shipped[resident]["strict_fallback_variant"] == exact[resident]["selected_variant"] == "split"
+    for layer_scope in (
+        (attention, "resident_block_relative_bias"),
+        (attention, "committed_projected_prefill_gate"),
+        ("inkling2_controller", "committed_block_controllers"),
+        ("inkling2_attention_prepare", "resident_block_inputs"),
+        ("inkling2_expert_pointwise", "selected_split_gate_up"),
+        (experts, "prompt_block_ge_192_rows_top8_nvfp4_gate_n2304_m2304"),
+        (experts, "prompt_block_ge_192_rows_top8_nvfp4_split_down_n1152_m2304"),
+    ):
+        assert shipped[layer_scope]["selected_variant"] == reduced[layer_scope]["selected_variant"]
+    for selection in production.manifest["selections"]:
+        assert selection["strict_fallback_variant"] == exact[(selection["layer"], selection["scope"])]["selected_variant"]
+    assert production.manifest["graph_policy"] == "resident_single_token_whole_token_graph"
+    assert fast.manifest["graph_policy"] == strict.manifest["graph_policy"] == "eager"
+    # The factory builds the production route, and its prompt blocks are the fast plan's.
+    keywords = production.factory.keywords
+    assert keywords["production"] is True and keywords["fast"] is False
+    assert Inkling2GGUFGenerator.prefill_schedule(True)[0] == Inkling2GGUFGenerator.fast_prefill_block_width == 256
+    assert Inkling2GGUFGenerator.prefill_schedule(False)[0] == 64
+    assert PRODUCTION_BACKENDS == ("hip_gfx1100",)
+
+
+@pytest.mark.parametrize(
+    ("environment", "default", "wanted"),
+    [
+        ({}, False, False),
+        ({}, True, True),
+        ({"HIPENGINE_INKLING2_RESIDENT_DECODE": "1"}, False, True),
+        ({"HIPENGINE_INKLING2_RESIDENT_DECODE": "0"}, True, False),
+        ({"HIPENGINE_INKLING2_RESIDENT_DECODE": ""}, True, False),
+        ({"HIPENGINE_INKLING2_RESIDENT_DECODE": "yes"}, True, False),
+    ],
+)
+def test_inkling_route_flags_take_the_profile_route_unless_the_caller_sets_them(monkeypatch, environment, default, wanted):
+    from hipengine.generation import inkling2_gguf as module
+
+    monkeypatch.delenv("HIPENGINE_INKLING2_RESIDENT_DECODE", raising=False)
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    assert module._resident_decode_requested(default) is wanted
+    assert module._device_routes_requested(default) is default and module._decode_graph_requested(default) is default
 
 
 def test_embedded_inkling_tokenizer_preserves_token_and_control_ids():
