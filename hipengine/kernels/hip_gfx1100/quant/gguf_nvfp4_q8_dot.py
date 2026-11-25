@@ -29,7 +29,7 @@ def launch_q8_dot(x, weight, out, ids, outer, routes, experts, n, m, *, scratch,
                                   ids, outer, routes, n, m, experts,
                                   capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
-        raise HipError(f'GGUF NVFP4 Q8 dot projection failed with HIP status {status}')
+        raise HipError(status, 'GGUF NVFP4 Q8 dot projection failed')
 
 
 def launch_shared_input_q8_dot(x, weight, out, ids, outer, routes, experts, n, m, *, scratch, target_arch,
@@ -38,7 +38,7 @@ def launch_shared_input_q8_dot(x, weight, out, ids, outer, routes, experts, n, m
                                                ids, outer, routes, n, m, experts,
                                                capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
-        raise HipError(f'GGUF NVFP4 shared input Q8 dot projection failed with HIP status {status}')
+        raise HipError(status, 'GGUF NVFP4 shared input Q8 dot projection failed')
 
 
 def launch_counted_shared_input_q8_dot(x, weight, out, records, outer, tiles, rows, experts, n, m, *, scratch,
@@ -48,7 +48,7 @@ def launch_counted_shared_input_q8_dot(x, weight, out, records, outer, tiles, ro
                                                 tiles, rows, n, m, experts,
                                                 capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
-        raise HipError(f'GGUF NVFP4 counted Q8 dot projection failed with HIP status {status}')
+        raise HipError(status, 'GGUF NVFP4 counted Q8 dot projection failed')
 
 
 def launch_split_activation_q8_dot(x, weight, out, ids, outer, routes, experts, n, m,
@@ -57,7 +57,7 @@ def launch_split_activation_q8_dot(x, weight, out, ids, outer, routes, experts, 
                                               ids, outer, routes, n, m, experts, gate_cap, up_cap,
                                               capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
-        raise HipError(f'GGUF NVFP4 split activation Q8 dot projection failed with HIP status {status}')
+        raise HipError(status, 'GGUF NVFP4 split activation Q8 dot projection failed')
 
 
 def launch_counted_split_activation_q8_dot(x, weight, out, records, outer, tiles, rows, experts, n, m,
@@ -67,7 +67,7 @@ def launch_counted_split_activation_q8_dot(x, weight, out, records, outer, tiles
                                                             tiles, rows, n, m, experts, gate_cap, up_cap,
                                                             capture_stream() if stream is None else stream)
     if status != HIP_SUCCESS:
-        raise HipError(f'GGUF NVFP4 counted split activation Q8 dot projection failed with HIP status {status}')
+        raise HipError(status, 'GGUF NVFP4 counted split activation Q8 dot projection failed')
 
 
 for _backend in ('hip_gfx1100', 'hip_gfx1151'):

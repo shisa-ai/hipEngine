@@ -176,3 +176,28 @@ def test_nvfp4_fused_split_activation_pack_matches_unfused(caps):
             fused(gp, wp, yp, ip, sp, routes, experts, width, outputs, *caps, scratch=qp)
             for actual, control in zip(read_outputs(), expected, strict=True):
                 np.testing.assert_array_equal(actual, control)
+
+
+@pytest.mark.parametrize('variant', [
+    'selected_q8_dot_f32_f32_out', 'selected_shared_input_q8_dot_f32_f32_out',
+    'selected_split_activation_q8_dot_f32_f32_out', 'selected_counted_shared_input_q8_dot_f32_f32_out',
+    'selected_counted_split_activation_q8_dot_f32_f32_out'])
+def test_nvfp4_q8_dot_launchers_report_the_status_of_a_refused_launch(variant):
+    """A refused launch raises HipError with the HIP status instead of failing inside the raise."""
+    try:
+        ctypes.CDLL('libamdhip64.so')
+    except OSError as exc:
+        pytest.skip(f'HIP unavailable: {exc}')
+    backend = resolve_backend('auto', execution_device=True)
+    if backend not in ('hip_gfx1100', 'hip_gfx1151'):
+        pytest.skip('test requires gfx1100 or gfx1151')
+    from hipengine.core.hip import HipError
+    from hipengine.kernels.hip_gfx1100.quant import gguf_nvfp4_q8_dot  # noqa: F401
+
+    launch = resolve(backend=backend, layer='moe_linear', quant='gguf_nvfp4', variant=variant)
+    caps = (4.0, 25.0) if 'split_activation' in variant else ()
+    counted = 'counted' in variant
+    # Null inputs are refused by the launcher before any kernel runs.
+    with pytest.raises(HipError) as caught:
+        launch(0, 0, 0, 0, 0, *((2, 2) if counted else (8,)), 128, 2304, 2304, *caps, scratch=0)
+    assert caught.value.code != 0
