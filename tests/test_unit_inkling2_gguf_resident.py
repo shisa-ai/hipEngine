@@ -111,7 +111,7 @@ def test_resident_keeps_prefill_chunk_arithmetic_and_sampling_contract(options):
 @pytest.mark.parametrize('fast', [False, True])
 def test_gguf_prompt_block_is_collected_and_computed_in_one_round(fast):
     """The scheduler hands over a whole block per round; a narrower budget would idle the row."""
-    width, defaults = Inkling2GGUFGenerator._prefill_schedule(fast)
+    width, defaults = Inkling2GGUFGenerator.prefill_schedule(fast)
     assert width > 0
     assert defaults['max_prefill_chunk_tokens'] == width
     assert defaults['round_prefill_token_budget'] == width
@@ -119,8 +119,8 @@ def test_gguf_prompt_block_is_collected_and_computed_in_one_round(fast):
 
 def test_gguf_fast_reads_wider_prompt_blocks_than_strict():
     """Fast blocks are 256 rows; strict keeps the 64 rows where it is faster to the first token."""
-    strict_width, strict_defaults = Inkling2GGUFGenerator._prefill_schedule(False)
-    fast_width, fast_defaults = Inkling2GGUFGenerator._prefill_schedule(True)
+    strict_width, strict_defaults = Inkling2GGUFGenerator.prefill_schedule(False)
+    fast_width, fast_defaults = Inkling2GGUFGenerator.prefill_schedule(True)
     assert (strict_width, fast_width) == (64, 256)
     assert strict_defaults is Inkling2GGUFGenerator.engine_loop_config_defaults
     assert fast_defaults is Inkling2GGUFGenerator.fast_engine_loop_config_defaults

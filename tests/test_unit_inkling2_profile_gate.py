@@ -396,3 +396,21 @@ def test_block_end_rows_come_first_and_carry_their_own_labels():
     shape, transition = gate.row_labels({"short": 0}, {"short": [c.bucket for c in single.calls]})
     assert [shape(step, "short") for step in range(4)] == ["prefill_last", "c1", "c1", "c1"]
     assert [transition(step, "short") for step in range(4)] == ["prefill_to_c1", "c1_eager", "c1_eager", "c1_eager"]
+
+
+def test_both_arms_take_the_candidate_profiles_prompt_blocks():
+    """The gate reads prompts in the candidate's blocks; profiles may declare different widths."""
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        for name, arm in gate.CANDIDATES.items():
+            assert gate.candidate_block_width(backend, arm) == 256, name
+        assert gate.candidate_block_width(backend, gate.STRICT_ARM) == 64
+
+
+def test_candidate_block_width_needs_no_model(monkeypatch):
+    import hipengine.generation.inkling2_gguf as module
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("the gate must not construct a generator to learn the block width")
+
+    monkeypatch.setattr(module.Inkling2GGUFGenerator, "__init__", refuse)
+    assert gate.candidate_block_width("hip_gfx1100", gate.CANDIDATES["fast"]) > 0

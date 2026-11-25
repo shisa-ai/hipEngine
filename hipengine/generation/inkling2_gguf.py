@@ -72,7 +72,8 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
     fast_engine_loop_config_defaults = _prefill_loop_defaults(fast_prefill_block_width)
 
     @classmethod
-    def _prefill_schedule(cls, fast):
+    def prefill_schedule(cls, fast):
+        """The prompt block width and loop budgets of one profile, read without loading weights."""
         if fast:
             return cls.fast_prefill_block_width, cls.fast_engine_loop_config_defaults
         return cls.prefill_block_width, cls.engine_loop_config_defaults
@@ -87,7 +88,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
         self.max_sequence_length = m.max_context if max_sequence_length is None else max_sequence_length
         self.tokenizer, self.eos_token_id = inkling2_gguf_tokenizer(reader.info, m.vocab_size)
         self.model_path = reader.path
-        self.prefill_block_width, self.engine_loop_config_defaults = self._prefill_schedule(fast)
+        self.prefill_block_width, self.engine_loop_config_defaults = self.prefill_schedule(fast)
         self._draft_provider = None
         runtime = get_hip_runtime()
         arch = hip_target_arch_for_backend(backend)

@@ -5,7 +5,9 @@ Strict and candidate arithmetic run in separate model instances. The strict arm
 supplies the token trajectory; every candidate row is teacher-forced onto it and
 evaluated over the full vocabulary with the router-routing-scoped envelope of
 docs/EXECUTION-PROFILES.md section 2.11. Three candidate repeats must be
-bit-stable in logits and in resident state.
+bit-stable in logits and in resident state. Both arms read the prompt in the
+candidate profile's blocks, so the teacher's rows fall on the candidate's block
+ends and the candidate is judged on the schedule the public route runs.
 
 Each arm records what the session was asked at every call (token, position,
 width, transaction phase, graph bucket) and the live attention and convolution
@@ -794,6 +796,22 @@ def _environment(values: Mapping[str, str]) -> Iterator[None]:
                 os.environ[name] = value
 
 
+def candidate_block_width(backend: str, arm: Candidate) -> int:
+    """The candidate profile's prompt block width, read from the generator class without loading weights.
+
+    Profiles may read prompts in blocks of different widths. The gate runs the teacher on the
+    candidate's blocks; a teacher on its own narrower blocks would leave the two arms' block-end
+    rows and session calls impossible to align.
+    """
+
+    from hipengine.generation.inkling2_gguf import Inkling2GGUFGenerator
+
+    width, defaults = Inkling2GGUFGenerator.prefill_schedule(arm.profile == "fast")
+    if int(width) <= 0 or defaults.get("max_prefill_chunk_tokens") != width:
+        raise GateError(f"profile {arm.profile} declares an inconsistent prompt block width")
+    return int(width)
+
+
 @contextmanager
 def _open_llm(model: Path, backend: str, arm: Candidate, max_sequence_length: int) -> Iterator[Any]:
     """Open the public LLM for one arm under that arm's route flags.
@@ -1160,10 +1178,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     strict_scenario_id = f"{scenario_id}-strict"
     max_length = int(args.max_sequence_length)
 
-    # The strict arm supplies the teacher chain every other arm is forced onto.
+    # The strict arm supplies the teacher chain every other arm is forced onto. It reads the
+    # prompt in the candidate's blocks, so its rows land on the candidate's block ends.
+    block_width = candidate_block_width(str(args.backend), arm)
     with _open_llm(args.model, str(args.backend), STRICT_ARM, max_length) as llm:
         model = _text_model(llm)
-        block_width = int(getattr(llm._get_text_generator(), "prefill_block_width", 64))
+        llm._get_text_generator().prefill_block_width = block_width
         strict_route = _route_metadata(llm, model, STRICT_ARM)
         window = int(model.config["sliding_window_size"])
         route_top_k = int(model.mapping.layers[0].top_k)
@@ -1208,6 +1228,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     # The candidate arm: the primary run plus its repeats, on the teacher's chain.
     with _open_llm(args.model, str(args.backend), arm, max_length) as llm:
         model = _text_model(llm)
+        if int(getattr(llm._get_text_generator(), "prefill_block_width", block_width)) != block_width:
+            raise GateError("the candidate's prompt block width differs from the one the teacher ran")
         candidate_route = _route_metadata(llm, model, arm)
         runs: dict[str, list[Trajectory]] = {}
         for index, request in enumerate(requests):
