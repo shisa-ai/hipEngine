@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from hipengine.generation import register_builtin_generators, resolve_text_generator
+from hipengine.generation.inkling2_gguf import PRODUCTION_BACKENDS
 from hipengine.loading.inkling2_gguf import Inkling2GGUFWeights
 from hipengine.models import resolve_model
 from hipengine.runtime.inkling2_gguf import Inkling2GGUFText
@@ -104,10 +105,8 @@ def test_inkling_gguf_fast_profile_keeps_strict_and_default_distinct(backend):
     register_builtin_generators()
     plugin = resolve_model("inkling2")
     key = dict(model=plugin.name, backend=backend, quant=plugin.default_quant)
-    # The omitted profile is `production` where that plan's gate row exists; elsewhere it keeps the
-    # path that names no profile.
-    shipped = backend == "hip_gfx1100"
-    assert resolve_default_execution_profile(**key) == (ExecutionProfile.PRODUCTION if shipped else None)
+    # The omitted profile is `production` on every backend where that plan's gate rows pass.
+    assert resolve_default_execution_profile(**key) == ExecutionProfile.PRODUCTION
     strict = resolve_runtime_profile(**key, profile="strict")
     fast = resolve_runtime_profile(**key, profile="fast")
     assert not fast.fell_back_to_strict
@@ -142,25 +141,25 @@ def test_inkling_gguf_fast_profile_keeps_strict_and_default_distinct(backend):
     assert attention["decode_live_ge_513"]["strict_fallback_variant"] == "split"
     assert attention["committed_projected_prefill_gate"]["selected_variant"] == "block_sigmoid"
     assert attention["committed_projected_prefill_gate"]["strict_fallback_variant"] == "block"
-    if not shipped:
-        # Without a registered plan the request falls back to strict selections and says so.
-        production = resolve_runtime_profile(**key, profile="production")
-        assert production.fell_back_to_strict and production.source_profile is ExecutionProfile.STRICT
-        chosen = lambda profile: {(i["layer"], i["scope"]): i["selected_variant"] for i in profile.manifest["selections"]}  # noqa: E731
-        assert chosen(production) == chosen(strict)
+    # A `production` plan is registered only where its gate rows pass.
+    from hipengine.execution_profiles import registered_runtime_profile_keys
+
+    keys = registered_runtime_profile_keys()
+    assert all(key.profile.value != "production" or key.backend in PRODUCTION_BACKENDS for key in keys)
 
 
 def _selections(profile):
     return {(item["layer"], item["scope"]): item for item in profile.manifest["selections"]}
 
 
-def test_inkling_gguf_production_plan_names_the_gated_route_and_keeps_f32_experts():
+@pytest.mark.parametrize("backend", sorted(PRODUCTION_BACKENDS))
+def test_inkling_gguf_production_plan_names_the_gated_route_and_keeps_f32_experts(backend):
     from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
     from hipengine.generation.inkling2_gguf import PRODUCTION_BACKENDS, Inkling2GGUFGenerator
 
     register_builtin_generators()
     plugin = resolve_model("inkling2")
-    key = dict(model=plugin.name, backend="hip_gfx1100", quant=plugin.default_quant)
+    key = dict(model=plugin.name, backend=backend, quant=plugin.default_quant)
     strict = resolve_runtime_profile(**key, profile="strict")
     fast = resolve_runtime_profile(**key, profile="fast")
     production = resolve_runtime_profile(**key, profile=ExecutionProfile.PRODUCTION)
@@ -206,7 +205,7 @@ def test_inkling_gguf_production_plan_names_the_gated_route_and_keeps_f32_expert
     assert keywords["production"] is True and keywords["fast"] is False
     assert Inkling2GGUFGenerator.prefill_schedule(True)[0] == Inkling2GGUFGenerator.fast_prefill_block_width == 256
     assert Inkling2GGUFGenerator.prefill_schedule(False)[0] == 64
-    assert PRODUCTION_BACKENDS == ("hip_gfx1100",)
+    assert set(PRODUCTION_BACKENDS) == {"hip_gfx1100", "hip_gfx1151"}
 
 
 @pytest.mark.parametrize(

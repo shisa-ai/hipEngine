@@ -37,9 +37,9 @@ from hipengine.tokenization.inkling2_gguf import inkling2_gguf_tokenizer
 ROUTE_DEVICE = "HIPENGINE_INKLING2_DEVICE_ROUTES"
 ROUTE_RESIDENT_DECODE = "HIPENGINE_INKLING2_RESIDENT_DECODE"
 ROUTE_DECODE_GRAPH = "HIPENGINE_INKLING2_DECODE_GRAPH"
-# Backends where the production plan's gate row passes. Another backend keeps `fast` opt-in until
-# its row exists.
-PRODUCTION_BACKENDS = ("hip_gfx1100",)
+# Backends where the production plan's gate rows pass. Another backend keeps `fast` opt-in until
+# its rows exist.
+PRODUCTION_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
 
 
 def _route_flag(name, default=False):
