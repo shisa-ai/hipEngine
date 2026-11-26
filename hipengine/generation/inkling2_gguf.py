@@ -81,12 +81,18 @@ def _prefill_loop_defaults(width):
 DENSE_EXACT = "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
 DENSE_WIDE = "dense_wide64x128_f32_f32_out"
 DENSE_WIDE_RESIDUAL = "dense_wide64x128_residual_f32_f32_out"
+NARROW_F32_VARIANT = "narrow_f32_f32_out"
 
 
 def _wide_dense_variant(fast, production):
     if not fast:
         return None
     return DENSE_WIDE_RESIDUAL if production else DENSE_WIDE
+
+
+def _narrow_f32_variant(fast):
+    """The F32 projections of few outputs keep rocBLAS under `strict` and take the narrow FP32 kernel otherwise."""
+    return NARROW_F32_VARIANT if fast else None
 
 
 class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
@@ -162,7 +168,7 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
             projection = owned.enter_context(Inkling2GGUFDeviceProjections(
                 weights, runtime=runtime, blas=blas, backend=backend, fast_experts=fast, fast_controllers=fast,
                 device_routes=_device_routes_requested(production), q8_dot_experts=reduced,
-                wide_dense=_wide_dense_variant(fast, production)))
+                wide_dense=_wide_dense_variant(fast, production), narrow_f32=_narrow_f32_variant(fast)))
             model = self.model = Inkling2GGUFText(weights, projection=projection)
             model.resident_decode = _resident_decode_requested(production)
             model.decode_graph = _decode_graph_requested(production)

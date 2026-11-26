@@ -15,6 +15,7 @@ from hipengine.kernels.hip_gfx1100.moe.laguna_router import laguna_sigmoid_corre
 from hipengine.kernels.hip_gfx1100.quant import (  # noqa: F401
     gguf_nvfp4_gemv, gguf_nvfp4_q8_dot, gguf_q8_0_dense_wide, inkling2_experts,
 )
+from hipengine.kernels.hip_gfx1100.linear.narrow_f32_gemm import NARROW_F32_VARIANT, narrow_f32_gemm  # noqa: F401
 from hipengine.kernels.hip_gfx1100.quant.gguf_nvfp4_selected_wmma import launch_route_schedule
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
@@ -42,13 +43,20 @@ _WIDE_DENSE_WIDE_OUTPUTS = 1024
 # as fast or faster: a block of 192 rows puts about twelve routes on each of 128 experts.
 _WMMA_MIN_ROWS = 192
 _WMMA_GROUP_ROWS = 64
+# The rows from which a prompt block's F32 projection of few outputs takes the narrow FP32 kernel, by
+# outputs; below them a row at a time takes the matrix-vector product. W7900, rocBLAS then the kernel,
+# in the prefill under rocprofv3: 1,024 rows, 4,608 inputs to 64 outputs: 262 and 119 us; nine rows:
+# 208 and 82; 2,304 to 24: 131 and 31; to 32: 128 and 34; to 128: 135 and 108. Below nine rows a row at
+# a time is the faster of the two for 64 and 128 outputs (two rows: 31 us against 114 for the kernel
+# with its weights hot in L2), and the kernel for 24 and 32 (three rows: 38 against 29 us).
+_NARROW_F32_MIN_ROWS = {24: 2, 32: 2, 64: 9, 128: 9}
 
 
 class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     """Share dense transfer scratch; upload physical expert banks only once."""
 
     def __init__(self, weights, *, runtime, blas, backend, fast_experts=False, fast_controllers=False,
-                 device_routes=False, q8_dot_experts=None, wide_dense=None):
+                 device_routes=False, q8_dot_experts=None, wide_dense=None, narrow_f32=None):
         super().__init__(weights, runtime=runtime, blas=blas)
         load_backend_kernel_package(backend)
         if q8_dot_experts is None:
@@ -105,6 +113,13 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                          if wide_dense and is_registered(wide) else None)
         self._wide_min_rows = (_WIDE_DENSE_MIN_ROWS.get(wide_dense, 0), _WIDE_DENSE_NARROW_MIN_ROWS.get(wide_dense, 0))
         self._wide_libraries = {}
+        # `narrow_f32` names the FP32 kernel of a prompt block's F32 projections of few outputs.
+        self.narrow_f32 = narrow_f32
+        if narrow_f32 not in (None, NARROW_F32_VARIANT):
+            raise ValueError(f"unknown Inkling narrow FP32 kernel: {narrow_f32}")
+        narrow = KernelKey(backend, "dense_gemv", "f32", narrow_f32 or NARROW_F32_VARIANT)
+        self._narrow_f32 = (resolve(backend=narrow.backend, layer=narrow.layer, quant=narrow.quant, variant=narrow.variant)
+                            if narrow_f32 and is_registered(narrow) else None)
         self._head = weights.mapping.root["output.weight"]
         self._vocab = weights.mapping.vocab_size
         padded = (self._vocab + 7) // 8 * 8
@@ -713,6 +728,15 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     def _launch_projection(self, src, dst, rows, ndim, matrix, native_bf16):
         weight, (m, n), packed = matrix
         if not packed:
+            if self._narrow_f32 is not None:
+                if rows >= _NARROW_F32_MIN_ROWS.get(m, rows + 1) and self._narrow_f32(src, weight.ptr, dst, rows, n, m):
+                    return
+                if 1 < rows <= max(_NARROW_F32_MIN_ROWS.values()) and m in _NARROW_F32_MIN_ROWS:
+                    # Too few rows for the kernel and too many for one GEMM: a row at a time.
+                    for row in range(rows):
+                        self._blas.sgemv_rowmajor_nt(src + row * n * 4, weight.ptr, dst + row * m * 4,
+                                                     in_features=n, out_features=m)
+                    return
             super()._launch_projection(src, dst, rows, ndim, matrix, native_bf16)
             return
         if packed == Q.Q8_0:

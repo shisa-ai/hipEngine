@@ -466,7 +466,8 @@ hipengine/kernels/hip_gfx1100/
 │   ├── laguna_f16_projection.hip
 │   ├── lm_head.hip
 │   ├── moonshine_projection.hip
-│   └── moonshine_w8a16.hip
+│   ├── moonshine_w8a16.hip
+│   └── narrow_f32_gemm.hip
 ├── linear_attn/
 │   ├── conv.hip
 │   ├── gdn.hip
@@ -919,6 +920,22 @@ Correctness test: `tests/test_gpu_dense_f16_gemm.py` (against the FP32 product
 of the F16-rounded operands at 2e-5 of the output scale, and against the
 unrounded product at 2e-3 relative). Evidence:
 `benchmarks/results/2026-10-13-qwen4exp-fast-indexer-f16-gemm/README.md`.
+
+## Narrow-output FP32 GEMM
+
+`linear/narrow_f32_gemm.{hip,py}` registers `dense_gemv/f32/narrow_f32_f32_out`
+for gfx1100 and gfx1151. It serves a projection of 24, 32, 64 or 128 outputs
+whose input count is a multiple of 128, 128, 64 or 32: a wave32 splits the
+inputs over its lanes and the outputs over lane groups, keeps two rows a lane
+in FP32 partial sums, and adds the lane partials in a fixed xor tree. A block
+of eight waves covers 16 rows and reads every weight once: the weights of a
+chunk are staged in shared memory, the next chunk fetched under the products
+of the current one. The products and sums stay FP32; only the order of the sum
+differs from rocBLAS.
+The Inkling GGUF projections take it under `fast` and `production` from two
+rows for 24 and 32 outputs and from nine for 64 and 128, with a row at a time
+below that, and keep rocBLAS under `strict`. Correctness test:
+`tests/test_gpu_inkling2_narrow_f32.py`.
 
 ## Qwen4Exp GR-up ordered DPP sibling
 
