@@ -1,8 +1,9 @@
 """Grouped WMMA projection of selected raw NVFP4 experts for Inkling prompt blocks.
 
-One wave32 computes 32 output columns by 64 compact rows of one expert. NVFP4 sub-blocks are
-dequantized to FP16 in registers; activations are FP16, either one value or a high plus a residual
-part that the same weights multiply; accumulation is FP32. Routes arrive grouped by expert.
+A block of eight wave32 covers 256 output columns by 64 compact rows of one expert, each wave its
+own 32 columns around one activation tile in shared memory. NVFP4 sub-blocks are dequantized to
+FP16 in registers; activations are FP16, either one value or a high plus a residual part that the
+same weights multiply; accumulation is FP32. Routes arrive grouped by expert.
 """
 
 import ctypes

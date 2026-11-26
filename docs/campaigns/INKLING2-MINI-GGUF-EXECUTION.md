@@ -141,6 +141,15 @@ block width is set under step 3.
 
 ### 3. Speed up grouped expert *prefill*, then widen prompt blocks
 
+**Status 2026-11-26.** The grouped expert kernel reads each prompt block's activation rows once
+per 256 columns instead of once per 32, with eight waves to a block
+([entry](../../worklog/entries/20261126T193520.971467Z-lhl-inkling2-mini-73e2a1.md)). Its output is
+bit for bit the previous kernel's. On the W7900 the first token comes 16% sooner after 2,057 prompt
+tokens and 17% sooner after 575; the kernel is about 30% faster at 1,024 rows and 53% faster on
+Strix Halo. The experts are still 35% of the prefill at 2,057 tokens. The decomposition that led
+here is in the entry: the kernel was bound by activation reads, not by the matrix instructions,
+their wave size or the unpacking.
+
 **Status 2026-11-25.** `fast` reads prompts in 256-row blocks with matching scheduler budgets and
 `strict` keeps 64 rows ([entry](../../worklog/entries/20261125T023627.416022Z-lhl-inkling2-mini-91a27c.md)).
 Through the in-tree harness the first token comes 25 to 27% sooner after 575 and 2,057 prompt

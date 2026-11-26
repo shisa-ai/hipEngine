@@ -1,11 +1,15 @@
 // Grouped WMMA projection for raw GGUF NVFP4 expert banks: Inkling 2 Mini prompt blocks of 192 or more rows.
 //
 // Routes are grouped by expert ("compact" order): expert_start_compact[e] .. [e + 1] are the compact
-// rows of expert e. Each group of 64 compact rows never crosses an expert. One wave32 computes
-// 32 output columns by 64 compact rows of one group: NVFP4 sub-blocks (16 values and one E4M3
-// scale) are dequantized to FP16 in registers, activations are FP16 (one value, or a high plus a
-// residual part that the same weights multiply), and accumulation is FP32. The expert's outer
-// scale is applied on store.
+// rows of expert e. Each group of 64 compact rows never crosses an expert. A block of eight wave32
+// covers 256 output columns by the 64 compact rows of one group, four k-tiles of the rows at a
+// time: the activation tile is fetched into shared memory once for the eight waves, the next
+// k-tile being fetched under the compute of the current one, and each wave computes its own 32
+// columns. NVFP4 sub-blocks (16 values and one E4M3 scale) are dequantized to FP16 in registers,
+// with the nine words of a block read one block ahead; activations are FP16 (one value, or a high
+// plus a residual part that the same weights multiply); and accumulation is FP32. The row
+// fragments past an expert's rows in its last group are padding and take no product. The expert's
+// outer scale is applied on store.
 //
 // Arithmetic differs from the FP32 tile kernels (selected_tile4_f32_f32_out), which stay the
 // strict control: this is a production arithmetic candidate behind the profile gate.
@@ -146,35 +150,124 @@ __device__ __forceinline__ void dequant16_q5_k(const uint8_t* row, int64_t kt, h
     }
 }
 
+constexpr int WAVES = 8;        // waves per block, each on its own 32 columns around one shared activation tile
+constexpr int THREADS = 32 * WAVES;
+
+// One k-tile of the block's rows into shared memory: two threads fetch the 32 bytes of one row.
+template<int FORMAT>
+__device__ __forceinline__ void stage_tile(const half_t* __restrict__ x, const int32_t* __restrict__ rows,
+                                           int64_t kt, int64_t in_features, half_t* tile) {
+    const int r = threadIdx.x >> 1, half = threadIdx.x & 1;
+    if (r >= TILE_ROWS) return;
+    reinterpret_cast<uint4*>(tile + r * 16)[half] =
+        *reinterpret_cast<const uint4*>(x + rows[r] * in_features + kt * 16 + half * 8);
+}
+
+// One k-tile for this wave: the weights of its two column fragments, then a product per row
+// fragment that is not padding. The next k-tile of the block's rows is fetched before the compute
+// and stored into shared memory after it, so its memory latency passes under the compute. NVFP4
+// weights are the nine words of the block that arrived ahead in `cw`; Q5_K and Q8_0 weights are
+// read from memory. A wave past the output columns of the last block takes part in the fetch and
+// the barrier only.
 template<int PARTS, int FORMAT>
-__launch_bounds__(32) __global__ void selected_wmma_kernel(
+__device__ __forceinline__ void k_tile(float8_t (&acc)[TM][TN], uint32_t (&cw)[TM][9], half_t* tile_hi,
+                                       half_t* tile_lo, const int32_t* __restrict__ rows,
+                                       const uint8_t* __restrict__ expert_base, int64_t row_bytes, int64_t col_start,
+                                       int lane16, int first_row, int64_t count, const half_t* __restrict__ x_hi,
+                                       const half_t* __restrict__ x_lo, int64_t in_features, int64_t k_tiles,
+                                       int64_t kt, bool fetches, bool active) {
+    const int buf = static_cast<int>(kt & 1), f = static_cast<int>(kt & 3);
+    const int fetch_row = threadIdx.x >> 1, fetch_half = threadIdx.x & 1;
+    const bool fetch = kt + 1 < k_tiles && fetches;
+    uint4 piece_hi = uint4{0, 0, 0, 0}, piece_lo = uint4{0, 0, 0, 0};
+    if (fetch) {
+        piece_hi = *reinterpret_cast<const uint4*>(x_hi + rows[fetch_row] * in_features + (kt + 1) * 16 + fetch_half * 8);
+        if constexpr (PARTS == 2) {
+            piece_lo = *reinterpret_cast<const uint4*>(x_lo + rows[fetch_row] * in_features + (kt + 1) * 16 + fetch_half * 8);
+        }
+    }
+    if (active) {
+        half16_t b_hi[TM], b_lo[TM];
+        #pragma unroll
+        for (int tm = 0; tm < TM; ++tm) {
+            const uint8_t* row = expert_base + (col_start + tm * 16 + lane16) * row_bytes;
+            if constexpr (FORMAT == NVFP4_FORMAT) {
+                b_hi[tm] = dequant16(cw[tm][1 + 2 * f], cw[tm][2 + 2 * f], decode_scale((cw[tm][0] >> (8 * f)) & 255u));
+            } else if constexpr (FORMAT == Q5_K_FORMAT) {
+                dequant16_q5_k(row, kt, b_hi[tm], b_lo[tm]);
+            } else {
+                dequant16_q8_0(row, kt, b_hi[tm], b_lo[tm]);
+            }
+        }
+        #pragma unroll
+        for (int tn = 0; tn < TN; ++tn) {
+            // The row fragments past the expert's rows in its last group are padding: their
+            // products are never stored, and the branch is the same for the whole block.
+            if (first_row + tn * 16 >= count) continue;
+            const half16_t a_hi = *reinterpret_cast<const half16_t*>(tile_hi + (buf * TILE_ROWS + tn * 16 + lane16) * 16);
+            #pragma unroll
+            for (int tm = 0; tm < TM; ++tm) {
+                acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_hi, b_hi[tm], acc[tm][tn]);
+            }
+            if constexpr (PARTS == 2) {
+                const half16_t a_lo = *reinterpret_cast<const half16_t*>(tile_lo + (buf * TILE_ROWS + tn * 16 + lane16) * 16);
+                #pragma unroll
+                for (int tm = 0; tm < TM; ++tm) {
+                    acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_lo, b_hi[tm], acc[tm][tn]);
+                }
+            }
+            if constexpr (FORMAT != NVFP4_FORMAT) {
+                #pragma unroll
+                for (int tm = 0; tm < TM; ++tm) {
+                    acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_hi, b_lo[tm], acc[tm][tn]);
+                }
+            }
+        }
+    }
+    if (fetch) {
+        reinterpret_cast<uint4*>(tile_hi + ((buf ^ 1) * TILE_ROWS + fetch_row) * 16)[fetch_half] = piece_hi;
+        if constexpr (PARTS == 2) {
+            reinterpret_cast<uint4*>(tile_lo + ((buf ^ 1) * TILE_ROWS + fetch_row) * 16)[fetch_half] = piece_lo;
+        }
+    }
+    __syncthreads();
+}
+
+template<int PARTS, int FORMAT>
+__launch_bounds__(THREADS, 2) __global__ void selected_wmma_kernel(
         const half_t* __restrict__ x_hi, const half_t* __restrict__ x_lo,
         const int64_t* __restrict__ expert_start_compact, const int32_t* __restrict__ group_expert,
         const int32_t* __restrict__ group_first_row, const int32_t* __restrict__ row_source,
         const int32_t* __restrict__ row_route, const float* __restrict__ outer,
         const uint8_t* __restrict__ qweight, float* __restrict__ out, int64_t in_features,
         int64_t out_features, const int32_t* __restrict__ group_count) {
-    const int64_t col_start = static_cast<int64_t>(blockIdx.x) * TILE_COLS;
+    // Two k-tiles of the block's 64 activation rows, and the token row of each of the 64 rows.
+    __shared__ half_t tile_hi[2][TILE_ROWS][16];
+    __shared__ half_t tile_lo[2][TILE_ROWS][16];
+    __shared__ int32_t rows[TILE_ROWS];
     // A schedule built on the device does not say how many groups it has: extra blocks of the
     // grid's fixed height leave here.
     if (group_count && static_cast<int>(blockIdx.y) >= group_count[0]) return;
     const int expert = group_expert[blockIdx.y];
     const int first_row = group_first_row[blockIdx.y];
-    const int tid = threadIdx.x, lane16 = tid & 15, half_id = tid >> 4;
     if (expert < 0) return;
+    const int tid = threadIdx.x, wave = tid >> 5, lane16 = tid & 15, half_id = (tid >> 4) & 1;
+    const bool fetches = (tid >> 1) < TILE_ROWS;
+    const int64_t col_start = static_cast<int64_t>(blockIdx.x) * (TILE_COLS * WAVES) + wave * TILE_COLS;
+    const bool active = col_start < out_features;
     const int64_t compact_base = expert_start_compact[expert];
     const int64_t count = expert_start_compact[expert + 1] - compact_base;
     const int64_t row_bytes = in_features / kBlockValues[FORMAT] * kBlockBytes[FORMAT];
     const uint8_t* expert_base = qweight + static_cast<int64_t>(expert) * out_features * row_bytes;
     const float scale = outer ? outer[expert] : 1.0f;
+    const int64_t k_tiles = in_features / 16;
 
-    int64_t x_row[TN];
-    #pragma unroll
-    for (int tn = 0; tn < TN; ++tn) {
-        // Padding rows of the last group of an expert read compact row 0 and are not stored.
-        const int64_t local = first_row + tn * 16 + lane16;
+    // The token row of each tile row. Padding rows of the last group of an expert read compact
+    // row 0 and are not stored.
+    for (int r = tid; r < TILE_ROWS; r += THREADS) {
+        const int64_t local = first_row + r;
         const int64_t compact = local < count ? compact_base + local : 0;
-        x_row[tn] = row_source ? row_source[compact] : compact;
+        rows[r] = static_cast<int32_t>(row_source ? row_source[compact] : compact);
     }
     float8_t acc[TM][TN];
     #pragma unroll
@@ -182,43 +275,56 @@ __launch_bounds__(32) __global__ void selected_wmma_kernel(
         #pragma unroll
         for (int tn = 0; tn < TN; ++tn) acc[tm][tn] = float8_t{0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
     }
-    const int64_t k_tiles = in_features / 16;
-    #pragma unroll 1
-    for (int64_t kt = 0; kt < k_tiles; ++kt) {
-        half16_t a_hi[TN], a_lo[TN];
-        #pragma unroll
-        for (int tn = 0; tn < TN; ++tn) {
-            a_hi[tn] = *reinterpret_cast<const half16_t*>(x_hi + x_row[tn] * in_features + kt * 16);
-            if constexpr (PARTS == 2) {
-                a_lo[tn] = *reinterpret_cast<const half16_t*>(x_lo + x_row[tn] * in_features + kt * 16);
-            }
-        }
+    // One NVFP4 block is four k-tiles: four scale bytes, then 32 bytes of codes. The nine words
+    // of a block arrive one block ahead, so their memory latency passes under a block's compute.
+    uint32_t cw[TM][9];
+    if (FORMAT == NVFP4_FORMAT && active) {
         #pragma unroll
         for (int tm = 0; tm < TM; ++tm) {
-            const int64_t col = col_start + tm * 16 + lane16;
-            const uint8_t* row = expert_base + col * row_bytes;
-            half16_t b_hi, b_lo;
-            if constexpr (FORMAT == NVFP4_FORMAT) {
-                const uint8_t* block = row + (kt >> 2) * kBlockBytes[FORMAT];
-                const uint32_t* codes = reinterpret_cast<const uint32_t*>(block + 4 + (kt & 3) * 8);
-                b_hi = dequant16(codes[0], codes[1], decode_scale(block[kt & 3]));
-            } else if constexpr (FORMAT == Q5_K_FORMAT) {
-                dequant16_q5_k(row, kt, b_hi, b_lo);
-            } else {
-                dequant16_q8_0(row, kt, b_hi, b_lo);
-            }
+            const uint32_t* words =
+                reinterpret_cast<const uint32_t*>(expert_base + (col_start + tm * 16 + lane16) * row_bytes);
             #pragma unroll
-            for (int tn = 0; tn < TN; ++tn) {
-                acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_hi[tn], b_hi, acc[tm][tn]);
-                if constexpr (PARTS == 2) {
-                    acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_lo[tn], b_hi, acc[tm][tn]);
-                }
-                if constexpr (FORMAT != NVFP4_FORMAT) {
-                    acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_hi[tn], b_lo, acc[tm][tn]);
+            for (int w = 0; w < 9; ++w) cw[tm][w] = words[w];
+        }
+    }
+    __syncthreads();
+    if (fetches) {
+        stage_tile<FORMAT>(x_hi, rows, 0, in_features, &tile_hi[0][0][0]);
+        if constexpr (PARTS == 2) stage_tile<FORMAT>(x_lo, rows, 0, in_features, &tile_lo[0][0][0]);
+    }
+    __syncthreads();
+    half_t* hi = &tile_hi[0][0][0];
+    half_t* lo = &tile_lo[0][0][0];
+    if constexpr (FORMAT == NVFP4_FORMAT) {
+        // An NVFP4 input is a whole number of 64-value blocks, so four k-tiles at a time: the block
+        // in the registers is consumed while the next is fetched.
+        #pragma unroll 1
+        for (int64_t kb = 0; kb < k_tiles / 4; ++kb) {
+            #pragma unroll
+            for (int f = 0; f < 4; ++f) {
+                const int64_t kt = 4 * kb + f;
+                k_tile<PARTS, FORMAT>(acc, cw, hi, lo, rows, expert_base, row_bytes, col_start, lane16,
+                                      first_row, count, x_hi, x_lo, in_features, k_tiles, kt, fetches, active);
+                // After the block's last k-tile, its words give way to the next block's.
+                if (f == 3 && kt + 4 < k_tiles && active) {
+                    #pragma unroll
+                    for (int tm = 0; tm < TM; ++tm) {
+                        const uint32_t* words = reinterpret_cast<const uint32_t*>(
+                            expert_base + (col_start + tm * 16 + lane16) * row_bytes + ((kt + 4) >> 2) * kBlockBytes[FORMAT]);
+                        #pragma unroll
+                        for (int w = 0; w < 9; ++w) cw[tm][w] = words[w];
+                    }
                 }
             }
         }
+    } else {
+        #pragma unroll 1
+        for (int64_t kt = 0; kt < k_tiles; ++kt) {
+            k_tile<PARTS, FORMAT>(acc, cw, hi, lo, rows, expert_base, row_bytes, col_start, lane16,
+                                  first_row, count, x_hi, x_lo, in_features, k_tiles, kt, fetches, active);
+        }
     }
+    if (!active) return;
     #pragma unroll
     for (int tn = 0; tn < TN; ++tn) {
         #pragma unroll
@@ -312,8 +418,9 @@ int launch_wmma(const void* x_hi, const void* x_lo, const int64_t* expert_start_
             || out_features % TILE_COLS) {
         return hipErrorInvalidValue;
     }
-    const dim3 grid(static_cast<unsigned>(out_features / TILE_COLS), static_cast<unsigned>(groups));
-    hipLaunchKernelGGL((selected_wmma_kernel<PARTS, FORMAT>), grid, dim3(32), 0, stream,
+    const dim3 grid(static_cast<unsigned>((out_features + TILE_COLS * WAVES - 1) / (TILE_COLS * WAVES)),
+                   static_cast<unsigned>(groups));
+    hipLaunchKernelGGL((selected_wmma_kernel<PARTS, FORMAT>), grid, dim3(THREADS), 0, stream,
                        static_cast<const half_t*>(x_hi), static_cast<const half_t*>(x_lo), expert_start_compact,
                        group_expert, group_first_row, row_source, row_route, outer, weights, out,
                        static_cast<int64_t>(in_features), static_cast<int64_t>(out_features), group_count);

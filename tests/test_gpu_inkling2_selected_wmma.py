@@ -320,9 +320,15 @@ def test_grouped_projection_reads_a_device_schedule_the_same(parts):
 
 @pytest.mark.parametrize('fmt,quant,qtype,block_size,block_bytes', [('q5_k', 'gguf_q5_k', Q.Q5_K, 256, 176),
                                                                      ('q8_0', 'gguf_q8_0', Q.Q8_0, 32, 34)])
-@pytest.mark.parametrize('n,m', [(512, 96), (2304, 64)])
+@pytest.mark.parametrize('n,m', [(512, 96), (2304, 64), (2240, 224)])
 def test_kquant_selected_wmma_matches_dequantized_reference(fmt, quant, qtype, block_size, block_bytes, n, m):
-    """Q5_K and Q8_0 weights come in two FP16 parts: the result is the FP32 reference to rounding."""
+    """Q5_K and Q8_0 weights come in two FP16 parts: the result is the FP32 reference to rounding.
+
+    2240 is 70 Q8_0 blocks, an odd count of 32-value k-tiles: the k-tiles past the last block of
+    four take the direct path, and 224 output columns leave five of the eight waves past the output.
+    """
+    if n % block_size:
+        pytest.skip(f'{n} input values are not a whole number of {quant} blocks')
     backend = _runnable()
     launch = resolve(backend=backend, layer='moe_linear', quant=quant, variant='selected_wmma_f16_parts_f32_out')
     rt = get_hip_runtime()
