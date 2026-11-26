@@ -296,8 +296,10 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             raise ValueError("Inkling GGUF resident controllers need one norm weight per controller")
         plans = []
         for (down, forget, gain), hidden, message in controllers:
-            hidden = np.ascontiguousarray(hidden, dtype=np.float32)
-            message = np.ascontiguousarray(message, dtype=np.float32)
+            # The resident path reads these rows where they are, and the staging path concatenates
+            # them: neither needs a contiguous copy of a 9.4 MB message column per controller.
+            hidden = np.asarray(hidden, dtype=np.float32)
+            message = np.asarray(message, dtype=np.float32)
             first = self._matrix(down, None)
             tails = (self._matrix(forget, None), self._matrix(gain, None))
             width, inputs = first[1]
