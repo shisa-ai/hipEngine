@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261126T182230.479726Z-lhl-inkling2-mini-426ed4.md",
+  "sha256": "6b254ecda34a494b2c85748e4f8e64a1e3329b83b892a801c4a550bbf6e4e1d7",
+  "defects": [
+    "missing_required_sections"
+  ],
+  "reason": "The checkpoint was committed in 180688962 without its Changes and Validation sections; the entry named in superseded_by carries them and its rows are unchanged.",
+  "base_commit": null,
+  "superseded_by": "worklog/entries/20261126T184146.119860Z-lhl-inkling2-mini-d1ec5b.md"
+}
