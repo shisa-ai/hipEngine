@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "path": "worklog/entries/20261126T163452.916877Z-lhl-kernels-619c1d.md",
+  "sha256": "085f6f1609646eda7f9167ee87cdb771fd2e010c054e3a450dd2f7b0f1e91c3a",
+  "defects": [
+    "missing_required_sections"
+  ],
+  "reason": "the entry was committed without the required '## Next' heading: its commit was chained to the worklog check with a semicolon, so the failed check did not stop it.",
+  "base_commit": null,
+  "superseded_by": "worklog/entries/20261126T165227.541866Z-lhl-kernels-ac26f2.md"
+}
