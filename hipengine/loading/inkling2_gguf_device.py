@@ -13,7 +13,7 @@ from hipengine.kernels.backends import hip_target_arch_for_backend, load_backend
 from hipengine.kernels.hip_gfx1100.moe.inkling2_route_tiles import launch_route_ids_i32
 from hipengine.kernels.hip_gfx1100.moe.laguna_router import laguna_sigmoid_correction_topk_f32
 from hipengine.kernels.hip_gfx1100.quant import (  # noqa: F401
-    gguf_nvfp4_gemv, gguf_nvfp4_q8_dot, inkling2_experts,
+    gguf_nvfp4_gemv, gguf_nvfp4_q8_dot, gguf_q8_0_dense_wide, inkling2_experts,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_nvfp4_selected_wmma import launch_route_schedule
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import build_gguf_k_gemv
@@ -28,6 +28,13 @@ _UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024
 _MAX_SELECTED_ROUTES = 65535
 # Leave narrow projections on the scalar kernel: pack8 can lose on W7900.
 _Q8_DECODE_MIN_OUTPUTS = 1024
+# A Q8_0 projection takes the wide F16 tile of `fast` and `production` from these rows on: for
+# 1,024 or more outputs, where it is twice the exact tile at 64 rows and eight times at 1,024,
+# and for fewer outputs, where the exact tile is faster until then (W7900, K2304 by N384: 81 us
+# against 82 at 256 rows, 110 against 82 at 384; worklog/entries/20261126T172532.740394Z-lhl-inkling2-mini-3ddb67.md).
+_WIDE_DENSE_MIN_ROWS = 64
+_WIDE_DENSE_NARROW_MIN_ROWS = 384
+_WIDE_DENSE_WIDE_OUTPUTS = 1024
 # The grouped WMMA expert projection runs from this many token rows. Below it the FP32 tiles are
 # as fast or faster: a block of 192 rows puts about twelve routes on each of 128 experts.
 _WMMA_MIN_ROWS = 192
@@ -38,7 +45,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     """Share dense transfer scratch; upload physical expert banks only once."""
 
     def __init__(self, weights, *, runtime, blas, backend, fast_experts=False, fast_controllers=False,
-                 device_routes=False, q8_dot_experts=None):
+                 device_routes=False, q8_dot_experts=None, wide_dense=False):
         super().__init__(weights, runtime=runtime, blas=blas)
         load_backend_kernel_package(backend)
         if q8_dot_experts is None:
@@ -86,6 +93,10 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._q8_decode = (self._bind_packed(Q.Q8_0, resolve(backend=decode.backend, layer=decode.layer,
                                                            quant=decode.quant, variant=decode.variant))
                            if is_registered(decode) else None)
+        wide = KernelKey(backend, "linear", "gguf_q8_0", "dense_wide64x128_f32_f32_out")
+        self._q8_wide = (resolve(backend=wide.backend, layer=wide.layer, quant=wide.quant, variant=wide.variant)
+                         if wide_dense and is_registered(wide) else None)
+        self._wide_libraries = {}
         self._head = weights.mapping.root["output.weight"]
         self._vocab = weights.mapping.vocab_size
         padded = (self._vocab + 7) // 8 * 8
@@ -679,12 +690,27 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             self._transfer.download(out, y)
             return y
 
+    def _launch_wide_dense(self, src, weight, dst, rows, n, m):
+        """Project through the wide tile, keeping each build of its library by the rows it serves."""
+        profile = ("prefill" if gguf_q8_0_dense_wide._WGP_BUILD_MIN_ROWS <= rows
+                   <= gguf_q8_0_dense_wide._WGP_BUILD_MAX_ROWS else "decode")
+        if profile not in self._wide_libraries:
+            self._wide_libraries[profile] = gguf_q8_0_dense_wide.build_gguf_q8_0_dense_wide(
+                load=True, profile=profile)
+        self._q8_wide(src, weight.ptr, dst, rows, n, m, library=self._wide_libraries[profile],
+                      runtime=self._runtime, stream=capture_stream())
+
     def _launch_projection(self, src, dst, rows, ndim, matrix, native_bf16):
         weight, (m, n), packed = matrix
         if not packed:
             super()._launch_projection(src, dst, rows, ndim, matrix, native_bf16)
             return
         if packed == Q.Q8_0:
+            if (self._q8_wide is not None and rows >= (_WIDE_DENSE_MIN_ROWS if m >= _WIDE_DENSE_WIDE_OUTPUTS
+                                                       else _WIDE_DENSE_NARROW_MIN_ROWS)
+                    and n % gguf_q8_0_dense_wide.K_TILE == 0):
+                self._launch_wide_dense(src, weight, dst, rows, n, m)
+                return
             if self._q8_prefill is not None and rows > 1 and m % 8 == 0:
                 self._q8_prefill(src, weight.ptr, dst, rows, n, m)
                 return

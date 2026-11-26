@@ -47,6 +47,7 @@ def _routes(llm) -> dict[str, bool]:
         "resident_decode": bool(model.resident_decode),
         "decode_graph": bool(model.decode_graph),
         "q8_dot_experts": projection._q8_dot is not None,
+        "wide_dense": projection._q8_wide is not None,
     }
 
 
@@ -77,6 +78,7 @@ def test_omitted_profile_runs_the_production_plan(route_environment):
         routes = _routes(llm)
         assert routes == {
             "device_routes": shipped, "resident_decode": shipped, "decode_graph": shipped, "q8_dot_experts": False,
+            "wide_dense": shipped,
         }
         if shipped:
             # The plan names the resident single-token graph and keeps F32 experts on every path.
@@ -108,6 +110,7 @@ def test_explicit_production_and_its_levers(route_environment, flag):
             assert llm.resolved_execution_profile == "production" and not llm.execution_profile_fell_back_to_strict
             assert _routes(llm)["q8_dot_experts"] is False
             routes = _routes(llm)
+            assert routes["wide_dense"] is True
             ids = _generate(llm)
             assert len(ids) == 16
             if flag is None:
@@ -133,6 +136,7 @@ def test_strict_stays_the_reference(route_environment):
         assert llm.resolved_execution_profile == "strict" and not llm.execution_profile_fell_back_to_strict
         assert _routes(llm) == {
             "device_routes": False, "resident_decode": False, "decode_graph": False, "q8_dot_experts": False,
+            "wide_dense": False,
         }
         assert llm.execution_profile_manifest["graph_policy"] == "eager"
         assert len(_generate(llm)) == 16
