@@ -78,7 +78,7 @@ def test_omitted_profile_runs_the_production_plan(route_environment):
         routes = _routes(llm)
         assert routes == {
             "device_routes": shipped, "resident_decode": shipped, "decode_graph": shipped, "q8_dot_experts": False,
-            "wide_dense": shipped,
+            "wide_dense": False,
         }
         if shipped:
             # The plan names the resident single-token graph and keeps F32 experts on every path.
@@ -110,7 +110,7 @@ def test_explicit_production_and_its_levers(route_environment, flag):
             assert llm.resolved_execution_profile == "production" and not llm.execution_profile_fell_back_to_strict
             assert _routes(llm)["q8_dot_experts"] is False
             routes = _routes(llm)
-            assert routes["wide_dense"] is True
+            assert routes["wide_dense"] is False
             ids = _generate(llm)
             assert len(ids) == 16
             if flag is None:

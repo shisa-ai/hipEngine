@@ -45,7 +45,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
     """Share dense transfer scratch; upload physical expert banks only once."""
 
     def __init__(self, weights, *, runtime, blas, backend, fast_experts=False, fast_controllers=False,
-                 device_routes=False, q8_dot_experts=None, wide_dense=False):
+                 device_routes=False, q8_dot_experts=None, wide_dense=None):
         super().__init__(weights, runtime=runtime, blas=blas)
         load_backend_kernel_package(backend)
         if q8_dot_experts is None:
@@ -93,7 +93,8 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
         self._q8_decode = (self._bind_packed(Q.Q8_0, resolve(backend=decode.backend, layer=decode.layer,
                                                            quant=decode.quant, variant=decode.variant))
                            if is_registered(decode) else None)
-        wide = KernelKey(backend, "linear", "gguf_q8_0", "dense_wide64x128_f32_f32_out")
+        # `wide_dense` names the tile a prompt block's Q8_0 projections take, or None for the exact kernel.
+        wide = KernelKey(backend, "linear", "gguf_q8_0", wide_dense or "dense_wide64x128_f32_f32_out")
         self._q8_wide = (resolve(backend=wide.backend, layer=wide.layer, quant=wide.quant, variant=wide.variant)
                          if wide_dense and is_registered(wide) else None)
         self._wide_libraries = {}

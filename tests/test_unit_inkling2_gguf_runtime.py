@@ -207,10 +207,13 @@ def test_inkling_gguf_production_plan_names_the_gated_route_and_keeps_f32_expert
         ("inkling2_expert_pointwise", "selected_split_gate_up"),
         (experts, "prompt_block_ge_192_rows_top8_nvfp4_gate_n2304_m2304"),
         (experts, "prompt_block_ge_192_rows_top8_nvfp4_split_down_n1152_m2304"),
-        ("linear", "prompt_block_ge_64_rows_q8_0_dense_n1024_n2304_n3072"),
-        ("linear", "prompt_block_ge_384_rows_q8_0_dense_n384"),
     ):
         assert shipped[layer_scope]["selected_variant"] == reduced[layer_scope]["selected_variant"]
+    # The wide F16 dense tile failed the production gate: `production` keeps the exact kernel.
+    for scope in ("prompt_block_ge_64_rows_q8_0_dense_n1024_n2304_n3072", "prompt_block_ge_384_rows_q8_0_dense_n384"):
+        dense_scope = ("linear", scope)
+        assert shipped[dense_scope]["selected_variant"] == exact[dense_scope]["selected_variant"]
+        assert reduced[dense_scope]["selected_variant"] == "dense_wide64x128_f32_f32_out"
     for selection in production.manifest["selections"]:
         assert selection["strict_fallback_variant"] == exact[(selection["layer"], selection["scope"])]["selected_variant"]
     assert production.manifest["graph_policy"] == "resident_single_token_whole_token_graph"

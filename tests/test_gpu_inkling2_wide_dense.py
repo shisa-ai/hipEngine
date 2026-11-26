@@ -65,7 +65,8 @@ def test_prompt_rows_take_the_wide_tile_where_it_is_faster(legacy):
     blas = Rocblas.load()
     options = dict(runtime=get_hip_runtime(), blas=blas, backend=backend)
     with (Inkling2GGUFDeviceProjections(Inkling2GGUFWeights(Mock(info=_file(legacy))), **options) as plain,
-          Inkling2GGUFDeviceProjections(Inkling2GGUFWeights(Mock(info=_file(legacy))), wide_dense=True,
+          Inkling2GGUFDeviceProjections(Inkling2GGUFWeights(Mock(info=_file(legacy))),
+                                        wide_dense="dense_wide64x128_f32_f32_out",
                                         **options) as wide):
         assert plain._q8_wide is None and wide._q8_wide is not None
         wide_outputs, narrow_outputs = _WIDE_DENSE_WIDE_OUTPUTS, _WIDE_DENSE_WIDE_OUTPUTS - 8

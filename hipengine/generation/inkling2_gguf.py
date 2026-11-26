@@ -72,6 +72,18 @@ def _prefill_loop_defaults(width):
     }
 
 
+# The dense Q8_0 projections of a prompt block. `fast` reads them through the tile with one F16
+# product per operand. `production` and `strict` keep the exact coltile kernel: the tile failed the
+# production gate's long-context median (worklog
+# 20261126T173747.968486Z-lhl-inkling2-mini-81272f.md).
+DENSE_EXACT = "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
+DENSE_WIDE = "dense_wide64x128_f32_f32_out"
+
+
+def _wide_dense_variant(fast, production):
+    return DENSE_WIDE if fast and not production else None
+
+
 class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
     supports_vision = False
     # Packed target verification changed ordinary fast output on the GGUF prompt suite.
@@ -144,7 +156,8 @@ class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
             owned.callback(blas.close)
             projection = owned.enter_context(Inkling2GGUFDeviceProjections(
                 weights, runtime=runtime, blas=blas, backend=backend, fast_experts=fast, fast_controllers=fast,
-                device_routes=_device_routes_requested(production), q8_dot_experts=reduced, wide_dense=fast))
+                device_routes=_device_routes_requested(production), q8_dot_experts=reduced,
+                wide_dense=_wide_dense_variant(fast, production)))
             model = self.model = Inkling2GGUFText(weights, projection=projection)
             model.resident_decode = _resident_decode_requested(production)
             model.decode_graph = _decode_graph_requested(production)
@@ -270,8 +283,6 @@ def register_inkling2_gguf_profiles():
     wmma = "selected_wmma_f16_parts_f32_out"
     mixed_evidence = "worklog/entries/20261125T171057.976897Z-lhl-inkling2-mini-851bcb.md"
     dense_evidence = "worklog/entries/20261126T172532.740394Z-lhl-inkling2-mini-3ddb67.md"
-    dense_exact = "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
-    dense_wide = "dense_wide64x128_f32_f32_out"
     # (layer, scope, strict, fast, fast evidence, production). A production variant equal to the
     # strict one is the F32 kernel the device-resident decode runs, or the ordered path its eager
     # fallback keeps.
@@ -288,8 +299,9 @@ def register_inkling2_gguf_profiles():
         ("moe_linear", "prompt_block_ge_192_rows_top8_nvfp4_split_down_n1152_m2304", tile, wmma, wmma_evidence, wmma),
         ("moe_linear", "prompt_block_ge_192_rows_top8_q5_k_gate_n2304_m2304", tile_shared, wmma, mixed_evidence, wmma),
         ("moe_linear", "prompt_block_ge_192_rows_top8_q8_0_split_down_n1152_m2304", tile, wmma, mixed_evidence, wmma),
-        ("linear", "prompt_block_ge_64_rows_q8_0_dense_n1024_n2304_n3072", dense_exact, dense_wide, dense_evidence, dense_wide),
-        ("linear", "prompt_block_ge_384_rows_q8_0_dense_n384", dense_exact, dense_wide, dense_evidence, dense_wide),
+        ("linear", "prompt_block_ge_64_rows_q8_0_dense_n1024_n2304_n3072", DENSE_EXACT, DENSE_WIDE, dense_evidence,
+         DENSE_EXACT),
+        ("linear", "prompt_block_ge_384_rows_q8_0_dense_n384", DENSE_EXACT, DENSE_WIDE, dense_evidence, DENSE_EXACT),
         ("inkling2_expert_pointwise", "selected_split_gate_up", "split_activation_host", "split_activation_device",
          activation_evidence, "split_activation_device"),
         ("inkling2_target_attention", "decode_live_ge_513", "split", "split_chunked", chunked_evidence, "split"),
