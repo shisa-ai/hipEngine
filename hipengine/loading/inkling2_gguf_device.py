@@ -28,12 +28,15 @@ _UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024
 _MAX_SELECTED_ROUTES = 65535
 # Leave narrow projections on the scalar kernel: pack8 can lose on W7900.
 _Q8_DECODE_MIN_OUTPUTS = 1024
-# A Q8_0 projection takes the wide F16 tile of `fast` and `production` from these rows on: for
-# 1,024 or more outputs, where it is twice the exact tile at 64 rows and eight times at 1,024,
-# and for fewer outputs, where the exact tile is faster until then (W7900, K2304 by N384: 81 us
-# against 82 at 256 rows, 110 against 82 at 384; worklog/entries/20261126T172532.740394Z-lhl-inkling2-mini-3ddb67.md).
-_WIDE_DENSE_MIN_ROWS = 64
-_WIDE_DENSE_NARROW_MIN_ROWS = 384
+# The rows from which a prompt block's Q8_0 projection takes a wide tile, by tile: `fast` reads the
+# tile with one F16 product, `production` the one that adds a residual F16 part to each operand and
+# is 1.2 to 2.2 times slower. Below these rows the exact kernel is as fast or faster (W7900, best
+# of 20, the exact kernel then each tile). K2304 by N3072, 64 rows: 153, 90 and 121 us; by N1024,
+# 64 rows: 69, 71 and 107, 256 rows: 188, 128 and 175. K2304 by N384, 256 rows: 89, 99 and 165;
+# 575 rows: 160, 109 and 129 (worklog/entries/20261126T172532.740394Z-lhl-inkling2-mini-3ddb67.md
+# and worklog/entries/20261126T175737.613472Z-lhl-inkling2-mini-652e29.md).
+_WIDE_DENSE_MIN_ROWS = {"dense_wide64x128_f32_f32_out": 64, "dense_wide64x128_residual_f32_f32_out": 192}
+_WIDE_DENSE_NARROW_MIN_ROWS = {"dense_wide64x128_f32_f32_out": 384, "dense_wide64x128_residual_f32_f32_out": 512}
 _WIDE_DENSE_WIDE_OUTPUTS = 1024
 # The grouped WMMA expert projection runs from this many token rows. Below it the FP32 tiles are
 # as fast or faster: a block of 192 rows puts about twelve routes on each of 128 experts.
@@ -94,9 +97,13 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
                                                            quant=decode.quant, variant=decode.variant))
                            if is_registered(decode) else None)
         # `wide_dense` names the tile a prompt block's Q8_0 projections take, or None for the exact kernel.
+        self.wide_dense = wide_dense
+        if wide_dense is not None and wide_dense not in _WIDE_DENSE_MIN_ROWS:
+            raise ValueError(f"unknown Inkling wide dense tile: {wide_dense}")
         wide = KernelKey(backend, "linear", "gguf_q8_0", wide_dense or "dense_wide64x128_f32_f32_out")
         self._q8_wide = (resolve(backend=wide.backend, layer=wide.layer, quant=wide.quant, variant=wide.variant)
                          if wide_dense and is_registered(wide) else None)
+        self._wide_min_rows = (_WIDE_DENSE_MIN_ROWS.get(wide_dense, 0), _WIDE_DENSE_NARROW_MIN_ROWS.get(wide_dense, 0))
         self._wide_libraries = {}
         self._head = weights.mapping.root["output.weight"]
         self._vocab = weights.mapping.vocab_size
@@ -707,8 +714,7 @@ class Inkling2GGUFDeviceProjections(Inkling2DeviceDense):
             super()._launch_projection(src, dst, rows, ndim, matrix, native_bf16)
             return
         if packed == Q.Q8_0:
-            if (self._q8_wide is not None and rows >= (_WIDE_DENSE_MIN_ROWS if m >= _WIDE_DENSE_WIDE_OUTPUTS
-                                                       else _WIDE_DENSE_NARROW_MIN_ROWS)
+            if (self._q8_wide is not None and rows >= self._wide_min_rows[m < _WIDE_DENSE_WIDE_OUTPUTS]
                     and n % gguf_q8_0_dense_wide.K_TILE == 0):
                 self._launch_wide_dense(src, weight, dst, rows, n, m)
                 return

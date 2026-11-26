@@ -73,15 +73,20 @@ def _prefill_loop_defaults(width):
 
 
 # The dense Q8_0 projections of a prompt block. `fast` reads them through the tile with one F16
-# product per operand. `production` and `strict` keep the exact coltile kernel: the tile failed the
-# production gate's long-context median (worklog
-# 20261126T173747.968486Z-lhl-inkling2-mini-81272f.md).
+# product per operand. That tile failed the production gate's long-context median (worklog
+# 20261126T173747.968486Z-lhl-inkling2-mini-81272f.md), so `production` reads them through the tile
+# that adds a residual F16 part to each operand, at 7e-6 of the RMS against its 2.9e-4 and 1.2 to
+# 2.2 times its time (worklog
+# 20261126T175737.613472Z-lhl-inkling2-mini-652e29.md). `strict` keeps the exact coltile kernel.
 DENSE_EXACT = "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"
 DENSE_WIDE = "dense_wide64x128_f32_f32_out"
+DENSE_WIDE_RESIDUAL = "dense_wide64x128_residual_f32_f32_out"
 
 
 def _wide_dense_variant(fast, production):
-    return DENSE_WIDE if fast and not production else None
+    if not fast:
+        return None
+    return DENSE_WIDE_RESIDUAL if production else DENSE_WIDE
 
 
 class Inkling2GGUFGenerator(Inkling2ReferenceGenerator):
@@ -299,9 +304,9 @@ def register_inkling2_gguf_profiles():
         ("moe_linear", "prompt_block_ge_192_rows_top8_nvfp4_split_down_n1152_m2304", tile, wmma, wmma_evidence, wmma),
         ("moe_linear", "prompt_block_ge_192_rows_top8_q5_k_gate_n2304_m2304", tile_shared, wmma, mixed_evidence, wmma),
         ("moe_linear", "prompt_block_ge_192_rows_top8_q8_0_split_down_n1152_m2304", tile, wmma, mixed_evidence, wmma),
-        ("linear", "prompt_block_ge_64_rows_q8_0_dense_n1024_n2304_n3072", DENSE_EXACT, DENSE_WIDE, dense_evidence,
-         DENSE_EXACT),
-        ("linear", "prompt_block_ge_384_rows_q8_0_dense_n384", DENSE_EXACT, DENSE_WIDE, dense_evidence, DENSE_EXACT),
+        ("linear", "prompt_block_q8_0_dense_n1024_n2304_n3072", DENSE_EXACT, DENSE_WIDE, dense_evidence,
+         DENSE_WIDE_RESIDUAL),
+        ("linear", "prompt_block_q8_0_dense_n384", DENSE_EXACT, DENSE_WIDE, dense_evidence, DENSE_WIDE_RESIDUAL),
         ("inkling2_expert_pointwise", "selected_split_gate_up", "split_activation_host", "split_activation_device",
          activation_evidence, "split_activation_device"),
         ("inkling2_target_attention", "decode_live_ge_513", "split", "split_chunked", chunked_evidence, "split"),

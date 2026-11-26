@@ -28,6 +28,13 @@ all load/store bounds and the same valid-row accumulation. Full tiles use the
 tail-free owner except on gfx1100, where the bounded owner measured faster at
 every shape and is always launched; no runtime selector or profile chooses the
 siblings.
+
+The ``dense_wide64x128_residual_f32_f32_out`` variant stages a high and an
+unscaled residual F16 part of every operand. The high-by-high product
+accumulates on its own and the two products with a residual on another, added
+once at the end: against the dequantized reference its error is 7e-6 to 1e-5 of
+the RMS where the single-product tile's is 2.9e-4, at 1.2 to 2.2 times its time.
+Inkling GGUF ``production`` selects it for the Q8_0 projections of prompt blocks.
 """
 
 from __future__ import annotations
@@ -335,6 +342,9 @@ _VARIANTS = {
     "dense_wide64x128_f32_f32_out": "hipengine_gguf_q8_0_dense_wide64x128_f32_f32_out",
     "dense_wide256_f16in_f32_f32_out": (
         "hipengine_gguf_q8_0_dense_wide256_f16in_f32_f32_out"
+    ),
+    "dense_wide64x128_residual_f32_f32_out": (
+        "hipengine_gguf_q8_0_dense_wide64x128_residual_f32_f32_out"
     ),
     "dense_wide256_bf16in_f32_f32_out": (
         "hipengine_gguf_q8_0_dense_wide256_bf16in_f32_f32_out"

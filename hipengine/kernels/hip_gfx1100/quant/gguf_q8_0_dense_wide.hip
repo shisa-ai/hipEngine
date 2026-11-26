@@ -197,6 +197,43 @@ __device__ __forceinline__ void wide_dq_q8_0_split_tile(
   }
 }
 
+// Dequantize the K-tile into a high and a residual f16 value per weight, both
+// unscaled. Three products recover the f32 value: high by high, activation
+// residual by weight high, activation high by weight residual. The product of
+// the two residuals is left out.
+__device__ __forceinline__ void wide_dq_q8_0_residual_tile(
+    const uint4 w0, const uint4 w1, const uint4 w3, const uint4 w4,
+    const uint32_t w2, half_t* __restrict__ dst_hi, half_t* __restrict__ dst_lo) {
+  const uint32_t words[17] = {w0.x, w0.y, w0.z, w0.w, w1.x, w1.y, w1.z, w1.w,
+                              w3.x, w3.y, w3.z, w3.w, w4.x, w4.y, w4.z, w4.w, w2};
+  const float d0 = wide_half_bits_to_float(static_cast<uint16_t>(
+      wide_stage_byte(words, 0) | (wide_stage_byte(words, 1) << 8)));
+  const float d1 = wide_half_bits_to_float(static_cast<uint16_t>(
+      wide_stage_byte(words, 34) | (wide_stage_byte(words, 35) << 8)));
+  uint32_t* hi = reinterpret_cast<uint32_t*>(dst_hi);
+  uint32_t* lo = reinterpret_cast<uint32_t*>(dst_lo);
+#pragma unroll
+  for (int m = 0; m < Q8_0_BLOCK / 2; ++m) {
+    union { half_t h[2]; uint32_t u; } p0, p1, q0, q1;
+    const float v00 = d0 * static_cast<float>(static_cast<int8_t>(wide_stage_byte(words, 2 + 2 * m)));
+    const float v01 = d0 * static_cast<float>(static_cast<int8_t>(wide_stage_byte(words, 2 + 2 * m + 1)));
+    const float v10 = d1 * static_cast<float>(static_cast<int8_t>(wide_stage_byte(words, 36 + 2 * m)));
+    const float v11 = d1 * static_cast<float>(static_cast<int8_t>(wide_stage_byte(words, 36 + 2 * m + 1)));
+    p0.h[0] = static_cast<half_t>(v00);
+    p0.h[1] = static_cast<half_t>(v01);
+    p1.h[0] = static_cast<half_t>(v10);
+    p1.h[1] = static_cast<half_t>(v11);
+    q0.h[0] = static_cast<half_t>(v00 - static_cast<float>(p0.h[0]));
+    q0.h[1] = static_cast<half_t>(v01 - static_cast<float>(p0.h[1]));
+    q1.h[0] = static_cast<half_t>(v10 - static_cast<float>(p1.h[0]));
+    q1.h[1] = static_cast<half_t>(v11 - static_cast<float>(p1.h[1]));
+    hi[m] = p0.u;
+    lo[m] = q0.u;
+    hi[Q8_0_BLOCK / 2 + m] = p1.u;
+    lo[Q8_0_BLOCK / 2 + m] = q1.u;
+  }
+}
+
 // One 16x16 accumulator fragment to global memory.
 //
 // The WMMA C fragment puts element e of lane L at (row = 2e + (L >> 4),
@@ -352,9 +389,15 @@ __device__ __noinline__ void wide_split_range_fallback(
 // mean_b(normalized_b * sigmoid(logit_b)) directly: the logits never reach
 // global memory. ``w_base`` is then the matrix base, ``m0`` the first hidden
 // column, ``M`` the hidden width.
+// ``RESIDUAL`` stages a high and an unscaled residual f16 value for every
+// activation and weight. The high-by-high product accumulates in ``acc`` and
+// the two products with a residual in ``cross``, added once at the end: chained
+// into ``acc`` they cost three times the error (W7900, K2304 by N3072: 2.1e-5
+// against 7.1e-6 of the RMS, at the same time). ``As_lo`` and ``Bs_lo`` then
+// name the two residual tiles.
 template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL,
           int WMMA_REP = 1, bool SPLIT = false, bool PADDED = false,
-          bool GRMEAN = false>
+          bool GRMEAN = false, bool RESIDUAL = false>
 __device__ __forceinline__ void wide_tile_gemm(
     const uint8_t* __restrict__ w_base,  // first weight row of this block
     const size_t wrow_bytes,
@@ -402,7 +445,7 @@ __device__ __forceinline__ void wide_tile_gemm(
   uint4 a0[A_ITEMS], a1[A_ITEMS], a3[A_ITEMS], a4[A_ITEMS];
   uint32_t a2[A_ITEMS];
   half8_t bst[B_ITEMS];
-  half8_t bst_lo[SPLIT ? B_ITEMS : 1];
+  half8_t bst_lo[(SPLIT || RESIDUAL) ? B_ITEMS : 1];
 
   int weight_ks = 0;
   auto load_regs = [&](const int ks) {
@@ -447,12 +490,17 @@ __device__ __forceinline__ void wide_tile_gemm(
             if (!(fabsf(p[e]) <= 65504.0f)) atomicExch(range_miss, 1);
             bst_lo[i][e] = wide_split_low(p[e], h[e]);
           }
+        } else if constexpr (RESIDUAL) {
+#pragma unroll
+          for (int e = 0; e < 8; ++e) {
+            bst_lo[i][e] = static_cast<half_t>(p[e] - static_cast<float>(h[e]));
+          }
         }
       } else {
 #pragma unroll
         for (int e = 0; e < 8; ++e) {
           h[e] = static_cast<half_t>(0.0f);
-          if constexpr (SPLIT) bst_lo[i][e] = static_cast<half_t>(0.0f);
+          if constexpr (SPLIT || RESIDUAL) bst_lo[i][e] = static_cast<half_t>(0.0f);
         }
       }
       bst[i] = h;
@@ -471,6 +519,10 @@ __device__ __forceinline__ void wide_tile_gemm(
           wide_dq_q8_0_split_tile(a0[i], a1[i], a3[i], a4[i], a2[i],
                                 As + row * WIDE_LDS_STRIDE,
                                 As_lo + row * WIDE_LDS_STRIDE, range_miss);
+        } else if constexpr (RESIDUAL) {
+          wide_dq_q8_0_residual_tile(a0[i], a1[i], a3[i], a4[i], a2[i],
+                                     As + row * WIDE_LDS_STRIDE,
+                                     As_lo + row * WIDE_LDS_STRIDE);
         } else {
           wide_dq_q8_0_tile(a0[i], a1[i], a3[i], a4[i], a2[i],
                             As + row * WIDE_LDS_STRIDE);
@@ -484,7 +536,7 @@ __device__ __forceinline__ void wide_tile_gemm(
       const int c = tid + i * WIDE_THREADS;
       const int off = (c & 7) * 8;
       *reinterpret_cast<half8_t*>(Bs + (c >> 3) * WIDE_LDS_STRIDE + off) = bst[i];
-      if constexpr (SPLIT) {
+      if constexpr (SPLIT || RESIDUAL) {
         *reinterpret_cast<half8_t*>(Bs_lo + (c >> 3) * WIDE_LDS_STRIDE + off) = bst_lo[i];
       }
     }
@@ -492,7 +544,7 @@ __device__ __forceinline__ void wide_tile_gemm(
 
   // ---- accumulators ------------------------------------------------------
   float8_t acc[TM][TN];
-  float8_t cross[SPLIT ? TM : 1][SPLIT ? TN : 1];
+  float8_t cross[(SPLIT || RESIDUAL) ? TM : 1][(SPLIT || RESIDUAL) ? TN : 1];
 #pragma unroll
   for (int i = 0; i < TM; ++i) {
 #pragma unroll
@@ -500,7 +552,7 @@ __device__ __forceinline__ void wide_tile_gemm(
 #pragma unroll
       for (int e = 0; e < 8; ++e) {
         acc[i][j][e] = 0.0f;
-        if constexpr (SPLIT) cross[i][j][e] = 0.0f;
+        if constexpr (SPLIT || RESIDUAL) cross[i][j][e] = 0.0f;
       }
     }
   }
@@ -522,7 +574,7 @@ __device__ __forceinline__ void wide_tile_gemm(
 #pragma unroll
     for (int kk = 0; kk < WIDE_BK; kk += 16) {
       half16_t a[TM], b[TN];
-      half16_t a_lo[SPLIT ? TM : 1], b_lo[SPLIT ? TN : 1];
+      half16_t a_lo[(SPLIT || RESIDUAL) ? TM : 1], b_lo[(SPLIT || RESIDUAL) ? TN : 1];
       const int r = lane & 15;
 #pragma unroll
       for (int i = 0; i < TM; ++i) {
@@ -530,7 +582,7 @@ __device__ __forceinline__ void wide_tile_gemm(
         const half8_t lo = *reinterpret_cast<const half8_t*>(p);
         const half8_t hi = *reinterpret_cast<const half8_t*>(p + 8);
         a[i] = __builtin_bit_cast(half16_t, (half8_t[2]){lo, hi});
-        if constexpr (SPLIT) {
+        if constexpr (SPLIT || RESIDUAL) {
           const half_t* pl = As_lo + (wm * WTM + i * 16 + r) * WIDE_LDS_STRIDE + kk;
           const half8_t l0 = *reinterpret_cast<const half8_t*>(pl);
           const half8_t l1 = *reinterpret_cast<const half8_t*>(pl + 8);
@@ -544,7 +596,7 @@ __device__ __forceinline__ void wide_tile_gemm(
         const half8_t lo = *reinterpret_cast<const half8_t*>(p);
         const half8_t hi = *reinterpret_cast<const half8_t*>(p + 8);
         b[j] = __builtin_bit_cast(half16_t, (half8_t[2]){lo, hi});
-        if constexpr (SPLIT) {
+        if constexpr (SPLIT || RESIDUAL) {
           const half_t* pl = Bs_lo + (wn * WTN + j * 16 + r) * WIDE_LDS_STRIDE + kk;
           const half8_t l0 = *reinterpret_cast<const half8_t*>(pl);
           const half8_t l1 = *reinterpret_cast<const half8_t*>(pl + 8);
@@ -582,6 +634,10 @@ __device__ __forceinline__ void wide_tile_gemm(
 #pragma unroll
             for (int rep = 0; rep < WMMA_REP; ++rep) {
               acc[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b[j], a[i], acc[i][j]);
+            }
+            if constexpr (RESIDUAL) {
+              cross[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b[j], a_lo[i], cross[i][j]);
+              cross[i][j] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(b_lo[j], a[i], cross[i][j]);
             }
           }
         }
@@ -708,6 +764,11 @@ __device__ __forceinline__ void wide_tile_gemm(
           for (int e = 0; e < 8; ++e) {
             acc[i][j][e] = __builtin_fmaf(cross[i][j][e], SPLIT_INV_SCALE, acc[i][j][e]);
           }
+        } else if constexpr (RESIDUAL) {
+#pragma unroll
+          for (int e = 0; e < 8; ++e) {
+            acc[i][j][e] += cross[i][j][e];
+          }
         }
         wide_store_tile(acc[i][j], stg, out, M, rows, t0,
                         wn * WTN + j * 16, m0 + ml, lane);
@@ -719,6 +780,68 @@ __device__ __forceinline__ void wide_tile_gemm(
 // PADDED computes all WMMA row fragments from the existing zero-filled LDS
 // rows. Only publication remains predicated. This measurement sibling tests
 // tail-control liveness without changing the valid-row K accumulation order.
+// Whether this device's dense-wide tiles are always launched in their bounded form.
+bool wide_bounded_tiles() {
+  static int8_t bounded[16] = {};
+  int device = 0;
+  if (hipGetDevice(&device) != hipSuccess || device < 0 || device >= 16) {
+    return false;
+  }
+  if (bounded[device] == 0) {
+    hipDeviceProp_t props{};
+    bounded[device] = (hipGetDeviceProperties(&props, device) == hipSuccess &&
+                       std::strcmp(props.gcnArchName, "gfx1100") == 0)
+                          ? 1
+                          : -1;
+  }
+  return bounded[device] > 0;
+}
+
+template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL, bool RESIDUAL>
+__global__ void q8_0_dense_wide_residual_kernel(const x_t* __restrict__ x,
+                                                const uint8_t* __restrict__ qweight,
+                                                float* __restrict__ out, int rows,
+                                                int in_features, int out_features);
+
+template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL>
+__global__ void q8_0_dense_wide_residual_kernel(const x_t* __restrict__ x,
+                                                const uint8_t* __restrict__ qweight,
+                                                float* __restrict__ out, int rows,
+                                                int in_features, int out_features);
+
+template <typename x_t, int BM, int BN, int WTM, int WTN>
+int wide_launch_residual(const void* x,
+                         const void* qweight,
+                         void* out,
+                         int64_t rows,
+                         int64_t in_features,
+                         int64_t out_features,
+                         hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || (in_features % WIDE_BK) != 0 || out_features <= 0 ||
+      rows > INT32_MAX || in_features > INT32_MAX || out_features > INT32_MAX) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(static_cast<unsigned int>((out_features + BM - 1) / BM),
+                  static_cast<unsigned int>((rows + BN - 1) / BN));
+  const dim3 block(WIDE_THREADS);
+  // The bounded form on gfx1100 and on partial tiles, as wide_launch chooses.
+  if (wide_bounded_tiles() || (rows % BN) != 0 || (out_features % BM) != 0) {
+    hipLaunchKernelGGL((q8_0_dense_wide_residual_kernel<x_t, BM, BN, WTM, WTN, true>),
+                       grid, block, 0, stream, static_cast<const x_t*>(x),
+                       static_cast<const uint8_t*>(qweight), static_cast<float*>(out),
+                       static_cast<int>(rows), static_cast<int>(in_features),
+                       static_cast<int>(out_features));
+  } else {
+    hipLaunchKernelGGL((q8_0_dense_wide_residual_kernel<x_t, BM, BN, WTM, WTN, false>),
+                       grid, block, 0, stream, static_cast<const x_t*>(x),
+                       static_cast<const uint8_t*>(qweight), static_cast<float*>(out),
+                       static_cast<int>(rows), static_cast<int>(in_features),
+                       static_cast<int>(out_features));
+  }
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL,
           int WMMA_REP = 1, bool PADDED = false>
 __global__ void __launch_bounds__(WIDE_THREADS, 1)
@@ -739,6 +862,33 @@ q8_0_dense_wide_kernel(const x_t* __restrict__ x,
   wide_tile_gemm<x_t, BM, BN, WTM, WTN, TAIL, WMMA_REP, false, PADDED>(
       qweight + static_cast<size_t>(m0) * wrow_bytes, wrow_bytes,
       out_features - m0, x, in_features, out, out_features, rows, t0, m0, As, Bs);
+}
+
+// The dense tile with every operand in a high and a residual f16 part: the
+// single-product tile's arithmetic raised the divergence on long prompts
+// threefold under the Inkling production gate, and this form runs at 1.2 to 2.2
+// times its time and 2 to 3.5 times under the exact kernel's (W7900, K2304 by
+// N3072, 1,024 rows: 580 us against 274 and 2,046).
+template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL>
+__global__ void __launch_bounds__(WIDE_THREADS, 1)
+q8_0_dense_wide_residual_kernel(const x_t* __restrict__ x,
+                                const uint8_t* __restrict__ qweight,
+                                float* __restrict__ out,
+                                const int rows,
+                                const int in_features,
+                                const int out_features) {
+  __shared__ __align__(16) half_t As[BM * WIDE_LDS_STRIDE];
+  __shared__ __align__(16) half_t Bs[BN * WIDE_LDS_STRIDE];
+  __shared__ __align__(16) half_t As_lo[BM * WIDE_LDS_STRIDE];
+  __shared__ __align__(16) half_t Bs_lo[BN * WIDE_LDS_STRIDE];
+  const int m0 = blockIdx.x * BM;
+  const int t0 = blockIdx.y * BN;
+  const size_t wrow_bytes =
+      static_cast<size_t>(in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  wide_tile_gemm<x_t, BM, BN, WTM, WTN, TAIL, 1, false, false, false, true>(
+      qweight + static_cast<size_t>(m0) * wrow_bytes, wrow_bytes,
+      out_features - m0, x, in_features, out, out_features, rows, t0, m0, As, Bs,
+      As_lo, Bs_lo);
 }
 
 // Hyper-connection read: up projection with the sigmoid gated mean folded in.
@@ -954,23 +1104,6 @@ __global__ void q8_0_f32_to_f16_kernel(const float* __restrict__ x,
 }
 
 }  // namespace
-
-// Whether this device's dense-wide tiles are always launched in their bounded form.
-bool wide_bounded_tiles() {
-  static int8_t bounded[16] = {};
-  int device = 0;
-  if (hipGetDevice(&device) != hipSuccess || device < 0 || device >= 16) {
-    return false;
-  }
-  if (bounded[device] == 0) {
-    hipDeviceProp_t props{};
-    bounded[device] = (hipGetDeviceProperties(&props, device) == hipSuccess &&
-                       std::strcmp(props.gcnArchName, "gfx1100") == 0)
-                          ? 1
-                          : -1;
-  }
-  return bounded[device] > 0;
-}
 
 template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL,
           int WMMA_REP = 1, bool PADDED = false>
@@ -1217,6 +1350,20 @@ extern "C" int hipengine_qwen4_exp_gr_up_mean_residual_f16in_f32_f16_out(
 
 HIPENGINE_DENSE_WIDE_EXPORT_SPLIT(
     hipengine_gguf_q8_0_dense_split64x128_f32_f32_out, float, 64, 128)
+
+// The residual form takes two LDS tiles per operand, which the 64 x 128 layout
+// holds in 55,296 bytes; the wider layouts would not.
+#define DENSE_WIDE_EXPORT_RESIDUAL(name, x_t, BM, BN, WTM, WTN)      \
+  extern "C" int name(const void* x, const void* qweight, void* out,           \
+                      int64_t rows, int64_t in_features, int64_t out_features, \
+                      int64_t threads, hipStream_t stream) {                   \
+    (void)threads;                                                             \
+    return wide_launch_residual<x_t, BM, BN, WTM, WTN>(                        \
+        x, qweight, out, rows, in_features, out_features, stream);             \
+  }
+
+DENSE_WIDE_EXPORT_RESIDUAL(
+    hipengine_gguf_q8_0_dense_wide64x128_residual_f32_f32_out, float, 64, 128, 32, 32)
 
 // ``x_t`` selects the activation ABI. The f32 exports convert during staging;
 // the f16in exports consume an activation already converted by

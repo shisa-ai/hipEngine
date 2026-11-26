@@ -133,11 +133,10 @@ def test_inkling_gguf_fast_profile_keeps_strict_and_default_distinct(backend):
     strict_experts = {item["scope"]: item for item in strict.manifest["selections"] if item["layer"] == "moe_linear"}
     assert strict_experts["prompt_block_ge_192_rows_top8_nvfp4_gate_n2304_m2304"]["selected_variant"] == (
         "selected_tile4_shared_input_f32_f32_out")
-    # The dense Q8_0 projections of a prompt block take the wide F16 tile; every narrow block and
+    # The dense Q8_0 projections of a prompt block take a wide F16 tile; every narrow block and
     # `strict` keep the exact one.
     dense = {item["scope"]: item for item in fast.manifest["selections"] if item["layer"] == "linear"}
-    assert sorted(dense) == ["prompt_block_ge_384_rows_q8_0_dense_n384",
-                             "prompt_block_ge_64_rows_q8_0_dense_n1024_n2304_n3072"]
+    assert sorted(dense) == ["prompt_block_q8_0_dense_n1024_n2304_n3072", "prompt_block_q8_0_dense_n384"]
     assert {item["selected_variant"] for item in dense.values()} == {"dense_wide64x128_f32_f32_out"}
     assert {item["strict_fallback_variant"] for item in dense.values()} == {
         "coltile8_rowbatch4_wave_scale_pipelined_dpp_f32_f32_out"}
@@ -209,10 +208,11 @@ def test_inkling_gguf_production_plan_names_the_gated_route_and_keeps_f32_expert
         (experts, "prompt_block_ge_192_rows_top8_nvfp4_split_down_n1152_m2304"),
     ):
         assert shipped[layer_scope]["selected_variant"] == reduced[layer_scope]["selected_variant"]
-    # The wide F16 dense tile failed the production gate: `production` keeps the exact kernel.
-    for scope in ("prompt_block_ge_64_rows_q8_0_dense_n1024_n2304_n3072", "prompt_block_ge_384_rows_q8_0_dense_n384"):
+    # The single-product tile failed the production gate: `production` reads the residual tile.
+    for scope in ("prompt_block_q8_0_dense_n1024_n2304_n3072", "prompt_block_q8_0_dense_n384"):
         dense_scope = ("linear", scope)
-        assert shipped[dense_scope]["selected_variant"] == exact[dense_scope]["selected_variant"]
+        assert shipped[dense_scope]["selected_variant"] == "dense_wide64x128_residual_f32_f32_out"
+        assert shipped[dense_scope]["strict_fallback_variant"] == exact[dense_scope]["selected_variant"]
         assert reduced[dense_scope]["selected_variant"] == "dense_wide64x128_f32_f32_out"
     for selection in production.manifest["selections"]:
         assert selection["strict_fallback_variant"] == exact[(selection["layer"], selection["scope"])]["selected_variant"]

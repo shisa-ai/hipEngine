@@ -51,6 +51,7 @@ _VARIANTS = {
     "dense_wide64x256_f32_f32_out": dw._WRAPPERS["dense_wide64x256_f32_f32_out"],
     "dense_wide128x128_f32_f32_out": dw._WRAPPERS["dense_wide128x128_f32_f32_out"],
     "dense_wide64x128_f32_f32_out": dw._WRAPPERS["dense_wide64x128_f32_f32_out"],
+    "dense_wide64x128_residual_f32_f32_out": dw._WRAPPERS["dense_wide64x128_residual_f32_f32_out"],
 }
 
 
@@ -131,6 +132,65 @@ def test_dense_wide_rejects_in_features_that_are_not_k_tile_multiples(
             in_features,
             16,
         )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+@pytest.mark.parametrize(
+    ("rows", "in_features", "out_features"),
+    [
+        (256, 2304, 3072),  # Inkling's query and gate projections
+        (575, 3072, 2304),  # its output projection
+        (300, 192, 200),  # tails in rows and output columns
+    ],
+)
+def test_residual_tile_tracks_the_exact_reference(
+    rows: int, in_features: int, out_features: int
+) -> None:
+    """Each operand in a high and a residual f16 part.
+
+    The single-product tile sits at the f16 envelope of 1e-2 of the exact
+    result's largest value. With the two residual products kept apart from the
+    main accumulator and added once, the error is that of the f32 accumulation.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    wrapper = dw._WRAPPERS["dense_wide64x128_residual_f32_f32_out"]
+    rng = np.random.default_rng(0xD3E5E)
+    qweight = make_q8_0_weight(out_features, in_features)
+    x = rng.standard_normal((rows, in_features), dtype=np.float32)
+    exact_ref = gguf_q8_0_gemv(x, qweight)
+    out = np.zeros((rows, out_features), dtype=np.float32)
+    library = dw.build_gguf_q8_0_dense_wide(load=True)
+    x_dev = malloc(x.nbytes)
+    w_dev = malloc(qweight.nbytes)
+    out_dev = malloc(out.nbytes)
+    try:
+        copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
+        copy_host_to_device(w_dev, host_array_ptr(qweight), runtime=runtime)
+        wrapper(
+            x_dev.ptr,
+            w_dev.ptr,
+            out_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out), out_dev, runtime=runtime)
+    finally:
+        for buffer in (x_dev, w_dev, out_dev):
+            free(buffer)
+
+    exact_scale = float(np.max(np.abs(exact_ref)))
+    exact_error = float(np.max(np.abs(out - exact_ref)))
+    assert exact_error <= 1e-4 * exact_scale, (
+        f"residual tile: max|d| vs the exact reference is {exact_error:.3e} "
+        f"({exact_error / exact_scale:.2e} relative), above the f32 accumulation's"
+    )
 
 
 def test_dense_wide_is_aliased_under_the_gfx1151_backend() -> None:
