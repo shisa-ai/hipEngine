@@ -769,6 +769,14 @@ A compiler profile flag is not a universal architecture feature. The
 win in one lineage but was neutral in a direct current hipEngine PARO ablation.
 Keep such flags in an architecture/profile matrix.
 
+A specialization that removes bounds checks is such a candidate too. Time it
+against the bounded form on full tiles, on each architecture, and read both VGPR
+and scratch counts: the predication can be what keeps a tile's live values within
+budget, or the cost. The Q8_0 dense-wide tile in
+`hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_dense_wide.hip` lost up to 3x on its tail-free
+form on `gfx1100` and gained up to 1.2x on it on `gfx1151`, so its launcher reads
+the device architecture.
+
 ### 5.5 Prefetch only what overlaps
 
 Useful prefetch candidates have a clear consumer distance:

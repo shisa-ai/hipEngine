@@ -25,7 +25,9 @@ out of the K loop. Runtime profile selection is owned by the model plan, not
 by registering one of these callable leaves. The ``padded`` measurement
 siblings compute zero-padded row fragments inside the WMMA K loop, but keep
 all load/store bounds and the same valid-row accumulation. Full tiles use the
-original tail-free owner; no runtime selector or profile chooses the siblings.
+tail-free owner except on gfx1100, where the bounded owner measured faster at
+every shape and is always launched; no runtime selector or profile chooses the
+siblings.
 """
 
 from __future__ import annotations

@@ -44,6 +44,7 @@
 
 #include <hip/hip_runtime.h>
 #include <stdint.h>
+#include <cstring>
 
 namespace {
 
@@ -954,6 +955,23 @@ __global__ void q8_0_f32_to_f16_kernel(const float* __restrict__ x,
 
 }  // namespace
 
+// Whether this device's dense-wide tiles are always launched in their bounded form.
+bool wide_bounded_tiles() {
+  static int8_t bounded[16] = {};
+  int device = 0;
+  if (hipGetDevice(&device) != hipSuccess || device < 0 || device >= 16) {
+    return false;
+  }
+  if (bounded[device] == 0) {
+    hipDeviceProp_t props{};
+    bounded[device] = (hipGetDeviceProperties(&props, device) == hipSuccess &&
+                       std::strcmp(props.gcnArchName, "gfx1100") == 0)
+                          ? 1
+                          : -1;
+  }
+  return bounded[device] > 0;
+}
+
 template <typename x_t, int BM, int BN, int WTM, int WTN, bool TAIL,
           int WMMA_REP = 1, bool PADDED = false>
 int wide_launch_tail(const void* x,
@@ -976,9 +994,16 @@ int wide_launch_tail(const void* x,
   return static_cast<int>(hipGetLastError());
 }
 
-// The tail-free instantiation has no per-fragment predication at all; the tail
-// one bounds-checks every load and store. Picking between them at launch keeps
-// the common (exactly-divisible) case free of the checks.
+// Both instantiations run the same arithmetic on every fragment they store, and
+// which is faster at full tiles depends on the architecture. On gfx1100 the
+// tail-free one is the slower at every measured shape (W7900, K2304 x N3072,
+// 2026-11-26): without the predication the compiler keeps more values live, and
+// the 128 x 128 x 64 x 32 tile takes 256 VGPRs and 320 bytes of scratch against
+// 224 and none, 527 against 247 us at 1,024 rows, 985 against 498 at 2,048 and
+// 2,280 against 1,002 at 4,096; the 64 x 128 x 32 x 32 tile takes 232 VGPRs
+// against 176, 280 against 239 us at 1,024 rows. On gfx1151 the tail-free one is
+// the faster (Strix Halo, same shape, 1,024 rows: 659 against 801 us for the
+// 128 x 128 tile, 739 against 897 for 128 x 256), so it keeps the full tiles.
 template <typename x_t, int BM, int BN, int WTM, int WTN,
           int WMMA_REP = 1, bool PADDED = false>
 int wide_launch(const void* x,
@@ -993,7 +1018,7 @@ int wide_launch(const void* x,
       rows > INT32_MAX || in_features > INT32_MAX || out_features > INT32_MAX) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const bool tail = (rows % BN) != 0 || (out_features % BM) != 0;
+  const bool tail = wide_bounded_tiles() || (rows % BN) != 0 || (out_features % BM) != 0;
   return tail ? wide_launch_tail<x_t, BM, BN, WTM, WTN, true, WMMA_REP, PADDED>(
                     x, qweight, out, rows, in_features, out_features, stream)
               : wide_launch_tail<x_t, BM, BN, WTM, WTN, false, WMMA_REP>(
@@ -1082,7 +1107,11 @@ static int gr_up_mean_launch(
                      static_cast<const float*>(inv_rms),                       \
                      static_cast<const float*>(norm_weight),                   \
                      static_cast<half_t*>(out_f16))
-  if ((rows % bn) != 0) {
+  // The bounded instantiation on gfx1100 at every row count, for the reason
+  // wide_launch gives: at K2560 and hidden 2560 the tail-free one took 1,937 us
+  // against 661 at 1,024 rows and 4,305 against 1,310 at 2,048. On gfx1151 it
+  // measured 1,910 against 1,994 us at 1,024 rows and keeps the full tiles.
+  if (wide_bounded_tiles() || (rows % bn) != 0) {
     HIPENGINE_GR_UP_MEAN_LAUNCH(true, 128, 32);
   } else {
     HIPENGINE_GR_UP_MEAN_LAUNCH(false, 128, 32);
