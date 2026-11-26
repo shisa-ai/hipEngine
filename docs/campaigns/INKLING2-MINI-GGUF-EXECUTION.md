@@ -148,7 +148,10 @@ bit for bit the previous kernel's. On the W7900 the first token comes 16% sooner
 tokens and 17% sooner after 575; the kernel is about 30% faster at 1,024 rows and 53% faster on
 Strix Halo. The experts are still 35% of the prefill at 2,057 tokens. The decomposition that led
 here is in the entry: the kernel was bound by activation reads, not by the matrix instructions,
-their wave size or the unpacking.
+their wave size or the unpacking. The F32 projections of few outputs (controller, sink, router,
+convolution) take a narrow FP32 kernel on the `fast` and `production` prompt blocks
+([entry](../../worklog/entries/20261126T205246.642929Z-lhl-inkling2-mini-488370.md)): 111 to 51 ms of
+the prefill at 2,057 prompt tokens, first token 1.461 to 1.414 s, and the gate passes at its commit.
 
 **Status 2026-11-25.** `fast` reads prompts in 256-row blocks with matching scheduler budgets and
 `strict` keeps 64 rows ([entry](../../worklog/entries/20261125T023627.416022Z-lhl-inkling2-mini-91a27c.md)).
