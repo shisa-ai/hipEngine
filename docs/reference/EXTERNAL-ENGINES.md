@@ -62,6 +62,7 @@ lives in
 | fngine | [satellitedown/fngine](https://github.com/satellitedown/fngine) | One RTX 5090 (`sm_120a`), ~60 GiB host RAM, AVX-512 CPU | Its own pack, built from upstream IQ GGUF shards | Source build, pinned installer | Apache-2.0 | Keeping native IQ expert formats while splitting experts across GPU and CPU. |
 | FastLocalExperts | [sirfyyn/FastLocalExperts](https://github.com/sirfyyn/FastLocalExperts) | One 32 GB GPU plus 120 GB RAM | Its own FLE-IQ3_M GGUF | Source build, releases | MIT | A hot-expert GPU cache in a llama.cpp fork, documented with a measured report. |
 | lean-qwenflash | [MaxDevv/lean-qwenflash](https://github.com/MaxDevv/lean-qwenflash) | One NVIDIA card with 16 GB VRAM, 8 GB host RAM, NVMe | EXL3 quant plus its own packed expert store | Source build | Not stated; ExLlamaV3 is MIT | A 125B MoE at full 262k context inside 8 GB of host RAM, by streaming experts from NVMe to the GPU. |
+| Betelgeuse | [Betelgeuse-AI/Betelgeuse](https://github.com/Betelgeuse-AI/Betelgeuse) | One RTX 3060 12 GB (`sm_86`), 16 GB host RAM, Linux | Original Inkling 2 Mini NVFP4/MXFP8/BF16 safetensors, no GGUF | Source build or `sm_86` binary archive | MIT | A mixed-precision MoE executed from its original checkpoint on a 12 GB card, with every routed expert computed. |
 | Splash | [incoai/splash](https://github.com/incoai/splash) · [blog](https://inco.ai/blog/splash/) | Apple silicon, M3 or newer, 24–48 GB | Unsloth GGUF, MLX, NVFP4, Ternary Bonsai 2 | Homebrew | Apache-2.0 | Per-model Metal kernels and drafts behind one agent-ready server. |
 | MTPLX | [youssofal/MTPLX](https://github.com/youssofal/MTPLX) · [mtplx.com](https://www.mtplx.com/) | Apple silicon, 16 GB and up | MLX quants | Mac app, PyPI | Apache-2.0 | Native MTP speculation that keeps the model's own sampling distribution. |
 | llama.cpp | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | Almost everything: CPU, NVIDIA, AMD, Apple, Intel, RISC-V, mobile | GGUF | Source, prebuilt binaries, Docker, curl installer | MIT | Breadth. The reference GGUF runtime and quant zoo. |
@@ -1023,6 +1024,54 @@ Limits that matter for comparison:
 - A fast NVMe is a precondition, not a tuning option. The project's own to-do
   lists 12 GB and 8 GB cards, and the 24 GB and 32 GB cards, as untested.
 
+### Betelgeuse
+
+[`Betelgeuse-AI/Betelgeuse`](https://github.com/Betelgeuse-AI/Betelgeuse) — a
+C++/CUDA fork of llama.cpp, MIT, developed on one RTX 3060 12 GB (`sm_86`) with
+an i5-12400 and 16 GB of single-channel DDR4, on Linux x86-64.
+
+Release v0.7.0 runs Thinking Machines Lab's Inkling 2 Mini straight from its
+original mixed NVFP4, MXFP8 and BF16 safetensors — no GGUF conversion and no
+additional weight quantisation — and evaluates every routed expert. The engine
+descends from native Inkling work contributed to Strata, and it does not assume
+the checkpoint fits: recurrent-core experts stay resident and the rest move
+through a bounded GPU fetch cache with decayed-LFU eviction and overlapped PCIe
+transfers.
+
+Strengths:
+
+- **The original checkpoint is the artifact.** Packed NVFP4 and MXFP8 expert
+  weights and BF16 tensors are executed as published, so the reference is the
+  model's own file rather than a re-quantisation of it. The reported run uses
+  neither expert skipping nor speculative decoding.
+- **Ampere kernels for formats the card has no native instructions for.**
+  Low-bit GEMV decode kernels and packed FP16 tensor-core prefill carry
+  NVFP4/MXFP8 weights on `sm_86`, with fused grouped-query and sliding-window
+  attention, dynamic KV growth, CUDA graph recapture, and a K8/V4 KV cache.
+- **Prefill and decode share one process state.** The prefill workspace is
+  reclaimed for expert residency and decode without restarting the process or
+  discarding KV and recurrent state.
+- **The llama.cpp surface is still there.** `bel-server` and `bel-cli` are the
+  entry points, the llama C API is unchanged, and turning the engine off leaves
+  an upstream-only build.
+
+Limits that matter for comparison:
+
+- One model. v0.7.0 deprecated the earlier DeepSeek-V4.1-Flash and
+  Alpha-Orionis-XS integrations, and compatibility with other llama.cpp GGUFs is
+  explicitly not established, so the fork does not make it a general GGUF
+  runner.
+- Validated on one configuration: Linux x86-64, CUDA, `sm_86`. The binary
+  archive is built for SM86 only; any other GPU needs a source build and its own
+  validation.
+- Direct mode serves one active text request with greedy sampling; grammar,
+  logit bias and speculative decoding are not supported there.
+- The first GPU-fetch request pays a one-time pinned-host-arena preparation of
+  roughly 11 seconds, and the tuned profile is enforced unless
+  `INK2_ALLOW_TUNING_OVERRIDE` is set.
+- A research preview, and preserving the original weights does not make output
+  bit-identical across execution and KV-cache precisions.
+
 ## Apple-silicon engines
 
 Unified memory removes the PCIe boundary that shapes the NVIDIA entries, and a
@@ -1415,8 +1464,8 @@ Strix Halo iGPU.
 
 The remaining engines drive one device at a time: NInfer (its TP2 forks add a
 two-card path), Infernix, MegaCapybara, SparkInfer, tqLLM, fngine,
-FastLocalExperts, lean-qwenflash, Decapybara, Kyojin, and the two Apple-silicon
-engines.
+FastLocalExperts, lean-qwenflash, Betelgeuse, Decapybara, Kyojin, and the two
+Apple-silicon engines.
 
 Two constraints apply across the table. The build must contain kernels for every
 architecture in the machine — a fat binary covering both, not just the card that
